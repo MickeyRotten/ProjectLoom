@@ -261,10 +261,15 @@ export const useStore = create<LoomStore>((set, get) => {
   },
 
   setScreen(screen) {
+    // Authoring edits made mid-stream get silently reverted by a later Undo
+    // (the reversal is captured against the pre-turn snapshot), so block opening
+    // any overlay while a turn streams — only closing (null) is allowed.
+    if (screen !== null && get().streaming) return;
     set({ screen });
   },
 
   openMember(id) {
+    if (get().streaming) return;
     set({ screen: "member", memberId: id });
   },
 

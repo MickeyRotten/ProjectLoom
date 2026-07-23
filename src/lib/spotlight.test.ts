@@ -48,6 +48,13 @@ describe("isDirectlyAddressed", () => {
     expect(isDirectlyAddressed("everyone hold position", "Navi")).toBe(true);
     expect(isDirectlyAddressed("we push forward", "Riley Vance")).toBe(true);
   });
+
+  it("does not treat a stopword first token as an address", () => {
+    // "The Butcher" — the first token "the" must not make every "the" an address.
+    expect(isDirectlyAddressed("the door is locked", "The Butcher")).toBe(false);
+    // The full name still addresses them.
+    expect(isDirectlyAddressed("The Butcher, stand down", "The Butcher")).toBe(true);
+  });
 });
 
 describe("extractKeywords", () => {
@@ -123,6 +130,13 @@ describe("memberSpoke / detectSpeakers", () => {
   it("does NOT count a bare mention", () => {
     expect(memberSpoke("Navi was asleep against the wall.", "Navi")).toBe(false);
     expect(memberSpoke("You think of Navi and press on.", "Navi")).toBe(false);
+  });
+
+  it("does NOT credit a possessive after a closing quote", () => {
+    // "Run," Bob's mother urged — the mother speaks, not Bob.
+    expect(memberSpoke('"Run," Bob\'s mother urged.', "Bob")).toBe(false);
+    // A genuine post-quote attribution still counts.
+    expect(memberSpoke('"Run," Bob urged.', "Bob")).toBe(true);
   });
 
   it("detectSpeakers returns ids only for members with an attributed line", () => {

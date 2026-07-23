@@ -63,8 +63,12 @@ function escapeRegExp(s: string): string {
 export function namePattern(name: string): string {
   const full = name.trim();
   const first = full.split(/\s+/)[0] ?? "";
-  const forms = Array.from(new Set([full, first])).filter(Boolean);
-  return forms.map(escapeRegExp).join("|");
+  // Keep the full name always; add the first-token alias only when it isn't a
+  // stopword — "The Butcher" would otherwise make every "the" read as
+  // addressing them.
+  const forms = [full];
+  if (first && !STOPWORDS.has(first.toLowerCase())) forms.push(first);
+  return Array.from(new Set(forms)).filter(Boolean).map(escapeRegExp).join("|");
 }
 
 /**
@@ -180,8 +184,9 @@ export function memberSpoke(text: string, name: string): boolean {
     new RegExp(`\\b(?:${n})\\b[^.!?${q}]{0,40}?\\b(?:${verbs})\\b`, "i"),
     // said… Name  — same clause
     new RegExp(`\\b(?:${verbs})\\b[^.!?${q}]{0,40}?\\b(?:${n})\\b`, "i"),
-    // `…," Name`  — comma inside the closing quote, then the name (attribution)
-    new RegExp(`,\\s*[${q}]\\s*(?:${n})\\b`, "i"),
+    // `…," Name`  — comma inside the closing quote, then the name (attribution).
+    // Reject a possessive so `"Run," Bob's mother urged` doesn't credit Bob.
+    new RegExp(`,\\s*[${q}]\\s*(?:${n})\\b(?!['’]s\\b)`, "i"),
     // `…" Name said`  — closing quote, name, then a said-verb
     new RegExp(`[${q}]\\s*(?:${n})\\b\\s+(?:${verbs})\\b`, "i"),
   ];

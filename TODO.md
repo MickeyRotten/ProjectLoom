@@ -57,24 +57,33 @@ _All items below fixed on `claude/todo-review-1jt4uv`._
 
 ## Heuristics / polish
 
-- [ ] **Stopword first names false-address** — `namePattern` (`spotlight.ts`)
+_All items below fixed on `claude/heuristics-tasks-elswzo`._
+
+- [x] **Stopword first names false-address** — `namePattern` (`spotlight.ts`)
   includes the first name token; a member called "The Butcher" makes every
   "the" count as addressing them. Drop the first-token form when it's a
-  stopword.
-- [ ] **`"Run," Bob's mother urged` credits Bob** — `memberSpoke` pattern
+  stopword. **Fixed:** first-token alias added only when it isn't a stopword;
+  the full name always matches.
+- [x] **`"Run," Bob's mother urged` credits Bob** — `memberSpoke` pattern
   `,\s*["""]\s*Name` (`spotlight.ts`) misfires on possessive attribution.
-  Known heuristic trade-off; tighten if it shows up in play.
-- [ ] **`*_CONTEXT_TURNS` count messages, not turns** — `prompt.ts` slices
+  Known heuristic trade-off; tighten if it shows up in play. **Fixed:** the
+  post-quote attribution pattern now rejects a `'s` possessive after the name.
+- [x] **`*_CONTEXT_TURNS` count messages, not turns** — `prompt.ts` slices
   `-N` messages, i.e. half the intended turns. Slice `-N*2` or rename.
-- [ ] **`snake_case` renders italic** — `markdown.ts` `_` delimiter matches
-  mid-word. Require word boundaries for `_`/`__`.
-- [ ] **Mid-stream authoring edits can be reverted by Undo** — the reversal is
+  **Fixed:** both scan windows slice `-N*2` (a turn is a player + narrator pair).
+- [x] **`snake_case` renders italic** — `markdown.ts` `_` delimiter matches
+  mid-word. Require word boundaries for `_`/`__`. **Fixed:** the underscore
+  forms only open/close on a word boundary; `snake_case`/`__dunder__` stay literal.
+- [x] **Mid-stream authoring edits can be reverted by Undo** — the reversal is
   captured against the pre-turn snapshot (`store.ts` `sendTurn`), so edits made
   in menu screens while a turn streams get silently undone. Cheapest fix:
-  block authoring screens while streaming.
-- [ ] **Oversize newest beat drops the whole history tail** — `buildHistory`
+  block authoring screens while streaming. **Fixed:** `setScreen`/`openMember`
+  no-op while streaming, and the gear / party / inventory / party-strip triggers
+  are disabled mid-turn.
+- [x] **Oversize newest beat drops the whole history tail** — `buildHistory`
   (`prompt.ts`) can end up with only the opening narration if the newest turn
-  alone exceeds the budget. Always keep the newest turn regardless.
+  alone exceeds the budget. Always keep the newest turn regardless. **Fixed:**
+  the newest beat is always kept, even when it alone exceeds the budget.
 
 ## Product decision
 

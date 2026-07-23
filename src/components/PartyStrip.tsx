@@ -22,6 +22,7 @@ export function PartyStrip() {
   const openMember = useStore((s) => s.openMember);
   const setScreen = useStore((s) => s.setScreen);
   const images = useStore((s) => s.images);
+  const streaming = useStore((s) => s.streaming);
 
   const slots: (Character | null)[] = [
     pc ?? null,
@@ -35,8 +36,9 @@ export function PartyStrip() {
           <button
             key={c.id}
             type="button"
+            disabled={streaming}
             onClick={() => openMember(c.id)}
-            className="flex flex-col items-center gap-1 active:opacity-60"
+            className="flex flex-col items-center gap-1 disabled:opacity-40 active:opacity-60"
             aria-label={c.name}
           >
             <span className="flex aspect-[3/4] w-full items-center justify-center overflow-hidden border-2 border-ink text-sm font-bold">
@@ -58,8 +60,9 @@ export function PartyStrip() {
           <button
             key={`empty-${i}`}
             type="button"
+            disabled={streaming}
             onClick={() => setScreen("characters")}
-            className="flex flex-col items-center gap-1 active:opacity-60"
+            className="flex flex-col items-center gap-1 disabled:opacity-40 active:opacity-60"
             aria-label="Add party member"
           >
             <span className="flex aspect-[3/4] w-full items-center justify-center border-2 border-dashed border-ink text-sm font-bold opacity-30">

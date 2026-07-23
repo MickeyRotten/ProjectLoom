@@ -59,6 +59,24 @@ describe("parseInline", () => {
     expect(parseInline("****")).toEqual([{ text: "****" }]);
   });
 
+  it("leaves intra-word underscores literal (snake_case)", () => {
+    expect(parseInline("call snake_case now")).toEqual([{ text: "call snake_case now" }]);
+    expect(parseInline("__dunder__ init")).toEqual([
+      { text: "dunder", bold: true },
+      { text: " init" },
+    ]);
+    expect(parseInline("a_b_c")).toEqual([{ text: "a_b_c" }]);
+  });
+
+  it("still parses boundary-delimited _italic_ / __bold__", () => {
+    expect(parseInline("a _b_ c")).toEqual([
+      { text: "a " },
+      { text: "b", italic: true },
+      { text: " c" },
+    ]);
+    expect(parseInline("__b__")).toEqual([{ text: "b", bold: true }]);
+  });
+
   it("handles multiple bold runs", () => {
     expect(parseInline("**a** and **b**")).toEqual([
       { text: "a", bold: true },

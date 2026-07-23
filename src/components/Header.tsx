@@ -4,6 +4,7 @@ export function Header() {
   const location = useStore((s) => s.game.location);
   const day = useStore((s) => s.game.day);
   const setScreen = useStore((s) => s.setScreen);
+  const streaming = useStore((s) => s.streaming);
 
   return (
     <header className="flex items-center justify-between border-b-2 border-ink px-3 py-2 uppercase tracking-widest">
@@ -13,8 +14,9 @@ export function Header() {
         <button
           type="button"
           aria-label="Settings"
+          disabled={streaming}
           onClick={() => setScreen("menu")}
-          className="border-2 border-ink px-2 leading-none active:bg-ink active:text-paper"
+          className="border-2 border-ink px-2 leading-none disabled:opacity-40 active:bg-ink active:text-paper"
         >
           =
         </button>
