@@ -7,7 +7,7 @@ export function Header() {
   const streaming = useStore((s) => s.streaming);
 
   return (
-    <header className="flex items-center justify-between border-b-2 border-ink px-3 py-2">
+    <header className="flex items-center justify-between px-3 py-2">
       <span className="truncate uppercase">{location}</span>
       <div className="flex items-center gap-3 whitespace-nowrap">
         <span>Day {day}</span>
