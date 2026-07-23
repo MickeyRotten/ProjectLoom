@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useStore } from "../store";
 import { OverlayHeader } from "./OverlayHeader";
 import { portraitKey } from "../lib/images";
@@ -24,6 +24,7 @@ export function MemberSheet() {
   const regeneratePortrait = useStore((s) => s.regeneratePortrait);
   const portraitUrl = useStore((s) => (id ? s.images[portraitKey(id)] : undefined));
   const portraitPending = useStore((s) => (id ? s.imgPending[portraitKey(id)] : false));
+  const [zoom, setZoom] = useState(false);
 
   useEffect(() => {
     if (id) ensurePortrait(id);
@@ -45,35 +46,43 @@ export function MemberSheet() {
       <OverlayHeader title={member.name || "Member"} onBack={() => setScreen(null)} />
 
       <div className="flex-1 space-y-5 overflow-y-auto p-3">
-        <div className="flex gap-3">
-          <div className="relative w-40 shrink-0">
-            <span className="flex aspect-[3/4] w-full items-center justify-center overflow-hidden border-2 border-ink text-3xl font-bold">
-              {portraitUrl ? (
-                <img
-                  src={portraitUrl}
-                  alt={member.name}
-                  className="h-full w-full object-cover [image-rendering:pixelated]"
-                />
-              ) : portraitPending ? (
-                <span className="animate-pulse text-sm">…</span>
+        <div className="relative mx-auto aspect-[3/4] w-full max-w-xs border-2 border-ink">
+          {portraitUrl ? (
+            <button
+              type="button"
+              aria-label="View portrait full screen"
+              onClick={() => setZoom(true)}
+              className="block h-full w-full active:opacity-60"
+            >
+              <img
+                src={portraitUrl}
+                alt={member.name}
+                className="h-full w-full object-cover [image-rendering:pixelated]"
+              />
+            </button>
+          ) : (
+            <div className="flex h-full w-full items-center justify-center px-3 text-center text-3xl font-bold uppercase tracking-widest opacity-50">
+              {portraitPending ? (
+                <span className="text-base tracking-widest">rendering portrait…</span>
               ) : (
                 (member.name[0] ?? "?").toUpperCase()
               )}
-            </span>
-            <button
-              type="button"
-              aria-label="Regenerate portrait"
-              disabled={portraitPending}
-              onClick={() => regeneratePortrait(member.id)}
-              className="absolute right-1 top-1 border-2 border-ink bg-paper px-2 leading-none disabled:opacity-40 active:bg-ink active:text-paper"
-            >
-              ⟳
-            </button>
-          </div>
-          <div className="flex-1 space-y-4">
-            <Text label="Name" value={member.name} onChange={(v) => update(member.id, { name: v })} />
-            <Text label="Species" value={member.species} onChange={(v) => update(member.id, { species: v })} />
-          </div>
+            </div>
+          )}
+          <button
+            type="button"
+            aria-label="Regenerate portrait"
+            disabled={portraitPending}
+            onClick={() => regeneratePortrait(member.id)}
+            className="absolute right-1 top-1 border-2 border-ink bg-paper px-2 leading-none disabled:opacity-40 active:bg-ink active:text-paper"
+          >
+            ⟳
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          <Text label="Name" value={member.name} onChange={(v) => update(member.id, { name: v })} />
+          <Text label="Species" value={member.species} onChange={(v) => update(member.id, { species: v })} />
         </div>
 
         <fieldset className="space-y-3 border-2 border-ink p-3">
@@ -172,6 +181,21 @@ export function MemberSheet() {
           </div>
         )}
       </div>
+
+      {zoom && portraitUrl && (
+        <button
+          type="button"
+          aria-label="Close full-screen portrait"
+          onClick={() => setZoom(false)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-ink p-3"
+        >
+          <img
+            src={portraitUrl}
+            alt={member.name}
+            className="max-h-full max-w-full object-contain [image-rendering:pixelated]"
+          />
+        </button>
+      )}
     </main>
   );
 }
