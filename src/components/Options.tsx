@@ -36,7 +36,7 @@ export function Options() {
           <button
             type="button"
             onClick={() => void sendTurn(opt)}
-            className="flex w-full items-baseline gap-2 border-2 border-ink px-2 py-1 text-left text-[0.65rem] active:bg-ink active:text-paper"
+            className="flex w-full items-baseline gap-2 border-2 border-ink px-3 py-2 text-left active:bg-ink active:text-paper"
           >
             <span className="tabular-nums">{i + 1}.</span>
             <span>{opt}</span>

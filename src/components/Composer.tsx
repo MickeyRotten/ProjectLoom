@@ -21,13 +21,13 @@ export function Composer() {
   };
 
   return (
-    <footer className="border-t-2 border-ink">
-      <div className="grid grid-cols-3 border-b-2 border-ink">
+    <footer className="space-y-3 p-3">
+      <div className="grid grid-cols-3 gap-3">
         <button
           type="button"
           disabled={streaming || !hasKey}
           onClick={() => void sendTurn("I look around.")}
-          className="border-r-2 border-ink py-2 uppercase tracking-widest disabled:opacity-40 active:bg-ink active:text-paper"
+          className="border-2 border-ink py-3 uppercase disabled:opacity-40 active:bg-ink active:text-paper"
         >
           Look
         </button>
@@ -35,7 +35,7 @@ export function Composer() {
           type="button"
           disabled={streaming}
           onClick={() => setScreen("party")}
-          className="border-r-2 border-ink py-2 uppercase tracking-widest disabled:opacity-40 active:bg-ink active:text-paper"
+          className="border-2 border-ink py-3 uppercase disabled:opacity-40 active:bg-ink active:text-paper"
         >
           Party
         </button>
@@ -43,32 +43,32 @@ export function Composer() {
           type="button"
           disabled={streaming}
           onClick={() => setScreen("inventory")}
-          className="py-2 uppercase tracking-widest disabled:opacity-40 active:bg-ink active:text-paper"
+          className="border-2 border-ink py-3 uppercase disabled:opacity-40 active:bg-ink active:text-paper"
         >
           Inventory
         </button>
       </div>
 
       <form
-        className="flex items-stretch"
+        className="flex items-stretch border-2 border-ink"
         onSubmit={(e) => {
           e.preventDefault();
           submit();
         }}
       >
-        <span className="flex items-center px-2">&gt;</span>
+        <span className="flex items-center px-3 py-3">&gt;</span>
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}
           disabled={streaming}
           placeholder={hasKey ? (streaming ? "…" : "what do you do?") : "set API key in Model & Key"}
-          className="min-w-0 flex-1 bg-paper py-2 text-ink placeholder:opacity-50 focus:outline-none disabled:opacity-40"
+          className="min-w-0 flex-1 bg-paper py-3 text-ink placeholder:opacity-50 focus:outline-none disabled:opacity-40"
         />
         {streaming ? (
           <button
             type="button"
             onClick={stopTurn}
-            className="border-l-2 border-ink px-4 uppercase tracking-widest active:bg-ink active:text-paper"
+            className="border-l-2 border-ink px-4 uppercase active:bg-ink active:text-paper"
           >
             Stop
           </button>
@@ -76,7 +76,7 @@ export function Composer() {
           <button
             type="submit"
             disabled={!text.trim()}
-            className="border-l-2 border-ink px-4 uppercase tracking-widest disabled:opacity-40 active:bg-ink active:text-paper"
+            className="border-l-2 border-ink px-4 uppercase disabled:opacity-40 active:bg-ink active:text-paper"
           >
             Go
           </button>
