@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { buildMessages, buildHistory, approxTokens } from "./prompt";
+import { buildMessages, buildHistory, approxTokens, formatPartyRoster } from "./prompt";
 import { newGame, defaultSettings } from "./defaults";
-import type { GameState, Message } from "../types";
+import type { Character, GameState, Message } from "../types";
 
 const settings = defaultSettings();
 
@@ -10,6 +10,14 @@ function narr(turn: number, content: string): Message {
 }
 function play(turn: number, content: string): Message {
   return { id: `p${turn}`, role: "player", content, turn };
+}
+
+function member(patch: Partial<Character> & { id: string; name: string }): Character {
+  return {
+    role: "member", species: "human", description: "", personality: "", drive: "",
+    likes: "", dislikes: "", fieldSkill: { name: "", description: "" }, equipment: [],
+    lastSpokeTurn: 0, inParty: true, ...patch,
+  };
 }
 
 describe("buildMessages — ordering", () => {
@@ -35,6 +43,43 @@ describe("buildMessages — ordering", () => {
     const msgs = buildMessages({ settings, game: g, playerMessage: "go" });
     expect(msgs[0].content).toContain("PLAYER CHARACTER");
     expect(msgs[0].content).toContain("Compass ×2");
+  });
+});
+
+describe("party roster + spotlight", () => {
+  const navi = member({
+    id: "m-navi", name: "Navi", species: "sprite", description: "a darting spark",
+    fieldSkill: { name: "Lockpicking", description: "opens any lock" },
+  });
+
+  it("includes the party roster in the system context", () => {
+    const g = newGame();
+    g.characters = [...g.characters, navi];
+    const msgs = buildMessages({ settings, game: g, playerMessage: "go" });
+    expect(msgs[0].content).toContain("PARTY — in your company");
+    expect(msgs[0].content).toContain("Navi (sprite)");
+    expect(msgs[0].content).toContain("Field Skill — Lockpicking");
+  });
+
+  it("injects a spotlight block after the system context, before history", () => {
+    const g = newGame();
+    g.characters = [...g.characters, navi];
+    const msgs = buildMessages({ settings, game: g, playerMessage: "navi, open it" });
+    const spotIdx = msgs.findIndex((m) => m.content.includes("PARTY SPOTLIGHT — THIS TURN"));
+    expect(spotIdx).toBe(1);
+    expect(msgs[spotIdx].content).toContain("Navi: addressed=yes");
+  });
+
+  it("omits roster + spotlight when the party is empty", () => {
+    const msgs = buildMessages({ settings, game: newGame(), playerMessage: "go" });
+    expect(msgs.some((m) => m.content.includes("PARTY SPOTLIGHT"))).toBe(false);
+    expect(msgs[0].content).not.toContain("PARTY — in your company");
+  });
+
+  it("benched members are excluded from the roster", () => {
+    const g = newGame();
+    g.characters = [...g.characters, { ...navi, inParty: false }];
+    expect(formatPartyRoster(g.characters.filter((c) => c.role === "member" && c.inParty))).toBe("");
   });
 });
 

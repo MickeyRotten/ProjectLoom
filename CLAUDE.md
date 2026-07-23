@@ -67,7 +67,10 @@ committed**.
 ### Build status
 
 Phase 0 (scaffold) + Phase 1 (core loop: turn contract, streaming, autosave — PC-only)
-done. Next: **Phase 2 — Party + Spotlight**. Track scope in `DESIGN.md → Build Phases`.
++ Phase 2 (party + spotlight: `spotlight.ts`, party deltas, roster + spotlight prompt
+blocks, `detectSpeakers` → `lastSpokeTurn`, dialogue segmenter, party strip / member
+sheet / party + inventory views) done. Next: **Phase 3 — Images**. Track scope in
+`DESIGN.md → Build Phases`.
 
 ## Attribution
 

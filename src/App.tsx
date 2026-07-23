@@ -2,13 +2,18 @@ import { useEffect } from "react";
 import { useStore } from "./store";
 import { Header } from "./components/Header";
 import { ChatView } from "./components/ChatView";
+import { PartyStrip } from "./components/PartyStrip";
 import { Composer } from "./components/Composer";
 import { SettingsScreen } from "./components/SettingsScreen";
+import { MemberSheet } from "./components/MemberSheet";
+import { PartyScreen } from "./components/PartyScreen";
+import { InventoryScreen } from "./components/InventoryScreen";
 
 /**
- * Phase 1 shell — the core loop: header (location · day), scrolling narration
- * log with AI options under the latest beat, and a composer (LOOK + freeform).
- * Party strip, inventory/quests views, and images arrive in later phases.
+ * Phase 2 shell — the core loop plus party: header (location · day), scrolling
+ * narration log with AI options under the latest beat, the party portrait
+ * strip, and a composer (LOOK · PARTY · INVENTORY + freeform). Full-screen
+ * overlays (member sheet, party, inventory, settings) open over the chat.
  */
 export default function App() {
   const hydrate = useStore((s) => s.hydrate);
@@ -28,11 +33,15 @@ export default function App() {
   }
 
   if (screen === "settings") return <SettingsScreen />;
+  if (screen === "member") return <MemberSheet />;
+  if (screen === "party") return <PartyScreen />;
+  if (screen === "inventory") return <InventoryScreen />;
 
   return (
     <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
       <Header />
       <ChatView />
+      <PartyStrip />
       <Composer />
     </main>
   );

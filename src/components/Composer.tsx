@@ -9,6 +9,7 @@ export function Composer() {
   const [text, setText] = useState("");
   const sendTurn = useStore((s) => s.sendTurn);
   const streaming = useStore((s) => s.streaming);
+  const setScreen = useStore((s) => s.setScreen);
   const hasKey = useStore((s) => Boolean(s.settings.openRouterKey.trim()));
 
   const submit = () => {
@@ -31,15 +32,15 @@ export function Composer() {
         </button>
         <button
           type="button"
-          disabled
-          className="border-r-2 border-ink py-2 uppercase tracking-widest opacity-40"
+          onClick={() => setScreen("party")}
+          className="border-r-2 border-ink py-2 uppercase tracking-widest active:bg-ink active:text-paper"
         >
           Party
         </button>
         <button
           type="button"
-          disabled
-          className="py-2 uppercase tracking-widest opacity-40"
+          onClick={() => setScreen("inventory")}
+          className="py-2 uppercase tracking-widest active:bg-ink active:text-paper"
         >
           Inventory
         </button>

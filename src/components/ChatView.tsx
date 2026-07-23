@@ -1,6 +1,8 @@
 import { useEffect, useRef } from "react";
 import { useStore } from "../store";
 import { Options } from "./Options";
+import { segmentDialogue } from "../lib/spotlight";
+import type { Character } from "../types";
 
 /**
  * The message log. Renders the opening narration, each turn, the live
@@ -10,6 +12,7 @@ import { Options } from "./Options";
 export function ChatView() {
   const opening = useStore((s) => s.game.scenario.openingNarration);
   const messages = useStore((s) => s.game.messages);
+  const party = useStore((s) => s.game.characters.filter((c) => c.role === "member"));
   const streaming = useStore((s) => s.streaming);
   const streamText = useStore((s) => s.streamText);
   const error = useStore((s) => s.error);
@@ -21,13 +24,13 @@ export function ChatView() {
 
   return (
     <section className="flex-1 space-y-3 overflow-y-auto p-3">
-      <Beat role="narrator" text={opening} />
+      <Beat role="narrator" text={opening} party={party} />
 
       {messages.map((m) => (
-        <Beat key={m.id} role={m.role} text={m.content} />
+        <Beat key={m.id} role={m.role} text={m.content} party={party} />
       ))}
 
-      {streaming && <Beat role="narrator" text={streamText || "…"} pending />}
+      {streaming && <Beat role="narrator" text={streamText || "…"} party={party} pending />}
 
       {!streaming && <Options />}
 
@@ -45,10 +48,12 @@ export function ChatView() {
 function Beat({
   role,
   text,
+  party,
   pending,
 }: {
   role: "player" | "narrator";
   text: string;
+  party: Character[];
   pending?: boolean;
 }) {
   if (role === "player") {
@@ -58,10 +63,24 @@ function Beat({
       </p>
     );
   }
+
+  // Segment narrator prose so party dialogue (`Name: "…"`) renders distinctly.
+  const segments = segmentDialogue(text, party);
   return (
-    <p className={`whitespace-pre-wrap leading-relaxed ${pending ? "opacity-70" : ""}`}>
-      {text}
+    <div className={`space-y-2 leading-relaxed ${pending ? "opacity-70" : ""}`}>
+      {segments.map((seg, i) =>
+        seg.speaker ? (
+          <p key={i} className="border-l-2 border-ink pl-2">
+            <span className="mr-1 font-bold uppercase tracking-wide">{seg.speaker}:</span>
+            <span>“{seg.text}”</span>
+          </p>
+        ) : (
+          <p key={i} className="whitespace-pre-wrap">
+            {seg.text}
+          </p>
+        ),
+      )}
       {pending && <span className="animate-pulse"> ▊</span>}
-    </p>
+    </div>
   );
 }

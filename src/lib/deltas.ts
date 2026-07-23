@@ -1,10 +1,12 @@
-import type { GameState, Item, LoomBlock, Quest } from "../types";
+import type { Character, GameState, Item, LoomBlock, PartyDelta, Quest } from "../types";
 
 /**
  * Apply a parsed <<<LOOM>>> block to the active game (loom-turn-protocol):
  *  - location/day/weather OVERWRITE the scene.
- *  - inventory/quests are OP-BASED (add | update | remove), keyed by label.
- *  - party is deferred to Phase 2 (needs Character + spotlight wiring).
+ *  - party/inventory/quests are OP-BASED (add | update | remove), keyed by
+ *    slugged name/label. Party members are Characters with role "member";
+ *    `remove` benches (inParty=false) rather than deleting, so a rejoin or a
+ *    portrait survives.
  *
  * Pure: returns the changed slices; callers merge into the store. Keeping this
  * pure is what makes the turn contract testable.
@@ -13,6 +15,7 @@ export interface AppliedScene {
   day: number;
   location: string;
   weather: string;
+  characters: Character[];
   inventory: Item[];
   quests: Quest[];
 }
@@ -33,8 +36,70 @@ export function applyDeltas(game: GameState, block: LoomBlock): AppliedScene {
     day,
     location,
     weather,
+    characters: applyParty(game.characters, block),
     inventory: applyInventory(game.inventory, block),
     quests: applyQuests(game.quests, block),
+  };
+}
+
+/**
+ * Op-based party roster, keyed by slugged member name. Only members
+ * (role "member") are matched — the PC is never touched by a party delta.
+ *  - add: create a new benched-in member, or re-enlist + refresh a known one.
+ *  - update: patch species/description/fieldSkill of a known member.
+ *  - remove: bench the member (inParty=false); the record is kept.
+ */
+function applyParty(current: Character[], block: LoomBlock): Character[] {
+  if (!block.party?.length) return current;
+  const next = current.slice();
+
+  for (const d of block.party) {
+    if (!d?.name) continue;
+    const key = slug(d.name);
+    const i = next.findIndex((c) => c.role === "member" && slug(c.name) === key);
+
+    if (d.op === "remove") {
+      if (i !== -1) next[i] = { ...next[i], inParty: false };
+      continue;
+    }
+
+    if (d.op === "update") {
+      if (i !== -1) next[i] = patchMember(next[i], d);
+      continue;
+    }
+
+    // add — re-enlist + refresh an existing member, else create one.
+    if (i !== -1) next[i] = { ...patchMember(next[i], d), inParty: true };
+    else next.push(makeMember(d, key));
+  }
+
+  return next;
+}
+
+function patchMember(c: Character, d: PartyDelta): Character {
+  return {
+    ...c,
+    species: d.species ?? c.species,
+    description: d.description ?? c.description,
+    fieldSkill: d.fieldSkill ?? c.fieldSkill,
+  };
+}
+
+function makeMember(d: PartyDelta, key: string): Character {
+  return {
+    id: `m-${key}`,
+    role: "member",
+    name: d.name,
+    species: d.species ?? "",
+    description: d.description ?? "",
+    personality: "",
+    drive: "",
+    likes: "",
+    dislikes: "",
+    fieldSkill: d.fieldSkill ?? { name: "", description: "" },
+    equipment: [],
+    lastSpokeTurn: 0,
+    inParty: true,
   };
 }
 
