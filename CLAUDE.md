@@ -31,8 +31,27 @@ drops articles, filler, hedging, and pleasantries. Read
   ([`.claude/skills/caveman-review/`](.claude/skills/caveman-review/SKILL.md)): one
   line per finding — location, problem, fix.
 
+## Project skills
+
+Invoke these when touching the matching area (they guard the drift-prone core):
+
+- **loom-turn-protocol** ([`.claude/skills/loom-turn-protocol/`](.claude/skills/loom-turn-protocol/SKILL.md))
+  — the `<<<LOOM>>>` single-call turn contract: emit shape, stream-truncate-at-`<<<`,
+  tolerant parse, delta apply + reversal. Read before editing the turn loop or
+  response parser.
+- **loom-spotlight** ([`.claude/skills/loom-spotlight/`](.claude/skills/loom-spotlight/SKILL.md))
+  — deterministic party-spotlight signals, the `Name: "…"` dialogue convention, and
+  `lastSpokeTurn` detection. Read before editing `spotlight.ts` or the spotlight block.
+
+## Dev environment
+
+A **SessionStart hook** ([`.claude/hooks/session-start.sh`](.claude/hooks/session-start.sh))
+installs deps and prints the test/build commands each session. No-ops until the Phase 0
+scaffold (`package.json`) exists.
+
 ## Attribution
 
-Skills under `.claude/skills/` are vendored from
+caveman* skills under `.claude/skills/` are vendored from
 https://github.com/JuliusBrussee/caveman (MIT). See
-[`.claude/skills/ATTRIBUTION.md`](.claude/skills/ATTRIBUTION.md).
+[`.claude/skills/ATTRIBUTION.md`](.claude/skills/ATTRIBUTION.md). The `loom-*` skills are
+project-original.
