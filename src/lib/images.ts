@@ -175,7 +175,7 @@ export async function generateImage(opts: GenerateImageOptions): Promise<Blob> {
   const { settings, prompt, image, signal } = opts;
 
   if (!settings.openRouterKey.trim()) {
-    throw new ImageError("No OpenRouter API key set. Add one in Settings.");
+    throw new ImageError("No OpenRouter API key set. Add one in Model & Key.");
   }
 
   const content = image

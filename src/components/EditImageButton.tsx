@@ -39,8 +39,18 @@ export function EditImageButton({
         ✎
       </button>
       {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink p-4">
-          <div className="w-full max-w-sm space-y-3 border-2 border-ink bg-paper p-3">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-ink p-4"
+          onClick={() => setOpen(false)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setOpen(false);
+          }}
+          role="presentation"
+        >
+          <div
+            className="w-full max-w-sm space-y-3 border-2 border-ink bg-paper p-3"
+            onClick={(e) => e.stopPropagation()}
+          >
             <span className="block uppercase tracking-widest text-sm">{label}</span>
             <textarea
               autoFocus

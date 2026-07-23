@@ -25,7 +25,7 @@ export function Composer() {
       <div className="grid grid-cols-3 border-b-2 border-ink">
         <button
           type="button"
-          disabled={streaming}
+          disabled={streaming || !hasKey}
           onClick={() => void sendTurn("I look around.")}
           className="border-r-2 border-ink py-2 uppercase tracking-widest disabled:opacity-40 active:bg-ink active:text-paper"
         >
@@ -59,7 +59,7 @@ export function Composer() {
           value={text}
           onChange={(e) => setText(e.target.value)}
           disabled={streaming}
-          placeholder={hasKey ? (streaming ? "…" : "what do you do?") : "set API key in settings"}
+          placeholder={hasKey ? (streaming ? "…" : "what do you do?") : "set API key in Model & Key"}
           className="min-w-0 flex-1 bg-paper py-2 text-ink placeholder:opacity-50 focus:outline-none disabled:opacity-40"
         />
         {streaming ? (

@@ -54,6 +54,7 @@ export function defaultSettings(): Settings {
     imageModelId: DEFAULT_IMAGE_MODEL,
     temperature: 0.8,
     showActionOptions: true,
+    invert: false,
     customInstructions: DEFAULT_CUSTOM_INSTRUCTIONS,
     bannerInstructions: DEFAULT_BANNER_INSTRUCTIONS,
     portraitInstructions: DEFAULT_PORTRAIT_INSTRUCTIONS,

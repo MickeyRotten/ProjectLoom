@@ -19,6 +19,8 @@ const ENTRIES: { screen: Screen; label: string; note: string }[] = [
 export function MenuScreen() {
   const setScreen = useStore((s) => s.setScreen);
   const newAdventure = useStore((s) => s.newAdventure);
+  const invert = useStore((s) => s.settings.invert);
+  const updateSettings = useStore((s) => s.updateSettings);
 
   return (
     <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
@@ -36,6 +38,16 @@ export function MenuScreen() {
             <div className="mt-1 text-sm opacity-70">{e.note}</div>
           </button>
         ))}
+
+        <button
+          type="button"
+          aria-pressed={invert}
+          onClick={() => updateSettings({ invert: !invert })}
+          className="mt-2 flex w-full items-center justify-between border-2 border-ink p-3 text-left uppercase tracking-widest active:bg-ink active:text-paper"
+        >
+          <span>Invert Colors</span>
+          <span className="opacity-70">{invert ? "On" : "Off"}</span>
+        </button>
 
         <button
           type="button"

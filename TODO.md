@@ -8,41 +8,52 @@ mid-stream error frames, turn abort) were fixed on
 
 ## UX
 
-- [ ] **Auto-scroll yanks during streaming** — `ChatView.tsx` scrolls to bottom
+_All items below fixed on `claude/todo-review-1jt4uv`._
+
+- [x] **Auto-scroll yanks during streaming** — `ChatView.tsx` scrolls to bottom
   on every `streamText` delta; scrolling up to reread gets dragged back every
-  chunk. Only auto-scroll when already near the bottom.
-- [ ] **Undo is instant, irreversible, and adjacent to Regenerate** —
+  chunk. Only auto-scroll when already near the bottom. **Fixed:** tail-follow
+  only when within 120px of the bottom.
+- [x] **Undo is instant, irreversible, and adjacent to Regenerate** —
   `TurnControls.tsx`: two thumb-width buttons side by side, no confirm, no redo.
   Fat-finger Undo on mobile = turn gone. Confirm on Undo, or keep a one-level
-  redo buffer.
-- [ ] **No visible focus style** — inputs/buttons use `focus:outline-none` with
+  redo buffer. **Fixed:** `confirm()` gate on Undo.
+- [x] **No visible focus style** — inputs/buttons use `focus:outline-none` with
   no replacement (`fields.tsx`, `Composer.tsx`, all screens). Keyboard/switch
   users navigate blind. Add a `focus-visible:` ring (2px ink offset fits the
-  1-bit look).
-- [ ] **Empty party slot looks tappable** — the dashed `+` box in
+  1-bit look). **Fixed:** global `:focus-visible` 2px ink ring in `theme.css`.
+- [x] **Empty party slot looks tappable** — the dashed `+` box in
   `PartyStrip.tsx` reads as "tap to add" but is a dead `aria-hidden` div. Make
-  it open Characters/add-member, or drop the `+` glyph.
-- [ ] **First-run dead end without a key** — LOOK fires a turn that errors;
+  it open Characters/add-member, or drop the `+` glyph. **Fixed:** empty slot is
+  now a button that opens the Characters screen.
+- [x] **First-run dead end without a key** — LOOK fires a turn that errors;
   nothing routes the player to ☰ → Model & Key. Gate LOOK on a key + make the
   error/empty state link to the screen. Error copy also says "Settings" while
-  the menu item is "Model & Key" (`openrouter.ts`).
-- [ ] **PC portrait only generates after opening the PC sheet** —
+  the menu item is "Model & Key" (`openrouter.ts`). **Fixed:** LOOK disabled
+  without a key, error state links to Model & Key, copy corrected.
+- [x] **PC portrait only generates after opening the PC sheet** —
   `syncImages` (`store.ts`) skips the PC; the strip shows initials until the
-  sheet is opened once. Include the PC in `syncImages`.
-- [ ] **Orphaned image blobs accumulate** — `deleteImage` (`db.ts`) is never
+  sheet is opened once. Include the PC in `syncImages`. **Fixed:** PC portrait
+  synced up front.
+- [x] **Orphaned image blobs accumulate** — `deleteImage` (`db.ts`) is never
   called. Deleted members and abandoned locations leave blobs in IndexedDB
   forever. Delete the portrait blob on member delete; consider a banner LRU.
-- [ ] **`startDay` edit doesn't retarget the live day** — `updateScenario`
+  **Fixed:** portrait blob + object URL freed on member delete. (Banner LRU
+  still deferred.)
+- [x] **`startDay` edit doesn't retarget the live day** — `updateScenario`
   (`store.ts`) retargets `location` when `startLocation` changes but leaves
-  `day` when `startDay` changes. Same rule both or neither.
-- [ ] **Edit-image modal traps + silent failure** — `EditImageButton.tsx`: no
+  `day` when `startDay` changes. Same rule both or neither. **Fixed:** `startDay`
+  retargets the live day, same as location.
+- [x] **Edit-image modal traps + silent failure** — `EditImageButton.tsx`: no
   Escape, no backdrop dismiss; and a failed edit is swallowed (`editImage` in
   `store.ts`) so the pending state just ends with nothing changed. Add dismiss
-  affordances + a small "edit failed" indicator.
-- [ ] **`<html class="dark">` is dead** — `index.html` sets `dark` but the theme
+  affordances + a small "edit failed" indicator. **Fixed:** Escape + backdrop
+  dismiss; `imgError` state drives an "edit failed" badge on banner/portrait.
+- [x] **`<html class="dark">` is dead** — `index.html` sets `dark` but the theme
   flips on `.invert` (`theme.css`), so the app ships black-on-white despite
   `theme-color #000000`. Fix the class or remove it — and expose the invert
-  toggle in the UI (cheap win).
+  toggle in the UI (cheap win). **Fixed:** dead class removed, `settings.invert`
+  toggle in the menu drives `.invert` + matching `theme-color`.
 
 ## Heuristics / polish
 

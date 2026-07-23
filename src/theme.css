@@ -52,3 +52,14 @@ body {
 * {
   -webkit-tap-highlight-color: transparent;
 }
+
+/*
+ * Keyboard/switch focus ring. Components reset the browser default with
+ * `focus:outline-none` (mouse focus stays clean); keyboard focus gets a crisp
+ * 1-bit ink ring instead of navigating blind. `!important` beats the utility
+ * reset (higher specificity) without editing every input on every screen.
+ */
+:focus-visible {
+  outline: 2px solid var(--ink) !important;
+  outline-offset: 2px !important;
+}
