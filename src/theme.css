@@ -1,0 +1,48 @@
+/*
+ * Project Loom — 1-bit theme tokens.
+ * Two colors only: --ink and --paper. Monospace, square borders, no radius,
+ * no color. Everything in the app references these tokens (directly or via the
+ * Tailwind `ink`/`paper` aliases) so the visual system stays coherent.
+ *
+ * Default is the stark dark reading of 1-bit (ink glyphs on paper); the
+ * `.invert` class flips the two for the "black paper" look without touching
+ * component code.
+ */
+:root {
+  --ink: #000000;
+  --paper: #ffffff;
+  --font-mono: ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+
+  color-scheme: light dark;
+}
+
+/* Flip ink/paper — a whole-app invert with no per-component changes. */
+:root.invert,
+.invert {
+  --ink: #ffffff;
+  --paper: #000000;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  -webkit-font-smoothing: none;
+  font-smooth: never;
+  /* Respect device notches on the packaged APK. */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+    env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+/* No selection glow / tap highlight — keep it 1-bit crisp. */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
