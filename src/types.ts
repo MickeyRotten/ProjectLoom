@@ -97,6 +97,8 @@ export interface Scenario {
   premise: string;
   openingNarration: string;
   startDay: number;
+  /** Location name the game opens in; seeds GameState.location on New Adventure. */
+  startLocation: string;
 }
 
 export interface GameState {
@@ -117,6 +119,8 @@ export interface Settings {
   textModelId: string;
   imageModelId: string;
   temperature: number;
+  /** When false, the narrator is not asked for action options and none render. */
+  showActionOptions: boolean;
   // Advanced (player-editable, Phase 4):
   customInstructions: string;
   bannerInstructions: string;

@@ -9,9 +9,10 @@ export function Options() {
   const options = useStore((s) => s.options);
   const sendTurn = useStore((s) => s.sendTurn);
   const streaming = useStore((s) => s.streaming);
+  const showActionOptions = useStore((s) => s.settings.showActionOptions);
 
   useEffect(() => {
-    if (!options.length) return;
+    if (!showActionOptions || !options.length) return;
     const onKey = (e: KeyboardEvent) => {
       // Ignore while typing in the composer.
       const tag = (e.target as HTMLElement | null)?.tagName;
@@ -24,9 +25,9 @@ export function Options() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [options, sendTurn]);
+  }, [options, sendTurn, showActionOptions]);
 
-  if (!options.length || streaming) return null;
+  if (!showActionOptions || !options.length || streaming) return null;
 
   return (
     <ul className="space-y-2">

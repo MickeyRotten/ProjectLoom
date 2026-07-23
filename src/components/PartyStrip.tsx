@@ -27,7 +27,7 @@ export function PartyStrip() {
           className="flex shrink-0 flex-col items-center gap-1 active:opacity-60"
           aria-label={m.name}
         >
-          <span className="flex h-10 w-10 items-center justify-center overflow-hidden border-2 border-ink text-sm font-bold">
+          <span className="flex h-[3.75rem] w-10 items-center justify-center overflow-hidden border-2 border-ink text-sm font-bold">
             {images[portraitKey(m.id)] ? (
               <img
                 src={images[portraitKey(m.id)]}

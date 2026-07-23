@@ -247,6 +247,10 @@ function buildOutputProtocol(settings: Settings): string {
     settings.optionInstructions.trim() ||
     "Offer 3–4 short, concrete next actions.";
 
+  const optionsLine = settings.showActionOptions
+    ? '- "options": array of 3–4 action strings. ' + optionRule
+    : '- "options": OMIT this field entirely — do not suggest actions this turn.';
+
   return [
     "OUTPUT PROTOCOL — every turn, emit narration prose FIRST, then exactly one machine block.",
     "The prose is short and punchy. After the prose, on its own lines, emit:",
@@ -256,7 +260,7 @@ function buildOutputProtocol(settings: Settings): string {
     "",
     "JSON fields (include only what changed this turn):",
     '- "location", "weather", "day": the current scene (strings / number).',
-    '- "options": array of 3–4 action strings. ' + optionRule,
+    optionsLine,
     '- "party": array of { "op": "add|update|remove", "name", "species", "description", "fieldSkill": { "name", "description" } }. Add a member only when they join; remove when they leave.',
     '- "inventory": array of { "op": "add|update|remove", "label", "description", "quantity" }.',
     '- "quests": array of { "op": "add|update|remove", "label", "description", "reward" }.',

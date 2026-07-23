@@ -42,7 +42,20 @@ export function AdvancedScreen() {
       <OverlayHeader title="Advanced" onBack={() => setScreen("menu")} />
 
       <div className="flex-1 space-y-5 overflow-y-auto p-3">
-        {FIELDS.map((f) => (
+        <button
+          type="button"
+          onClick={() => update({ showActionOptions: !settings.showActionOptions })}
+          className="flex w-full items-center justify-between border-2 border-ink p-3 text-left uppercase tracking-widest active:bg-ink active:text-paper"
+        >
+          <span>AI Suggested Actions</span>
+          <span className="border-2 border-ink px-2 py-1 text-sm">
+            {settings.showActionOptions ? "ON" : "OFF"}
+          </span>
+        </button>
+
+        {FIELDS.filter(
+          (f) => f.key !== "optionInstructions" || settings.showActionOptions,
+        ).map((f) => (
           <Field key={f.key} label={f.label}>
             <textarea
               value={settings[f.key]}

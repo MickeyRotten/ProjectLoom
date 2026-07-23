@@ -18,6 +18,12 @@ export function ScenarioScreen() {
 
       <div className="flex-1 space-y-5 overflow-y-auto p-3">
         <TextField label="Title" value={scenario.title} onChange={(v) => update({ title: v })} />
+        <TextField
+          label="Starting Location"
+          value={scenario.startLocation ?? ""}
+          onChange={(v) => update({ startLocation: v })}
+          placeholder="Where the adventure opens"
+        />
         <AreaField
           label="Premise"
           value={scenario.premise}

@@ -14,6 +14,53 @@ import { MAX_ATTEMPTS, backoffMs, isRetryableStatus, sleep } from "./retry";
  */
 
 const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
+const MODELS_ENDPOINT = "https://openrouter.ai/api/v1/models";
+
+export interface OpenRouterModel {
+  id: string;
+  name: string;
+  /** Output modalities, e.g. ["text"] or ["image","text"]. Empty if unknown. */
+  outputModalities: string[];
+}
+
+function asStringArray(v: unknown): string[] {
+  return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+}
+
+/**
+ * Fetch the OpenRouter model catalog (public endpoint — no key required). Used
+ * to populate the Model & Key dropdowns. Returns id/name/output-modalities,
+ * sorted by id. Throws OpenRouterError on a non-OK response.
+ */
+export async function fetchModels(signal?: AbortSignal): Promise<OpenRouterModel[]> {
+  const res = await fetch(MODELS_ENDPOINT, { signal });
+  if (!res.ok) {
+    throw new OpenRouterError(`OpenRouter ${res.status} ${res.statusText}`, {
+      status: res.status,
+    });
+  }
+  const json: unknown = await res.json();
+  const data =
+    json && typeof json === "object" && Array.isArray((json as { data?: unknown }).data)
+      ? ((json as { data: unknown[] }).data)
+      : [];
+
+  const models: OpenRouterModel[] = [];
+  for (const raw of data) {
+    if (!raw || typeof raw !== "object") continue;
+    const m = raw as Record<string, unknown>;
+    const id = typeof m.id === "string" ? m.id : "";
+    if (!id) continue;
+    const arch = (m.architecture as Record<string, unknown> | undefined) ?? undefined;
+    models.push({
+      id,
+      name: typeof m.name === "string" ? m.name : id,
+      outputModalities: asStringArray(arch?.output_modalities),
+    });
+  }
+  models.sort((a, b) => a.id.localeCompare(b.id));
+  return models;
+}
 
 export interface StreamOptions {
   settings: Settings;

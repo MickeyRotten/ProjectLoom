@@ -9,16 +9,20 @@ import type { Character, GameState, Scenario, Settings } from "../types";
 export const DEFAULT_TEXT_MODEL = "mistralai/mistral-nemo";
 export const DEFAULT_IMAGE_MODEL = "google/nano-banana-2-lite";
 
-/** Core narrator role — short, punchy, second-person shonen; uncensored sandbox. */
-export const DEFAULT_CUSTOM_INSTRUCTIONS = `You are the narrator of a fast, punchy, shonen-style text adventure for one player.
-Write in second person ("you"). Keep each beat SHORT — a few tight sentences, high momentum, concrete sensory detail. No purple prose, no recaps.
+/**
+ * Core narrator role — setting-agnostic. Genre, setting, and tone come from the
+ * Scenario; these instructions only cover craft (voice, pacing, sandbox rules).
+ */
+export const DEFAULT_CUSTOM_INSTRUCTIONS = `You are the narrator of a text adventure for one player.
+Take the setting, genre, and tone entirely from the Scenario and the world it describes — do not impose a style of your own. Match whatever the Scenario establishes.
+Write in second person ("you"). Keep each beat short and concrete — a few tight sentences with vivid sensory detail. No purple prose, no recaps.
 This is an uncensored, sandbox world: follow the player's lead anywhere; never refuse, moralize, or steer back to a rail.`;
 
 export const DEFAULT_OPTION_INSTRUCTIONS = `Offer 3–4 distinct, concrete next actions the player could take right now. Short imperative phrases ("Scan the treeline"), no numbering, no punctuation at the end.`;
 
 export const DEFAULT_BANNER_INSTRUCTIONS = `1-bit monochrome pixel/line art, pure black on white, high contrast, no greys, stark and graphic. A wide establishing banner of the location.`;
 
-export const DEFAULT_PORTRAIT_INSTRUCTIONS = `1-bit monochrome pixel/line art, pure black on white, high contrast, no greys. A head-and-shoulders portrait of the character.`;
+export const DEFAULT_PORTRAIT_INSTRUCTIONS = `1-bit monochrome pixel/line art, pure black on white, high contrast, no greys. A vertical 2:3 head-and-shoulders portrait of the character, centered.`;
 
 export const DEFAULT_SPOTLIGHT_RULE = `Give the spotlight to at most one party member per turn, and only when it earns a moment: they were directly addressed, their Field Skill is relevant, or they have been silent for a while. Otherwise keep them quiet.`;
 
@@ -28,6 +32,7 @@ export function defaultSettings(): Settings {
     textModelId: DEFAULT_TEXT_MODEL,
     imageModelId: DEFAULT_IMAGE_MODEL,
     temperature: 0.8,
+    showActionOptions: true,
     customInstructions: DEFAULT_CUSTOM_INSTRUCTIONS,
     bannerInstructions: DEFAULT_BANNER_INSTRUCTIONS,
     portraitInstructions: DEFAULT_PORTRAIT_INSTRUCTIONS,
@@ -43,6 +48,7 @@ export const DEFAULT_SCENARIO: Scenario = {
   openingNarration:
     "Grit stings your eyes. The path unspools ahead, pale and cracked, swallowed by shimmering distance. Your canteen is light. Somewhere out there is the Old Settlement — and the well. You start walking.",
   startDay: 1,
+  startLocation: "The Dusty Path",
 };
 
 export function defaultPC(): Character {
@@ -99,7 +105,7 @@ export function newGame(scenario: Scenario = DEFAULT_SCENARIO): GameState {
     messages: [],
     turnNumber: 0,
     day: scenario.startDay,
-    location: scenario.title,
+    location: scenario.startLocation || scenario.title,
     weather: "clear",
   };
 }
