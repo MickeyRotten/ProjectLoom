@@ -25,6 +25,9 @@ android/capacitor-cordova-android-plugins/
 *.keystore
 *.jks
 keystore.properties
+# ...except the shared debug keystore CI signs fallback builds with, so every
+# published debug APK has a stable signature and updates install (non-secret).
+!.github/ci/loom-debug.keystore
 
 # logs
 npm-debug.log*

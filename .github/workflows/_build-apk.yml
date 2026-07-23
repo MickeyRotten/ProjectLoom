@@ -34,6 +34,10 @@ jobs:
       ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history: versionCode is derived from the commit count, which
+          # needs every commit (the default shallow clone would report 1).
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -74,7 +78,10 @@ jobs:
       # --- Versioning: strictly-increasing code so installs upgrade cleanly ---
       - name: Apply app version
         run: |
-          VERSION_CODE="${{ github.run_number }}"
+          # Commit count is monotonic and independent of which workflow builds,
+          # so renaming/splitting workflows never regresses versionCode (a lower
+          # code reads as a downgrade and Android refuses to install it).
+          VERSION_CODE="$(git rev-list --count HEAD)"
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
             VERSION_NAME="${GITHUB_REF_NAME#v}"
           else
@@ -107,6 +114,16 @@ jobs:
             -Pandroid.injected.signing.store.password="$LOOM_KEYSTORE_PASSWORD" \
             -Pandroid.injected.signing.key.alias="$LOOM_KEY_ALIAS" \
             -Pandroid.injected.signing.key.password="$LOOM_KEY_PASSWORD"
+
+      # A fresh CI runner otherwise generates a random ~/.android/debug.keystore
+      # each run, so every debug APK is signed with a different key and Android
+      # rejects the update as a package conflict. Ship one fixed debug keystore
+      # so all fallback builds share a stable signature.
+      - name: Use stable debug keystore
+        if: env.ANDROID_KEYSTORE_BASE64 == ''
+        run: |
+          mkdir -p ~/.android
+          cp .github/ci/loom-debug.keystore ~/.android/debug.keystore
 
       - name: Build debug APK
         if: env.ANDROID_KEYSTORE_BASE64 == ''
