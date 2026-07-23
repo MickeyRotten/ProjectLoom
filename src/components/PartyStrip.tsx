@@ -30,7 +30,7 @@ export function PartyStrip() {
   ];
 
   return (
-    <nav className="grid grid-cols-4 gap-3 px-3 pt-3 pb-0">
+    <nav className="grid grid-cols-4 gap-3 p-3">
       {slots.map((c, i) =>
         c ? (
           <button
