@@ -17,7 +17,7 @@ export function Banner() {
   const edit = useStore((s) => s.editBanner);
 
   return (
-    <div className="relative aspect-[10/1] shrink-0 border-2 border-ink mx-3 mt-3">
+    <div className="relative aspect-[20/1] shrink-0 border-2 border-ink mx-3 mt-3">
       {url ? (
         <img
           src={url}
