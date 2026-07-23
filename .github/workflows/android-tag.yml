@@ -1,0 +1,23 @@
+name: Android APK (release tag)
+
+# Cuts a versioned release on v* tag pushes. Kept separate from android.yml so
+# its docs paths-ignore filter can never skip a tagged release. All build logic
+# is in the reusable _build-apk.yml.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    uses: ./.github/workflows/_build-apk.yml
+    secrets: inherit
+    with:
+      publish: tagged
