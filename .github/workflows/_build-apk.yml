@@ -1,0 +1,157 @@
+name: Build APK (reusable)
+
+# All the build/version/publish logic lives here once and is called by the
+# trigger workflows (android.yml for main/PR, android-tag.yml for v* tags).
+# Splitting the triggers keeps `paths-ignore` on main from ever skipping a tag
+# release, without duplicating the pipeline.
+#
+# Versioning: every build gets a strictly-increasing versionCode (the workflow
+# run number) so Android accepts each published APK as an upgrade. versionName
+# is the package.json version plus the build number (or the git tag on v* tags).
+# The native android/ project is NOT committed, so build.gradle is patched here
+# after `cap sync` — otherwise Capacitor regenerates it with a fixed
+# versionCode 1 and self-updates never install.
+#
+# Speed: Gradle deps + build cache are restored across runs (setup-gradle), and
+# only a single APK is assembled (no debug+release double build).
+
+on:
+  workflow_call:
+    inputs:
+      publish:
+        description: "Release to cut: none | continuous | tagged"
+        type: string
+        default: "none"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # Job-level env so the signing-secret presence check is usable in step `if:`.
+    env:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Typecheck + test
+        run: |
+          npm run tsc
+          npm test
+
+      - name: Build web app
+        run: npm run build
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "21"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      # Restores ~/.gradle (dependencies + wrapper) and the Gradle build cache
+      # across runs — the single biggest APK build speed-up.
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Add Android platform + sync
+        run: |
+          if [ ! -d android ]; then
+            npx cap add android
+          fi
+          npx cap sync android
+
+      # --- Versioning: strictly-increasing code so installs upgrade cleanly ---
+      - name: Apply app version
+        run: |
+          VERSION_CODE="${{ github.run_number }}"
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION_NAME="${GITHUB_REF_NAME#v}"
+          else
+            PKG_VERSION="$(node -p "require('./package.json').version")"
+            VERSION_NAME="${PKG_VERSION}-build.${VERSION_CODE}"
+          fi
+          echo "VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
+          echo "VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
+          sed -i -E \
+            -e "s/versionCode .*/versionCode ${VERSION_CODE}/" \
+            -e "s/versionName \".*\"/versionName \"${VERSION_NAME}\"/" \
+            android/app/build.gradle
+          echo "Set versionCode=$VERSION_CODE versionName=$VERSION_NAME"
+
+      # --- One APK: signed release when secrets exist, else debug fallback ---
+      - name: Decode keystore
+        if: env.ANDROID_KEYSTORE_BASE64 != ''
+        run: echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > android/app/loom.keystore
+
+      - name: Build signed release APK
+        if: env.ANDROID_KEYSTORE_BASE64 != ''
+        working-directory: android
+        env:
+          LOOM_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          LOOM_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          LOOM_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          ./gradlew assembleRelease --build-cache \
+            -Pandroid.injected.signing.store.file=loom.keystore \
+            -Pandroid.injected.signing.store.password="$LOOM_KEYSTORE_PASSWORD" \
+            -Pandroid.injected.signing.key.alias="$LOOM_KEY_ALIAS" \
+            -Pandroid.injected.signing.key.password="$LOOM_KEY_PASSWORD"
+
+      - name: Build debug APK
+        if: env.ANDROID_KEYSTORE_BASE64 == ''
+        working-directory: android
+        run: ./gradlew assembleDebug --build-cache
+
+      - name: Locate built APK
+        id: apk
+        run: |
+          if [ -n "${ANDROID_KEYSTORE_BASE64:-}" ]; then
+            path=android/app/build/outputs/apk/release/app-release.apk
+          else
+            path=android/app/build/outputs/apk/debug/app-debug.apk
+          fi
+          echo "path=$path" >> "$GITHUB_OUTPUT"
+          test -f "$path"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: loom-apk-${{ env.VERSION_NAME }}
+          path: ${{ steps.apk.outputs.path }}
+          if-no-files-found: error
+
+      # --- Publish (never on PRs — caller passes publish: none there) ---
+      - name: Publish versioned release (tag v*)
+        if: inputs.publish == 'tagged'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ env.VERSION_NAME }}
+          body: |
+            Loom ${{ env.VERSION_NAME }} (versionCode ${{ env.VERSION_CODE }})
+            Built from ${{ github.sha }}.
+          files: ${{ steps.apk.outputs.path }}
+          fail_on_unmatched_files: true
+
+      - name: Publish continuous release (push to main)
+        if: inputs.publish == 'continuous'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: ${{ env.VERSION_NAME }}
+          body: |
+            Loom ${{ env.VERSION_NAME }} (versionCode ${{ env.VERSION_CODE }})
+            Automated APK build from ${{ github.sha }}.
+          files: ${{ steps.apk.outputs.path }}
+          fail_on_unmatched_files: true
