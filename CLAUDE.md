@@ -69,7 +69,11 @@ committed**.
 Phase 0 (scaffold) + Phase 1 (core loop: turn contract, streaming, autosave — PC-only)
 + Phase 2 (party + spotlight: `spotlight.ts`, party deltas, roster + spotlight prompt
 blocks, `detectSpeakers` → `lastSpokeTurn`, dialogue segmenter, party strip / member
-sheet / party + inventory views) done. Next: **Phase 3 — Images**. Track scope in
+sheet / party + inventory views)
++ Phase 3 (images: `images.ts` — OpenRouter `modalities:["image","text"]` gen, `banner:`/
+`portrait:` cache keys, IndexedDB blob store, deterministic banner/portrait triggers via
+`syncImages`, object-URL rendering in the banner / party strip / member sheet, regenerate
+buttons) done. Next: **Phase 4 — Authoring + Saves**. Track scope in
 `DESIGN.md → Build Phases`.
 
 ## Attribution

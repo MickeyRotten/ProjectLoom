@@ -2,12 +2,19 @@ import { create } from "zustand";
 import type { Character, GameState, Item, Message, Settings } from "./types";
 import { newGame } from "./lib/defaults";
 import { loadSettings, saveSettings } from "./lib/settings";
-import { loadActiveGame, saveActiveGame } from "./lib/db";
+import { loadActiveGame, saveActiveGame, loadImage, saveImage } from "./lib/db";
 import { buildMessages } from "./lib/prompt";
 import { streamChat, OpenRouterError } from "./lib/openrouter";
 import { parseLoomResponse, truncateForDisplay } from "./lib/loomBlock";
 import { applyDeltas } from "./lib/deltas";
 import { detectSpeakers } from "./lib/spotlight";
+import {
+  bannerKey,
+  buildBannerPrompt,
+  buildPortraitPrompt,
+  generateImage,
+  portraitKey,
+} from "./lib/images";
 
 /** Full-screen overlay currently shown over the chat. */
 export type Screen = null | "settings" | "party" | "inventory" | "member";
@@ -28,6 +35,10 @@ export interface LoomStore {
   /** The member whose full-screen sheet is open (screen === "member"). */
   memberId: string | null;
 
+  // Generated images (Phase 3): cache key → object URL, plus in-flight keys.
+  images: Record<string, string>;
+  imgPending: Record<string, boolean>;
+
   hydrate: () => Promise<void>;
   setScreen: (screen: Screen) => void;
   openMember: (id: string) => void;
@@ -37,6 +48,22 @@ export interface LoomStore {
   removeItem: (index: number) => void;
   newAdventure: () => void;
   sendTurn: (text: string) => Promise<void>;
+
+  /** Ensure the banner + all in-party portraits exist (cache-then-generate). */
+  syncImages: () => void;
+  /** Ensure one member's portrait exists (used when a sheet opens). */
+  ensurePortrait: (memberId: string) => void;
+  /** Force-regenerate, replacing the cached blob. */
+  regenerateBanner: () => void;
+  regeneratePortrait: (memberId: string) => void;
+}
+
+/** Latest narrator prose (for banner scene flavour), else the opening beat. */
+function lastNarration(game: GameState): string {
+  for (let i = game.messages.length - 1; i >= 0; i--) {
+    if (game.messages[i].role === "narrator") return game.messages[i].content;
+  }
+  return game.scenario.openingNarration;
 }
 
 const uid = () =>
@@ -44,7 +71,51 @@ const uid = () =>
     ? crypto.randomUUID()
     : `id-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-export const useStore = create<LoomStore>((set, get) => ({
+export const useStore = create<LoomStore>((set, get) => {
+  /**
+   * Cache-then-generate an image blob under `key`, exposing it as an object URL
+   * in `images`. `force` skips the cache and regenerates. Fire-and-forget:
+   * every failure is swallowed so an image never blocks a turn.
+   */
+  async function ensureImage(
+    key: string,
+    buildPrompt: () => string,
+    force = false,
+  ): Promise<void> {
+    if (get().imgPending[key]) return;
+    if (!force && get().images[key]) return;
+
+    set({ imgPending: { ...get().imgPending, [key]: true } });
+    try {
+      let blob = force ? null : await loadImage(key);
+      if (!blob) {
+        blob = await generateImage({ settings: get().settings, prompt: buildPrompt() });
+        await saveImage(key, blob);
+      }
+      const url = URL.createObjectURL(blob);
+      const prev = get().images[key];
+      if (prev) URL.revokeObjectURL(prev);
+      set({ images: { ...get().images, [key]: url } });
+    } catch {
+      // Non-fatal — a failed image never blocks the turn (DESIGN.md).
+    } finally {
+      const imgPending = { ...get().imgPending };
+      delete imgPending[key];
+      set({ imgPending });
+    }
+  }
+
+  const portrait = (memberId: string, force: boolean) => {
+    const member = get().game.characters.find((c) => c.id === memberId);
+    if (!member) return;
+    void ensureImage(
+      portraitKey(member.id),
+      () => buildPortraitPrompt(member, get().settings.portraitInstructions),
+      force,
+    );
+  };
+
+  return {
   settings: loadSettings(),
   game: newGame(),
   hydrated: false,
@@ -56,6 +127,9 @@ export const useStore = create<LoomStore>((set, get) => ({
 
   screen: null,
   memberId: null,
+
+  images: {},
+  imgPending: {},
 
   async hydrate() {
     const saved = await loadActiveGame();
@@ -71,6 +145,7 @@ export const useStore = create<LoomStore>((set, get) => ({
       set({ hydrated: true });
       void saveActiveGame(get().game);
     }
+    get().syncImages();
   },
 
   setScreen(screen) {
@@ -202,6 +277,10 @@ export const useStore = create<LoomStore>((set, get) => ({
         streamText: "",
       });
       void saveActiveGame(nextGame);
+
+      // Deterministic triggers: a new location gets a banner, new members get
+      // portraits. Fire-and-forget — never blocks the turn.
+      get().syncImages();
     } catch (err) {
       const message =
         err instanceof OpenRouterError
@@ -212,4 +291,39 @@ export const useStore = create<LoomStore>((set, get) => ({
       set({ streaming: false, streamText: "", error: message });
     }
   },
-}));
+
+  syncImages() {
+    const g = get().game;
+    const location = g.location.trim();
+    if (location) {
+      const excerpt = lastNarration(g);
+      void ensureImage(bannerKey(location), () =>
+        buildBannerPrompt(location, excerpt, get().settings.bannerInstructions),
+      );
+    }
+    for (const c of g.characters) {
+      if (c.role === "member" && c.inParty) portrait(c.id, false);
+    }
+  },
+
+  ensurePortrait(memberId) {
+    portrait(memberId, false);
+  },
+
+  regenerateBanner() {
+    const g = get().game;
+    const location = g.location.trim();
+    if (!location) return;
+    const excerpt = lastNarration(g);
+    void ensureImage(
+      bannerKey(location),
+      () => buildBannerPrompt(location, excerpt, get().settings.bannerInstructions),
+      true,
+    );
+  },
+
+  regeneratePortrait(memberId) {
+    portrait(memberId, true);
+  },
+  };
+});

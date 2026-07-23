@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useStore } from "./store";
 import { Header } from "./components/Header";
+import { Banner } from "./components/Banner";
 import { ChatView } from "./components/ChatView";
 import { PartyStrip } from "./components/PartyStrip";
 import { Composer } from "./components/Composer";
@@ -40,6 +41,7 @@ export default function App() {
   return (
     <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
       <Header />
+      <Banner />
       <ChatView />
       <PartyStrip />
       <Composer />
