@@ -27,10 +27,20 @@ export default function App() {
   const hydrate = useStore((s) => s.hydrate);
   const hydrated = useStore((s) => s.hydrated);
   const screen = useStore((s) => s.screen);
+  const invert = useStore((s) => s.settings.invert);
 
   useEffect(() => {
     void hydrate();
   }, [hydrate]);
+
+  // Apply the invert theme app-wide and keep the browser chrome (theme-color)
+  // matched to the paper color, so it's white-on-load and black when inverted.
+  useEffect(() => {
+    document.documentElement.classList.toggle("invert", invert);
+    document
+      .querySelector('meta[name="theme-color"]')
+      ?.setAttribute("content", invert ? "#000000" : "#ffffff");
+  }, [invert]);
 
   if (!hydrated) {
     return (

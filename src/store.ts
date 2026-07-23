@@ -7,6 +7,7 @@ import {
   saveActiveGame,
   loadImage,
   saveImage,
+  deleteImage,
   saveSlot,
   loadSlot,
   deleteSlot,
@@ -65,6 +66,8 @@ export interface LoomStore {
   // Generated images (Phase 3): cache key → object URL, plus in-flight keys.
   images: Record<string, string>;
   imgPending: Record<string, boolean>;
+  /** Keys whose last edit failed — surfaced as a small indicator, cleared on retry. */
+  imgError: Record<string, boolean>;
 
   // Named save slots (Phase 4).
   slots: SaveSlot[];
@@ -180,7 +183,11 @@ export const useStore = create<LoomStore>((set, get) => {
     const source = await loadImage(key);
     if (!source) return;
 
-    set({ imgPending: { ...get().imgPending, [key]: true } });
+    // Clear any prior edit error for this key while the retry is in flight.
+    set({
+      imgPending: { ...get().imgPending, [key]: true },
+      imgError: { ...get().imgError, [key]: false },
+    });
     try {
       const blob = await generateImage({
         settings: get().settings,
@@ -193,7 +200,9 @@ export const useStore = create<LoomStore>((set, get) => {
       if (prev) URL.revokeObjectURL(prev);
       set({ images: { ...get().images, [key]: url } });
     } catch {
-      // Non-fatal — a failed image never blocks the turn (DESIGN.md).
+      // Non-fatal for the turn, but a swallowed edit looks like nothing
+      // happened — flag it so the UI can show a small "edit failed" indicator.
+      set({ imgError: { ...get().imgError, [key]: true } });
     } finally {
       const imgPending = { ...get().imgPending };
       delete imgPending[key];
@@ -230,6 +239,7 @@ export const useStore = create<LoomStore>((set, get) => {
 
   images: {},
   imgPending: {},
+  imgError: {},
 
   slots: [],
 
@@ -267,11 +277,12 @@ export const useStore = create<LoomStore>((set, get) => {
   updateScenario(patch) {
     const g = get().game;
     const scenario = { ...g.scenario, ...patch };
-    // Editing the starting location retargets the active scene too, so the
+    // Editing the starting location/day retargets the active scene too, so the
     // header + banner follow immediately (they otherwise only move per turn).
     const location =
       patch.startLocation !== undefined ? patch.startLocation : g.location;
-    const game = { ...g, scenario, location };
+    const day = patch.startDay !== undefined ? patch.startDay : g.day;
+    const game = { ...g, scenario, location, day };
     set({ game });
     void saveActiveGame(game);
     if (patch.startLocation !== undefined) get().syncImages();
@@ -301,7 +312,19 @@ export const useStore = create<LoomStore>((set, get) => {
     if (!target || target.role === "pc") return;
     const characters = g.characters.filter((c) => c.id !== id);
     const game = { ...g, characters };
-    set({ game, screen: get().screen === "member" ? "characters" : get().screen });
+    // Free the member's portrait blob + object URL — nothing else references it
+    // once the member is gone, so it would otherwise orphan in IndexedDB.
+    const key = portraitKey(id);
+    void deleteImage(key);
+    const prevUrl = get().images[key];
+    if (prevUrl) URL.revokeObjectURL(prevUrl);
+    const images = { ...get().images };
+    delete images[key];
+    set({
+      game,
+      images,
+      screen: get().screen === "member" ? "characters" : get().screen,
+    });
     void saveActiveGame(game);
   },
 
@@ -650,8 +673,10 @@ export const useStore = create<LoomStore>((set, get) => {
         buildBannerPrompt(location, excerpt, get().settings.bannerInstructions),
       );
     }
+    // The PC rides the strip too, so its portrait must generate up front — not
+    // only after the PC sheet is opened once.
     for (const c of g.characters) {
-      if (c.role === "member" && c.inParty) portrait(c.id, false);
+      if (c.role === "pc" || (c.role === "member" && c.inParty)) portrait(c.id, false);
     }
   },
 

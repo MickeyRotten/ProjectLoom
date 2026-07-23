@@ -20,6 +20,7 @@ export function PartyStrip() {
     s.game.characters.filter((c) => c.role === "member" && c.inParty),
   );
   const openMember = useStore((s) => s.openMember);
+  const setScreen = useStore((s) => s.setScreen);
   const images = useStore((s) => s.images);
 
   const slots: (Character | null)[] = [
@@ -54,10 +55,12 @@ export function PartyStrip() {
             </span>
           </button>
         ) : (
-          <div
+          <button
             key={`empty-${i}`}
-            className="flex flex-col items-center gap-1"
-            aria-hidden="true"
+            type="button"
+            onClick={() => setScreen("characters")}
+            className="flex flex-col items-center gap-1 active:opacity-60"
+            aria-label="Add party member"
           >
             <span className="flex aspect-[3/4] w-full items-center justify-center border-2 border-dashed border-ink text-sm font-bold opacity-30">
               +
@@ -65,7 +68,7 @@ export function PartyStrip() {
             <span className="text-[0.65rem] uppercase tracking-wide opacity-0">
               —
             </span>
-          </div>
+          </button>
         ),
       )}
     </nav>

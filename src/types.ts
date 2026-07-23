@@ -125,6 +125,8 @@ export interface Settings {
   temperature: number;
   /** When false, the narrator is not asked for action options and none render. */
   showActionOptions: boolean;
+  /** Flip ink/paper — the "black paper" reading of the 1-bit theme. */
+  invert: boolean;
   // Advanced (player-editable, Phase 4):
   customInstructions: string;
   bannerInstructions: string;

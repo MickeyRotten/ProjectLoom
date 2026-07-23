@@ -20,14 +20,22 @@ export function ChatView() {
   const error = useStore((s) => s.error);
   const failedInput = useStore((s) => s.failedInput);
   const retryTurn = useStore((s) => s.retryTurn);
+  const hasKey = useStore((s) => Boolean(s.settings.openRouterKey.trim()));
+  const setScreen = useStore((s) => s.setScreen);
 
+  const scrollRef = useRef<HTMLElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  // Only follow the tail when the reader is already near the bottom — scrolling
+  // up to reread must not get yanked back on every streaming delta.
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: "end" });
+    const el = scrollRef.current;
+    if (!el) return;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    if (nearBottom) bottomRef.current?.scrollIntoView({ block: "end" });
   }, [messages.length, streamText, error]);
 
   return (
-    <section className="flex-1 space-y-3 overflow-y-auto p-3 text-sm">
+    <section ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-3 text-sm">
       <Beat role="narrator" text={opening} party={party} />
 
       {messages.map((m) => (
@@ -52,6 +60,15 @@ export function ChatView() {
               className="w-full border-2 border-ink py-1 uppercase tracking-widest active:bg-ink active:text-paper"
             >
               ↻ Retry
+            </button>
+          )}
+          {!hasKey && (
+            <button
+              type="button"
+              onClick={() => setScreen("modelkey")}
+              className="w-full border-2 border-ink py-1 uppercase tracking-widest active:bg-ink active:text-paper"
+            >
+              ☰ Model &amp; Key
             </button>
           )}
         </div>

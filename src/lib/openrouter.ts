@@ -86,7 +86,7 @@ export async function streamChat(opts: StreamOptions): Promise<string> {
   const { settings, signal, onDelta } = opts;
 
   if (!settings.openRouterKey.trim()) {
-    throw new OpenRouterError("No OpenRouter API key set. Add one in Settings.");
+    throw new OpenRouterError("No OpenRouter API key set. Add one in Model & Key.");
   }
 
   let lastErr: unknown;

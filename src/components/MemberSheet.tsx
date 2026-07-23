@@ -26,6 +26,7 @@ export function MemberSheet() {
   const editPortrait = useStore((s) => s.editPortrait);
   const portraitUrl = useStore((s) => (id ? s.images[portraitKey(id)] : undefined));
   const portraitPending = useStore((s) => (id ? s.imgPending[portraitKey(id)] : false));
+  const editFailed = useStore((s) => (id ? s.imgError[portraitKey(id)] : false));
   const [zoom, setZoom] = useState(false);
 
   useEffect(() => {
@@ -87,6 +88,11 @@ export function MemberSheet() {
               onSubmit={(instruction) => editPortrait(member.id, instruction)}
               className="absolute right-9 top-1 border-2 border-ink bg-paper px-2 leading-none disabled:opacity-40 active:bg-ink active:text-paper"
             />
+          )}
+          {editFailed && !portraitPending && (
+            <span className="absolute bottom-1 right-1 border-2 border-ink bg-paper px-1 text-[0.6rem] uppercase tracking-widest">
+              edit failed
+            </span>
           )}
         </div>
 
