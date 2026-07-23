@@ -49,3 +49,27 @@ export async function loadActiveGame(): Promise<GameState | null> {
   const game = (await db.get(SAVES_STORE, ACTIVE_KEY)) as GameState | undefined;
   return game ?? null;
 }
+
+/* ------------------------------------------------------------------ *
+ * Generated image blobs (Phase 3). Keyed by `banner:<location>` /
+ * `portrait:<memberId>`; the UI reads them back as object URLs.
+ * ------------------------------------------------------------------ */
+
+/** Store (or replace) a generated image blob under its cache key. */
+export async function saveImage(key: string, blob: Blob): Promise<void> {
+  const db = await getDB();
+  await db.put(IMAGES_STORE, blob, key);
+}
+
+/** Load a cached image blob, or null if none exists for the key. */
+export async function loadImage(key: string): Promise<Blob | null> {
+  const db = await getDB();
+  const blob = (await db.get(IMAGES_STORE, key)) as Blob | undefined;
+  return blob ?? null;
+}
+
+/** Remove a cached image blob. */
+export async function deleteImage(key: string): Promise<void> {
+  const db = await getDB();
+  await db.delete(IMAGES_STORE, key);
+}

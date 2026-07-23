@@ -1,4 +1,5 @@
 import { useStore } from "../store";
+import { portraitKey } from "../lib/images";
 import type { Character } from "../types";
 
 /**
@@ -12,6 +13,7 @@ export function PartyStrip() {
     s.game.characters.filter((c) => c.role === "member" && c.inParty),
   );
   const openMember = useStore((s) => s.openMember);
+  const images = useStore((s) => s.images);
 
   if (!members.length) return null;
 
@@ -25,8 +27,16 @@ export function PartyStrip() {
           className="flex shrink-0 flex-col items-center gap-1 active:opacity-60"
           aria-label={m.name}
         >
-          <span className="flex h-10 w-10 items-center justify-center border-2 border-ink text-sm font-bold">
-            {initials(m)}
+          <span className="flex h-10 w-10 items-center justify-center overflow-hidden border-2 border-ink text-sm font-bold">
+            {images[portraitKey(m.id)] ? (
+              <img
+                src={images[portraitKey(m.id)]}
+                alt={m.name}
+                className="h-full w-full object-cover [image-rendering:pixelated]"
+              />
+            ) : (
+              initials(m)
+            )}
           </span>
           <span className="max-w-[4.5rem] truncate text-[0.65rem] uppercase tracking-wide">
             {m.name}

@@ -1,17 +1,27 @@
+import { useEffect } from "react";
 import { useStore } from "../store";
 import { OverlayHeader } from "./OverlayHeader";
+import { portraitKey } from "../lib/images";
 import type { Equipment } from "../types";
 
 /**
  * Full-screen member sheet (DESIGN.md → Secondary screens): info · inline edit
- * fields · regenerate portrait. Everything is editable in place — no Edit
- * mode. Portrait generation lands in Phase 3, so the button is a placeholder.
+ * fields · regenerate portrait. Everything is editable in place — no Edit mode.
+ * Opening the sheet ensures a portrait exists; ⟳ force-regenerates it.
  */
 export function MemberSheet() {
   const id = useStore((s) => s.memberId);
   const member = useStore((s) => s.game.characters.find((c) => c.id === id));
   const update = useStore((s) => s.updateCharacter);
   const setScreen = useStore((s) => s.setScreen);
+  const ensurePortrait = useStore((s) => s.ensurePortrait);
+  const regeneratePortrait = useStore((s) => s.regeneratePortrait);
+  const portraitUrl = useStore((s) => (id ? s.images[portraitKey(id)] : undefined));
+  const portraitPending = useStore((s) => (id ? s.imgPending[portraitKey(id)] : false));
+
+  useEffect(() => {
+    if (id) ensurePortrait(id);
+  }, [id, ensurePortrait]);
 
   if (!member) {
     return (
@@ -30,16 +40,26 @@ export function MemberSheet() {
 
       <div className="flex-1 space-y-5 overflow-y-auto p-3">
         <div className="flex items-center gap-3">
-          <span className="flex h-16 w-16 items-center justify-center border-2 border-ink text-lg font-bold">
-            {(member.name[0] ?? "?").toUpperCase()}
+          <span className="flex h-16 w-16 items-center justify-center overflow-hidden border-2 border-ink text-lg font-bold">
+            {portraitUrl ? (
+              <img
+                src={portraitUrl}
+                alt={member.name}
+                className="h-full w-full object-cover [image-rendering:pixelated]"
+              />
+            ) : portraitPending ? (
+              <span className="animate-pulse text-xs">…</span>
+            ) : (
+              (member.name[0] ?? "?").toUpperCase()
+            )}
           </span>
           <button
             type="button"
-            disabled
-            title="Portrait generation arrives in Phase 3"
-            className="border-2 border-ink px-3 py-2 text-sm uppercase tracking-widest opacity-40"
+            disabled={portraitPending}
+            onClick={() => regeneratePortrait(member.id)}
+            className="border-2 border-ink px-3 py-2 text-sm uppercase tracking-widest disabled:opacity-40 active:bg-ink active:text-paper"
           >
-            Regen Portrait
+            {portraitPending ? "Rendering…" : "Regen Portrait"}
           </button>
         </div>
 
