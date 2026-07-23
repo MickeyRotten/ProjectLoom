@@ -13,6 +13,7 @@ export function MemberSheet() {
   const id = useStore((s) => s.memberId);
   const member = useStore((s) => s.game.characters.find((c) => c.id === id));
   const update = useStore((s) => s.updateCharacter);
+  const removeCharacter = useStore((s) => s.removeCharacter);
   const setScreen = useStore((s) => s.setScreen);
   const ensurePortrait = useStore((s) => s.ensurePortrait);
   const regeneratePortrait = useStore((s) => s.regeneratePortrait);
@@ -116,6 +117,29 @@ export function MemberSheet() {
             + Add Equipment
           </button>
         </fieldset>
+
+        {member.role === "member" && (
+          <div className="flex flex-wrap gap-2 border-t-2 border-ink pt-4">
+            <button
+              type="button"
+              onClick={() => update(member.id, { inParty: !member.inParty })}
+              className="border-2 border-ink px-3 py-2 text-sm uppercase tracking-widest active:bg-ink active:text-paper"
+            >
+              {member.inParty ? "Bench Member" : "Enlist Member"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (confirm(`Delete ${member.name || "this member"}? This can't be undone.`)) {
+                  removeCharacter(member.id);
+                }
+              }}
+              className="border-2 border-ink px-3 py-2 text-sm uppercase tracking-widest active:bg-ink active:text-paper"
+            >
+              Delete Member
+            </button>
+          </div>
+        )}
       </div>
     </main>
   );

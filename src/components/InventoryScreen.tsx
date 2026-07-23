@@ -7,6 +7,7 @@ import { OverlayHeader } from "./OverlayHeader";
  */
 export function InventoryScreen() {
   const inventory = useStore((s) => s.game.inventory);
+  const addItem = useStore((s) => s.addItem);
   const updateItem = useStore((s) => s.updateItem);
   const removeItem = useStore((s) => s.removeItem);
   const setScreen = useStore((s) => s.setScreen);
@@ -53,6 +54,14 @@ export function InventoryScreen() {
             </button>
           </div>
         ))}
+
+        <button
+          type="button"
+          onClick={addItem}
+          className="w-full border-2 border-ink px-3 py-2 uppercase tracking-widest active:bg-ink active:text-paper"
+        >
+          + Add Item
+        </button>
       </div>
     </main>
   );

@@ -73,8 +73,12 @@ sheet / party + inventory views)
 + Phase 3 (images: `images.ts` — OpenRouter `modalities:["image","text"]` gen, `banner:`/
 `portrait:` cache keys, IndexedDB blob store, deterministic banner/portrait triggers via
 `syncImages`, object-URL rendering in the banner / party strip / member sheet, regenerate
-buttons) done. Next: **Phase 4 — Authoring + Saves**. Track scope in
-`DESIGN.md → Build Phases`.
+buttons)
++ Phase 4 (authoring + saves: `worldNotes.ts` keyword matcher + prompt block #7 injection,
+named save slots in `db.ts` (`saveSlot`/`loadSlot`/`listSlots`/`deleteSlot`), gear → menu
+routing, full-screen authoring screens — Scenario, Characters (PC + party CRUD), World Notes,
+Quests, Advanced instructions with per-field reset, Model & Key, Saves snapshot/restore)
+done. Next: **Phase 5 — Polish + APK**. Track scope in `DESIGN.md → Build Phases`.
 
 ## Attribution
 

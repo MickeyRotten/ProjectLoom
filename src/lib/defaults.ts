@@ -69,6 +69,25 @@ export function defaultPC(): Character {
   };
 }
 
+/** A blank in-party member for manual authoring (Characters screen, Phase 4). */
+export function newMember(id: string): Character {
+  return {
+    id,
+    role: "member",
+    name: "",
+    species: "human",
+    description: "",
+    personality: "",
+    drive: "",
+    likes: "",
+    dislikes: "",
+    fieldSkill: { name: "", description: "" },
+    equipment: [],
+    lastSpokeTurn: 0,
+    inParty: true,
+  };
+}
+
 /** A fresh active game seeded from the editable scenario + PC. */
 export function newGame(scenario: Scenario = DEFAULT_SCENARIO): GameState {
   return {

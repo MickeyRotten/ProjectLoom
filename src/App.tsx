@@ -5,7 +5,14 @@ import { Banner } from "./components/Banner";
 import { ChatView } from "./components/ChatView";
 import { PartyStrip } from "./components/PartyStrip";
 import { Composer } from "./components/Composer";
-import { SettingsScreen } from "./components/SettingsScreen";
+import { MenuScreen } from "./components/MenuScreen";
+import { ModelKeyScreen } from "./components/ModelKeyScreen";
+import { ScenarioScreen } from "./components/ScenarioScreen";
+import { CharactersScreen } from "./components/CharactersScreen";
+import { WorldNotesScreen } from "./components/WorldNotesScreen";
+import { QuestsScreen } from "./components/QuestsScreen";
+import { AdvancedScreen } from "./components/AdvancedScreen";
+import { SavesScreen } from "./components/SavesScreen";
 import { MemberSheet } from "./components/MemberSheet";
 import { PartyScreen } from "./components/PartyScreen";
 import { InventoryScreen } from "./components/InventoryScreen";
@@ -33,7 +40,14 @@ export default function App() {
     );
   }
 
-  if (screen === "settings") return <SettingsScreen />;
+  if (screen === "menu") return <MenuScreen />;
+  if (screen === "modelkey") return <ModelKeyScreen />;
+  if (screen === "scenario") return <ScenarioScreen />;
+  if (screen === "characters") return <CharactersScreen />;
+  if (screen === "worldnotes") return <WorldNotesScreen />;
+  if (screen === "quests") return <QuestsScreen />;
+  if (screen === "advanced") return <AdvancedScreen />;
+  if (screen === "saves") return <SavesScreen />;
   if (screen === "member") return <MemberSheet />;
   if (screen === "party") return <PartyScreen />;
   if (screen === "inventory") return <InventoryScreen />;
