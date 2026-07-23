@@ -77,6 +77,18 @@ export function buildPortraitPrompt(
   return parts.filter(Boolean).join("\n\n");
 }
 
+/**
+ * Edit prompt: the user's instruction plus a fixed style-preservation line.
+ * The source image rides along in the request, so the style anchor comes from
+ * the image itself — the line just keeps the model from repainting everything.
+ */
+export function buildEditPrompt(instruction: string): string {
+  return [
+    `Edit the attached image: ${instruction.trim()}`,
+    "Preserve the existing style and composition except where the edit requires changes.",
+  ].join("\n\n");
+}
+
 /* --------------------------- response parsing --------------------------- */
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -133,11 +145,23 @@ export function dataUrlToBlob(dataUrl: string): Blob {
   return new Blob([decodeURIComponent(body)], { type: mime });
 }
 
+/** Encode a Blob as a base64 data URL (for sending a source image to edit). */
+export function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new ImageError("Could not read image blob."));
+    reader.readAsDataURL(blob);
+  });
+}
+
 /* ------------------------------ the request ----------------------------- */
 
 export interface GenerateImageOptions {
   settings: Settings;
   prompt: string;
+  /** Source image as a data URL — when set, the request is an edit (image + text in). */
+  image?: string;
   signal?: AbortSignal;
 }
 
@@ -148,11 +172,18 @@ export interface GenerateImageOptions {
  * failure as non-fatal (a failed image never blocks the turn).
  */
 export async function generateImage(opts: GenerateImageOptions): Promise<Blob> {
-  const { settings, prompt, signal } = opts;
+  const { settings, prompt, image, signal } = opts;
 
   if (!settings.openRouterKey.trim()) {
     throw new ImageError("No OpenRouter API key set. Add one in Settings.");
   }
+
+  const content = image
+    ? [
+        { type: "text", text: prompt },
+        { type: "image_url", image_url: { url: image } },
+      ]
+    : prompt;
 
   const res = await fetch(ENDPOINT, {
     method: "POST",
@@ -165,7 +196,7 @@ export async function generateImage(opts: GenerateImageOptions): Promise<Blob> {
     body: JSON.stringify({
       model: settings.imageModelId,
       modalities: ["image", "text"],
-      messages: [{ role: "user", content: prompt }],
+      messages: [{ role: "user", content }],
     }),
     signal,
   });

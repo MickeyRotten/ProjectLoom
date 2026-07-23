@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useStore } from "../store";
 import { OverlayHeader } from "./OverlayHeader";
+import { EditImageButton } from "./EditImageButton";
 import { portraitKey } from "../lib/images";
 import { PARTY_LIMIT } from "../lib/defaults";
 import type { Equipment } from "../types";
@@ -22,6 +23,7 @@ export function MemberSheet() {
   const setScreen = useStore((s) => s.setScreen);
   const ensurePortrait = useStore((s) => s.ensurePortrait);
   const regeneratePortrait = useStore((s) => s.regeneratePortrait);
+  const editPortrait = useStore((s) => s.editPortrait);
   const portraitUrl = useStore((s) => (id ? s.images[portraitKey(id)] : undefined));
   const portraitPending = useStore((s) => (id ? s.imgPending[portraitKey(id)] : false));
   const [zoom, setZoom] = useState(false);
@@ -78,6 +80,14 @@ export function MemberSheet() {
           >
             ⟳
           </button>
+          {portraitUrl && (
+            <EditImageButton
+              label="Edit portrait"
+              disabled={portraitPending}
+              onSubmit={(instruction) => editPortrait(member.id, instruction)}
+              className="absolute right-9 top-1 border-2 border-ink bg-paper px-2 leading-none disabled:opacity-40 active:bg-ink active:text-paper"
+            />
+          )}
         </div>
 
         <div className="space-y-4">

@@ -1,5 +1,6 @@
 import { useStore } from "../store";
 import { bannerKey } from "../lib/images";
+import { EditImageButton } from "./EditImageButton";
 
 /**
  * The location banner (DESIGN.md → UI): a wide 1-bit establishing image for the
@@ -12,6 +13,7 @@ export function Banner() {
   const url = useStore((s) => s.images[key]);
   const pending = useStore((s) => s.imgPending[key]);
   const regenerate = useStore((s) => s.regenerateBanner);
+  const edit = useStore((s) => s.editBanner);
 
   return (
     <div className="relative h-28 shrink-0 border-b-2 border-ink">
@@ -35,6 +37,14 @@ export function Banner() {
       >
         ⟳
       </button>
+      {url && (
+        <EditImageButton
+          label="Edit banner"
+          disabled={pending}
+          onSubmit={edit}
+          className="absolute right-9 top-1 border-2 border-ink bg-paper px-2 leading-none disabled:opacity-40 active:bg-ink active:text-paper"
+        />
+      )}
     </div>
   );
 }

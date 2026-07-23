@@ -21,7 +21,9 @@ import { captureReversal, applyReversal } from "./lib/reversal";
 import { detectSpeakers } from "./lib/spotlight";
 import {
   bannerKey,
+  blobToDataUrl,
   buildBannerPrompt,
+  buildEditPrompt,
   buildPortraitPrompt,
   generateImage,
   portraitKey,
@@ -109,6 +111,9 @@ export interface LoomStore {
   /** Force-regenerate, replacing the cached blob. */
   regenerateBanner: () => void;
   regeneratePortrait: (memberId: string) => void;
+  /** Edit the cached image with a text instruction (image + text → image). */
+  editBanner: (instruction: string) => void;
+  editPortrait: (memberId: string, instruction: string) => void;
 }
 
 /** Latest narrator prose (for banner scene flavour), else the opening beat. */
@@ -145,6 +150,38 @@ export const useStore = create<LoomStore>((set, get) => {
         blob = await generateImage({ settings: get().settings, prompt: buildPrompt() });
         await saveImage(key, blob);
       }
+      const url = URL.createObjectURL(blob);
+      const prev = get().images[key];
+      if (prev) URL.revokeObjectURL(prev);
+      set({ images: { ...get().images, [key]: url } });
+    } catch {
+      // Non-fatal — a failed image never blocks the turn (DESIGN.md).
+    } finally {
+      const imgPending = { ...get().imgPending };
+      delete imgPending[key];
+      set({ imgPending });
+    }
+  }
+
+  /**
+   * Edit the cached image under `key` with a text instruction: send the current
+   * blob + instruction to the image model, replace the cache with the result.
+   * No cached blob → nothing to edit → no-op. Failures are swallowed like
+   * ensureImage's — an image never blocks anything.
+   */
+  async function editImage(key: string, instruction: string): Promise<void> {
+    if (get().imgPending[key] || !instruction.trim()) return;
+    const source = await loadImage(key);
+    if (!source) return;
+
+    set({ imgPending: { ...get().imgPending, [key]: true } });
+    try {
+      const blob = await generateImage({
+        settings: get().settings,
+        prompt: buildEditPrompt(instruction),
+        image: await blobToDataUrl(source),
+      });
+      await saveImage(key, blob);
       const url = URL.createObjectURL(blob);
       const prev = get().images[key];
       if (prev) URL.revokeObjectURL(prev);
@@ -585,6 +622,16 @@ export const useStore = create<LoomStore>((set, get) => {
 
   regeneratePortrait(memberId) {
     portrait(memberId, true);
+  },
+
+  editBanner(instruction) {
+    const location = get().game.location.trim();
+    if (!location) return;
+    void editImage(bannerKey(location), instruction);
+  },
+
+  editPortrait(memberId, instruction) {
+    void editImage(portraitKey(memberId), instruction);
   },
   };
 });
