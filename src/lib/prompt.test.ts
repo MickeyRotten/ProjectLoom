@@ -111,6 +111,22 @@ describe("world notes injection", () => {
   });
 });
 
+describe("output protocol — action options toggle", () => {
+  it("asks for options by default", () => {
+    const msgs = buildMessages({ settings, game: newGame(), playerMessage: "go" });
+    const proto = msgs.find((m) => m.content.includes("OUTPUT PROTOCOL"))!;
+    expect(proto.content).toContain('"options": array of 3–4 action strings');
+  });
+
+  it("tells the model to omit options when disabled", () => {
+    const off = { ...settings, showActionOptions: false };
+    const msgs = buildMessages({ settings: off, game: newGame(), playerMessage: "go" });
+    const proto = msgs.find((m) => m.content.includes("OUTPUT PROTOCOL"))!;
+    expect(proto.content).toContain("OMIT this field entirely");
+    expect(proto.content).not.toContain('"options": array of 3–4 action strings');
+  });
+});
+
 describe("buildHistory", () => {
   it("prepends the opening narration as the first assistant turn", () => {
     const g = newGame();

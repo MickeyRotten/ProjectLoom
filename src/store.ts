@@ -217,9 +217,15 @@ export const useStore = create<LoomStore>((set, get) => {
 
   updateScenario(patch) {
     const g = get().game;
-    const game = { ...g, scenario: { ...g.scenario, ...patch } };
+    const scenario = { ...g.scenario, ...patch };
+    // Editing the starting location retargets the active scene too, so the
+    // header + banner follow immediately (they otherwise only move per turn).
+    const location =
+      patch.startLocation !== undefined ? patch.startLocation : g.location;
+    const game = { ...g, scenario, location };
     set({ game });
     void saveActiveGame(game);
+    if (patch.startLocation !== undefined) get().syncImages();
   },
 
   updateCharacter(id, patch) {
