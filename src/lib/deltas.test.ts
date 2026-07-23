@@ -68,6 +68,94 @@ describe("applyDeltas — inventory ops", () => {
   });
 });
 
+describe("applyDeltas — party ops", () => {
+  it("adds a new member as an in-party character with a slugged id", () => {
+    const g = game();
+    const scene = applyDeltas(g, {
+      party: [
+        {
+          op: "add",
+          name: "Navi",
+          species: "sprite",
+          description: "a darting spark",
+          fieldSkill: { name: "Lockpicking", description: "opens anything" },
+        },
+      ],
+    });
+    const navi = scene.characters.find((c) => c.name === "Navi");
+    expect(navi).toBeDefined();
+    expect(navi).toMatchObject({
+      id: "m-navi",
+      role: "member",
+      inParty: true,
+      species: "sprite",
+      fieldSkill: { name: "Lockpicking", description: "opens anything" },
+    });
+  });
+
+  it("never touches the PC", () => {
+    const g = game();
+    const scene = applyDeltas(g, { party: [{ op: "update", name: "Kai", description: "changed" }] });
+    const pc = scene.characters.find((c) => c.role === "pc");
+    expect(pc?.description).toBe(g.characters[0].description);
+  });
+
+  it("updates a known member without duplicating", () => {
+    const g = game();
+    g.characters = [
+      ...g.characters,
+      {
+        id: "m-navi", role: "member", name: "Navi", species: "sprite", description: "old",
+        personality: "", drive: "", likes: "", dislikes: "",
+        fieldSkill: { name: "Lockpicking", description: "opens anything" },
+        equipment: [], lastSpokeTurn: 0, inParty: true,
+      },
+    ];
+    const scene = applyDeltas(g, { party: [{ op: "update", name: "navi", description: "new" }] });
+    const members = scene.characters.filter((c) => c.role === "member");
+    expect(members).toHaveLength(1);
+    expect(members[0].description).toBe("new");
+  });
+
+  it("benches a member on remove but keeps the record", () => {
+    const g = game();
+    g.characters = [
+      ...g.characters,
+      {
+        id: "m-navi", role: "member", name: "Navi", species: "sprite", description: "",
+        personality: "", drive: "", likes: "", dislikes: "",
+        fieldSkill: { name: "", description: "" }, equipment: [], lastSpokeTurn: 2, inParty: true,
+      },
+    ];
+    const scene = applyDeltas(g, { party: [{ op: "remove", name: "Navi" }] });
+    const navi = scene.characters.find((c) => c.name === "Navi");
+    expect(navi).toBeDefined();
+    expect(navi?.inParty).toBe(false);
+  });
+
+  it("re-enlists a benched member on add", () => {
+    const g = game();
+    g.characters = [
+      ...g.characters,
+      {
+        id: "m-navi", role: "member", name: "Navi", species: "sprite", description: "",
+        personality: "", drive: "", likes: "", dislikes: "",
+        fieldSkill: { name: "", description: "" }, equipment: [], lastSpokeTurn: 0, inParty: false,
+      },
+    ];
+    const scene = applyDeltas(g, { party: [{ op: "add", name: "Navi" }] });
+    const members = scene.characters.filter((c) => c.role === "member");
+    expect(members).toHaveLength(1);
+    expect(members[0].inParty).toBe(true);
+  });
+
+  it("leaves characters untouched with no party deltas", () => {
+    const g = game();
+    const scene = applyDeltas(g, { day: 2 });
+    expect(scene.characters).toBe(g.characters);
+  });
+});
+
 describe("applyDeltas — quest ops", () => {
   it("adds an active quest with reward", () => {
     const g = game();

@@ -1,4 +1,5 @@
-import type { GameState, Settings } from "../types";
+import type { Character, GameState, Settings } from "../types";
+import { computeSpotlightSignals, formatSpotlightBlock } from "./spotlight";
 
 /**
  * Prompt assembly (DESIGN.md → Prompt assembly, trimmed port of
@@ -20,9 +21,19 @@ export interface BuildOptions {
   playerMessage: string;
   /** Token budget for the rolling history window (approximate). */
   historyBudgetTokens?: number;
+  /** Turn about to run; defaults to game.turnNumber + 1 (spotlight timing). */
+  currentTurn?: number;
 }
 
 const DEFAULT_HISTORY_BUDGET = 3000;
+
+/** How many recent beats fold into the spotlight relevance/context scan. */
+const SPOTLIGHT_CONTEXT_TURNS = 4;
+
+/** In-party members (role "member", inParty), roster + spotlight subject. */
+function partyMembers(game: GameState): Character[] {
+  return game.characters.filter((c) => c.role === "member" && c.inParty);
+}
 
 /** Cheap token estimate (~4 chars/token), enough for windowing. */
 export function approxTokens(text: string): number {
@@ -32,13 +43,18 @@ export function approxTokens(text: string): number {
 export function buildMessages(opts: BuildOptions): ChatMessage[] {
   const { settings, game, playerMessage } = opts;
   const budget = opts.historyBudgetTokens ?? DEFAULT_HISTORY_BUDGET;
+  const currentTurn = opts.currentTurn ?? game.turnNumber + 1;
 
   const messages: ChatMessage[] = [];
 
-  // 1–6. Core role + scenario + PC + inventory + quests, as one system block.
+  // 1–6. Core role + scenario + PC + party + inventory + quests, one block.
   messages.push({ role: "system", content: buildSystemContext(settings, game) });
 
-  // 7–8. World Notes + Spotlight block — inserted here in Phase 2/4.
+  // 7. World Notes — inserted here in Phase 4.
+
+  // 8. Spotlight block — deterministic per-member signals + the rule.
+  const spotlight = buildSpotlightBlock(settings, game, playerMessage, currentTurn);
+  if (spotlight) messages.push({ role: "system", content: spotlight });
 
   // 9. History window: opening narration as the first assistant turn, then a
   //    budget-trimmed tail of recent turns.
@@ -78,6 +94,10 @@ function buildSystemContext(settings: Settings, game: GameState): string {
     parts.push(lines.join("\n"));
   }
 
+  // 4. Party roster — in-company members with skill + equipment.
+  const roster = formatPartyRoster(partyMembers(game));
+  if (roster) parts.push(roster);
+
   // 5. Inventory (compact).
   if (game.inventory.length) {
     const inv = game.inventory
@@ -104,6 +124,63 @@ function buildSystemContext(settings: Settings, game: GameState): string {
   parts.push(`CURRENT SCENE — location: ${game.location}; day: ${game.day}; weather: ${game.weather}`);
 
   return parts.join("\n\n");
+}
+
+/**
+ * Party roster block (#4). One entry per in-company member: identity,
+ * personality/likes/dislikes, drive, Field Skill, equipment. Compact but
+ * complete enough for the narrator to voice them in character.
+ */
+export function formatPartyRoster(members: Character[]): string {
+  if (!members.length) return "";
+  const entries = members.map((m) => {
+    const traits = [
+      m.personality ? `Personality: ${m.personality}` : "",
+      m.likes ? `Likes: ${m.likes}` : "",
+      m.dislikes ? `Dislikes: ${m.dislikes}` : "",
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    const lines = [
+      `- ${m.name} (${m.species})${m.description ? ` — ${m.description}` : ""}`,
+      traits ? `  ${traits}` : "",
+      m.drive ? `  Drive: ${m.drive}` : "",
+      m.fieldSkill.name
+        ? `  Field Skill — ${m.fieldSkill.name}: ${m.fieldSkill.description}`
+        : "",
+      m.equipment.length ? indent(formatEquipment(m.equipment)) : "",
+    ].filter(Boolean);
+    return lines.join("\n");
+  });
+  return `PARTY — in your company (use the PARTY SPOTLIGHT rules below to decide who, if anyone, speaks)\n${entries.join("\n")}`;
+}
+
+/** Indent a multi-line block two spaces (roster nesting). */
+function indent(block: string): string {
+  return block
+    .split("\n")
+    .map((l) => (l ? `  ${l}` : l))
+    .join("\n");
+}
+
+/**
+ * Spotlight block (#8) — deterministic per-member signals + the editable rule.
+ * Relevance/context folds in the last few beats alongside the new message.
+ */
+function buildSpotlightBlock(
+  settings: Settings,
+  game: GameState,
+  playerMessage: string,
+  currentTurn: number,
+): string {
+  const party = partyMembers(game);
+  if (!party.length) return "";
+  const recentContext = game.messages
+    .slice(-SPOTLIGHT_CONTEXT_TURNS)
+    .map((m) => m.content)
+    .join("\n");
+  const signals = computeSpotlightSignals(playerMessage, recentContext, party, currentTurn);
+  return formatSpotlightBlock(signals, settings.spotlightRule);
 }
 
 /** Port of _format_equipment, simplified to {label, description} — no catalog. */
@@ -158,9 +235,12 @@ function buildOutputProtocol(settings: Settings): string {
     "JSON fields (include only what changed this turn):",
     '- "location", "weather", "day": the current scene (strings / number).',
     '- "options": array of 3–4 action strings. ' + optionRule,
+    '- "party": array of { "op": "add|update|remove", "name", "species", "description", "fieldSkill": { "name", "description" } }. Add a member only when they join; remove when they leave.',
     '- "inventory": array of { "op": "add|update|remove", "label", "description", "quantity" }.',
     '- "quests": array of { "op": "add|update|remove", "label", "description", "reward" }.',
+    '- "spoke": array of member names you gave a spoken line this turn (a hint only).',
     "",
+    'Party dialogue uses the convention `Name: "…"` — the name must be an in-company member.',
     "Never put the JSON before the prose. Never emit more than one block. Never wrap it in code fences.",
   ].join("\n");
 }
