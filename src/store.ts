@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { Character, GameState, Item, Message, Note, Quest, Scenario, Settings } from "./types";
-import { newGame, newMember } from "./lib/defaults";
+import { newGame, newMember, PARTY_LIMIT } from "./lib/defaults";
 import { loadSettings, saveSettings } from "./lib/settings";
 import {
   loadActiveGame,
@@ -75,6 +75,8 @@ export interface LoomStore {
   updateCharacter: (id: string, patch: Partial<Character>) => void;
   addMember: () => string;
   removeCharacter: (id: string) => void;
+  /** Enlist/bench a member into the active party, capped at PARTY_LIMIT. */
+  setInParty: (id: string, inParty: boolean) => void;
   addNote: () => void;
   updateNote: (id: string, patch: Partial<Note>) => void;
   removeNote: (id: string) => void;
@@ -254,6 +256,23 @@ export const useStore = create<LoomStore>((set, get) => {
     const game = { ...g, characters };
     set({ game, screen: get().screen === "member" ? "characters" : get().screen });
     void saveActiveGame(game);
+  },
+
+  setInParty(id, inParty) {
+    const g = get().game;
+    const target = g.characters.find((c) => c.id === id);
+    if (!target || target.role !== "member") return;
+    // Enlisting is capped; benching is always allowed.
+    if (inParty) {
+      const active = g.characters.filter((c) => c.role === "member" && c.inParty).length;
+      if (active >= PARTY_LIMIT) return;
+    }
+    const characters = g.characters.map((c) => (c.id === id ? { ...c, inParty } : c));
+    const game = { ...g, characters };
+    set({ game });
+    void saveActiveGame(game);
+    // A freshly enlisted member needs a portrait for the strip.
+    if (inParty) get().syncImages();
   },
 
   addNote() {

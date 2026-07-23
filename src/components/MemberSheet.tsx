@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useStore } from "../store";
 import { OverlayHeader } from "./OverlayHeader";
 import { portraitKey } from "../lib/images";
+import { PARTY_LIMIT } from "../lib/defaults";
 import type { Equipment } from "../types";
 
 /**
@@ -14,6 +15,10 @@ export function MemberSheet() {
   const member = useStore((s) => s.game.characters.find((c) => c.id === id));
   const update = useStore((s) => s.updateCharacter);
   const removeCharacter = useStore((s) => s.removeCharacter);
+  const setInParty = useStore((s) => s.setInParty);
+  const partyFull = useStore(
+    (s) => s.game.characters.filter((c) => c.role === "member" && c.inParty).length >= PARTY_LIMIT,
+  );
   const setScreen = useStore((s) => s.setScreen);
   const ensurePortrait = useStore((s) => s.ensurePortrait);
   const regeneratePortrait = useStore((s) => s.regeneratePortrait);
@@ -40,32 +45,57 @@ export function MemberSheet() {
       <OverlayHeader title={member.name || "Member"} onBack={() => setScreen(null)} />
 
       <div className="flex-1 space-y-5 overflow-y-auto p-3">
-        <div className="flex items-center gap-3">
-          <span className="flex h-24 w-16 shrink-0 items-center justify-center overflow-hidden border-2 border-ink text-lg font-bold">
-            {portraitUrl ? (
-              <img
-                src={portraitUrl}
-                alt={member.name}
-                className="h-full w-full object-cover [image-rendering:pixelated]"
-              />
-            ) : portraitPending ? (
-              <span className="animate-pulse text-xs">…</span>
-            ) : (
-              (member.name[0] ?? "?").toUpperCase()
-            )}
-          </span>
-          <button
-            type="button"
-            disabled={portraitPending}
-            onClick={() => regeneratePortrait(member.id)}
-            className="border-2 border-ink px-3 py-2 text-sm uppercase tracking-widest disabled:opacity-40 active:bg-ink active:text-paper"
-          >
-            {portraitPending ? "Rendering…" : "Regen Portrait"}
-          </button>
+        <div className="flex gap-3">
+          <div className="relative w-40 shrink-0">
+            <span className="flex aspect-[3/4] w-full items-center justify-center overflow-hidden border-2 border-ink text-3xl font-bold">
+              {portraitUrl ? (
+                <img
+                  src={portraitUrl}
+                  alt={member.name}
+                  className="h-full w-full object-cover [image-rendering:pixelated]"
+                />
+              ) : portraitPending ? (
+                <span className="animate-pulse text-sm">…</span>
+              ) : (
+                (member.name[0] ?? "?").toUpperCase()
+              )}
+            </span>
+            <button
+              type="button"
+              aria-label="Regenerate portrait"
+              disabled={portraitPending}
+              onClick={() => regeneratePortrait(member.id)}
+              className="absolute right-1 top-1 border-2 border-ink bg-paper px-2 leading-none disabled:opacity-40 active:bg-ink active:text-paper"
+            >
+              ⟳
+            </button>
+          </div>
+          <div className="flex-1 space-y-4">
+            <Text label="Name" value={member.name} onChange={(v) => update(member.id, { name: v })} />
+            <Text label="Species" value={member.species} onChange={(v) => update(member.id, { species: v })} />
+          </div>
         </div>
 
-        <Text label="Name" value={member.name} onChange={(v) => update(member.id, { name: v })} />
-        <Text label="Species" value={member.species} onChange={(v) => update(member.id, { species: v })} />
+        <fieldset className="space-y-3 border-2 border-ink p-3">
+          <legend className="px-1 uppercase tracking-widest text-sm">Portrait Prompt</legend>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={member.useCustomPortraitPrompt ?? false}
+              onChange={(e) => update(member.id, { useCustomPortraitPrompt: e.target.checked })}
+              className="h-4 w-4 accent-ink"
+            />
+            <span className="uppercase tracking-widest text-sm">Custom image prompt</span>
+          </label>
+          {member.useCustomPortraitPrompt && (
+            <Area
+              label="Prompt (overrides default)"
+              value={member.customPortraitPrompt ?? ""}
+              onChange={(v) => update(member.id, { customPortraitPrompt: v })}
+            />
+          )}
+        </fieldset>
+
         <Area label="Description" value={member.description} onChange={(v) => update(member.id, { description: v })} />
         <Area label="Personality" value={member.personality} onChange={(v) => update(member.id, { personality: v })} />
         <Text label="Drive" value={member.drive} onChange={(v) => update(member.id, { drive: v })} />
@@ -122,10 +152,11 @@ export function MemberSheet() {
           <div className="flex flex-wrap gap-2 border-t-2 border-ink pt-4">
             <button
               type="button"
-              onClick={() => update(member.id, { inParty: !member.inParty })}
-              className="border-2 border-ink px-3 py-2 text-sm uppercase tracking-widest active:bg-ink active:text-paper"
+              disabled={!member.inParty && partyFull}
+              onClick={() => setInParty(member.id, !member.inParty)}
+              className="border-2 border-ink px-3 py-2 text-sm uppercase tracking-widest disabled:opacity-40 active:bg-ink active:text-paper"
             >
-              {member.inParty ? "Bench Member" : "Enlist Member"}
+              {member.inParty ? "Bench Member" : partyFull ? "Party Full" : "Enlist Member"}
             </button>
             <button
               type="button"

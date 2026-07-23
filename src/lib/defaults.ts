@@ -9,6 +9,9 @@ import type { Character, GameState, Scenario, Settings } from "../types";
 export const DEFAULT_TEXT_MODEL = "deepseek/deepseek-v4-pro";
 export const DEFAULT_IMAGE_MODEL = "google/gemini-3.1-flash-lite-image";
 
+/** Max party members alongside the PC (PC + 3). */
+export const PARTY_LIMIT = 3;
+
 /**
  * Core narrator role — setting-agnostic. Genre, setting, and tone come from the
  * Scenario; these instructions only cover craft (voice, pacing, sandbox rules).
@@ -93,6 +96,8 @@ export function defaultPC(): Character {
     ],
     lastSpokeTurn: 0,
     inParty: false,
+    useCustomPortraitPrompt: false,
+    customPortraitPrompt: "",
   };
 }
 
@@ -112,6 +117,8 @@ export function newMember(id: string): Character {
     equipment: [],
     lastSpokeTurn: 0,
     inParty: true,
+    useCustomPortraitPrompt: false,
+    customPortraitPrompt: "",
   };
 }
 

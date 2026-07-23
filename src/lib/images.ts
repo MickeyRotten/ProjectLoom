@@ -51,13 +51,20 @@ export function buildBannerPrompt(
 
 /**
  * Portrait prompt: the (editable) 1-bit style instructions plus the member's
- * name / species / description.
+ * name / species / description. When the character opts into a custom prompt,
+ * that text replaces the auto-built identity/appearance lines (the style
+ * instructions still lead, so 1-bit output stays consistent).
  */
 export function buildPortraitPrompt(
-  member: Pick<Character, "name" | "species" | "description">,
+  member: Pick<Character, "name" | "species" | "description"> &
+    Partial<Pick<Character, "useCustomPortraitPrompt" | "customPortraitPrompt">>,
   instructions: string,
 ): string {
   const parts = [instructions.trim()];
+  if (member.useCustomPortraitPrompt && member.customPortraitPrompt?.trim()) {
+    parts.push(member.customPortraitPrompt.trim());
+    return parts.filter(Boolean).join("\n\n");
+  }
   const who = [
     member.name.trim() && `Name: ${member.name.trim()}.`,
     member.species.trim() && `Species: ${member.species.trim()}.`,

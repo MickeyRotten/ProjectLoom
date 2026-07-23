@@ -33,6 +33,10 @@ export interface Character {
   portraitKey?: string;
   lastSpokeTurn: number;
   inParty: boolean;
+  /** When true, `customPortraitPrompt` replaces the auto-built portrait prompt. */
+  useCustomPortraitPrompt?: boolean;
+  /** Player-authored portrait prompt, used only when the flag above is on. */
+  customPortraitPrompt?: string;
 }
 
 export interface Item {
