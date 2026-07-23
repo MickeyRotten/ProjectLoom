@@ -140,38 +140,69 @@ async function streamOnce(opts: StreamOptions): Promise<string> {
   let buffer = "";
   let full = "";
 
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
 
-    // SSE frames are separated by newlines; each `data:` line carries a chunk.
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
+      // SSE frames are separated by newlines; each `data:` line carries a chunk.
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
 
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed.startsWith("data:")) continue;
-      const payload = trimmed.slice(5).trim();
-      if (payload === "[DONE]") continue;
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith("data:")) continue;
+        const payload = trimmed.slice(5).trim();
+        if (payload === "[DONE]") continue;
 
-      const delta = extractDelta(payload);
-      if (delta) {
-        full += delta;
-        onDelta(full);
+        const frame = parseFrame(payload);
+        if (frame.error) {
+          // OpenRouter reports upstream failures as an error frame mid-stream;
+          // ignoring it would end the turn silently truncated (no block, no
+          // options). Surface it like an HTTP failure so the retry loop runs.
+          throw new OpenRouterError(`OpenRouter stream error — ${frame.error.message}`, {
+            status: frame.error.code,
+            retryable:
+              frame.error.code === undefined || isRetryableStatus(frame.error.code),
+          });
+        }
+        if (frame.delta) {
+          full += frame.delta;
+          onDelta(full);
+        }
       }
     }
+  } finally {
+    // Stop the network stream on early exit (error frame / abort).
+    void reader.cancel().catch(() => {});
   }
 
   return full;
 }
 
-function extractDelta(payload: string): string {
+interface Frame {
+  delta: string;
+  error?: { message: string; code?: number };
+}
+
+function parseFrame(payload: string): Frame {
   try {
     const json = JSON.parse(payload);
-    return json?.choices?.[0]?.delta?.content ?? "";
+    const err = json?.error;
+    if (err && typeof err === "object") {
+      return {
+        delta: "",
+        error: {
+          message:
+            typeof err.message === "string" ? err.message : "Upstream error mid-stream.",
+          code: typeof err.code === "number" ? err.code : undefined,
+        },
+      };
+    }
+    return { delta: json?.choices?.[0]?.delta?.content ?? "" };
   } catch {
-    return "";
+    return { delta: "" };
   }
 }
 

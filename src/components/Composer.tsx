@@ -8,6 +8,7 @@ import { useStore } from "../store";
 export function Composer() {
   const [text, setText] = useState("");
   const sendTurn = useStore((s) => s.sendTurn);
+  const stopTurn = useStore((s) => s.stopTurn);
   const streaming = useStore((s) => s.streaming);
   const setScreen = useStore((s) => s.setScreen);
   const hasKey = useStore((s) => Boolean(s.settings.openRouterKey.trim()));
@@ -61,13 +62,23 @@ export function Composer() {
           placeholder={hasKey ? (streaming ? "…" : "what do you do?") : "set API key in settings"}
           className="min-w-0 flex-1 bg-paper py-2 text-ink placeholder:opacity-50 focus:outline-none disabled:opacity-40"
         />
-        <button
-          type="submit"
-          disabled={streaming || !text.trim()}
-          className="border-l-2 border-ink px-4 uppercase tracking-widest disabled:opacity-40 active:bg-ink active:text-paper"
-        >
-          Go
-        </button>
+        {streaming ? (
+          <button
+            type="button"
+            onClick={stopTurn}
+            className="border-l-2 border-ink px-4 uppercase tracking-widest active:bg-ink active:text-paper"
+          >
+            Stop
+          </button>
+        ) : (
+          <button
+            type="submit"
+            disabled={!text.trim()}
+            className="border-l-2 border-ink px-4 uppercase tracking-widest disabled:opacity-40 active:bg-ink active:text-paper"
+          >
+            Go
+          </button>
+        )}
       </form>
     </footer>
   );
