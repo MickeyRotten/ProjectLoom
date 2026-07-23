@@ -1,39 +1,39 @@
+import { useEffect } from "react";
 import { useStore } from "./store";
+import { Header } from "./components/Header";
+import { ChatView } from "./components/ChatView";
+import { Composer } from "./components/Composer";
+import { SettingsScreen } from "./components/SettingsScreen";
 
 /**
- * Phase 0 shell — proves the 1-bit theme, Tailwind tokens, and Zustand store
- * are wired end to end. The real turn loop, options, party strip, and fixed
- * buttons land in Phase 1+ (see DESIGN.md → Build Phases).
+ * Phase 1 shell — the core loop: header (location · day), scrolling narration
+ * log with AI options under the latest beat, and a composer (LOOK + freeform).
+ * Party strip, inventory/quests views, and images arrive in later phases.
  */
 export default function App() {
-  const { location, day, turnNumber, bumpTurn } = useStore();
+  const hydrate = useStore((s) => s.hydrate);
+  const hydrated = useStore((s) => s.hydrated);
+  const screen = useStore((s) => s.screen);
+
+  useEffect(() => {
+    void hydrate();
+  }, [hydrate]);
+
+  if (!hydrated) {
+    return (
+      <main className="flex min-h-full items-center justify-center bg-paper text-ink font-mono uppercase tracking-widest">
+        Loom…
+      </main>
+    );
+  }
+
+  if (screen === "settings") return <SettingsScreen />;
 
   return (
-    <main className="flex min-h-full flex-col bg-paper text-ink font-mono">
-      <header className="flex items-center justify-between border-b-2 border-ink px-3 py-2 uppercase tracking-widest">
-        <span className="truncate">{location}</span>
-        <span className="whitespace-nowrap">Day {day}</span>
-      </header>
-
-      <section className="flex-1 p-3">
-        <div className="border-2 border-ink p-3">
-          <p className="uppercase tracking-widest">Loom</p>
-          <p className="mt-2 opacity-90">
-            Scaffold online. 1-bit theme, Tailwind tokens, and the Zustand store
-            are wired. Turn loop arrives in Phase 1.
-          </p>
-        </div>
-      </section>
-
-      <footer className="border-t-2 border-ink p-3">
-        <button
-          type="button"
-          onClick={bumpTurn}
-          className="w-full border-2 border-ink bg-paper px-3 py-2 uppercase tracking-widest active:bg-ink active:text-paper"
-        >
-          Turn {turnNumber} — advance
-        </button>
-      </footer>
+    <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
+      <Header />
+      <ChatView />
+      <Composer />
     </main>
   );
 }

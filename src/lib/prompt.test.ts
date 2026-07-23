@@ -1,0 +1,78 @@
+import { describe, it, expect } from "vitest";
+import { buildMessages, buildHistory, approxTokens } from "./prompt";
+import { newGame, defaultSettings } from "./defaults";
+import type { GameState, Message } from "../types";
+
+const settings = defaultSettings();
+
+function narr(turn: number, content: string): Message {
+  return { id: `n${turn}`, role: "narrator", content, turn };
+}
+function play(turn: number, content: string): Message {
+  return { id: `p${turn}`, role: "player", content, turn };
+}
+
+describe("buildMessages — ordering", () => {
+  it("starts with a system context and ends with the player's new message", () => {
+    const msgs = buildMessages({ settings, game: newGame(), playerMessage: "I head north." });
+    expect(msgs[0].role).toBe("system");
+    expect(msgs[0].content).toContain("SCENARIO");
+    expect(msgs[msgs.length - 1]).toEqual({ role: "user", content: "I head north." });
+  });
+
+  it("puts the output-protocol system message after history, before the new message", () => {
+    const msgs = buildMessages({ settings, game: newGame(), playerMessage: "go" });
+    const protocolIdx = msgs.findIndex((m) => m.content.includes("<<<LOOM>>>"));
+    const userIdx = msgs.length - 1;
+    expect(protocolIdx).toBeGreaterThan(0);
+    expect(protocolIdx).toBe(userIdx - 1);
+    expect(msgs[protocolIdx].role).toBe("system");
+  });
+
+  it("includes PC summary and inventory in the system context", () => {
+    const g = newGame();
+    g.inventory = [{ label: "Compass", description: "spins", quantity: 2 }];
+    const msgs = buildMessages({ settings, game: g, playerMessage: "go" });
+    expect(msgs[0].content).toContain("PLAYER CHARACTER");
+    expect(msgs[0].content).toContain("Compass ×2");
+  });
+});
+
+describe("buildHistory", () => {
+  it("prepends the opening narration as the first assistant turn", () => {
+    const g = newGame();
+    g.messages = [play(1, "hi"), narr(1, "you see a door")];
+    const hist = buildHistory(g, 3000);
+    expect(hist[0]).toEqual({ role: "assistant", content: g.scenario.openingNarration });
+    expect(hist[1]).toEqual({ role: "user", content: "hi" });
+    expect(hist[2]).toEqual({ role: "assistant", content: "you see a door" });
+  });
+
+  it("maps player→user and narrator→assistant", () => {
+    const g = newGame();
+    g.messages = [play(1, "a"), narr(1, "b")];
+    const hist = buildHistory(g, 3000);
+    expect(hist.map((m) => m.role)).toEqual(["assistant", "user", "assistant"]);
+  });
+
+  it("trims oldest turns to the budget but always keeps the opening", () => {
+    const g: GameState = newGame();
+    const big = "x".repeat(4000); // ~1000 tokens each
+    g.messages = [narr(1, big), narr(2, big), narr(3, big)];
+    const hist = buildHistory(g, 1500); // opening + ~one big turn
+    expect(hist[0].content).toBe(g.scenario.openingNarration);
+    // Only the most recent turn(s) fit.
+    expect(hist).toContainEqual({ role: "assistant", content: big });
+    const bigCount = hist.filter((m) => m.content === big).length;
+    expect(bigCount).toBeLessThan(3);
+    expect(bigCount).toBeGreaterThanOrEqual(1);
+  });
+
+  it("keeps the newest turn, dropping older ones first", () => {
+    const g = newGame();
+    g.messages = [narr(1, "OLD".repeat(1000)), narr(2, "NEW")];
+    const hist = buildHistory(g, approxTokens(g.scenario.openingNarration) + 5);
+    expect(hist.some((m) => m.content === "NEW")).toBe(true);
+    expect(hist.some((m) => m.content.startsWith("OLD"))).toBe(false);
+  });
+});
