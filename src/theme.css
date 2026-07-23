@@ -30,6 +30,12 @@ body,
   height: 100%;
 }
 
+/* No rubber-band bounce / pull-to-refresh — the chat log owns its scroll. */
+html,
+body {
+  overscroll-behavior: none;
+}
+
 body {
   margin: 0;
   background: var(--paper);
