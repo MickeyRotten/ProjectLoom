@@ -11,9 +11,8 @@
 :root {
   --ink: #000000;
   --paper: #ffffff;
-  /* Terminal monospace: teletype-flavored stack, distinct from the OS UI mono. */
-  --font-mono: "Courier New", "Courier", "Roboto Mono", "DejaVu Sans Mono",
-    ui-monospace, monospace;
+  --font-mono: ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
 
   color-scheme: light dark;
 }
