@@ -41,7 +41,7 @@ export function PartyStrip() {
             className="flex flex-col items-center gap-1 disabled:opacity-40 active:opacity-60"
             aria-label={c.name}
           >
-            <span className="flex aspect-[3/4] w-full items-center justify-center overflow-hidden border-2 border-ink text-sm font-bold">
+            <span className="flex aspect-[3/5] w-full items-center justify-center overflow-hidden border-2 border-ink text-sm font-bold">
               {images[portraitKey(c.id)] ? (
                 <img
                   src={images[portraitKey(c.id)]}
@@ -65,7 +65,7 @@ export function PartyStrip() {
             className="flex flex-col items-center gap-1 disabled:opacity-40 active:opacity-60"
             aria-label="Add party member"
           >
-            <span className="flex aspect-[3/4] w-full items-center justify-center border-2 border-dashed border-ink text-sm font-bold opacity-30">
+            <span className="flex aspect-[3/5] w-full items-center justify-center border-2 border-dashed border-ink text-sm font-bold opacity-30">
               +
             </span>
             <span className="text-[0.65rem] uppercase tracking-wide opacity-0">

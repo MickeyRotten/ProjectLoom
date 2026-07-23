@@ -35,7 +35,7 @@ export function ChatView() {
   }, [messages.length, streamText, error]);
 
   return (
-    <section ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-3 text-sm">
+    <section ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-3 text-sm leading-[0.8]">
       <Beat role="narrator" text={opening} party={party} />
 
       {messages.map((m) => (
@@ -101,7 +101,7 @@ function Beat({
   // Segment narrator prose so party dialogue (`Name: "…"`) renders distinctly.
   const segments = segmentDialogue(text, party);
   return (
-    <div className={`space-y-2 leading-relaxed ${pending ? "opacity-70" : ""}`}>
+    <div className={`space-y-2 leading-[0.8] ${pending ? "opacity-70" : ""}`}>
       {segments.map((seg, i) =>
         seg.speaker ? (
           <p key={i} className="border-l-2 border-ink pl-2">
