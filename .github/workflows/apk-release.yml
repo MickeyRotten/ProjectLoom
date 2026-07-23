@@ -1,0 +1,120 @@
+name: APK Release
+
+# Builds and publishes an installable APK on every code update to `main`.
+# Pure documentation changes are skipped via `paths-ignore`, so pushing docs
+# alone never spends CI or cuts a release.
+#
+# Signed release APK is built when signing secrets are present; otherwise a
+# debug APK is published so there is always a downloadable build.
+#
+# The native `android/` project is NOT committed — Capacitor regenerates it
+# here from `capacitor.config.ts` via `cap add android`.
+
+on:
+  push:
+    branches: ["main"]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "LICENSE"
+      - ".gitignore"
+      - ".editorconfig"
+      - ".claude/**"
+      - ".github/ISSUE_TEMPLATE/**"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# One release build per ref; newer pushes cancel in-flight ones.
+concurrency:
+  group: apk-release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    # Job-level env so the signing-secret presence check is usable in step `if:`.
+    env:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Typecheck + test
+        run: |
+          npm run tsc
+          npm test
+
+      - name: Build web app
+        run: npm run build
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "21"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Add Android platform + sync
+        run: |
+          if [ ! -d android ]; then
+            npx cap add android
+          fi
+          npx cap sync android
+
+      # --- Signed release when signing secrets exist ---
+      - name: Decode keystore
+        if: env.ANDROID_KEYSTORE_BASE64 != ''
+        run: echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > android/app/loom.keystore
+
+      - name: Build signed release APK
+        if: env.ANDROID_KEYSTORE_BASE64 != ''
+        working-directory: android
+        env:
+          LOOM_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          LOOM_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          LOOM_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          ./gradlew assembleRelease --no-daemon \
+            -Pandroid.injected.signing.store.file=loom.keystore \
+            -Pandroid.injected.signing.store.password="$LOOM_KEYSTORE_PASSWORD" \
+            -Pandroid.injected.signing.key.alias="$LOOM_KEY_ALIAS" \
+            -Pandroid.injected.signing.key.password="$LOOM_KEY_PASSWORD"
+
+      # --- Debug fallback when no signing secrets are configured ---
+      - name: Build debug APK
+        if: env.ANDROID_KEYSTORE_BASE64 == ''
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Locate built APK
+        id: apk
+        run: |
+          if [ "${ANDROID_KEYSTORE_BASE64:-}" != '' ]; then
+            path=android/app/build/outputs/apk/release/app-release.apk
+          else
+            path=android/app/build/outputs/apk/debug/app-debug.apk
+          fi
+          echo "path=$path" >> "$GITHUB_OUTPUT"
+          test -f "$path"
+
+      # Continuous release: one tag per build number, so each update to main
+      # produces a downloadable APK the app can self-update from.
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Build ${{ github.run_number }}
+          body: |
+            Automated APK build from ${{ github.sha }}.
+          files: ${{ steps.apk.outputs.path }}
+          fail_on_unmatched_files: true
