@@ -47,6 +47,30 @@ describe("prompt builders", () => {
     const p = buildPortraitPrompt({ name: "", species: "", description: "" }, "style");
     expect(p).toBe("style");
   });
+
+  it("custom portrait prompt replaces the auto identity/appearance lines", () => {
+    const p = buildPortraitPrompt(
+      {
+        name: "Navi",
+        species: "sprite",
+        description: "A flickering mote.",
+        useCustomPortraitPrompt: true,
+        customPortraitPrompt: "A neon fox in a trench coat.",
+      },
+      "1-bit portrait.",
+    );
+    expect(p).toBe("1-bit portrait.\n\nA neon fox in a trench coat.");
+    expect(p).not.toContain("Name: Navi.");
+    expect(p).not.toContain("Appearance:");
+  });
+
+  it("falls back to auto lines when the custom flag is on but the prompt is blank", () => {
+    const p = buildPortraitPrompt(
+      { name: "Navi", species: "sprite", description: "A mote.", useCustomPortraitPrompt: true, customPortraitPrompt: "  " },
+      "style",
+    );
+    expect(p).toContain("Name: Navi.");
+  });
 });
 
 describe("extractImageDataUrl", () => {
