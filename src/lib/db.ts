@@ -1,5 +1,6 @@
 import { openDB, type IDBPDatabase } from "idb";
 import type { GameState } from "../types";
+import { migrateGame } from "./defaults";
 
 /**
  * IndexedDB handle for on-device persistence (DESIGN.md → Persistence).
@@ -47,7 +48,8 @@ export async function saveActiveGame(game: GameState): Promise<void> {
 export async function loadActiveGame(): Promise<GameState | null> {
   const db = await getDB();
   const game = (await db.get(SAVES_STORE, ACTIVE_KEY)) as GameState | undefined;
-  return game ?? null;
+  // Merge over a fresh skeleton so older-shape saves gain later-phase slices.
+  return migrateGame(game);
 }
 
 /* ------------------------------------------------------------------ *
@@ -79,7 +81,7 @@ export async function saveSlot(slot: SaveSlot): Promise<void> {
 export async function loadSlot(id: string): Promise<GameState | null> {
   const db = await getDB();
   const slot = (await db.get(SAVES_STORE, slotKey(id))) as SaveSlot | undefined;
-  return slot?.game ?? null;
+  return migrateGame(slot?.game);
 }
 
 /** Delete a named slot. */

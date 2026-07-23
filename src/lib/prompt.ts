@@ -89,9 +89,17 @@ function buildSystemContext(settings: Settings, game: GameState): string {
   // 3. PC summary + equipment.
   const pc = game.characters.find((c) => c.role === "pc");
   if (pc) {
+    const traits = [
+      pc.personality ? `Personality: ${pc.personality}` : "",
+      pc.likes ? `Likes: ${pc.likes}` : "",
+      pc.dislikes ? `Dislikes: ${pc.dislikes}` : "",
+    ]
+      .filter(Boolean)
+      .join(" · ");
     const lines = [
       `PLAYER CHARACTER — ${pc.name} (${pc.species})`,
       pc.description,
+      traits,
       pc.drive ? `Drive: ${pc.drive}` : "",
       pc.fieldSkill.name
         ? `Field Skill — ${pc.fieldSkill.name}: ${pc.fieldSkill.description}`
@@ -263,7 +271,7 @@ function buildOutputProtocol(settings: Settings): string {
     optionsLine,
     '- "party": array of { "op": "add|update|remove", "name", "species", "description", "fieldSkill": { "name", "description" } }. Add a member only when they join; remove when they leave.',
     '- "inventory": array of { "op": "add|update|remove", "label", "description", "quantity" }.',
-    '- "quests": array of { "op": "add|update|remove", "label", "description", "reward" }.',
+    '- "quests": array of { "op": "add|update|remove", "label", "description", "reward", "status": "active"|"done" }. Update a quest with status "done" when the player completes it.',
     '- "spoke": array of member names you gave a spoken line this turn (a hint only).',
     "",
     'Party dialogue uses the convention `Name: "…"` — the name must be an in-company member.',

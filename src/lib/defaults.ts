@@ -122,11 +122,20 @@ export function newMember(id: string): Character {
   };
 }
 
-/** A fresh active game seeded from the editable scenario + PC. */
-export function newGame(scenario: Scenario = DEFAULT_SCENARIO): GameState {
+/**
+ * A fresh active game seeded from the editable scenario + roster. When a
+ * roster is passed (New Adventure), the authored PC and members carry over
+ * with per-run state (lastSpokeTurn) reset; without one, the default PC seeds.
+ */
+export function newGame(
+  scenario: Scenario = DEFAULT_SCENARIO,
+  characters?: Character[],
+): GameState {
   return {
     scenario,
-    characters: [defaultPC()],
+    characters: characters?.length
+      ? characters.map((c) => ({ ...c, lastSpokeTurn: 0 }))
+      : [defaultPC()],
     worldNotes: [],
     inventory: [],
     quests: [],
@@ -135,5 +144,21 @@ export function newGame(scenario: Scenario = DEFAULT_SCENARIO): GameState {
     day: scenario.startDay,
     location: scenario.startLocation || scenario.title,
     weather: "clear",
+  };
+}
+
+/**
+ * Merge a stored game over a fresh skeleton so saves written by older app
+ * versions (missing later-phase slices like worldNotes/quests) load without
+ * crashing the turn builder. Mirrors loadSettings' merge-over-defaults.
+ */
+export function migrateGame(saved: unknown): GameState | null {
+  if (!saved || typeof saved !== "object") return null;
+  const base = newGame();
+  const partial = saved as Partial<GameState>;
+  return {
+    ...base,
+    ...partial,
+    scenario: { ...base.scenario, ...(partial.scenario ?? {}) },
   };
 }

@@ -18,6 +18,8 @@ export function ChatView() {
   const streaming = useStore((s) => s.streaming);
   const streamText = useStore((s) => s.streamText);
   const error = useStore((s) => s.error);
+  const failedInput = useStore((s) => s.failedInput);
+  const retryTurn = useStore((s) => s.retryTurn);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -38,8 +40,20 @@ export function ChatView() {
       {!streaming && <Options />}
 
       {error && (
-        <div className="border-2 border-ink p-2 uppercase tracking-widest">
-          ! {error}
+        <div className="space-y-2 border-2 border-ink p-2">
+          {failedInput && (
+            <p className="uppercase tracking-wide opacity-80">&gt; {failedInput}</p>
+          )}
+          <p className="uppercase tracking-widest">! {error}</p>
+          {failedInput && (
+            <button
+              type="button"
+              onClick={retryTurn}
+              className="w-full border-2 border-ink py-1 uppercase tracking-widest active:bg-ink active:text-paper"
+            >
+              ↻ Retry
+            </button>
+          )}
         </div>
       )}
 

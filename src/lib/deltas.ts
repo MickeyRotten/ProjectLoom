@@ -1,4 +1,5 @@
 import type { Character, GameState, Item, LoomBlock, PartyDelta, Quest } from "../types";
+import { PARTY_LIMIT } from "./defaults";
 
 /**
  * Apply a parsed <<<LOOM>>> block to the active game (loom-turn-protocol):
@@ -46,12 +47,16 @@ export function applyDeltas(game: GameState, block: LoomBlock): AppliedScene {
  * Op-based party roster, keyed by slugged member name. Only members
  * (role "member") are matched — the PC is never touched by a party delta.
  *  - add: create a new benched-in member, or re-enlist + refresh a known one.
+ *    Enlisting respects PARTY_LIMIT — past the cap the member joins benched,
+ *    matching the UI's enlist rule (the strip only has PARTY_LIMIT slots).
  *  - update: patch species/description/fieldSkill of a known member.
  *  - remove: bench the member (inParty=false); the record is kept.
  */
 function applyParty(current: Character[], block: LoomBlock): Character[] {
   if (!block.party?.length) return current;
   const next = current.slice();
+  const partyFull = () =>
+    next.filter((c) => c.role === "member" && c.inParty).length >= PARTY_LIMIT;
 
   for (const d of block.party) {
     if (!d?.name) continue;
@@ -69,8 +74,11 @@ function applyParty(current: Character[], block: LoomBlock): Character[] {
     }
 
     // add — re-enlist + refresh an existing member, else create one.
-    if (i !== -1) next[i] = { ...patchMember(next[i], d), inParty: true };
-    else next.push(makeMember(d, key));
+    if (i !== -1) {
+      next[i] = { ...patchMember(next[i], d), inParty: next[i].inParty || !partyFull() };
+    } else {
+      next.push({ ...makeMember(d, key), inParty: !partyFull() });
+    }
   }
 
   return next;

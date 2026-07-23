@@ -54,6 +54,8 @@ export interface LoomStore {
   streamText: string;
   options: string[];
   error: string | null;
+  /** The input of the last failed/stopped turn, so it can be retried verbatim. */
+  failedInput: string | null;
 
   // UI
   screen: Screen;
@@ -97,6 +99,10 @@ export interface LoomStore {
 
   newAdventure: () => void;
   sendTurn: (text: string) => Promise<void>;
+  /** Re-send the input of the last failed turn. */
+  retryTurn: () => void;
+  /** Abort the in-flight turn; the input rolls back and becomes retryable. */
+  stopTurn: () => void;
 
   // Reversal (Phase 5) — unwind the latest turn's applied deltas.
   /** Drop the latest turn (player + narrator), restoring pre-turn scene state. */
@@ -195,6 +201,9 @@ export const useStore = create<LoomStore>((set, get) => {
     }
   }
 
+  /** Abort handle for the in-flight turn (closure state — not reactive). */
+  let turnAbort: AbortController | null = null;
+
   const portrait = (memberId: string, force: boolean) => {
     const member = get().game.characters.find((c) => c.id === memberId);
     if (!member) return;
@@ -214,6 +223,7 @@ export const useStore = create<LoomStore>((set, get) => {
   streamText: "",
   options: [],
   error: null,
+  failedInput: null,
 
   screen: null,
   memberId: null,
@@ -385,8 +395,11 @@ export const useStore = create<LoomStore>((set, get) => {
   },
 
   newAdventure() {
-    const game = newGame(get().game.scenario);
-    set({ game, options: [], streamText: "", error: null });
+    // Reseed from the current scenario AND roster — the authored PC + members
+    // survive a restart; only per-run state (messages, scene, spoke) resets.
+    const g = get().game;
+    const game = newGame(g.scenario, g.characters);
+    set({ game, options: [], streamText: "", error: null, failedInput: null });
     void saveActiveGame(game);
   },
 
@@ -415,6 +428,7 @@ export const useStore = create<LoomStore>((set, get) => {
       options: lastNarrator?.appliedDeltas?.options ?? [],
       streamText: "",
       error: null,
+      failedInput: null,
       screen: null,
     });
     void saveActiveGame(game);
@@ -445,9 +459,12 @@ export const useStore = create<LoomStore>((set, get) => {
       game: { ...base, messages: [...base.messages, playerMsg], turnNumber: turn },
       options: [],
       error: null,
+      failedInput: null,
       streaming: true,
       streamText: "",
     });
+
+    turnAbort = new AbortController();
 
     // Build from `base` (pre-turn history) so the new line isn't duplicated —
     // it rides as the final user message, not also inside the history window.
@@ -461,6 +478,7 @@ export const useStore = create<LoomStore>((set, get) => {
       const raw = await streamChat({
         settings: get().settings,
         messages,
+        signal: turnAbort.signal,
         onDelta: (full) => set({ streamText: truncateForDisplay(full) }),
       });
 
@@ -528,14 +546,46 @@ export const useStore = create<LoomStore>((set, get) => {
       // portraits. Fire-and-forget — never blocks the turn.
       get().syncImages();
     } catch (err) {
-      const message =
-        err instanceof OpenRouterError
+      const aborted =
+        err instanceof DOMException
+          ? err.name === "AbortError"
+          : err instanceof Error && err.name === "AbortError";
+      const message = aborted
+        ? "Turn stopped."
+        : err instanceof OpenRouterError
           ? err.message
           : err instanceof Error
             ? err.message
             : "Turn failed.";
-      set({ streaming: false, streamText: "", error: message });
+
+      // Roll the optimistic player line back out so a failed turn never eats
+      // the input — it stays retryable via retryTurn instead of orphaned in
+      // the log with no narrator reply.
+      const g2 = get().game;
+      const msgs = g2.messages.filter((m) => m.id !== playerMsg.id);
+      const turnNumber = msgs.reduce((max, m) => Math.max(max, m.turn), 0);
+      const lastNarrator = [...msgs].reverse().find((m) => m.role === "narrator");
+      set({
+        game: { ...g2, messages: msgs, turnNumber },
+        options: lastNarrator?.appliedDeltas?.options ?? [],
+        streaming: false,
+        streamText: "",
+        error: message,
+        failedInput: trimmed,
+      });
+    } finally {
+      turnAbort = null;
     }
+  },
+
+  retryTurn() {
+    const text = get().failedInput;
+    if (!text || get().streaming) return;
+    void get().sendTurn(text);
+  },
+
+  stopTurn() {
+    turnAbort?.abort();
   },
 
   undoLastTurn() {
@@ -565,6 +615,7 @@ export const useStore = create<LoomStore>((set, get) => {
       game,
       options: prevNarrator?.appliedDeltas?.options ?? [],
       error: null,
+      failedInput: null,
       streamText: "",
     });
     void saveActiveGame(game);

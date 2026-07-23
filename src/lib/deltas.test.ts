@@ -149,6 +149,37 @@ describe("applyDeltas — party ops", () => {
     expect(members[0].inParty).toBe(true);
   });
 
+  it("caps model party adds at PARTY_LIMIT — overflow joins benched", () => {
+    const g = game();
+    const scene = applyDeltas(g, {
+      party: [
+        { op: "add", name: "Ada" },
+        { op: "add", name: "Bel" },
+        { op: "add", name: "Cid" },
+        { op: "add", name: "Dee" },
+      ],
+    });
+    const members = scene.characters.filter((c) => c.role === "member");
+    expect(members).toHaveLength(4);
+    expect(members.filter((m) => m.inParty)).toHaveLength(3);
+    expect(members.find((m) => m.name === "Dee")?.inParty).toBe(false);
+  });
+
+  it("does not re-enlist a benched member when the party is full", () => {
+    const g = game();
+    const withFour = applyDeltas(g, {
+      party: [
+        { op: "add", name: "Ada" },
+        { op: "add", name: "Bel" },
+        { op: "add", name: "Cid" },
+        { op: "add", name: "Dee" },
+      ],
+    });
+    g.characters = withFour.characters;
+    const scene = applyDeltas(g, { party: [{ op: "add", name: "Dee" }] });
+    expect(scene.characters.find((c) => c.name === "Dee")?.inParty).toBe(false);
+  });
+
   it("leaves characters untouched with no party deltas", () => {
     const g = game();
     const scene = applyDeltas(g, { day: 2 });

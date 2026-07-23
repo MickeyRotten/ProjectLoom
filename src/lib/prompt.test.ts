@@ -44,6 +44,18 @@ describe("buildMessages — ordering", () => {
     expect(msgs[0].content).toContain("PLAYER CHARACTER");
     expect(msgs[0].content).toContain("Compass ×2");
   });
+
+  it("includes PC personality/likes/dislikes in the system context", () => {
+    const g = newGame();
+    const pc = g.characters.find((c) => c.role === "pc")!;
+    pc.personality = "Stoic, dry-witted.";
+    pc.likes = "Maps";
+    pc.dislikes = "Crowds";
+    const msgs = buildMessages({ settings, game: g, playerMessage: "go" });
+    expect(msgs[0].content).toContain("Personality: Stoic, dry-witted.");
+    expect(msgs[0].content).toContain("Likes: Maps");
+    expect(msgs[0].content).toContain("Dislikes: Crowds");
+  });
 });
 
 describe("party roster + spotlight", () => {
@@ -124,6 +136,15 @@ describe("output protocol — action options toggle", () => {
     const proto = msgs.find((m) => m.content.includes("OUTPUT PROTOCOL"))!;
     expect(proto.content).toContain("OMIT this field entirely");
     expect(proto.content).not.toContain('"options": array of 3–4 action strings');
+  });
+});
+
+describe("output protocol — quest status", () => {
+  it("tells the model quests carry a status so it can mark them done", () => {
+    const msgs = buildMessages({ settings, game: newGame(), playerMessage: "go" });
+    const proto = msgs.find((m) => m.content.includes("OUTPUT PROTOCOL"))!;
+    expect(proto.content).toContain('"status": "active"|"done"');
+    expect(proto.content).toContain('status "done" when the player completes it');
   });
 });
 
