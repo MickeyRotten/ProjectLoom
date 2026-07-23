@@ -1,8 +1,9 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { useStore } from "../store";
 import { Options } from "./Options";
 import { TurnControls } from "./TurnControls";
 import { segmentDialogue } from "../lib/spotlight";
+import { parseInline } from "../lib/markdown";
 import type { Character } from "../types";
 
 /**
@@ -74,15 +75,47 @@ function Beat({
         seg.speaker ? (
           <p key={i} className="border-l-2 border-ink pl-2">
             <span className="mr-1 font-bold uppercase tracking-wide">{seg.speaker}:</span>
-            <span>“{seg.text}”</span>
+            <span>“<Formatted text={seg.text} />”</span>
           </p>
         ) : (
           <p key={i} className="whitespace-pre-wrap">
-            {seg.text}
+            <Formatted text={seg.text} />
           </p>
         ),
       )}
       {pending && <span className="animate-pulse"> ▊</span>}
     </div>
+  );
+}
+
+/**
+ * Render inline markdown (`**bold**`, `*italic*`, `` `code` ``) as 1-bit-safe
+ * spans — bold weight, italic slant, monospace-boxed code. Parsing is pure
+ * (see lib/markdown.ts); unbalanced markers fall back to literal text.
+ */
+function Formatted({ text }: { text: string }) {
+  return (
+    <>
+      {parseInline(text).map((s, i) => {
+        let node: ReactNode = s.text;
+        if (s.code) {
+          node = (
+            <code key={i} className="border border-ink px-1">
+              {s.text}
+            </code>
+          );
+        }
+        const cls = [s.bold ? "font-bold" : "", s.italic ? "italic" : ""]
+          .filter(Boolean)
+          .join(" ");
+        return cls ? (
+          <span key={i} className={cls}>
+            {node}
+          </span>
+        ) : (
+          <span key={i}>{node}</span>
+        );
+      })}
+    </>
   );
 }
