@@ -33,15 +33,17 @@ export function Composer() {
         </button>
         <button
           type="button"
+          disabled={streaming}
           onClick={() => setScreen("party")}
-          className="border-r-2 border-ink py-2 uppercase tracking-widest active:bg-ink active:text-paper"
+          className="border-r-2 border-ink py-2 uppercase tracking-widest disabled:opacity-40 active:bg-ink active:text-paper"
         >
           Party
         </button>
         <button
           type="button"
+          disabled={streaming}
           onClick={() => setScreen("inventory")}
-          className="py-2 uppercase tracking-widest active:bg-ink active:text-paper"
+          className="py-2 uppercase tracking-widest disabled:opacity-40 active:bg-ink active:text-paper"
         >
           Inventory
         </button>

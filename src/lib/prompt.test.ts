@@ -178,6 +178,18 @@ describe("buildHistory", () => {
     expect(bigCount).toBeGreaterThanOrEqual(1);
   });
 
+  it("keeps the newest beat even when it alone exceeds the budget", () => {
+    const g = newGame();
+    const huge = "z".repeat(40000); // ~10k tokens, far over any budget below
+    g.messages = [narr(1, "older"), narr(2, huge)];
+    const hist = buildHistory(g, 500);
+    // The opening is always present; the newest beat survives regardless.
+    expect(hist[0].content).toBe(g.scenario.openingNarration);
+    expect(hist.some((m) => m.content === huge)).toBe(true);
+    // The over-budget newest beat still crowds out the older one.
+    expect(hist.some((m) => m.content === "older")).toBe(false);
+  });
+
   it("keeps the newest turn, dropping older ones first", () => {
     const g = newGame();
     g.messages = [narr(1, "OLD".repeat(1000)), narr(2, "NEW")];

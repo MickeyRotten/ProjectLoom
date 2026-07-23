@@ -23,14 +23,23 @@ type Style = Omit<Span, "text">;
 
 type StyleKey = keyof Style;
 
-/** Delimiters, longest-first so `**` wins over `*` at the same position. */
-const DELIMS: { marker: string; key: StyleKey }[] = [
+/**
+ * Delimiters, longest-first so `**` wins over `*` at the same position.
+ * `wordBounded` markers (the underscore forms) only open/close at a word
+ * boundary, so `snake_case` and `__dunder__` identifiers stay literal.
+ */
+const DELIMS: { marker: string; key: StyleKey; wordBounded?: boolean }[] = [
   { marker: "`", key: "code" },
   { marker: "**", key: "bold" },
-  { marker: "__", key: "bold" },
+  { marker: "__", key: "bold", wordBounded: true },
   { marker: "*", key: "italic" },
-  { marker: "_", key: "italic" },
+  { marker: "_", key: "italic", wordBounded: true },
 ];
+
+/** Word char for boundary tests (`\w`); `undefined` (string edge) is a boundary. */
+function isWordChar(ch: string | undefined): boolean {
+  return ch !== undefined && /\w/.test(ch);
+}
 
 function emit(spans: Span[], text: string, base: Style): void {
   if (text) spans.push({ text, ...base });
@@ -43,11 +52,15 @@ function emit(spans: Span[], text: string, base: Style): void {
  */
 function parse(text: string, base: Style): Span[] {
   for (let i = 0; i < text.length; i++) {
-    for (const { marker, key } of DELIMS) {
+    for (const { marker, key, wordBounded } of DELIMS) {
       if (!text.startsWith(marker, i)) continue;
+      // Underscore emphasis must open on a boundary — `snake_case` is literal.
+      if (wordBounded && isWordChar(text[i - 1])) continue;
       const from = i + marker.length;
       const close = text.indexOf(marker, from);
       if (close === -1) continue; // unbalanced — not a real delimiter here
+      // …and close on a boundary too, so mid-word underscores don't terminate it.
+      if (wordBounded && isWordChar(text[close + marker.length])) continue;
 
       const inner = text.slice(from, close);
       if (!inner) continue; // empty `**` / `` — treat markers as literal

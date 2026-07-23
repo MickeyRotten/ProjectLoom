@@ -186,7 +186,8 @@ function indent(block: string): string {
 function buildWorldNotesBlock(game: GameState, playerMessage: string): string {
   if (!game.worldNotes.length) return "";
   const recent = game.messages
-    .slice(-WORLD_NOTES_CONTEXT_TURNS)
+    // ×2: a turn is a player + narrator message pair.
+    .slice(-WORLD_NOTES_CONTEXT_TURNS * 2)
     .map((m) => m.content)
     .join("\n");
   const scanText = `${playerMessage}\n${recent}`;
@@ -206,7 +207,8 @@ function buildSpotlightBlock(
   const party = partyMembers(game);
   if (!party.length) return "";
   const recentContext = game.messages
-    .slice(-SPOTLIGHT_CONTEXT_TURNS)
+    // ×2: a turn is a player + narrator message pair.
+    .slice(-SPOTLIGHT_CONTEXT_TURNS * 2)
     .map((m) => m.content)
     .join("\n");
   const signals = computeSpotlightSignals(playerMessage, recentContext, party, currentTurn);
@@ -242,7 +244,9 @@ export function buildHistory(game: GameState, budgetTokens: number): ChatMessage
   const kept: ChatMessage[] = [];
   for (let i = turns.length - 1; i >= 0; i--) {
     const cost = approxTokens(turns[i].content);
-    if (used + cost > budgetTokens) break;
+    // Always keep the newest turn, even if it alone blows the budget — dropping
+    // it would strand the model with only the opening narration.
+    if (kept.length && used + cost > budgetTokens) break;
     used += cost;
     kept.unshift(turns[i]);
   }
