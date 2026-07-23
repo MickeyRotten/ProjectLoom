@@ -78,7 +78,13 @@ buttons)
 named save slots in `db.ts` (`saveSlot`/`loadSlot`/`listSlots`/`deleteSlot`), gear → menu
 routing, full-screen authoring screens — Scenario, Characters (PC + party CRUD), World Notes,
 Quests, Advanced instructions with per-field reset, Model & Key, Saves snapshot/restore)
-done. Next: **Phase 5 — Polish + APK**. Track scope in `DESIGN.md → Build Phases`.
++ Phase 5 (polish + APK: reversal — `reversal.ts` pre-turn slice snapshot per turn,
+`undoLastTurn`/`regenerateLastTurn` store actions, `TurnControls` under the latest beat;
+error auto-retry — `retry.ts` retryable-status/backoff policy wired into `streamChat` with
+whole-stream restart; mobile polish — overscroll lock; signed-release APK CI already in
+`android.yml`)
+done. **MVP complete.** Deferred (post-MVP): history summarization, NPC/item art, TTS,
+weather animation, multi-world. Track scope in `DESIGN.md → Build Phases`.
 
 ## Attribution
 

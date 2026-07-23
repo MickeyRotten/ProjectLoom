@@ -67,10 +67,29 @@ export interface Message {
   turn: number;
   /** The parsed delta block applied by this turn — recorded for reversal (Phase 5). */
   appliedDeltas?: LoomBlock;
+  /** Pre-turn slices this turn overwrote — undo/regenerate restores them (Phase 5). */
+  reversal?: Reversal;
   /** Scene snapshot at this message, for header display + reversal restore. */
   day?: number;
   location?: string;
   weather?: string;
+}
+
+/**
+ * Phase 5 reversal snapshot. Op-based deltas are lossy to invert (a party
+ * `remove` benches, an inventory `add` merges quantity), so a turn instead
+ * records exactly the mutable slices it is about to overwrite. Undo restores
+ * them wholesale — exact and order-preserving. Scalars are always captured; a
+ * slice is present only when the turn actually touched it, keeping most turns
+ * tiny.
+ */
+export interface Reversal {
+  day: number;
+  location: string;
+  weather: string;
+  characters?: Character[];
+  inventory?: Item[];
+  quests?: Quest[];
 }
 
 export interface Scenario {

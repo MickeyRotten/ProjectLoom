@@ -17,6 +17,7 @@ import { buildMessages } from "./lib/prompt";
 import { streamChat, OpenRouterError } from "./lib/openrouter";
 import { parseLoomResponse, truncateForDisplay } from "./lib/loomBlock";
 import { applyDeltas } from "./lib/deltas";
+import { captureReversal, applyReversal } from "./lib/reversal";
 import { detectSpeakers } from "./lib/spotlight";
 import {
   bannerKey,
@@ -92,6 +93,12 @@ export interface LoomStore {
 
   newAdventure: () => void;
   sendTurn: (text: string) => Promise<void>;
+
+  // Reversal (Phase 5) — unwind the latest turn's applied deltas.
+  /** Drop the latest turn (player + narrator), restoring pre-turn scene state. */
+  undoLastTurn: () => void;
+  /** Re-run the latest turn's player input for a fresh narration (swipe). */
+  regenerateLastTurn: () => void;
 
   /** Ensure the banner + all in-party portraits exist (cache-then-generate). */
   syncImages: () => void;
@@ -411,12 +418,26 @@ export const useStore = create<LoomStore>((set, get) => {
         );
       }
 
+      // Reference-diff the pre-turn slices (base) against the post-turn ones so
+      // undo/regenerate can restore exactly what this turn overwrote (Phase 5).
+      const post = {
+        ...base,
+        characters,
+        inventory: scene?.inventory ?? g.inventory,
+        quests: scene?.quests ?? g.quests,
+        day: scene?.day ?? g.day,
+        location: scene?.location ?? g.location,
+        weather: scene?.weather ?? g.weather,
+      };
+      const reversal = captureReversal(base, post);
+
       const narratorMsg: Message = {
         id: uid(),
         role: "narrator",
         content: prose || raw.trim(),
         turn,
         appliedDeltas: block ?? undefined,
+        reversal,
         day: scene?.day ?? g.day,
         location: scene?.location ?? g.location,
         weather: scene?.weather ?? g.weather,
@@ -453,6 +474,58 @@ export const useStore = create<LoomStore>((set, get) => {
             : "Turn failed.";
       set({ streaming: false, streamText: "", error: message });
     }
+  },
+
+  undoLastTurn() {
+    if (get().streaming) return;
+    const g = get().game;
+    // The latest completed turn is the last narrator message; a turn is one
+    // player line + one narrator beat sharing a turn number.
+    let idx = -1;
+    for (let i = g.messages.length - 1; i >= 0; i--) {
+      if (g.messages[i].role === "narrator") {
+        idx = i;
+        break;
+      }
+    }
+    if (idx === -1) return;
+
+    const narrator = g.messages[idx];
+    const restored = narrator.reversal ? applyReversal(g, narrator.reversal) : g;
+
+    // Drop both messages of that turn; restore options from the now-latest beat.
+    const messages = g.messages.filter((m) => m.turn !== narrator.turn);
+    const prevNarrator = [...messages].reverse().find((m) => m.role === "narrator");
+    const turnNumber = messages.reduce((max, m) => Math.max(max, m.turn), 0);
+
+    const game: GameState = { ...restored, messages, turnNumber };
+    set({
+      game,
+      options: prevNarrator?.appliedDeltas?.options ?? [],
+      error: null,
+      streamText: "",
+    });
+    void saveActiveGame(game);
+    get().syncImages();
+  },
+
+  regenerateLastTurn() {
+    if (get().streaming) return;
+    const g = get().game;
+    let idx = -1;
+    for (let i = g.messages.length - 1; i >= 0; i--) {
+      if (g.messages[i].role === "narrator") {
+        idx = i;
+        break;
+      }
+    }
+    if (idx === -1) return;
+
+    const turn = g.messages[idx].turn;
+    const player = g.messages.find((m) => m.turn === turn && m.role === "player");
+    // Unwind the turn, then replay the same player input for a fresh narration.
+    get().undoLastTurn();
+    if (player) void get().sendTurn(player.content);
   },
 
   syncImages() {

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useStore } from "../store";
 import { Options } from "./Options";
+import { TurnControls } from "./TurnControls";
 import { segmentDialogue } from "../lib/spotlight";
 import type { Character } from "../types";
 
@@ -32,6 +33,7 @@ export function ChatView() {
 
       {streaming && <Beat role="narrator" text={streamText || "…"} party={party} pending />}
 
+      {!streaming && <TurnControls />}
       {!streaming && <Options />}
 
       {error && (
