@@ -24,7 +24,7 @@ export function ChatView() {
   }, [messages.length, streamText, error]);
 
   return (
-    <section className="flex-1 space-y-3 overflow-y-auto p-3">
+    <section className="flex-1 space-y-3 overflow-y-auto p-3 text-sm">
       <Beat role="narrator" text={opening} party={party} />
 
       {messages.map((m) => (
