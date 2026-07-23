@@ -83,6 +83,34 @@ describe("party roster + spotlight", () => {
   });
 });
 
+describe("world notes injection", () => {
+  it("injects matched notes as a system block before the spotlight/history", () => {
+    const g = newGame();
+    g.worldNotes = [
+      { id: "n1", title: "The Old Well", keywords: ["well"], content: "the last working well" },
+    ];
+    const msgs = buildMessages({ settings, game: g, playerMessage: "I search for the well" });
+    const idx = msgs.findIndex((m) => m.content.includes("WORLD NOTES"));
+    expect(idx).toBe(1); // right after the system context
+    expect(msgs[idx].content).toContain("The Old Well: the last working well");
+  });
+
+  it("omits the block when no note matches the scan text", () => {
+    const g = newGame();
+    g.worldNotes = [{ id: "n1", title: "The Old Well", keywords: ["well"], content: "x" }];
+    const msgs = buildMessages({ settings, game: g, playerMessage: "I climb the ridge" });
+    expect(msgs.some((m) => m.content.includes("WORLD NOTES"))).toBe(false);
+  });
+
+  it("matches keywords against recent beats, not just the new message", () => {
+    const g = newGame();
+    g.worldNotes = [{ id: "n1", title: "Ash Cult", keywords: ["ashers"], content: "zealots" }];
+    g.messages = [narr(1, "The ashers block the gate.")];
+    const msgs = buildMessages({ settings, game: g, playerMessage: "I step forward" });
+    expect(msgs.some((m) => m.content.includes("WORLD NOTES"))).toBe(true);
+  });
+});
+
 describe("buildHistory", () => {
   it("prepends the opening narration as the first assistant turn", () => {
     const g = newGame();

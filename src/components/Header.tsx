@@ -13,7 +13,7 @@ export function Header() {
         <button
           type="button"
           aria-label="Settings"
-          onClick={() => setScreen("settings")}
+          onClick={() => setScreen("menu")}
           className="border-2 border-ink px-2 leading-none active:bg-ink active:text-paper"
         >
           =

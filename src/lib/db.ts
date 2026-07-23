@@ -51,6 +51,53 @@ export async function loadActiveGame(): Promise<GameState | null> {
 }
 
 /* ------------------------------------------------------------------ *
+ * Named save slots (Phase 4). Full GameState snapshots, each stored under
+ * `slot:<id>` in the same SAVES_STORE alongside a little metadata wrapper.
+ * "New Adventure" is separate (it reseeds the active game); slots are manual
+ * snapshot/restore points.
+ * ------------------------------------------------------------------ */
+
+const SLOT_PREFIX = "slot:";
+
+/** A stored snapshot: metadata for the Saves list plus the full game. */
+export interface SaveSlot {
+  id: string;
+  name: string;
+  savedAt: number;
+  game: GameState;
+}
+
+const slotKey = (id: string) => `${SLOT_PREFIX}${id}`;
+
+/** Snapshot a game into a named slot (creates or overwrites by id). */
+export async function saveSlot(slot: SaveSlot): Promise<void> {
+  const db = await getDB();
+  await db.put(SAVES_STORE, slot, slotKey(slot.id));
+}
+
+/** Restore a slot's game snapshot, or null if the slot is gone. */
+export async function loadSlot(id: string): Promise<GameState | null> {
+  const db = await getDB();
+  const slot = (await db.get(SAVES_STORE, slotKey(id))) as SaveSlot | undefined;
+  return slot?.game ?? null;
+}
+
+/** Delete a named slot. */
+export async function deleteSlot(id: string): Promise<void> {
+  const db = await getDB();
+  await db.delete(SAVES_STORE, slotKey(id));
+}
+
+/** All slots, newest first — metadata only is needed, but we hold the game too. */
+export async function listSlots(): Promise<SaveSlot[]> {
+  const db = await getDB();
+  const keys = (await db.getAllKeys(SAVES_STORE)) as IDBValidKey[];
+  const slotKeys = keys.filter((k) => typeof k === "string" && k.startsWith(SLOT_PREFIX));
+  const slots = (await Promise.all(slotKeys.map((k) => db.get(SAVES_STORE, k)))) as SaveSlot[];
+  return slots.filter(Boolean).sort((a, b) => b.savedAt - a.savedAt);
+}
+
+/* ------------------------------------------------------------------ *
  * Generated image blobs (Phase 3). Keyed by `banner:<location>` /
  * `portrait:<memberId>`; the UI reads them back as object URLs.
  * ------------------------------------------------------------------ */

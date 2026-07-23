@@ -1,5 +1,6 @@
 import type { Character, GameState, Settings } from "../types";
 import { computeSpotlightSignals, formatSpotlightBlock } from "./spotlight";
+import { matchWorldNotes, formatWorldNotesBlock } from "./worldNotes";
 
 /**
  * Prompt assembly (DESIGN.md → Prompt assembly, trimmed port of
@@ -30,6 +31,9 @@ const DEFAULT_HISTORY_BUDGET = 3000;
 /** How many recent beats fold into the spotlight relevance/context scan. */
 const SPOTLIGHT_CONTEXT_TURNS = 4;
 
+/** How many recent beats fold into the World Notes keyword scan (#7). */
+const WORLD_NOTES_CONTEXT_TURNS = 3;
+
 /** In-party members (role "member", inParty), roster + spotlight subject. */
 function partyMembers(game: GameState): Character[] {
   return game.characters.filter((c) => c.role === "member" && c.inParty);
@@ -50,7 +54,10 @@ export function buildMessages(opts: BuildOptions): ChatMessage[] {
   // 1–6. Core role + scenario + PC + party + inventory + quests, one block.
   messages.push({ role: "system", content: buildSystemContext(settings, game) });
 
-  // 7. World Notes — inserted here in Phase 4.
+  // 7. World Notes — lore matched by keyword against the new message + last
+  //    few beats (single-category lorebook, titles are implicit keywords).
+  const worldNotes = buildWorldNotesBlock(game, playerMessage);
+  if (worldNotes) messages.push({ role: "system", content: worldNotes });
 
   // 8. Spotlight block — deterministic per-member signals + the rule.
   const spotlight = buildSpotlightBlock(settings, game, playerMessage, currentTurn);
@@ -161,6 +168,21 @@ function indent(block: string): string {
     .split("\n")
     .map((l) => (l ? `  ${l}` : l))
     .join("\n");
+}
+
+/**
+ * World Notes block (#7) — the notes whose title/keywords appear in the new
+ * message or the last few beats. Simplified `match_entries`: single category,
+ * scan window is the freshest context (where lore is most likely referenced).
+ */
+function buildWorldNotesBlock(game: GameState, playerMessage: string): string {
+  if (!game.worldNotes.length) return "";
+  const recent = game.messages
+    .slice(-WORLD_NOTES_CONTEXT_TURNS)
+    .map((m) => m.content)
+    .join("\n");
+  const scanText = `${playerMessage}\n${recent}`;
+  return formatWorldNotesBlock(matchWorldNotes(game.worldNotes, scanText));
 }
 
 /**
