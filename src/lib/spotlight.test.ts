@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
+  computeRelevantGear,
   computeSpotlightSignals,
   detectSpeakers,
+  formatGearBlock,
   formatSpotlightBlock,
   isDirectlyAddressed,
   memberSpoke,
@@ -171,5 +173,71 @@ describe("segmentDialogue", () => {
 
   it("no party ⇒ whole text is prose", () => {
     expect(segmentDialogue("Anything.", [])).toEqual([{ speaker: null, text: "Anything." }]);
+  });
+});
+
+describe("computeRelevantGear", () => {
+  const hiro = member({
+    id: "pc",
+    name: "Hiro",
+    equipment: [
+      { label: "Grappling Hook", description: "A barbed iron hook on thirty feet of rope." },
+      { label: "White Tunic", description: "Old, tattered, but still serviceable." },
+    ],
+  });
+  const packRat = member({
+    id: "m-pack",
+    name: "Pack Rat",
+    equipment: [{ label: "Lantern", description: "Casts a warm ring of light in the dark." }],
+  });
+
+  it("matches an item by a label token in the player's message", () => {
+    const gear = computeRelevantGear("I throw the grappling hook at the ledge", "", [hiro]);
+    expect(gear).toEqual([
+      {
+        owner: "Hiro",
+        label: "Grappling Hook",
+        description: "A barbed iron hook on thirty feet of rope.",
+      },
+    ]);
+  });
+
+  it("matches an item by a description keyword", () => {
+    const gear = computeRelevantGear("Is there any rope in my pack?", "", [hiro]);
+    expect(gear.map((g) => g.label)).toEqual(["Grappling Hook"]);
+  });
+
+  it("matches against recent scene context, not only the new message", () => {
+    const gear = computeRelevantGear("I press on", "The tunnel ahead is pitch dark.", [packRat]);
+    expect(gear.map((g) => g.label)).toEqual(["Lantern"]);
+  });
+
+  it("returns nothing when no equipped item is relevant", () => {
+    expect(computeRelevantGear("I wave hello", "", [hiro, packRat])).toEqual([]);
+  });
+
+  it("short label tokens still count (like Field Skill name tokens)", () => {
+    const withMap = member({
+      id: "m-map",
+      name: "Scout",
+      equipment: [{ label: "Map", description: "Hand-inked chart of the valley." }],
+    });
+    expect(computeRelevantGear("check the map", "", [withMap]).map((g) => g.label)).toEqual([
+      "Map",
+    ]);
+  });
+});
+
+describe("formatGearBlock", () => {
+  it("formats one line per match with owner, label, and description", () => {
+    const block = formatGearBlock([
+      { owner: "Hiro", label: "Grappling Hook", description: "Barbed hook on rope." },
+    ]);
+    expect(block).toContain("RELEVANT GEAR — THIS TURN");
+    expect(block).toContain("- Hiro — Grappling Hook: Barbed hook on rope.");
+  });
+
+  it("returns an empty string for no matches (no block injected)", () => {
+    expect(formatGearBlock([])).toBe("");
   });
 });

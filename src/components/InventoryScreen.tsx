@@ -1,4 +1,5 @@
 import { useStore } from "../store";
+import { isGold } from "../lib/defaults";
 import type { Item } from "../types";
 import { OverlayHeader } from "./OverlayHeader";
 import { EditToolbar, btn } from "./fields";
@@ -42,11 +43,13 @@ export function InventoryScreen() {
             {editing ? (
               <>
                 <div className="flex items-center gap-2">
+                  {/* Gold is permanent: quantity is editable, label is not. */}
                   <input
                     value={it.label}
                     onChange={(e) => patch(i, { label: e.target.value })}
                     placeholder="label"
-                    className="min-w-0 flex-1 border-2 border-ink bg-paper p-2 font-bold focus:outline-none"
+                    disabled={isGold(it.label)}
+                    className="min-w-0 flex-1 border-2 border-ink bg-paper p-2 font-bold focus:outline-none disabled:opacity-100"
                   />
                   <span className="uppercase tracking-widest text-sm">×</span>
                   <input
@@ -66,13 +69,15 @@ export function InventoryScreen() {
                   rows={2}
                   className="w-full resize-y border-2 border-ink bg-paper p-2 text-sm focus:outline-none"
                 />
-                <button
-                  type="button"
-                  onClick={() => remove(i)}
-                  className="border-2 border-ink px-2 py-1 text-xs uppercase tracking-widest active:bg-ink active:text-paper"
-                >
-                  Remove
-                </button>
+                {!isGold(it.label) && (
+                  <button
+                    type="button"
+                    onClick={() => remove(i)}
+                    className="border-2 border-ink px-2 py-1 text-xs uppercase tracking-widest active:bg-ink active:text-paper"
+                  >
+                    Remove
+                  </button>
+                )}
               </>
             ) : (
               <>

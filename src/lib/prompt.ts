@@ -1,5 +1,10 @@
 import type { Character, GameState, Settings } from "../types";
-import { computeSpotlightSignals, formatSpotlightBlock } from "./spotlight";
+import {
+  computeRelevantGear,
+  computeSpotlightSignals,
+  formatGearBlock,
+  formatSpotlightBlock,
+} from "./spotlight";
 import { matchWorldNotes, formatWorldNotesBlock } from "./worldNotes";
 
 /**
@@ -62,6 +67,12 @@ export function buildMessages(opts: BuildOptions): ChatMessage[] {
   // 8. Spotlight block — deterministic per-member signals + the rule.
   const spotlight = buildSpotlightBlock(settings, game, playerMessage, currentTurn);
   if (spotlight) messages.push({ role: "system", content: spotlight });
+
+  // 8b. Relevant gear — equipped items (PC + party) whose keywords surface in
+  //     the action, spotlighted with full name + description so the narrator
+  //     uses them. Same keyword machinery + context window as the spotlight.
+  const gear = buildGearBlock(game, playerMessage);
+  if (gear) messages.push({ role: "system", content: gear });
 
   // 9. History window: opening narration as the first assistant turn, then a
   //    budget-trimmed tail of recent turns.
@@ -215,6 +226,23 @@ function buildSpotlightBlock(
   return formatSpotlightBlock(signals, settings.spotlightRule);
 }
 
+/**
+ * Relevant-gear block (#8b) — equipped items on the PC + in-party members
+ * whose keywords overlap the new message or the recent beats.
+ */
+function buildGearBlock(game: GameState, playerMessage: string): string {
+  const carriers = game.characters.filter(
+    (c) => c.role === "pc" || (c.role === "member" && c.inParty),
+  );
+  if (!carriers.some((c) => c.equipment.length)) return "";
+  const recentContext = game.messages
+    // ×2: a turn is a player + narrator message pair.
+    .slice(-SPOTLIGHT_CONTEXT_TURNS * 2)
+    .map((m) => m.content)
+    .join("\n");
+  return formatGearBlock(computeRelevantGear(playerMessage, recentContext, carriers));
+}
+
 /** Port of _format_equipment, simplified to {label, description} — no catalog. */
 function formatEquipment(equipment: { label: string; description: string }[]): string {
   if (!equipment.length) return "";
@@ -275,6 +303,7 @@ function buildOutputProtocol(settings: Settings): string {
     optionsLine,
     '- "party": array of { "op": "add|update|remove", "name", "species", "description", "fieldSkill": { "name", "description" } }. Add a member only when they join; remove when they leave.',
     '- "inventory": array of { "op": "add|update|remove", "label", "description", "quantity" }.',
+    '- Gold is the permanent currency item in "inventory" — never remove it. When the player gains or spends money, emit { "op": "update", "label": "Gold", "quantity": <new total> }.',
     '- "quests": array of { "op": "add|update|remove", "label", "description", "reward", "status": "active"|"done" }. Update a quest with status "done" when the player completes it.',
     '- "spoke": array of member names you gave a spoken line this turn (a hint only).',
     "",

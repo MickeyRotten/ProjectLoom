@@ -1,5 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { defaultPC, migrateGame, newGame, newMember } from "./defaults";
+import {
+  defaultPC,
+  ensureGold,
+  goldItem,
+  isGold,
+  migrateGame,
+  newGame,
+  newMember,
+  STARTING_GOLD,
+} from "./defaults";
 import type { GameState } from "../types";
 
 describe("newGame — roster carry-over", () => {
@@ -36,7 +45,8 @@ describe("migrateGame", () => {
     };
     const g = migrateGame(old)!;
     expect(g.worldNotes).toEqual([]);
-    expect(g.inventory).toEqual([]);
+    // Pre-Gold saves gain the permanent currency row.
+    expect(g.inventory).toEqual([goldItem()]);
     expect(g.quests).toEqual([]);
     expect(g.scenario.title).toBeTruthy();
     expect(g.location).toBe("Old Well");
@@ -57,5 +67,35 @@ describe("migrateGame", () => {
     const g = migrateGame(current)!;
     expect(g.quests).toEqual(current.quests);
     expect(g.characters).toEqual(current.characters);
+  });
+
+  it("keeps an existing Gold row (and its quantity) on migrate", () => {
+    const current = newGame();
+    current.inventory = [{ label: "Gold", description: "Currency", quantity: 77 }];
+    const g = migrateGame(current)!;
+    expect(g.inventory).toHaveLength(1);
+    expect(g.inventory[0].quantity).toBe(77);
+  });
+});
+
+describe("Gold — permanent currency", () => {
+  it("seeds a fresh game with the Gold row", () => {
+    const g = newGame();
+    expect(g.inventory.some((it) => isGold(it.label))).toBe(true);
+    expect(g.inventory.find((it) => isGold(it.label))?.quantity).toBe(STARTING_GOLD);
+  });
+
+  it("isGold matches case-insensitively, other labels do not", () => {
+    expect(isGold("Gold")).toBe(true);
+    expect(isGold(" gold ")).toBe(true);
+    expect(isGold("Golden Idol")).toBe(false);
+  });
+
+  it("ensureGold prepends the row only when missing", () => {
+    const withGold = [goldItem(5)];
+    expect(ensureGold(withGold)).toBe(withGold);
+    const restored = ensureGold([{ label: "Rope", description: "", quantity: 1 }]);
+    expect(isGold(restored[0].label)).toBe(true);
+    expect(restored).toHaveLength(2);
   });
 });

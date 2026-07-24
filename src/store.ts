@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { Character, GameState, Item, Message, Note, Quest, Scenario, Settings } from "./types";
-import { newGame, newMember, PARTY_LIMIT } from "./lib/defaults";
+import { ensureGold, newGame, newMember, PARTY_LIMIT } from "./lib/defaults";
 import { loadSettings, saveSettings } from "./lib/settings";
 import {
   loadActiveGame,
@@ -453,7 +453,8 @@ export const useStore = create<LoomStore>((set, get) => {
 
   setInventory(inventory) {
     const g = get().game;
-    const game = { ...g, inventory };
+    // Gold is permanent — an edit-mode draft can't delete the currency row.
+    const game = { ...g, inventory: ensureGold(inventory) };
     set({ game });
     void saveActiveGame(game);
   },

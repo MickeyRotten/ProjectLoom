@@ -1,5 +1,5 @@
 import type { Character, GameState, Item, LoomBlock, PartyDelta, Quest } from "../types";
-import { PARTY_LIMIT } from "./defaults";
+import { isGold, PARTY_LIMIT } from "./defaults";
 
 /**
  * Apply a parsed <<<LOOM>>> block to the active game (loom-turn-protocol):
@@ -121,7 +121,11 @@ function applyInventory(current: Item[], block: LoomBlock): Item[] {
     const i = next.findIndex((it) => slug(it.label) === key);
 
     if (d.op === "remove") {
-      if (i !== -1) next.splice(i, 1);
+      // Gold is permanent — a remove empties the purse instead of deleting it.
+      if (i !== -1) {
+        if (isGold(next[i].label)) next[i] = { ...next[i], quantity: 0 };
+        else next.splice(i, 1);
+      }
       continue;
     }
 

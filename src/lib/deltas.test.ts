@@ -31,6 +31,7 @@ describe("applyDeltas — scene", () => {
 describe("applyDeltas — inventory ops", () => {
   it("adds a new item", () => {
     const g = game();
+    g.inventory = [];
     const scene = applyDeltas(g, {
       inventory: [{ op: "add", label: "Cracked Compass", description: "spins wrong", quantity: 1 }],
     });
@@ -58,6 +59,21 @@ describe("applyDeltas — inventory ops", () => {
     g.inventory = [{ label: "Torch", description: "", quantity: 1 }];
     const scene = applyDeltas(g, { inventory: [{ op: "remove", label: "Torch" }] });
     expect(scene.inventory).toHaveLength(0);
+  });
+
+  it("zeroes Gold on remove instead of deleting it (permanent currency)", () => {
+    const g = game();
+    g.inventory = [{ label: "Gold", description: "Currency", quantity: 50 }];
+    const scene = applyDeltas(g, { inventory: [{ op: "remove", label: "gold" }] });
+    expect(scene.inventory).toHaveLength(1);
+    expect(scene.inventory[0]).toMatchObject({ label: "Gold", quantity: 0 });
+  });
+
+  it("updates the Gold total via the update op", () => {
+    const g = game();
+    g.inventory = [{ label: "Gold", description: "Currency", quantity: 10 }];
+    const scene = applyDeltas(g, { inventory: [{ op: "update", label: "Gold", quantity: 120 }] });
+    expect(scene.inventory[0].quantity).toBe(120);
   });
 
   it("leaves inventory untouched when no inventory deltas", () => {

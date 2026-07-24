@@ -1,4 +1,4 @@
-import type { Character, GameState, Scenario, Settings } from "../types";
+import type { Character, GameState, Item, Scenario, Settings } from "../types";
 
 /**
  * Ship-time defaults. The pre-made scenario is intentionally minimal for
@@ -11,6 +11,30 @@ export const DEFAULT_IMAGE_MODEL = "google/gemini-3.1-flash-lite-image";
 
 /** Max party members alongside the PC (PC + 3). */
 export const PARTY_LIMIT = 3;
+
+/* ------------------------------------------------------------------ *
+ * Gold — the permanent currency item. Every game carries exactly one Gold
+ * row in the inventory; the model adjusts it via inventory ops (a `remove`
+ * zeroes it instead of deleting) and the player can edit its quantity but
+ * never delete or rename it.
+ * ------------------------------------------------------------------ */
+
+export const GOLD_LABEL = "Gold";
+export const STARTING_GOLD = 10;
+
+/** Case-insensitive match for the permanent currency item. */
+export function isGold(label: string): boolean {
+  return label.trim().toLowerCase() === "gold";
+}
+
+export function goldItem(quantity = STARTING_GOLD): Item {
+  return { label: GOLD_LABEL, description: "Currency — coin of the realm.", quantity };
+}
+
+/** Guarantee the Gold row exists (first), preserving one already present. */
+export function ensureGold(inventory: Item[]): Item[] {
+  return inventory.some((it) => isGold(it.label)) ? inventory : [goldItem(), ...inventory];
+}
 
 /**
  * Core narrator role — setting-agnostic. Genre, setting, and tone come from the
@@ -139,7 +163,7 @@ export function newGame(
       ? characters.map((c) => ({ ...c, lastSpokeTurn: 0 }))
       : [defaultPC()],
     worldNotes: [],
-    inventory: [],
+    inventory: [goldItem()],
     quests: [],
     messages: [],
     turnNumber: 0,
@@ -162,5 +186,7 @@ export function migrateGame(saved: unknown): GameState | null {
     ...base,
     ...partial,
     scenario: { ...base.scenario, ...(partial.scenario ?? {}) },
+    // Saves from before Gold existed gain the permanent currency row.
+    inventory: ensureGold(partial.inventory ?? []),
   };
 }

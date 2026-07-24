@@ -4,7 +4,8 @@ import { Options } from "./Options";
 import { TurnControls } from "./TurnControls";
 import { segmentDialogue } from "../lib/spotlight";
 import { parseInline } from "../lib/markdown";
-import type { Character } from "../types";
+import { deriveToasts } from "../lib/toasts";
+import type { Character, Message } from "../types";
 
 /** Which message (id) is being edited, and the working draft. */
 type Editing = { id: string; role: "player" | "narrator"; draft: string };
@@ -100,6 +101,10 @@ export function ChatView() {
               </div>
             )}
 
+            {/* Inline state-change toasts, tethered under the beat that
+                applied them (derived from its recorded deltas). */}
+            {m.role === "narrator" && !isEditing && <Toasts msg={m} />}
+
             {/* Player beat: tap reveals an Edit button (edit + re-roll turn). */}
             {m.id === lastPlayerId && active === m.id && !isEditing && (
               <button
@@ -161,6 +166,24 @@ export function ChatView() {
 
       <div ref={bottomRef} />
     </section>
+  );
+}
+
+/** Chip row of state-change announcements for one narrator beat. */
+function Toasts({ msg }: { msg: Message }) {
+  const toasts = deriveToasts(msg);
+  if (!toasts.length) return null;
+  return (
+    <div className="flex flex-wrap gap-1">
+      {toasts.map((t, i) => (
+        <span
+          key={i}
+          className="border border-ink px-2 py-0.5 text-xs uppercase tracking-widest opacity-80"
+        >
+          ◆ {t}
+        </span>
+      ))}
+    </div>
   );
 }
 
