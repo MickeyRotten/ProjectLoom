@@ -157,6 +157,14 @@ export function blobToDataUrl(blob: Blob): Promise<string> {
 
 /* ------------------------------ the request ----------------------------- */
 
+/**
+ * The key image requests bill against: the dedicated image key when set,
+ * otherwise the main OpenRouter key. Trimmed; "" when neither is set.
+ */
+export function imageRequestKey(settings: Settings): string {
+  return settings.imageKey?.trim() || settings.openRouterKey.trim();
+}
+
 export interface GenerateImageOptions {
   settings: Settings;
   prompt: string;
@@ -174,7 +182,8 @@ export interface GenerateImageOptions {
 export async function generateImage(opts: GenerateImageOptions): Promise<Blob> {
   const { settings, prompt, image, signal } = opts;
 
-  if (!settings.openRouterKey.trim()) {
+  const key = imageRequestKey(settings);
+  if (!key) {
     throw new ImageError("No OpenRouter API key set. Add one in Model & Key.");
   }
 
@@ -188,7 +197,7 @@ export async function generateImage(opts: GenerateImageOptions): Promise<Blob> {
   const res = await fetch(ENDPOINT, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${settings.openRouterKey.trim()}`,
+      Authorization: `Bearer ${key}`,
       "Content-Type": "application/json",
       "HTTP-Referer": "https://github.com/MickeyRotten/ProjectLoom",
       "X-Title": "Project Loom",

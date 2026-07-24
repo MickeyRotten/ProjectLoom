@@ -64,6 +64,20 @@ export function ModelKeyScreen() {
           error={error}
         />
 
+        <Field label="Image API Key">
+          <input
+            type="password"
+            autoComplete="off"
+            value={settings.imageKey}
+            onChange={(e) => update({ imageKey: e.target.value })}
+            placeholder="Optional — blank uses the key above"
+            className="w-full border-2 border-ink bg-paper p-2 focus:outline-none"
+          />
+          <span className="mt-1 block text-xs opacity-60">
+            Separate key billed for image generation. Leave blank to reuse the OpenRouter API Key.
+          </span>
+        </Field>
+
         <ModelField
           label="Image Model"
           value={settings.imageModelId}

@@ -120,6 +120,11 @@ export interface GameState {
 
 export interface Settings {
   openRouterKey: string;
+  /**
+   * Optional separate OpenRouter key for image generation — lets the player
+   * track image spend against its own key. Blank falls back to openRouterKey.
+   */
+  imageKey: string;
   textModelId: string;
   imageModelId: string;
   temperature: number;
