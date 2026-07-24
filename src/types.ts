@@ -118,8 +118,11 @@ export interface GameState {
   weather: string;
 }
 
-/** 1-bit post-process mode: Bayer ordered dither (textured) or plain 50% threshold (flat). */
-export type DitherMode = "bayer4" | "threshold";
+/**
+ * 1-bit post-process mode: Bayer ordered dither (textured), plain 50%
+ * threshold (flat), or off (raw model output, no quantize pass).
+ */
+export type DitherMode = "bayer4" | "threshold" | "off";
 
 /**
  * A user-uploaded portrait style reference image. Stored inline in Settings

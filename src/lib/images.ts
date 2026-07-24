@@ -316,6 +316,7 @@ export async function toOneBitBlob(
   targetWidth: number,
   mode: DitherMode,
 ): Promise<Blob> {
+  if (mode === "off") return blob;
   try {
     const bitmap = await createImageBitmap(blob);
     const targetHeight = Math.max(1, Math.round((targetWidth * bitmap.height) / bitmap.width));
