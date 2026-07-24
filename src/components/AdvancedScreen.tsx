@@ -100,13 +100,26 @@ export function AdvancedScreen() {
         <button
           type="button"
           onClick={() =>
-            update({ ditherMode: settings.ditherMode === "bayer4" ? "threshold" : "bayer4" })
+            update({
+              // Cycle THRESHOLD → DITHER → OFF; "off" skips the 1-bit pass
+              // entirely and keeps the raw model output.
+              ditherMode:
+                settings.ditherMode === "threshold"
+                  ? "bayer4"
+                  : settings.ditherMode === "bayer4"
+                    ? "off"
+                    : "threshold",
+            })
           }
           className="flex w-full items-center justify-between border-2 border-ink p-3 text-left uppercase tracking-widest active:bg-ink active:text-paper"
         >
           <span>1-Bit Shading</span>
           <span className="border-2 border-ink px-2 py-1 text-sm">
-            {settings.ditherMode === "bayer4" ? "DITHER" : "THRESHOLD"}
+            {settings.ditherMode === "bayer4"
+              ? "DITHER"
+              : settings.ditherMode === "off"
+                ? "OFF"
+                : "THRESHOLD"}
           </span>
         </button>
 

@@ -128,7 +128,10 @@ export function defaultSettings(): Settings {
     portraitStyle: DEFAULT_PORTRAIT_STYLE,
     portraitRefImages: [],
     portraitRefInstruction: DEFAULT_REFERENCE_INSTRUCTION,
-    ditherMode: "bayer4",
+    // Threshold by default: flat 50% keeps shapes and faces crisp. Dither is
+    // the opt-in retro texture — its clamped band still speckles less, but any
+    // texture costs legibility at portrait size.
+    ditherMode: "threshold",
     appearanceInstructions: DEFAULT_APPEARANCE_INSTRUCTIONS,
     optionInstructions: DEFAULT_OPTION_INSTRUCTIONS,
     spotlightRule: DEFAULT_SPOTLIGHT_RULE,

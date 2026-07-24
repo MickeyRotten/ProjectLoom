@@ -10,6 +10,7 @@ import {
   generateImage,
   imageRequestKey,
   portraitKey,
+  toOneBitBlob,
 } from "./images";
 import type { Settings } from "../types";
 import type { PortraitInstructions } from "./images";
@@ -178,6 +179,13 @@ describe("blobToDataUrl", () => {
     const url = await blobToDataUrl(blob);
     expect(url.startsWith("data:image/png;base64,")).toBe(true);
     expect(dataUrlToBlob(url).size).toBe(blob.size);
+  });
+});
+
+describe("toOneBitBlob", () => {
+  it('returns the blob untouched when mode is "off"', async () => {
+    const blob = dataUrlToBlob("data:image/png;base64,AAAA");
+    await expect(toOneBitBlob(blob, 128, "off")).resolves.toBe(blob);
   });
 });
 

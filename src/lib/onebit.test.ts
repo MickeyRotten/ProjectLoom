@@ -54,6 +54,17 @@ describe("quantizeToOneBit", () => {
     expect(channelValues(data)).toEqual(new Set([0, 255]));
   });
 
+  it("clamps highlights and shadows to solid tones instead of speckling them", () => {
+    // Near-white (an anti-aliased highlight) must stay pure paper under dither…
+    const light = flat(4, 4, 220);
+    quantizeToOneBit(light, 4, 4, "bayer4");
+    expect(channelValues(light)).toEqual(new Set([255]));
+    // …and near-black shadow must stay solid ink.
+    const dark = flat(4, 4, 40);
+    quantizeToOneBit(dark, 4, 4, "bayer4");
+    expect(channelValues(dark)).toEqual(new Set([0]));
+  });
+
   it("thresholds flat mid-grey to a single uniform tone", () => {
     const data = flat(4, 4, 128);
     quantizeToOneBit(data, 4, 4, "threshold");

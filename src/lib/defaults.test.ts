@@ -106,9 +106,9 @@ describe("image prompt constants — hard constraints", () => {
     }
   });
 
-  it("default settings ship dither mode on and zero reference images", () => {
+  it("default settings ship clean threshold and zero reference images", () => {
     const s = defaultSettings();
-    expect(s.ditherMode).toBe("bayer4");
+    expect(s.ditherMode).toBe("threshold");
     expect(s.portraitRefImages).toEqual([]);
     expect(s.portraitRefInstruction).toBe(DEFAULT_REFERENCE_INSTRUCTION);
   });
