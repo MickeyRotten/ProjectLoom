@@ -19,8 +19,8 @@ import { InventoryScreen } from "./components/InventoryScreen";
 
 /**
  * Phase 2 shell — the core loop plus party: header (location · day), scrolling
- * narration log with AI options + quick actions under the latest beat, the
- * party portrait strip, and a composer (freeform input · GO · ⋯ context menu).
+ * narration log with AI options under the latest beat, the party portrait
+ * strip, and a composer (quick actions · freeform input · GO · ⋯ context menu).
  * Full-screen overlays (member sheet, party, inventory, settings) open over the
  * chat.
  */
