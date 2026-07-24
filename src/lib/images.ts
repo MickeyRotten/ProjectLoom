@@ -35,35 +35,62 @@ export function portraitKey(memberId: string): string {
 /* ---------------------------- prompt builders --------------------------- */
 
 /**
- * Banner prompt: the (editable) 1-bit style instructions, the location name,
- * and a short narration excerpt for scene flavour.
+ * Banner prompt: follows the Subject → Action → Location/context → Composition
+ * → Style formula. The location name (Subject) and narration excerpt
+ * (Location/context) lead, since they're per-scene; the (editable)
+ * Action/Composition/Style instructions trail, so the 1-bit look stays fixed
+ * last regardless of what the scene contains.
  */
 export function buildBannerPrompt(
   location: string,
   excerpt: string,
   instructions: string,
 ): string {
-  const parts = [instructions.trim(), `Location: ${location.trim()}.`];
+  const parts = [`Location: ${location.trim()}.`];
   const scene = excerpt.trim();
   if (scene) parts.push(`Scene: ${scene}`);
+  parts.push(instructions.trim());
   return parts.filter(Boolean).join("\n\n");
 }
 
+/** The Action/Location-context/Composition/Style clauses, editable per-game in Advanced. */
+export interface PortraitInstructions {
+  action: string;
+  context: string;
+  composition: string;
+  style: string;
+}
+
+/** Labels and joins the four clauses into one trailing paragraph. */
+function formatPortraitInstructions(instructions: PortraitInstructions): string {
+  return [
+    instructions.action.trim() && `Action: ${instructions.action.trim()}`,
+    instructions.context.trim() && `Location/context: ${instructions.context.trim()}`,
+    instructions.composition.trim() && `Composition: ${instructions.composition.trim()}`,
+    instructions.style.trim() && `Style: ${instructions.style.trim()}`,
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
 /**
- * Portrait prompt: the (editable) 1-bit style instructions plus the member's
- * name / species / description. When the character opts into a custom prompt,
- * that text replaces the auto-built identity/appearance lines (the style
- * instructions still lead, so 1-bit output stays consistent).
+ * Portrait prompt: follows the Subject → Action → Location/context →
+ * Composition → Style formula. The member's name/species/description
+ * (Subject) leads; the (editable) Action/Context/Composition/Style clauses
+ * trail as one paragraph, so framing and 1-bit style stay consistent across
+ * every party member regardless of what the Subject describes. Subject is
+ * never a settings field — it always comes from the character. When the
+ * character opts into a custom prompt, that text replaces the auto-built
+ * Subject but the clauses still trail it.
  */
 export function buildPortraitPrompt(
   member: Pick<Character, "name" | "species" | "description"> &
     Partial<Pick<Character, "useCustomPortraitPrompt" | "customPortraitPrompt">>,
-  instructions: string,
+  instructions: PortraitInstructions,
 ): string {
-  const parts = [instructions.trim()];
+  const trailer = formatPortraitInstructions(instructions);
   if (member.useCustomPortraitPrompt && member.customPortraitPrompt?.trim()) {
-    parts.push(member.customPortraitPrompt.trim());
-    return parts.filter(Boolean).join("\n\n");
+    return [member.customPortraitPrompt.trim(), trailer].filter(Boolean).join("\n\n");
   }
   const who = [
     member.name.trim() && `Name: ${member.name.trim()}.`,
@@ -71,9 +98,11 @@ export function buildPortraitPrompt(
   ]
     .filter(Boolean)
     .join(" ");
+  const parts: string[] = [];
   if (who) parts.push(who);
   const appearance = member.description.trim();
   if (appearance) parts.push(`Appearance: ${appearance}`);
+  parts.push(trailer);
   return parts.filter(Boolean).join("\n\n");
 }
 

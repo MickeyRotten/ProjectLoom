@@ -185,7 +185,7 @@ export function MemberSheet() {
         </fieldset>
 
         <AreaField
-          label="Description"
+          label="Appearance"
           value={v.description}
           editing={editing}
           rows={2}

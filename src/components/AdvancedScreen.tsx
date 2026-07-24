@@ -6,7 +6,10 @@ import {
   DEFAULT_CUSTOM_INSTRUCTIONS,
   DEFAULT_OPTION_INSTRUCTIONS,
   DEFAULT_BANNER_INSTRUCTIONS,
-  DEFAULT_PORTRAIT_INSTRUCTIONS,
+  DEFAULT_PORTRAIT_ACTION,
+  DEFAULT_PORTRAIT_CONTEXT,
+  DEFAULT_PORTRAIT_COMPOSITION,
+  DEFAULT_PORTRAIT_STYLE,
   DEFAULT_SPOTLIGHT_RULE,
 } from "../lib/defaults";
 
@@ -14,6 +17,11 @@ import {
  * Advanced instructions (DESIGN.md → Menu): the player-editable prompt guidance
  * that steers the narrator, the option generator, the spotlight, and the image
  * models. Each field has a Reset to restore its ship default.
+ *
+ * Portrait Subject (name/species/description) is never editable here — it's
+ * always auto-built from the character, per the Nano Banana Subject → Action
+ * → Location/context → Composition → Style formula (loom-turn-protocol adjacent
+ * but lives in images.ts).
  */
 type InstrKey = keyof Pick<
   Settings,
@@ -21,7 +29,10 @@ type InstrKey = keyof Pick<
   | "optionInstructions"
   | "spotlightRule"
   | "bannerInstructions"
-  | "portraitInstructions"
+  | "portraitAction"
+  | "portraitContext"
+  | "portraitComposition"
+  | "portraitStyle"
 >;
 
 const FIELDS: { key: InstrKey; label: string; def: string; rows: number }[] = [
@@ -29,7 +40,10 @@ const FIELDS: { key: InstrKey; label: string; def: string; rows: number }[] = [
   { key: "optionInstructions", label: "Action Options", def: DEFAULT_OPTION_INSTRUCTIONS, rows: 3 },
   { key: "spotlightRule", label: "Spotlight Rule", def: DEFAULT_SPOTLIGHT_RULE, rows: 4 },
   { key: "bannerInstructions", label: "Banner Style", def: DEFAULT_BANNER_INSTRUCTIONS, rows: 3 },
-  { key: "portraitInstructions", label: "Portrait Style", def: DEFAULT_PORTRAIT_INSTRUCTIONS, rows: 3 },
+  { key: "portraitAction", label: "Portrait Action", def: DEFAULT_PORTRAIT_ACTION, rows: 2 },
+  { key: "portraitContext", label: "Portrait Location/Context", def: DEFAULT_PORTRAIT_CONTEXT, rows: 2 },
+  { key: "portraitComposition", label: "Portrait Composition", def: DEFAULT_PORTRAIT_COMPOSITION, rows: 2 },
+  { key: "portraitStyle", label: "Portrait Style", def: DEFAULT_PORTRAIT_STYLE, rows: 3 },
 ];
 
 export function AdvancedScreen() {
