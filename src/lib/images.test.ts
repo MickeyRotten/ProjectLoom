@@ -8,6 +8,7 @@ import {
   dataUrlToBlob,
   extractImageDataUrl,
   generateImage,
+  imageRequestKey,
   portraitKey,
 } from "./images";
 import type { Settings } from "../types";
@@ -136,6 +137,27 @@ describe("blobToDataUrl", () => {
   });
 });
 
+describe("imageRequestKey", () => {
+  it("prefers the dedicated image key when set", () => {
+    expect(imageRequestKey({ openRouterKey: "sk-main", imageKey: "sk-img" } as Settings)).toBe(
+      "sk-img",
+    );
+  });
+
+  it("falls back to the main key when the image key is blank", () => {
+    expect(imageRequestKey({ openRouterKey: "sk-main", imageKey: "  " } as Settings)).toBe(
+      "sk-main",
+    );
+    expect(imageRequestKey({ openRouterKey: "sk-main" } as Settings)).toBe("sk-main");
+  });
+
+  it("trims the returned key", () => {
+    expect(imageRequestKey({ openRouterKey: "sk-main", imageKey: " sk-img " } as Settings)).toBe(
+      "sk-img",
+    );
+  });
+});
+
 describe("generateImage request shapes", () => {
   const settings = {
     openRouterKey: "sk-test",
@@ -157,6 +179,17 @@ describe("generateImage request shapes", () => {
     await generateImage({ settings, prompt: "a tower" });
     const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
     expect(body.messages[0].content).toBe("a tower");
+  });
+
+  it("authorizes with the dedicated image key when set", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(reply);
+    vi.stubGlobal("fetch", fetchMock);
+    await generateImage({
+      settings: { ...settings, imageKey: "sk-img" },
+      prompt: "a tower",
+    });
+    const headers = fetchMock.mock.calls[0][1].headers as Record<string, string>;
+    expect(headers.Authorization).toBe("Bearer sk-img");
   });
 
   it("edit sends text + image_url parts", async () => {

@@ -50,6 +50,7 @@ export const DEFAULT_SPOTLIGHT_RULE = `Give the spotlight to at most one party m
 export function defaultSettings(): Settings {
   return {
     openRouterKey: "",
+    imageKey: "",
     textModelId: DEFAULT_TEXT_MODEL,
     imageModelId: DEFAULT_IMAGE_MODEL,
     temperature: 0.8,
