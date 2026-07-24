@@ -38,7 +38,7 @@ export function PartyStrip() {
             type="button"
             disabled={streaming}
             onClick={() => openMember(c.id)}
-            className="flex flex-col items-center gap-1 disabled:opacity-40 active:opacity-60"
+            className="flex flex-col items-center disabled:opacity-40 active:opacity-60"
             aria-label={c.name}
           >
             <span className="flex aspect-[1/2] w-full items-center justify-center overflow-hidden border-2 border-ink text-sm font-bold">
@@ -52,7 +52,7 @@ export function PartyStrip() {
                 initials(c)
               )}
             </span>
-            <span className="w-full break-words border-2 border-ink px-1 py-1 text-center uppercase leading-tight">
+            <span className="w-full break-words border-2 border-t-0 border-ink bg-ink px-1 py-1 text-center uppercase leading-tight text-paper">
               {c.name}
             </span>
           </button>
@@ -62,13 +62,11 @@ export function PartyStrip() {
             type="button"
             disabled={streaming}
             onClick={() => setScreen("characters")}
-            className="flex flex-col items-center gap-1 disabled:opacity-40 active:opacity-60"
+            className="flex flex-col items-center disabled:opacity-40 active:opacity-60"
             aria-label="Add party member"
           >
-            <span className="flex aspect-[1/2] w-full items-center justify-center border-2 border-dashed border-ink text-sm font-bold opacity-30">
-              +
-            </span>
-            <span className="w-full border-2 border-transparent px-1 py-1 text-center uppercase leading-tight opacity-0">
+            <span className="flex aspect-[1/2] w-full items-center justify-center border-2 border-dashed border-ink text-sm font-bold opacity-30" />
+            <span className="w-full border-2 border-t-0 border-transparent px-1 py-1 text-center uppercase leading-tight opacity-0">
               —
             </span>
           </button>

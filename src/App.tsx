@@ -19,9 +19,10 @@ import { InventoryScreen } from "./components/InventoryScreen";
 
 /**
  * Phase 2 shell — the core loop plus party: header (location · day), scrolling
- * narration log with AI options under the latest beat, the party portrait
- * strip, and a composer (LOOK · PARTY · INVENTORY + freeform). Full-screen
- * overlays (member sheet, party, inventory, settings) open over the chat.
+ * narration log with AI options + quick actions under the latest beat, the
+ * party portrait strip, and a composer (freeform input · GO · ⋯ context menu).
+ * Full-screen overlays (member sheet, party, inventory, settings) open over the
+ * chat.
  */
 export default function App() {
   const hydrate = useStore((s) => s.hydrate);
