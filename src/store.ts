@@ -229,7 +229,13 @@ export const useStore = create<LoomStore>((set, get) => {
     if (!member) return;
     void ensureImage(
       portraitKey(member.id),
-      () => buildPortraitPrompt(member, get().settings.portraitInstructions),
+      () =>
+        buildPortraitPrompt(member, {
+          action: get().settings.portraitAction,
+          context: get().settings.portraitContext,
+          composition: get().settings.portraitComposition,
+          style: get().settings.portraitStyle,
+        }),
       force,
     );
   };

@@ -12,6 +12,11 @@ import {
   portraitKey,
 } from "./images";
 import type { Settings } from "../types";
+import type { PortraitInstructions } from "./images";
+
+function instr(overrides: Partial<PortraitInstructions> = {}): PortraitInstructions {
+  return { action: "", context: "", composition: "", style: "", ...overrides };
+}
 
 describe("cache keys", () => {
   it("banner key is case/whitespace-insensitive", () => {
@@ -37,20 +42,27 @@ describe("prompt builders", () => {
     expect(p).not.toContain("Scene:");
   });
 
-  it("portrait prompt folds in style, identity, and appearance", () => {
+  it("portrait prompt puts Subject first, then labeled Action/Context/Composition/Style", () => {
     const p = buildPortraitPrompt(
       { name: "Navi", species: "sprite", description: "A flickering mote of light." },
-      "1-bit portrait.",
+      instr({ action: "facing forward", context: "flat backdrop", composition: "2:3 bust", style: "1-bit line art" }),
     );
-    expect(p).toContain("1-bit portrait.");
     expect(p).toContain("Name: Navi.");
     expect(p).toContain("Species: sprite.");
     expect(p).toContain("Appearance: A flickering mote of light.");
+    expect(p).toContain("Action: facing forward");
+    expect(p).toContain("Location/context: flat backdrop");
+    expect(p).toContain("Composition: 2:3 bust");
+    expect(p).toContain("Style: 1-bit line art");
+    expect(p.indexOf("Name:")).toBeLessThan(p.indexOf("Action:"));
   });
 
   it("portrait prompt tolerates blank identity fields", () => {
-    const p = buildPortraitPrompt({ name: "", species: "", description: "" }, "style");
-    expect(p).toBe("style");
+    const p = buildPortraitPrompt(
+      { name: "", species: "", description: "" },
+      instr({ style: "style" }),
+    );
+    expect(p).toBe("Style: style");
   });
 
   it("custom portrait prompt replaces the auto identity/appearance lines", () => {
@@ -62,9 +74,9 @@ describe("prompt builders", () => {
         useCustomPortraitPrompt: true,
         customPortraitPrompt: "A neon fox in a trench coat.",
       },
-      "1-bit portrait.",
+      instr({ style: "1-bit portrait." }),
     );
-    expect(p).toBe("A neon fox in a trench coat.\n\n1-bit portrait.");
+    expect(p).toBe("A neon fox in a trench coat.\n\nStyle: 1-bit portrait.");
     expect(p).not.toContain("Name: Navi.");
     expect(p).not.toContain("Appearance:");
   });
@@ -72,7 +84,7 @@ describe("prompt builders", () => {
   it("falls back to auto lines when the custom flag is on but the prompt is blank", () => {
     const p = buildPortraitPrompt(
       { name: "Navi", species: "sprite", description: "A mote.", useCustomPortraitPrompt: true, customPortraitPrompt: "  " },
-      "style",
+      instr({ style: "style" }),
     );
     expect(p).toContain("Name: Navi.");
   });

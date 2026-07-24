@@ -53,24 +53,44 @@ export function buildBannerPrompt(
   return parts.filter(Boolean).join("\n\n");
 }
 
+/** The Action/Location-context/Composition/Style clauses, editable per-game in Advanced. */
+export interface PortraitInstructions {
+  action: string;
+  context: string;
+  composition: string;
+  style: string;
+}
+
+/** Labels and joins the four clauses into one trailing paragraph. */
+function formatPortraitInstructions(instructions: PortraitInstructions): string {
+  return [
+    instructions.action.trim() && `Action: ${instructions.action.trim()}`,
+    instructions.context.trim() && `Location/context: ${instructions.context.trim()}`,
+    instructions.composition.trim() && `Composition: ${instructions.composition.trim()}`,
+    instructions.style.trim() && `Style: ${instructions.style.trim()}`,
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
 /**
  * Portrait prompt: follows the Subject → Action → Location/context →
  * Composition → Style formula. The member's name/species/description
- * (Subject) leads; the (editable) Action/Location/Composition/Style
- * instructions trail, so framing and 1-bit style stay consistent across
- * every party member regardless of what the Subject describes. When the
+ * (Subject) leads; the (editable) Action/Context/Composition/Style clauses
+ * trail as one paragraph, so framing and 1-bit style stay consistent across
+ * every party member regardless of what the Subject describes. Subject is
+ * never a settings field — it always comes from the character. When the
  * character opts into a custom prompt, that text replaces the auto-built
- * Subject but the instructions still trail it.
+ * Subject but the clauses still trail it.
  */
 export function buildPortraitPrompt(
   member: Pick<Character, "name" | "species" | "description"> &
     Partial<Pick<Character, "useCustomPortraitPrompt" | "customPortraitPrompt">>,
-  instructions: string,
+  instructions: PortraitInstructions,
 ): string {
+  const trailer = formatPortraitInstructions(instructions);
   if (member.useCustomPortraitPrompt && member.customPortraitPrompt?.trim()) {
-    return [member.customPortraitPrompt.trim(), instructions.trim()]
-      .filter(Boolean)
-      .join("\n\n");
+    return [member.customPortraitPrompt.trim(), trailer].filter(Boolean).join("\n\n");
   }
   const who = [
     member.name.trim() && `Name: ${member.name.trim()}.`,
@@ -82,7 +102,7 @@ export function buildPortraitPrompt(
   if (who) parts.push(who);
   const appearance = member.description.trim();
   if (appearance) parts.push(`Appearance: ${appearance}`);
-  parts.push(instructions.trim());
+  parts.push(trailer);
   return parts.filter(Boolean).join("\n\n");
 }
 

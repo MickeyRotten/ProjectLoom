@@ -301,7 +301,7 @@ function buildOutputProtocol(settings: Settings): string {
     "JSON fields (include only what changed this turn):",
     '- "location", "weather", "day": the current scene (strings / number).',
     optionsLine,
-    '- "party": array of { "op": "add|update|remove", "name", "species", "description", "fieldSkill": { "name", "description" } }. Add a member only when they join; remove when they leave.',
+    '- "party": array of { "op": "add|update|remove", "name", "species", "description", "fieldSkill": { "name", "description" } }. "description" is physical appearance ONLY — hair, eyes, build, clothing, notable features — used verbatim to generate the member\'s portrait, so keep it concrete and visual, never personality or backstory. Add a member only when they join; remove when they leave.',
     '- "inventory": array of { "op": "add|update|remove", "label", "description", "quantity" }.',
     '- Gold is the permanent currency item in "inventory" — never remove it. When the player gains or spends money, emit { "op": "update", "label": "Gold", "quantity": <new total> }.',
     '- "quests": array of { "op": "add|update|remove", "label", "description", "reward", "status": "active"|"done" }. Update a quest with status "done" when the player completes it.',

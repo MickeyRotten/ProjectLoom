@@ -135,7 +135,11 @@ export interface Settings {
   // Advanced (player-editable, Phase 4):
   customInstructions: string;
   bannerInstructions: string;
-  portraitInstructions: string;
+  /** Portrait Action/Location-context/Composition/Style clauses (Nano Banana formula). Subject is auto-built from name/species/description, never a settings field. */
+  portraitAction: string;
+  portraitContext: string;
+  portraitComposition: string;
+  portraitStyle: string;
   optionInstructions: string;
   spotlightRule: string;
 }
