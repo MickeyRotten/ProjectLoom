@@ -77,9 +77,7 @@ export function ChatView() {
         const tappable = m.id === lastNarratorId || m.id === lastPlayerId;
         const isEditing = editing?.id === m.id;
         return (
-          // A narrator beat sits tight under its player line so an exchange
-          // reads as one unit; the next turn keeps the wider section gap.
-          <div key={m.id} className={`space-y-2 ${m.role === "narrator" ? "!mt-1" : ""}`}>
+          <div key={m.id} className="space-y-2">
             {isEditing ? (
               <Editor
                 draft={editing.draft}
@@ -119,11 +117,7 @@ export function ChatView() {
         );
       })}
 
-      {streaming && (
-        <div className="!mt-1">
-          <Beat role="narrator" text={streamText || "…"} party={party} pending />
-        </div>
-      )}
+      {streaming && <Beat role="narrator" text={streamText || "…"} party={party} pending />}
 
       {/* Narrator beat controls — revealed by tapping the latest narrator beat. */}
       {!streaming && active === lastNarratorId && editing?.id !== lastNarratorId && (
@@ -240,7 +234,7 @@ function Beat({
 }) {
   if (role === "player") {
     return (
-      <p className="whitespace-pre-wrap border-l-2 border-ink pl-2 uppercase tracking-wide opacity-80">
+      <p className="whitespace-pre-wrap border-l-2 border-ink pl-2 leading-[1.2] uppercase tracking-wide opacity-80">
         &gt; {text}
       </p>
     );
@@ -249,7 +243,7 @@ function Beat({
   // Segment narrator prose so party dialogue (`Name: "…"`) renders distinctly.
   const segments = segmentDialogue(text, party);
   return (
-    <div className={`space-y-2 leading-relaxed ${pending ? "opacity-70" : ""}`}>
+    <div className={`space-y-2 leading-[1.3] ${pending ? "opacity-70" : ""}`}>
       {segments.map((seg, i) =>
         seg.speaker ? (
           <p key={i} className="border-l-2 border-ink pl-2">

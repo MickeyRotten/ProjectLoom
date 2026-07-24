@@ -7,7 +7,7 @@ export function Header() {
   const streaming = useStore((s) => s.streaming);
 
   return (
-    <header className="flex items-center justify-between px-3 py-2">
+    <header className="flex items-center justify-between bg-ink px-3 py-2 text-paper">
       <span className="truncate uppercase">{location}</span>
       <div className="flex items-center gap-3 whitespace-nowrap">
         <span>Day {day}</span>
@@ -16,7 +16,7 @@ export function Header() {
           aria-label="Settings"
           disabled={streaming}
           onClick={() => setScreen("menu")}
-          className="border-2 border-ink px-2 leading-none disabled:opacity-40 active:bg-ink active:text-paper"
+          className="border-2 border-paper px-2 leading-none disabled:opacity-40 active:bg-paper active:text-ink"
         >
           =
         </button>
