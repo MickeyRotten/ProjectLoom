@@ -95,9 +95,11 @@ export interface LoomStore {
   addQuest: () => void;
   updateQuest: (id: string, patch: Partial<Quest>) => void;
   removeQuest: (id: string) => void;
+  setQuests: (quests: Quest[]) => void;
   addItem: () => void;
   updateItem: (index: number, patch: Partial<Item>) => void;
   removeItem: (index: number) => void;
+  setInventory: (inventory: Item[]) => void;
 
   // Save slots (Phase 4) — snapshot / restore / delete of the active game.
   refreshSlots: () => Promise<void>;
@@ -142,7 +144,7 @@ function lastNarration(game: GameState): string {
   return game.scenario.openingNarration;
 }
 
-const uid = () =>
+export const uid = () =>
   typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
     : `id-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -436,6 +438,21 @@ export const useStore = create<LoomStore>((set, get) => {
     const g = get().game;
     if (index < 0 || index >= g.inventory.length) return;
     const inventory = g.inventory.filter((_, i) => i !== index);
+    const game = { ...g, inventory };
+    set({ game });
+    void saveActiveGame(game);
+  },
+
+  // Bulk setters — commit a whole edited draft in one shot (edit-mode Save).
+  setQuests(quests) {
+    const g = get().game;
+    const game = { ...g, quests };
+    set({ game });
+    void saveActiveGame(game);
+  },
+
+  setInventory(inventory) {
+    const g = get().game;
     const game = { ...g, inventory };
     set({ game });
     void saveActiveGame(game);
