@@ -1,14 +1,35 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useStore } from "../store";
 import { OverlayHeader } from "./OverlayHeader";
 import { EditImageButton } from "./EditImageButton";
+import { TextField, AreaField, ReadBlock, EditToolbar } from "./fields";
+import { useEditBuffer } from "./useEditBuffer";
 import { portraitKey } from "../lib/images";
 import { PARTY_LIMIT } from "../lib/defaults";
-import type { Equipment } from "../types";
+import type { Character, Equipment } from "../types";
+
+/** The character fields that are player-editable on this sheet. */
+type MemberDraft = Pick<
+  Character,
+  | "name"
+  | "species"
+  | "description"
+  | "personality"
+  | "drive"
+  | "likes"
+  | "dislikes"
+  | "fieldSkill"
+  | "equipment"
+  | "useCustomPortraitPrompt"
+  | "customPortraitPrompt"
+>;
 
 /**
- * Full-screen member sheet (DESIGN.md → Secondary screens): info · inline edit
- * fields · regenerate portrait. Everything is editable in place — no Edit mode.
+ * Full-screen member sheet (DESIGN.md → Secondary screens): info · edit fields ·
+ * regenerate portrait. Field editing is gated behind Edit mode — fields render as
+ * read-only text blocks until the player toggles Edit, and changes live in a local
+ * draft until Save Changes. Discard Changes (or leaving the screen) reverts and
+ * exits edit mode. Portrait / enlist / delete actions stay available either way.
  * Opening the sheet ensures a portrait exists; ⟳ force-regenerates it.
  */
 export function MemberSheet() {
@@ -28,6 +49,27 @@ export function MemberSheet() {
   const editFailed = useStore((s) => (id ? s.imgError[portraitKey(id)] : false));
   const [zoom, setZoom] = useState(false);
 
+  const source = useMemo<MemberDraft>(
+    () => ({
+      name: member?.name ?? "",
+      species: member?.species ?? "",
+      description: member?.description ?? "",
+      personality: member?.personality ?? "",
+      drive: member?.drive ?? "",
+      likes: member?.likes ?? "",
+      dislikes: member?.dislikes ?? "",
+      fieldSkill: member?.fieldSkill ?? { name: "", description: "" },
+      equipment: member?.equipment ?? [],
+      useCustomPortraitPrompt: member?.useCustomPortraitPrompt ?? false,
+      customPortraitPrompt: member?.customPortraitPrompt ?? "",
+    }),
+    [member],
+  );
+
+  const { editing, draft, setDraft, startEdit, save, discard } = useEditBuffer(source, (d) => {
+    if (member) update(member.id, d);
+  });
+
   useEffect(() => {
     if (id) ensurePortrait(id);
   }, [id, ensurePortrait]);
@@ -41,7 +83,13 @@ export function MemberSheet() {
     );
   }
 
-  const setEquip = (next: Equipment[]) => update(member.id, { equipment: next });
+  // Read view renders from the live character; edit view from the draft buffer.
+  const v = editing ? draft : source;
+
+  function setField<K extends keyof MemberDraft>(k: K, val: MemberDraft[K]) {
+    setDraft((d) => ({ ...d, [k]: val }));
+  }
+  const setEquip = (next: Equipment[]) => setField("equipment", next);
 
   return (
     <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
@@ -95,81 +143,128 @@ export function MemberSheet() {
           )}
         </div>
 
+        <EditToolbar editing={editing} onEdit={startEdit} onSave={save} onDiscard={discard} />
+
         <div className="space-y-4">
-          <Text label="Name" value={member.name} onChange={(v) => update(member.id, { name: v })} />
-          <Text label="Species" value={member.species} onChange={(v) => update(member.id, { species: v })} />
+          <TextField label="Name" value={v.name} editing={editing} onChange={(x) => setField("name", x)} />
+          <TextField
+            label="Species"
+            value={v.species}
+            editing={editing}
+            onChange={(x) => setField("species", x)}
+          />
         </div>
 
         <fieldset className="space-y-3 border-2 border-ink p-3">
           <legend className="px-1 uppercase tracking-widest text-sm">Portrait Prompt</legend>
-          <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={member.useCustomPortraitPrompt ?? false}
-              onChange={(e) => update(member.id, { useCustomPortraitPrompt: e.target.checked })}
-              className="h-4 w-4 accent-ink"
-            />
-            <span className="uppercase tracking-widest text-sm">Custom image prompt</span>
-          </label>
-          {member.useCustomPortraitPrompt && (
-            <Area
-              label="Prompt (overrides default)"
-              value={member.customPortraitPrompt ?? ""}
-              onChange={(v) => update(member.id, { customPortraitPrompt: v })}
-            />
+          {editing ? (
+            <>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={v.useCustomPortraitPrompt ?? false}
+                  onChange={(e) => setField("useCustomPortraitPrompt", e.target.checked)}
+                  className="h-4 w-4 accent-ink"
+                />
+                <span className="uppercase tracking-widest text-sm">Custom image prompt</span>
+              </label>
+              {v.useCustomPortraitPrompt && (
+                <AreaField
+                  label="Prompt (overrides default)"
+                  value={v.customPortraitPrompt ?? ""}
+                  editing={editing}
+                  onChange={(x) => setField("customPortraitPrompt", x)}
+                />
+              )}
+            </>
+          ) : v.useCustomPortraitPrompt ? (
+            <ReadBlock label="Custom image prompt" value={v.customPortraitPrompt ?? ""} />
+          ) : (
+            <p className="uppercase tracking-widest text-sm opacity-60">Default prompt</p>
           )}
         </fieldset>
 
-        <Area label="Description" value={member.description} onChange={(v) => update(member.id, { description: v })} />
-        <Area label="Personality" value={member.personality} onChange={(v) => update(member.id, { personality: v })} />
-        <Text label="Drive" value={member.drive} onChange={(v) => update(member.id, { drive: v })} />
-        <Text label="Likes" value={member.likes} onChange={(v) => update(member.id, { likes: v })} />
-        <Text label="Dislikes" value={member.dislikes} onChange={(v) => update(member.id, { dislikes: v })} />
+        <AreaField
+          label="Description"
+          value={v.description}
+          editing={editing}
+          rows={2}
+          onChange={(x) => setField("description", x)}
+        />
+        <AreaField
+          label="Personality"
+          value={v.personality}
+          editing={editing}
+          rows={2}
+          onChange={(x) => setField("personality", x)}
+        />
+        <TextField label="Drive" value={v.drive} editing={editing} onChange={(x) => setField("drive", x)} />
+        <TextField label="Likes" value={v.likes} editing={editing} onChange={(x) => setField("likes", x)} />
+        <TextField
+          label="Dislikes"
+          value={v.dislikes}
+          editing={editing}
+          onChange={(x) => setField("dislikes", x)}
+        />
 
         <fieldset className="space-y-3 border-2 border-ink p-3">
           <legend className="px-1 uppercase tracking-widest text-sm">Field Skill</legend>
-          <Text
+          <TextField
             label="Name"
-            value={member.fieldSkill.name}
-            onChange={(v) => update(member.id, { fieldSkill: { ...member.fieldSkill, name: v } })}
+            value={v.fieldSkill.name}
+            editing={editing}
+            onChange={(x) => setField("fieldSkill", { ...v.fieldSkill, name: x })}
           />
-          <Area
+          <AreaField
             label="Description"
-            value={member.fieldSkill.description}
-            onChange={(v) => update(member.id, { fieldSkill: { ...member.fieldSkill, description: v } })}
+            value={v.fieldSkill.description}
+            editing={editing}
+            rows={2}
+            onChange={(x) => setField("fieldSkill", { ...v.fieldSkill, description: x })}
           />
         </fieldset>
 
         <fieldset className="space-y-3 border-2 border-ink p-3">
           <legend className="px-1 uppercase tracking-widest text-sm">Equipment</legend>
-          {member.equipment.map((e, i) => (
+          {v.equipment.length === 0 && !editing && (
+            <p className="uppercase tracking-widest text-sm opacity-60">None.</p>
+          )}
+          {v.equipment.map((e, i) => (
             <div key={i} className="space-y-2 border-b-2 border-ink pb-3 last:border-b-0 last:pb-0">
-              <Text
+              <TextField
                 label="Label"
                 value={e.label}
-                onChange={(v) => setEquip(member.equipment.map((x, j) => (j === i ? { ...x, label: v } : x)))}
+                editing={editing}
+                onChange={(x) => setEquip(v.equipment.map((y, j) => (j === i ? { ...y, label: x } : y)))}
               />
-              <Text
+              <TextField
                 label="Description"
                 value={e.description}
-                onChange={(v) => setEquip(member.equipment.map((x, j) => (j === i ? { ...x, description: v } : x)))}
+                editing={editing}
+                onChange={(x) =>
+                  setEquip(v.equipment.map((y, j) => (j === i ? { ...y, description: x } : y)))
+                }
               />
-              <button
-                type="button"
-                onClick={() => setEquip(member.equipment.filter((_, j) => j !== i))}
-                className="border-2 border-ink px-2 py-1 text-xs uppercase tracking-widest active:bg-ink active:text-paper"
-              >
-                Remove
-              </button>
+              {editing && (
+                <button
+                  type="button"
+                  onClick={() => setEquip(v.equipment.filter((_, j) => j !== i))}
+                  className="border-2 border-ink px-2 py-1 text-xs uppercase tracking-widest active:bg-ink active:text-paper"
+                >
+                  Remove
+                </button>
+              )}
             </div>
           ))}
-          <button
-            type="button"
-            onClick={() => setEquip([...member.equipment, { label: "", description: "" }])}
-            className="w-full border-2 border-ink px-3 py-2 text-sm uppercase tracking-widest active:bg-ink active:text-paper"
-          >
-            + Add Equipment
-          </button>
+          {editing && (
+            <button
+              type="button"
+              onClick={() => setEquip([...v.equipment, { label: "", description: "" }])}
+              className="w-full border-2 border-ink px-3 py-2 text-sm uppercase tracking-widest active:bg-ink active:text-paper"
+            >
+              + Add Equipment
+            </button>
+          )}
         </fieldset>
 
         {member.role === "member" && (
@@ -212,32 +307,5 @@ export function MemberSheet() {
         </button>
       )}
     </main>
-  );
-}
-
-function Text({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
-  return (
-    <label className="block space-y-1">
-      <span className="block uppercase tracking-widest text-sm">{label}</span>
-      <input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full border-2 border-ink bg-paper p-2 focus:outline-none"
-      />
-    </label>
-  );
-}
-
-function Area({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
-  return (
-    <label className="block space-y-1">
-      <span className="block uppercase tracking-widest text-sm">{label}</span>
-      <textarea
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        rows={2}
-        className="w-full resize-y border-2 border-ink bg-paper p-2 focus:outline-none"
-      />
-    </label>
   );
 }
