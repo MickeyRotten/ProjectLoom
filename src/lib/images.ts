@@ -301,7 +301,7 @@ export async function generateImage(opts: GenerateImageOptions): Promise<Blob> {
  * the display upscale is nearest-neighbor via the existing CSS
  * `image-rendering: pixelated` on every `<img>`.
  */
-export const PORTRAIT_PIXEL_WIDTH = 128;
+export const PORTRAIT_PIXEL_WIDTH = 192;
 export const BANNER_PIXEL_WIDTH = 256;
 
 /**

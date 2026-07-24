@@ -29,11 +29,21 @@ function luminance(r: number, g: number, b: number): number {
 }
 
 /**
+ * Dither only genuine mid-tones. Raw Bayer thresholds span 8–247, so even a
+ * near-white pixel (say 240) catches sparse black dots — every anti-aliased
+ * edge and highlight speckles, and at portrait size that noise eats the face.
+ * Outside this band a pixel snaps straight to solid black/white; inside it,
+ * the checker texture still reads as shading.
+ */
+const DITHER_LOW = 64;
+const DITHER_HIGH = 192;
+
+/**
  * Quantize RGBA pixel data to strict 1-bit in place: every channel becomes
  * pure 0 or 255, alpha becomes fully opaque.
  *
- * - `bayer4` — ordered dither; mid-tones become the classic retro checker
- *   texture.
+ * - `bayer4` — ordered dither for mid-tones (the classic retro checker),
+ *   shadows and highlights clamp to solid ink/paper.
  * - `threshold` — flat 50% cut; mid-tones collapse to solid black or white.
  */
 export function quantizeToOneBit(
@@ -46,8 +56,12 @@ export function quantizeToOneBit(
     for (let x = 0; x < width; x++) {
       const i = (y * width + x) * 4;
       const lum = luminance(data[i], data[i + 1], data[i + 2]);
+      const midtone = lum > DITHER_LOW && lum < DITHER_HIGH;
       const cut =
-        mode === "bayer4" ? ((BAYER_4X4[y % 4][x % 4] + 0.5) / 16) * 255 : 128;
+        mode === "bayer4" && midtone
+          ? DITHER_LOW +
+            ((BAYER_4X4[y % 4][x % 4] + 0.5) / 16) * (DITHER_HIGH - DITHER_LOW)
+          : 128;
       const v = lum >= cut ? 255 : 0;
       data[i] = v;
       data[i + 1] = v;
