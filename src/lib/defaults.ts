@@ -101,6 +101,14 @@ export const DEFAULT_PORTRAIT_STYLE = `Clean black-and-white ink illustration in
  */
 export const DEFAULT_REFERENCE_INSTRUCTION = `Match only the art style, line weight, ink density, and framing of the reference images. Do not copy the characters' faces, body types, clothing, or equipment.`;
 
+/**
+ * How the narrator writes a party member's "description" delta field. It flows
+ * verbatim into the member's portrait prompt as the Subject, so it must stay
+ * concrete and visual — the whole portrait consistency chain starts here.
+ * Interpolated into the output protocol's party line (prompt.ts).
+ */
+export const DEFAULT_APPEARANCE_INSTRUCTIONS = `"description" is physical appearance ONLY — hair, eyes, build, clothing, notable features — used verbatim to generate the member's portrait, so keep it concrete and visual, never personality or backstory.`;
+
 export const DEFAULT_SPOTLIGHT_RULE = `Give the spotlight to at most one party member per turn, and only when it earns a moment: they were directly addressed, their Field Skill is relevant, or they have been silent for a while. Otherwise keep them quiet.`;
 
 export function defaultSettings(): Settings {
@@ -121,6 +129,7 @@ export function defaultSettings(): Settings {
     portraitRefImages: [],
     portraitRefInstruction: DEFAULT_REFERENCE_INSTRUCTION,
     ditherMode: "bayer4",
+    appearanceInstructions: DEFAULT_APPEARANCE_INSTRUCTIONS,
     optionInstructions: DEFAULT_OPTION_INSTRUCTIONS,
     spotlightRule: DEFAULT_SPOTLIGHT_RULE,
   };

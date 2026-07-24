@@ -287,6 +287,12 @@ function buildOutputProtocol(settings: Settings): string {
     settings.optionInstructions.trim() ||
     "Offer 3–4 short, concrete next actions.";
 
+  // Player-editable (Advanced) — this sentence becomes portrait Subjects
+  // verbatim, so it's the head of the portrait consistency chain.
+  const appearanceRule =
+    settings.appearanceInstructions.trim() ||
+    '"description" is physical appearance only, concrete and visual.';
+
   const optionsLine = settings.showActionOptions
     ? '- "options": array of 3–4 action strings. ' + optionRule
     : '- "options": OMIT this field entirely — do not suggest actions this turn.';
@@ -301,7 +307,7 @@ function buildOutputProtocol(settings: Settings): string {
     "JSON fields (include only what changed this turn):",
     '- "location", "weather", "day": the current scene (strings / number).',
     optionsLine,
-    '- "party": array of { "op": "add|update|remove", "name", "species", "description", "fieldSkill": { "name", "description" } }. "description" is physical appearance ONLY — hair, eyes, build, clothing, notable features — used verbatim to generate the member\'s portrait, so keep it concrete and visual, never personality or backstory. Add a member only when they join; remove when they leave.',
+    `- "party": array of { "op": "add|update|remove", "name", "species", "description", "fieldSkill": { "name", "description" } }. ${appearanceRule} Add a member only when they join; remove when they leave.`,
     '- "inventory": array of { "op": "add|update|remove", "label", "description", "quantity" }.',
     '- Gold is the permanent currency item in "inventory" — never remove it. When the player gains or spends money, emit { "op": "update", "label": "Gold", "quantity": <new total> }.',
     '- "quests": array of { "op": "add|update|remove", "label", "description", "reward", "status": "active"|"done" }. Update a quest with status "done" when the player completes it.',

@@ -159,6 +159,11 @@ export interface Settings {
   portraitRefInstruction: string;
   /** How generated images are quantized to true 1-bit on-device. */
   ditherMode: DitherMode;
+  /**
+   * Narrator guidance for party "description" fields — the appearance text
+   * that later becomes the member's portrait Subject verbatim.
+   */
+  appearanceInstructions: string;
   optionInstructions: string;
   spotlightRule: string;
 }

@@ -4,6 +4,7 @@ import { OverlayHeader } from "./OverlayHeader";
 import { Field, btnSmall } from "./fields";
 import type { Settings } from "../types";
 import {
+  DEFAULT_APPEARANCE_INSTRUCTIONS,
   DEFAULT_CUSTOM_INSTRUCTIONS,
   DEFAULT_OPTION_INSTRUCTIONS,
   DEFAULT_BANNER_INSTRUCTIONS,
@@ -31,6 +32,7 @@ type InstrKey = keyof Pick<
   | "customInstructions"
   | "optionInstructions"
   | "spotlightRule"
+  | "appearanceInstructions"
   | "bannerInstructions"
   | "portraitAction"
   | "portraitContext"
@@ -42,6 +44,7 @@ const FIELDS: { key: InstrKey; label: string; def: string; rows: number }[] = [
   { key: "customInstructions", label: "Narrator Instructions", def: DEFAULT_CUSTOM_INSTRUCTIONS, rows: 6 },
   { key: "optionInstructions", label: "Action Options", def: DEFAULT_OPTION_INSTRUCTIONS, rows: 3 },
   { key: "spotlightRule", label: "Spotlight Rule", def: DEFAULT_SPOTLIGHT_RULE, rows: 4 },
+  { key: "appearanceInstructions", label: "Appearance Descriptions", def: DEFAULT_APPEARANCE_INSTRUCTIONS, rows: 3 },
   { key: "bannerInstructions", label: "Banner Style", def: DEFAULT_BANNER_INSTRUCTIONS, rows: 3 },
   { key: "portraitAction", label: "Portrait Action", def: DEFAULT_PORTRAIT_ACTION, rows: 2 },
   { key: "portraitContext", label: "Portrait Location/Context", def: DEFAULT_PORTRAIT_CONTEXT, rows: 2 },
