@@ -23,7 +23,7 @@ export function MenuScreen() {
 
   return (
     <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
-      <OverlayHeader title="Menu" onBack={() => setScreen(null)} />
+      <OverlayHeader title="Menu" />
 
       <div className="flex-1 space-y-3 overflow-y-auto p-3">
         {ENTRIES.map((e) => (

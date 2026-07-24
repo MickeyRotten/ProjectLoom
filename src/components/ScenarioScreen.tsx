@@ -10,11 +10,10 @@ import { Field, TextField, AreaField } from "./fields";
 export function ScenarioScreen() {
   const scenario = useStore((s) => s.game.scenario);
   const update = useStore((s) => s.updateScenario);
-  const setScreen = useStore((s) => s.setScreen);
 
   return (
     <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
-      <OverlayHeader title="Scenario" onBack={() => setScreen("menu")} />
+      <OverlayHeader title="Scenario" />
 
       <div className="flex-1 space-y-5 overflow-y-auto p-3">
         <TextField label="Title" value={scenario.title} onChange={(v) => update({ title: v })} />

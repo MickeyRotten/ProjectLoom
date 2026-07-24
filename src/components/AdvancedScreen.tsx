@@ -35,11 +35,10 @@ const FIELDS: { key: InstrKey; label: string; def: string; rows: number }[] = [
 export function AdvancedScreen() {
   const settings = useStore((s) => s.settings);
   const update = useStore((s) => s.updateSettings);
-  const setScreen = useStore((s) => s.setScreen);
 
   return (
     <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
-      <OverlayHeader title="Advanced" onBack={() => setScreen("menu")} />
+      <OverlayHeader title="Advanced" />
 
       <div className="flex-1 space-y-5 overflow-y-auto p-3">
         <button

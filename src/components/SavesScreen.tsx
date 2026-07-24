@@ -14,7 +14,6 @@ export function SavesScreen() {
   const snapshotSlot = useStore((s) => s.snapshotSlot);
   const restoreSlot = useStore((s) => s.restoreSlot);
   const dropSlot = useStore((s) => s.dropSlot);
-  const setScreen = useStore((s) => s.setScreen);
   const [name, setName] = useState("");
 
   useEffect(() => {
@@ -28,7 +27,7 @@ export function SavesScreen() {
 
   return (
     <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
-      <OverlayHeader title="Saves" onBack={() => setScreen("menu")} />
+      <OverlayHeader title="Saves" />
 
       <div className="flex-1 space-y-4 overflow-y-auto p-3">
         <div className="space-y-2 border-2 border-ink p-3">

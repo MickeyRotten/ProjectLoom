@@ -20,7 +20,6 @@ export function MemberSheet() {
   const partyFull = useStore(
     (s) => s.game.characters.filter((c) => c.role === "member" && c.inParty).length >= PARTY_LIMIT,
   );
-  const setScreen = useStore((s) => s.setScreen);
   const ensurePortrait = useStore((s) => s.ensurePortrait);
   const regeneratePortrait = useStore((s) => s.regeneratePortrait);
   const editPortrait = useStore((s) => s.editPortrait);
@@ -36,7 +35,7 @@ export function MemberSheet() {
   if (!member) {
     return (
       <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
-        <OverlayHeader title="Member" onBack={() => setScreen(null)} />
+        <OverlayHeader title="Member" />
         <p className="p-3 uppercase tracking-widest">No such member.</p>
       </main>
     );
@@ -46,7 +45,7 @@ export function MemberSheet() {
 
   return (
     <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
-      <OverlayHeader title={member.name || "Member"} onBack={() => setScreen(null)} />
+      <OverlayHeader title={member.name || "Member"} />
 
       <div className="flex-1 space-y-5 overflow-y-auto p-3">
         <div className="relative mx-auto aspect-[3/4] w-full max-w-xs border-2 border-ink">

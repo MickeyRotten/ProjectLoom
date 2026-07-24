@@ -34,10 +34,16 @@ export default function App() {
     void hydrate();
   }, [hydrate]);
 
-  // Apply the invert theme app-wide and keep the browser chrome (theme-color)
-  // matched to the paper color, so it's white-on-load and black when inverted.
+  // Invert Colors is our dark-mode toggle: the `.invert` class swaps the
+  // ink/paper tokens app-wide (theme.css), flipping every border, background,
+  // and glyph — but NOT the generated banner/portrait bitmaps, which are real
+  // pixels the token swap never touches. Pinning `color-scheme` to the active
+  // theme tells the engine we own theming, so a dark-OS WebView won't apply its
+  // own force-dark pass (which would invert those images). Keep the browser
+  // chrome (theme-color) matched to the paper color too.
   useEffect(() => {
     document.documentElement.classList.toggle("invert", invert);
+    document.documentElement.style.colorScheme = invert ? "dark" : "light";
     document
       .querySelector('meta[name="theme-color"]')
       ?.setAttribute("content", invert ? "#000000" : "#ffffff");

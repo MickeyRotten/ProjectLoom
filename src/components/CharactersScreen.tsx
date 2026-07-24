@@ -11,14 +11,13 @@ export function CharactersScreen() {
   const characters = useStore((s) => s.game.characters);
   const openMember = useStore((s) => s.openMember);
   const addMember = useStore((s) => s.addMember);
-  const setScreen = useStore((s) => s.setScreen);
 
   const pc = characters.filter((c) => c.role === "pc");
   const members = characters.filter((c) => c.role === "member");
 
   return (
     <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
-      <OverlayHeader title="Characters" onBack={() => setScreen("menu")} />
+      <OverlayHeader title="Characters" />
 
       <div className="flex-1 space-y-3 overflow-y-auto p-3">
         {pc.map((c) => (
