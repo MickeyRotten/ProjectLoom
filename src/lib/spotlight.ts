@@ -163,6 +163,65 @@ export function formatSpotlightBlock(signals: SpotlightSignal[], rule: string): 
   ].join("\n");
 }
 
+/* ------------------------------------------------------------------ *
+ * Relevant gear — the same keyword machinery as Field Skill relevance,
+ * applied to equipped items. When an equipped item's label/description
+ * keywords surface in the player's message or the recent scene, the item's
+ * full name + description is spotlighted in its own prompt block so the
+ * narrator actually uses it. Deterministic, no extra LLM call.
+ * ------------------------------------------------------------------ */
+
+export interface GearSignal {
+  /** Name of the character carrying the item (PC or in-party member). */
+  owner: string;
+  label: string;
+  description: string;
+}
+
+/**
+ * Equipped items whose keywords overlap the message + recent context.
+ * Label tokens always count (they carry the signal even when short, like
+ * Field Skill name tokens — "rope", "map").
+ */
+export function computeRelevantGear(
+  playerMsg: string,
+  recentContext: string,
+  characters: Character[],
+): GearSignal[] {
+  // Keep every label token in the context scan too, so a short label like
+  // "Map" can still meet its own keyword in the player's message.
+  const allLabelTokens = characters.flatMap((c) =>
+    (c.equipment ?? []).flatMap((e) => skillNameTokens(e.label)),
+  );
+  const contextKeywords = extractKeywords(`${playerMsg}\n${recentContext}`, allLabelTokens);
+  const out: GearSignal[] = [];
+  for (const c of characters) {
+    for (const e of c.equipment ?? []) {
+      if (!e.label) continue;
+      const gearKeywords = extractKeywords(
+        `${e.label} ${e.description ?? ""}`,
+        skillNameTokens(e.label),
+      );
+      if (intersects(contextKeywords, gearKeywords)) {
+        out.push({ owner: c.name, label: e.label, description: e.description ?? "" });
+      }
+    }
+  }
+  return out;
+}
+
+/** The RELEVANT GEAR block; empty string when nothing matched (no block). */
+export function formatGearBlock(matches: GearSignal[]): string {
+  if (!matches.length) return "";
+  const lines = matches.map(
+    (g) => `- ${g.owner} — ${g.label}${g.description ? `: ${g.description}` : ""}`,
+  );
+  return [
+    "RELEVANT GEAR — THIS TURN (equipped items that may bear on this action; weave them in naturally)",
+    ...lines,
+  ].join("\n");
+}
+
 /**
  * `_member_spoke` port. True when `text` attributes an actual line to the
  * member — name adjacent to a quote or a said-verb:

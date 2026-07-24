@@ -25,6 +25,13 @@ Inject a `PARTY SPOTLIGHT — THIS TURN` block every call: one line per member (
 
 directlyAddressed = hard "must respond"; the other two = soft nudges, never forced.
 
+## Relevant gear (same machinery, separate block)
+
+`computeRelevantGear` reuses the keyword extractor on equipped items (PC + in-party):
+label tokens always count (like skill NAME tokens); a match against the message +
+recent context injects a `RELEVANT GEAR — THIS TURN` block with the item's full
+name + description. Soft signal only — never forces anyone to speak, never an LLM call.
+
 ## Dialogue convention + last-spoke (deterministic)
 
 Party dialogue line: `Name: "…"` where Name resolves to an in-party member. SAME convention drives the display segmenter AND speaker detection — wire once.

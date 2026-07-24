@@ -139,6 +139,70 @@ describe("output protocol — action options toggle", () => {
   });
 });
 
+describe("relevant gear injection", () => {
+  it("injects a gear block when an equipped item's keywords surface in the message", () => {
+    const g = newGame();
+    const msgs = buildMessages({
+      settings,
+      game: g,
+      playerMessage: "I dig through my leather satchel",
+    });
+    const idx = msgs.findIndex((m) => m.content.includes("RELEVANT GEAR — THIS TURN"));
+    expect(idx).toBeGreaterThan(0);
+    expect(msgs[idx].role).toBe("system");
+    expect(msgs[idx].content).toContain(
+      "Hiro — Leather Satchel: Worn leather satchel for carrying supplies.",
+    );
+  });
+
+  it("omits the block when no equipped item is relevant", () => {
+    const msgs = buildMessages({ settings, game: newGame(), playerMessage: "I wave hello" });
+    expect(msgs.some((m) => m.content.includes("RELEVANT GEAR"))).toBe(false);
+  });
+
+  it("covers in-party members' gear, matched from recent beats too", () => {
+    const g = newGame();
+    g.characters = [
+      ...g.characters,
+      member({
+        id: "m-pack",
+        name: "Pack Rat",
+        equipment: [{ label: "Lantern", description: "Casts a warm ring of light in the dark." }],
+      }),
+    ];
+    g.messages = [narr(1, "The tunnel ahead is pitch dark.")];
+    const msgs = buildMessages({ settings, game: g, playerMessage: "I press on" });
+    const block = msgs.find((m) => m.content.includes("RELEVANT GEAR — THIS TURN"));
+    expect(block?.content).toContain("Pack Rat — Lantern");
+  });
+
+  it("benched members' gear never rides along", () => {
+    const g = newGame();
+    // Strip PC gear so only the benched member's lantern could match.
+    g.characters = [
+      { ...g.characters[0], equipment: [] },
+      member({
+        id: "m-pack",
+        name: "Pack Rat",
+        inParty: false,
+        equipment: [{ label: "Lantern", description: "light in the dark" }],
+      }),
+    ];
+    const msgs = buildMessages({ settings, game: g, playerMessage: "I raise the lantern" });
+    expect(msgs.some((m) => m.content.includes("RELEVANT GEAR"))).toBe(false);
+  });
+});
+
+describe("output protocol — gold", () => {
+  it("tells the model Gold is permanent and adjusted via update with a new total", () => {
+    const msgs = buildMessages({ settings, game: newGame(), playerMessage: "go" });
+    const proto = msgs.find((m) => m.content.includes("OUTPUT PROTOCOL"))!;
+    expect(proto.content).toContain("Gold is the permanent currency item");
+    expect(proto.content).toContain('"label": "Gold"');
+    expect(proto.content).toContain("never remove it");
+  });
+});
+
 describe("output protocol — quest status", () => {
   it("tells the model quests carry a status so it can mark them done", () => {
     const msgs = buildMessages({ settings, game: newGame(), playerMessage: "go" });
