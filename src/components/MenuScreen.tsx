@@ -6,11 +6,10 @@ import { OverlayHeader } from "./OverlayHeader";
  * authoring + settings sub-screen. Everything edits the active game directly
  * (no Edit mode). New Adventure reseeds from the current scenario + roster.
  */
+// Quests + World Notes moved to the main-screen ⋯ context menu (beside GO).
 const ENTRIES: { screen: Screen; label: string; note: string }[] = [
-  { screen: "quests", label: "Quests", note: "Active + done objectives" },
   { screen: "scenario", label: "Scenario", note: "Title · premise · opening" },
   { screen: "characters", label: "Characters", note: "PC + party roster" },
-  { screen: "worldnotes", label: "World Notes", note: "Keyword-matched lore" },
   { screen: "modelkey", label: "Model & Key", note: "OpenRouter key · models" },
   { screen: "advanced", label: "Advanced", note: "Narrator + image instructions" },
   { screen: "saves", label: "Saves", note: "Snapshot · restore slots" },

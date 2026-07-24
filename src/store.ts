@@ -112,6 +112,10 @@ export interface LoomStore {
   undoLastTurn: () => void;
   /** Re-run the latest turn's player input for a fresh narration (swipe). */
   regenerateLastTurn: () => void;
+  /** Overwrite one message's prose in place (edit the latest narration). */
+  editMessage: (id: string, content: string) => void;
+  /** Edit the latest player input: unwind the turn, then re-send the new text. */
+  editUserTurn: (text: string) => void;
 
   /** Ensure the banner + all in-party portraits exist (cache-then-generate). */
   syncImages: () => void;
@@ -667,6 +671,24 @@ export const useStore = create<LoomStore>((set, get) => {
     // Unwind the turn, then replay the same player input for a fresh narration.
     get().undoLastTurn();
     if (player) void get().sendTurn(player.content);
+  },
+
+  editMessage(id, content) {
+    if (get().streaming) return;
+    const g = get().game;
+    const messages = g.messages.map((m) => (m.id === id ? { ...m, content } : m));
+    const game = { ...g, messages };
+    set({ game });
+    void saveActiveGame(game);
+  },
+
+  editUserTurn(text) {
+    const t = text.trim();
+    if (!t || get().streaming) return;
+    // Editing an input means the whole turn re-rolls: drop the latest turn
+    // (player + narrator, restoring pre-turn scene) then re-send the new text.
+    get().undoLastTurn();
+    void get().sendTurn(t);
   },
 
   syncImages() {

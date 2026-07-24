@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useStore } from "../store";
 import { Options } from "./Options";
 import { TurnControls } from "./TurnControls";
@@ -6,10 +6,22 @@ import { segmentDialogue } from "../lib/spotlight";
 import { parseInline } from "../lib/markdown";
 import type { Character } from "../types";
 
+/** Generic quick actions — ride under the latest beat, sized like TurnControls. */
+const QUICK = [
+  { label: "Look", input: "I look around." },
+  { label: "Wait", input: "I wait to see what happens." },
+  { label: "Investigate", input: "I investigate my immediate surroundings carefully." },
+];
+
+/** Which message (id) is being edited, and the working draft. */
+type Editing = { id: string; role: "player" | "narrator"; draft: string };
+
 /**
  * The message log. Renders the opening narration, each turn, the live
- * streaming beat, and the AI options tethered directly under the latest beat
- * (loom-turn-protocol: options ride the same beat, above the party strip).
+ * streaming beat, and — tethered under the latest beat — the AI options and
+ * quick actions (loom-turn-protocol: options ride the same beat, above the
+ * party strip). Tapping the latest beat reveals its controls: Regen/Edit/Undo
+ * on the narrator beat, Edit on the player beat.
  */
 export function ChatView() {
   const opening = useStore((s) => s.game.scenario.openingNarration);
@@ -20,32 +32,123 @@ export function ChatView() {
   const error = useStore((s) => s.error);
   const failedInput = useStore((s) => s.failedInput);
   const retryTurn = useStore((s) => s.retryTurn);
+  const sendTurn = useStore((s) => s.sendTurn);
+  const editMessage = useStore((s) => s.editMessage);
+  const editUserTurn = useStore((s) => s.editUserTurn);
   const hasKey = useStore((s) => Boolean(s.settings.openRouterKey.trim()));
   const setScreen = useStore((s) => s.setScreen);
+
+  // Which latest beat has its controls revealed (tap to toggle), and any
+  // in-progress inline edit. Both reset when a turn streams or completes.
+  const [active, setActive] = useState<string | null>(null);
+  const [editing, setEditing] = useState<Editing | null>(null);
+  useEffect(() => {
+    if (streaming) {
+      setActive(null);
+      setEditing(null);
+    }
+  }, [streaming]);
+  useEffect(() => {
+    setActive(null);
+    setEditing(null);
+  }, [messages.length]);
+
+  const lastNarratorId = [...messages].reverse().find((m) => m.role === "narrator")?.id;
+  const lastPlayerId = [...messages].reverse().find((m) => m.role === "player")?.id;
 
   const scrollRef = useRef<HTMLElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   // Only follow the tail when the reader is already near the bottom — scrolling
-  // up to reread must not get yanked back on every streaming delta.
+  // up to reread must not get yanked back on every streaming delta. The bottom
+  // marker sits below the quick actions, so following it keeps them in view.
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
     if (nearBottom) bottomRef.current?.scrollIntoView({ block: "end" });
-  }, [messages.length, streamText, error]);
+  }, [messages.length, streamText, error, streaming]);
+
+  const toggle = (id: string) => {
+    if (editing) return;
+    setActive((a) => (a === id ? null : id));
+  };
 
   return (
-    <section ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-3 text-base">
+    <section
+      ref={scrollRef}
+      className="mt-3 flex-1 space-y-3 overflow-y-auto px-3 pb-3 text-base"
+    >
       <Beat role="narrator" text={opening} party={party} />
 
-      {messages.map((m) => (
-        <Beat key={m.id} role={m.role} text={m.content} party={party} />
-      ))}
+      {messages.map((m) => {
+        const tappable = m.id === lastNarratorId || m.id === lastPlayerId;
+        const isEditing = editing?.id === m.id;
+        return (
+          <div key={m.id} className="space-y-2">
+            {isEditing ? (
+              <Editor
+                draft={editing.draft}
+                onChange={(v) => setEditing({ ...editing, draft: v })}
+                onSave={() => {
+                  if (editing.role === "narrator") editMessage(editing.id, editing.draft);
+                  else editUserTurn(editing.draft);
+                  setEditing(null);
+                  setActive(null);
+                }}
+                onCancel={() => setEditing(null)}
+              />
+            ) : (
+              <div
+                onClick={tappable ? () => toggle(m.id) : undefined}
+                className={tappable ? "cursor-pointer" : undefined}
+              >
+                <Beat role={m.role} text={m.content} party={party} />
+              </div>
+            )}
+
+            {/* Player beat: tap reveals an Edit button (edit + re-roll turn). */}
+            {m.id === lastPlayerId && active === m.id && !isEditing && (
+              <button
+                type="button"
+                onClick={() => setEditing({ id: m.id, role: "player", draft: m.content })}
+                className="w-full border-2 border-ink py-1 text-xs uppercase tracking-widest opacity-70 active:bg-ink active:text-paper active:opacity-100"
+              >
+                ✎ Edit
+              </button>
+            )}
+          </div>
+        );
+      })}
 
       {streaming && <Beat role="narrator" text={streamText || "…"} party={party} pending />}
 
-      {!streaming && <TurnControls />}
+      {/* Narrator beat controls — revealed by tapping the latest narrator beat. */}
+      {!streaming && active === lastNarratorId && editing?.id !== lastNarratorId && (
+        <TurnControls
+          onEdit={() => {
+            const m = messages.find((x) => x.id === lastNarratorId);
+            if (m) setEditing({ id: m.id, role: "narrator", draft: m.content });
+          }}
+        />
+      )}
+
       {!streaming && <Options />}
+
+      {!streaming && (
+        <div className="flex gap-2 text-xs uppercase tracking-widest">
+          {QUICK.map((q) => (
+            <button
+              key={q.label}
+              type="button"
+              disabled={!hasKey}
+              onClick={() => void sendTurn(q.input)}
+              className="flex-1 border-2 border-ink py-1 opacity-70 disabled:opacity-30 active:bg-ink active:text-paper active:opacity-100"
+            >
+              {q.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {error && (
         <div className="space-y-2 border-2 border-ink p-2">
@@ -76,6 +179,46 @@ export function ChatView() {
 
       <div ref={bottomRef} />
     </section>
+  );
+}
+
+function Editor({
+  draft,
+  onChange,
+  onSave,
+  onCancel,
+}: {
+  draft: string;
+  onChange: (v: string) => void;
+  onSave: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <textarea
+        value={draft}
+        onChange={(e) => onChange(e.target.value)}
+        rows={4}
+        autoFocus
+        className="w-full resize-y border-2 border-ink bg-paper p-2 text-base focus:outline-none"
+      />
+      <div className="flex gap-2 text-xs uppercase tracking-widest">
+        <button
+          type="button"
+          onClick={onSave}
+          className="flex-1 border-2 border-ink py-1 active:bg-ink active:text-paper"
+        >
+          Save
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="flex-1 border-2 border-ink py-1 opacity-70 active:bg-ink active:text-paper active:opacity-100"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
   );
 }
 

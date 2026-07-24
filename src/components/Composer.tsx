@@ -1,17 +1,26 @@
 import { useState } from "react";
-import { useStore } from "../store";
+import { useStore, type Screen } from "../store";
+
+/** Context-menu destinations tucked behind the ⋯ button beside GO. */
+const MENU: { screen: Screen; label: string }[] = [
+  { screen: "party", label: "Party" },
+  { screen: "inventory", label: "Inventory" },
+  { screen: "quests", label: "Quests" },
+  { screen: "worldnotes", label: "World Notes" },
+];
 
 /**
- * Fixed buttons + freeform input. Phase 1 wires LOOK ("I look around.") and the
- * text input. PARTY / INVENTORY open full-screen views in later phases.
+ * Freeform input plus GO. The quick actions (LOOK · WAIT · INVESTIGATE) now
+ * ride under the latest beat (see ChatView); the ⋯ button beside GO opens a
+ * context menu routing to Party · Inventory · Quests · World Notes.
  */
 export function Composer() {
   const [text, setText] = useState("");
+  const [menuOpen, setMenuOpen] = useState(false);
   const sendTurn = useStore((s) => s.sendTurn);
   const stopTurn = useStore((s) => s.stopTurn);
   const streaming = useStore((s) => s.streaming);
   const setScreen = useStore((s) => s.setScreen);
-  const hasKey = useStore((s) => Boolean(s.settings.openRouterKey.trim()));
 
   const submit = () => {
     const t = text.trim();
@@ -21,36 +30,9 @@ export function Composer() {
   };
 
   return (
-    <footer className="space-y-3 p-3">
-      <div className="grid grid-cols-3 gap-3">
-        <button
-          type="button"
-          disabled={streaming || !hasKey}
-          onClick={() => void sendTurn("I look around.")}
-          className="border-2 border-ink py-3 uppercase disabled:opacity-40 active:bg-ink active:text-paper"
-        >
-          Look
-        </button>
-        <button
-          type="button"
-          disabled={streaming}
-          onClick={() => setScreen("party")}
-          className="border-2 border-ink py-3 uppercase disabled:opacity-40 active:bg-ink active:text-paper"
-        >
-          Party
-        </button>
-        <button
-          type="button"
-          disabled={streaming}
-          onClick={() => setScreen("inventory")}
-          className="border-2 border-ink py-3 uppercase disabled:opacity-40 active:bg-ink active:text-paper"
-        >
-          Inventory
-        </button>
-      </div>
-
+    <footer className="p-3">
       <form
-        className="flex items-stretch border-2 border-ink"
+        className="relative flex items-stretch border-2 border-ink"
         onSubmit={(e) => {
           e.preventDefault();
           submit();
@@ -61,7 +43,7 @@ export function Composer() {
           value={text}
           onChange={(e) => setText(e.target.value)}
           disabled={streaming}
-          placeholder={hasKey ? (streaming ? "…" : "what do you do?") : "set API key in Model & Key"}
+          placeholder={streaming ? "…" : "what do you do?"}
           className="min-w-0 flex-1 bg-paper py-3 text-ink placeholder:opacity-50 focus:outline-none disabled:opacity-40"
         />
         {streaming ? (
@@ -80,6 +62,49 @@ export function Composer() {
           >
             Go
           </button>
+        )}
+        <button
+          type="button"
+          aria-label="More"
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          disabled={streaming}
+          onClick={() => setMenuOpen((o) => !o)}
+          className="border-l-2 border-ink px-4 leading-none disabled:opacity-40 active:bg-ink active:text-paper"
+        >
+          ⋯
+        </button>
+
+        {menuOpen && (
+          <>
+            {/* Backdrop closes the menu on any outside tap. */}
+            <button
+              type="button"
+              aria-hidden="true"
+              tabIndex={-1}
+              onClick={() => setMenuOpen(false)}
+              className="fixed inset-0 z-10 cursor-default"
+            />
+            <div
+              role="menu"
+              className="absolute bottom-full right-0 z-20 mb-2 w-40 border-2 border-ink bg-paper"
+            >
+              {MENU.map((m) => (
+                <button
+                  key={m.screen}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setScreen(m.screen);
+                  }}
+                  className="block w-full border-b-2 border-ink px-3 py-3 text-left uppercase tracking-wide last:border-b-0 active:bg-ink active:text-paper"
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          </>
         )}
       </form>
     </footer>

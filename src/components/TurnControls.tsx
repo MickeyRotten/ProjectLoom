@@ -1,12 +1,13 @@
 import { useStore } from "../store";
 
 /**
- * Phase 5 reversal controls, tucked under the latest beat (above the AI
- * options). Regenerate re-rolls the same action for a different narration;
- * Undo drops the turn entirely and restores the prior scene. Hidden while
- * streaming and when there is no completed turn to unwind.
+ * Phase 5 reversal controls, revealed by tapping the latest beat (ChatView
+ * gates visibility). Regenerate re-rolls the same action for a different
+ * narration; Edit opens an inline editor for the narration prose; Undo drops
+ * the turn entirely and restores the prior scene. Hidden while streaming and
+ * when there is no completed turn to unwind.
  */
-export function TurnControls() {
+export function TurnControls({ onEdit }: { onEdit: () => void }) {
   const hasTurn = useStore((s) => s.game.messages.some((m) => m.role === "narrator"));
   const streaming = useStore((s) => s.streaming);
   const undoLastTurn = useStore((s) => s.undoLastTurn);
@@ -21,7 +22,14 @@ export function TurnControls() {
         onClick={regenerateLastTurn}
         className="flex-1 border-2 border-ink py-1 opacity-70 active:bg-ink active:text-paper active:opacity-100"
       >
-        ↻ Regenerate
+        ↻ Regen
+      </button>
+      <button
+        type="button"
+        onClick={onEdit}
+        className="flex-1 border-2 border-ink py-1 opacity-70 active:bg-ink active:text-paper active:opacity-100"
+      >
+        ✎ Edit
       </button>
       <button
         type="button"
