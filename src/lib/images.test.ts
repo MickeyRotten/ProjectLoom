@@ -64,7 +64,7 @@ describe("prompt builders", () => {
       },
       "1-bit portrait.",
     );
-    expect(p).toBe("1-bit portrait.\n\nA neon fox in a trench coat.");
+    expect(p).toBe("A neon fox in a trench coat.\n\n1-bit portrait.");
     expect(p).not.toContain("Name: Navi.");
     expect(p).not.toContain("Appearance:");
   });

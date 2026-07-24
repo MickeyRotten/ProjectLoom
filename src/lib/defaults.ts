@@ -65,9 +65,9 @@ When describing bodies, use an admiring, playful, celebratory lens — never sle
 
 export const DEFAULT_OPTION_INSTRUCTIONS = `Offer 3–4 distinct, concrete next actions the player could take right now. Short imperative phrases ("Scan the treeline"), no numbering, no punctuation at the end.`;
 
-export const DEFAULT_BANNER_INSTRUCTIONS = `1-bit monochrome pixel/line art, pure black on white, high contrast, no greys, stark and graphic. 320x200px resolution. A wide establishing banner of the location without any people in it.`;
+export const DEFAULT_BANNER_INSTRUCTIONS = `Action: Empty of characters, purely an establishing view. Composition: Wide establishing banner shot, centered, 320x200px. Style: 1-bit monochrome pixel/line art, pure black on white, high contrast, no greys, stark and graphic.`;
 
-export const DEFAULT_PORTRAIT_INSTRUCTIONS = `1-bit monochrome pixel/line art, pure black on white, high contrast, no greys. Drawn in the style of the mangaka HIRO MASHIMA. If female, draw with a comically huge (big head size) bust. A vertical 2:3 head-and-shoulders portrait of the character, centered, expressive. No background, no text. 320x480px resolution.`;
+export const DEFAULT_PORTRAIT_INSTRUCTIONS = `Action: Facing forward, neutral confident expression, shoulders square. Location/context: Flat, seamless off-white background, no scenery, no text. Composition: Vertical 2:3 head-and-shoulders portrait, centered, 320x480px. Style: 1-bit monochrome pixel/line art, pure black on white, high contrast, no greys. Drawn in the style of the mangaka HIRO MASHIMA. If female, draw with a comically huge (big head size) bust.`;
 
 export const DEFAULT_SPOTLIGHT_RULE = `Give the spotlight to at most one party member per turn, and only when it earns a moment: they were directly addressed, their Field Skill is relevant, or they have been silent for a while. Otherwise keep them quiet.`;
 
