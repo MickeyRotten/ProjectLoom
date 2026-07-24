@@ -6,13 +6,6 @@ import { segmentDialogue } from "../lib/spotlight";
 import { parseInline } from "../lib/markdown";
 import type { Character } from "../types";
 
-/** Generic quick actions — ride under the latest beat, sized like TurnControls. */
-const QUICK = [
-  { label: "Look", input: "I look around." },
-  { label: "Wait", input: "I wait to see what happens." },
-  { label: "Investigate", input: "I investigate my immediate surroundings carefully." },
-];
-
 /** Which message (id) is being edited, and the working draft. */
 type Editing = { id: string; role: "player" | "narrator"; draft: string };
 
@@ -32,7 +25,6 @@ export function ChatView() {
   const error = useStore((s) => s.error);
   const failedInput = useStore((s) => s.failedInput);
   const retryTurn = useStore((s) => s.retryTurn);
-  const sendTurn = useStore((s) => s.sendTurn);
   const editMessage = useStore((s) => s.editMessage);
   const editUserTurn = useStore((s) => s.editUserTurn);
   const hasKey = useStore((s) => Boolean(s.settings.openRouterKey.trim()));
@@ -84,7 +76,9 @@ export function ChatView() {
         const tappable = m.id === lastNarratorId || m.id === lastPlayerId;
         const isEditing = editing?.id === m.id;
         return (
-          <div key={m.id} className="space-y-2">
+          // A narrator beat sits tight under its player line so an exchange
+          // reads as one unit; the next turn keeps the wider section gap.
+          <div key={m.id} className={`space-y-2 ${m.role === "narrator" ? "!mt-1" : ""}`}>
             {isEditing ? (
               <Editor
                 draft={editing.draft}
@@ -120,7 +114,11 @@ export function ChatView() {
         );
       })}
 
-      {streaming && <Beat role="narrator" text={streamText || "…"} party={party} pending />}
+      {streaming && (
+        <div className="!mt-1">
+          <Beat role="narrator" text={streamText || "…"} party={party} pending />
+        </div>
+      )}
 
       {/* Narrator beat controls — revealed by tapping the latest narrator beat. */}
       {!streaming && active === lastNarratorId && editing?.id !== lastNarratorId && (
@@ -133,22 +131,6 @@ export function ChatView() {
       )}
 
       {!streaming && <Options />}
-
-      {!streaming && (
-        <div className="flex gap-2 text-xs uppercase tracking-widest">
-          {QUICK.map((q) => (
-            <button
-              key={q.label}
-              type="button"
-              disabled={!hasKey}
-              onClick={() => void sendTurn(q.input)}
-              className="flex-1 border-2 border-ink py-1 opacity-70 disabled:opacity-30 active:bg-ink active:text-paper active:opacity-100"
-            >
-              {q.label}
-            </button>
-          ))}
-        </div>
-      )}
 
       {error && (
         <div className="space-y-2 border-2 border-ink p-2">

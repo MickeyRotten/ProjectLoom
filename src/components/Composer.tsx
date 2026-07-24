@@ -9,10 +9,17 @@ const MENU: { screen: Screen; label: string }[] = [
   { screen: "worldnotes", label: "World Notes" },
 ];
 
+/** Always-visible quick actions, sized like the turn controls. */
+const QUICK = [
+  { label: "Look", input: "I look around." },
+  { label: "Wait", input: "I wait to see what happens." },
+  { label: "Investigate", input: "I investigate my immediate surroundings carefully." },
+];
+
 /**
- * Freeform input plus GO. The quick actions (LOOK · WAIT · INVESTIGATE) now
- * ride under the latest beat (see ChatView); the ⋯ button beside GO opens a
- * context menu routing to Party · Inventory · Quests · World Notes.
+ * Quick actions (LOOK · WAIT · INVESTIGATE) above a freeform input plus GO. The
+ * ⋯ button beside GO opens a context menu routing to Party · Inventory ·
+ * Quests · World Notes.
  */
 export function Composer() {
   const [text, setText] = useState("");
@@ -21,6 +28,7 @@ export function Composer() {
   const stopTurn = useStore((s) => s.stopTurn);
   const streaming = useStore((s) => s.streaming);
   const setScreen = useStore((s) => s.setScreen);
+  const hasKey = useStore((s) => Boolean(s.settings.openRouterKey.trim()));
 
   const submit = () => {
     const t = text.trim();
@@ -30,7 +38,21 @@ export function Composer() {
   };
 
   return (
-    <footer className="p-3">
+    <footer className="space-y-3 p-3">
+      <div className="flex gap-2 text-xs uppercase tracking-widest">
+        {QUICK.map((q) => (
+          <button
+            key={q.label}
+            type="button"
+            disabled={streaming || !hasKey}
+            onClick={() => void sendTurn(q.input)}
+            className="flex-1 border-2 border-ink py-1 opacity-70 disabled:opacity-30 active:bg-ink active:text-paper active:opacity-100"
+          >
+            {q.label}
+          </button>
+        ))}
+      </div>
+
       <form
         className="relative flex items-stretch border-2 border-ink"
         onSubmit={(e) => {
