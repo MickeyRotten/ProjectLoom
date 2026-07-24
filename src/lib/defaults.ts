@@ -7,6 +7,10 @@ import type { Character, GameState, Item, Scenario, Settings } from "../types";
  */
 
 export const DEFAULT_TEXT_MODEL = "deepseek/deepseek-v4-pro";
+/**
+ * Nano Banana 2 Lite. Fallbacks if style adherence disappoints:
+ * "google/gemini-3.1-flash-image", then "google/gemini-3-pro-image-preview".
+ */
 export const DEFAULT_IMAGE_MODEL = "google/gemini-3.1-flash-lite-image";
 
 /** Max party members alongside the PC (PC + 3). */
@@ -65,15 +69,37 @@ When describing bodies, use an admiring, playful, celebratory lens — never sle
 
 export const DEFAULT_OPTION_INSTRUCTIONS = `Offer 3–4 distinct, concrete next actions the player could take right now. Short imperative phrases ("Scan the treeline"), no numbering, no punctuation at the end.`;
 
-export const DEFAULT_BANNER_INSTRUCTIONS = `Action: Empty of characters, purely an establishing view. Composition: Wide establishing banner shot, centered, 320x200px. Style: 1-bit monochrome pixel/line art, pure black on white, high contrast, no greys, stark and graphic.`;
+/*
+ * Image prompt defaults. Written as full narrative sentences — Gemini image
+ * models respond to descriptions, not keyword lists. Deliberate constraints:
+ *
+ * - "Pixel art" never appears, even as a negation. The model paints clean bold
+ *   ink; the client pixelates via downscale + 1-bit quantize (onebit.ts). A
+ *   model-drawn fake pixel grid would moiré against the real downscale grid.
+ * - Fine hatching/stippling is ruled out: fine texture aliases to noise at
+ *   128px, while bold shadow shapes survive the downscale.
+ * - The style clause carries no anatomy, body-type, armor, or gear language —
+ *   subject specifics come only from the character's own description, so the
+ *   same template fits knights, mages, children, and beasts.
+ */
 
-export const DEFAULT_PORTRAIT_ACTION = `Facing forward, neutral confident expression, shoulders square.`;
+export const DEFAULT_BANNER_INSTRUCTIONS = `A wide establishing view of the location itself, empty of characters. Clean black-and-white ink illustration with bold ink lines and large, solid black shadow shapes with hard edges. The entire image uses strictly two tones, pure black and pure white, with no grey tones, no gradients, and no fine hatching. Sharp, high-contrast finish with no anti-aliasing.`;
 
-export const DEFAULT_PORTRAIT_CONTEXT = `Flat, seamless off-white background, no scenery, no text.`;
+export const DEFAULT_PORTRAIT_ACTION = `The pose is perfectly neutral and still: arms relaxed at the sides, shoulders square to the camera, head level, mouth closed, eyes open, with a calm, expressionless face.`;
 
-export const DEFAULT_PORTRAIT_COMPOSITION = `Vertical 2:3 head-and-shoulders portrait, centered, 320x480px.`;
+export const DEFAULT_PORTRAIT_CONTEXT = `The background is flat, pure white and completely empty.`;
 
-export const DEFAULT_PORTRAIT_STYLE = `1-bit monochrome pixel/line art, pure black on white, high contrast, no greys. Drawn in the style of the mangaka HIRO MASHIMA. If female, draw with a comically huge (big head size) bust.`;
+export const DEFAULT_PORTRAIT_COMPOSITION = `A waist-up portrait, character centered and facing the viewer directly.`;
+
+export const DEFAULT_PORTRAIT_STYLE = `Clean black-and-white ink illustration in the style of a 1990s Western comic book with heavy anime influence. Bold, thick, confidently tapering ink lines define a strong graphic silhouette. Shadows are large, solid black shapes with hard edges, creating dramatic chiaroscuro. The entire image uses strictly two tones, pure black and pure white, with all shading done through bold shadow shapes rather than gradients, grey tones, or fine hatching. Sharp, high-contrast finish with no anti-aliasing.`;
+
+/**
+ * Appended as the final prompt line only when reference images ride along.
+ * Cost: references add roughly $0.0003 per generation against a ~$0.0017 base —
+ * negligible, and the repeated reference content is a good candidate for
+ * OpenRouter's prompt caching.
+ */
+export const DEFAULT_REFERENCE_INSTRUCTION = `Match only the art style, line weight, ink density, and framing of the reference images. Do not copy the characters' faces, body types, clothing, or equipment.`;
 
 export const DEFAULT_SPOTLIGHT_RULE = `Give the spotlight to at most one party member per turn, and only when it earns a moment: they were directly addressed, their Field Skill is relevant, or they have been silent for a while. Otherwise keep them quiet.`;
 
@@ -92,6 +118,9 @@ export function defaultSettings(): Settings {
     portraitContext: DEFAULT_PORTRAIT_CONTEXT,
     portraitComposition: DEFAULT_PORTRAIT_COMPOSITION,
     portraitStyle: DEFAULT_PORTRAIT_STYLE,
+    portraitRefImages: [],
+    portraitRefInstruction: DEFAULT_REFERENCE_INSTRUCTION,
+    ditherMode: "bayer4",
     optionInstructions: DEFAULT_OPTION_INSTRUCTIONS,
     spotlightRule: DEFAULT_SPOTLIGHT_RULE,
   };

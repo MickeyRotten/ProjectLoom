@@ -42,19 +42,28 @@ describe("prompt builders", () => {
     expect(p).not.toContain("Scene:");
   });
 
-  it("portrait prompt puts Subject first, then labeled Action/Context/Composition/Style", () => {
+  it("portrait prompt puts Subject first, then action/context/composition/style in order", () => {
     const p = buildPortraitPrompt(
       { name: "Navi", species: "sprite", description: "A flickering mote of light." },
-      instr({ action: "facing forward", context: "flat backdrop", composition: "2:3 bust", style: "1-bit line art" }),
+      instr({
+        action: "The pose is neutral.",
+        context: "The background is white.",
+        composition: "A waist-up portrait.",
+        style: "Clean ink illustration.",
+      }),
     );
     expect(p).toContain("Name: Navi.");
     expect(p).toContain("Species: sprite.");
     expect(p).toContain("Appearance: A flickering mote of light.");
-    expect(p).toContain("Action: facing forward");
-    expect(p).toContain("Location/context: flat backdrop");
-    expect(p).toContain("Composition: 2:3 bust");
-    expect(p).toContain("Style: 1-bit line art");
-    expect(p.indexOf("Name:")).toBeLessThan(p.indexOf("Action:"));
+    const order = [
+      "Name: Navi.",
+      "The pose is neutral.",
+      "The background is white.",
+      "A waist-up portrait.",
+      "Clean ink illustration.",
+    ].map((s) => p.indexOf(s));
+    expect(order.every((i) => i >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
   });
 
   it("portrait prompt tolerates blank identity fields", () => {
@@ -62,7 +71,15 @@ describe("prompt builders", () => {
       { name: "", species: "", description: "" },
       instr({ style: "style" }),
     );
-    expect(p).toBe("Style: style");
+    expect(p).toBe("style");
+  });
+
+  it("appends the reference instruction as the final line only when given", () => {
+    const member = { name: "Navi", species: "sprite", description: "A mote." };
+    const withRef = buildPortraitPrompt(member, instr({ style: "Ink." }), "Match the refs.");
+    expect(withRef.endsWith("Match the refs.")).toBe(true);
+    const withoutRef = buildPortraitPrompt(member, instr({ style: "Ink." }));
+    expect(withoutRef).not.toContain("Match the refs.");
   });
 
   it("custom portrait prompt replaces the auto identity/appearance lines", () => {
@@ -76,9 +93,24 @@ describe("prompt builders", () => {
       },
       instr({ style: "1-bit portrait." }),
     );
-    expect(p).toBe("A neon fox in a trench coat.\n\nStyle: 1-bit portrait.");
+    expect(p).toBe("A neon fox in a trench coat.\n\n1-bit portrait.");
     expect(p).not.toContain("Name: Navi.");
     expect(p).not.toContain("Appearance:");
+  });
+
+  it("custom portrait prompt still gets the reference instruction last", () => {
+    const p = buildPortraitPrompt(
+      {
+        name: "Navi",
+        species: "sprite",
+        description: "A mote.",
+        useCustomPortraitPrompt: true,
+        customPortraitPrompt: "A neon fox.",
+      },
+      instr({ style: "Ink." }),
+      "Match the refs.",
+    );
+    expect(p).toBe("A neon fox.\n\nInk.\n\nMatch the refs.");
   });
 
   it("falls back to auto lines when the custom flag is on but the prompt is blank", () => {
@@ -183,14 +215,19 @@ describe("generateImage request shapes", () => {
       }),
   };
 
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
 
-  it("text-only generation sends a plain string content", async () => {
+  it("text-only generation sends a plain string content and no image_config", async () => {
     const fetchMock = vi.fn().mockResolvedValue(reply);
     vi.stubGlobal("fetch", fetchMock);
     await generateImage({ settings, prompt: "a tower" });
     const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
     expect(body.messages[0].content).toBe("a tower");
+    expect(body.image_config).toBeUndefined();
+    expect(body.modalities).toEqual(["image", "text"]);
   });
 
   it("authorizes with the dedicated image key when set", async () => {
@@ -204,14 +241,91 @@ describe("generateImage request shapes", () => {
     expect(headers.Authorization).toBe("Bearer sk-img");
   });
 
-  it("edit sends text + image_url parts", async () => {
+  it("sends image_url parts before the text part, in order", async () => {
     const fetchMock = vi.fn().mockResolvedValue(reply);
     vi.stubGlobal("fetch", fetchMock);
-    await generateImage({ settings, prompt: "add a moon", image: "data:image/png;base64,BBBB" });
+    await generateImage({
+      settings,
+      prompt: "a portrait",
+      images: ["data:image/png;base64,BBBB", "data:image/jpeg;base64,CCCC"],
+    });
     const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
     expect(body.messages[0].content).toEqual([
-      { type: "text", text: "add a moon" },
       { type: "image_url", image_url: { url: "data:image/png;base64,BBBB" } },
+      { type: "image_url", image_url: { url: "data:image/jpeg;base64,CCCC" } },
+      { type: "text", text: "a portrait" },
     ]);
+  });
+
+  it("forwards aspectRatio as image_config.aspect_ratio", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(reply);
+    vi.stubGlobal("fetch", fetchMock);
+    await generateImage({ settings, prompt: "a portrait", aspectRatio: "2:3" });
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(body.image_config).toEqual({ aspect_ratio: "2:3" });
+    expect(body.image_size).toBeUndefined();
+  });
+
+  it("retries a 429 with backoff and then succeeds", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 429,
+        statusText: "Too Many Requests",
+        text: () => Promise.resolve(""),
+      })
+      .mockResolvedValueOnce(reply);
+    vi.stubGlobal("fetch", fetchMock);
+    const pending = generateImage({ settings, prompt: "a tower" });
+    await vi.advanceTimersByTimeAsync(1000);
+    const blob = await pending;
+    expect(blob.size).toBe(3);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry a non-retryable status", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      statusText: "Unauthorized",
+      text: () => Promise.resolve(""),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(generateImage({ settings, prompt: "a tower" })).rejects.toThrow("401");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("soft-retries exactly once when a 200 carries no image", async () => {
+    const textOnly = {
+      ok: true,
+      json: () => Promise.resolve({ choices: [{ message: { content: "sorry, words only" } }] }),
+    };
+    const fetchMock = vi.fn().mockResolvedValueOnce(textOnly).mockResolvedValueOnce(reply);
+    vi.stubGlobal("fetch", fetchMock);
+    const blob = await generateImage({ settings, prompt: "a tower" });
+    expect(blob.size).toBe(3);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    const alwaysText = vi.fn().mockResolvedValue(textOnly);
+    vi.stubGlobal("fetch", alwaysText);
+    await expect(generateImage({ settings, prompt: "a tower" })).rejects.toThrow(
+      "No image returned",
+    );
+    expect(alwaysText).toHaveBeenCalledTimes(2);
+  });
+
+  it("surfaces a settings-aware message on a payload-size failure with references", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 413,
+      statusText: "Payload Too Large",
+      text: () => Promise.resolve(""),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(
+      generateImage({ settings, prompt: "a portrait", images: ["data:image/png;base64,BBBB"] }),
+    ).rejects.toThrow(/reference image/);
   });
 });
