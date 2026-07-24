@@ -12,14 +12,13 @@ export function PartyScreen() {
   const members = useStore((s) => s.game.characters.filter((c) => c.role === "member"));
   const openMember = useStore((s) => s.openMember);
   const setInParty = useStore((s) => s.setInParty);
-  const setScreen = useStore((s) => s.setScreen);
 
   const active = members.filter((m) => m.inParty).length;
   const full = active >= PARTY_LIMIT;
 
   return (
     <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
-      <OverlayHeader title={`Party ${active}/${PARTY_LIMIT}`} onBack={() => setScreen(null)} />
+      <OverlayHeader title={`Party ${active}/${PARTY_LIMIT}`} />
 
       <div className="flex-1 space-y-3 overflow-y-auto p-3">
         {members.length === 0 && (

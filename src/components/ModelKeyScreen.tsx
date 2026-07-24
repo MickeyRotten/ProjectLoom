@@ -13,7 +13,6 @@ import { fetchModels, type OpenRouterModel } from "../lib/openrouter";
 export function ModelKeyScreen() {
   const settings = useStore((s) => s.settings);
   const update = useStore((s) => s.updateSettings);
-  const setScreen = useStore((s) => s.setScreen);
 
   const [models, setModels] = useState<OpenRouterModel[]>([]);
   const [loading, setLoading] = useState(true);
@@ -42,7 +41,7 @@ export function ModelKeyScreen() {
 
   return (
     <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
-      <OverlayHeader title="Model & Key" onBack={() => setScreen("menu")} />
+      <OverlayHeader title="Model & Key" />
 
       <div className="flex-1 space-y-5 overflow-y-auto p-3">
         <Field label="OpenRouter API Key">

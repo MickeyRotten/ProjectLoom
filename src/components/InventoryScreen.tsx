@@ -10,11 +10,10 @@ export function InventoryScreen() {
   const addItem = useStore((s) => s.addItem);
   const updateItem = useStore((s) => s.updateItem);
   const removeItem = useStore((s) => s.removeItem);
-  const setScreen = useStore((s) => s.setScreen);
 
   return (
     <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
-      <OverlayHeader title="Inventory" onBack={() => setScreen(null)} />
+      <OverlayHeader title="Inventory" />
 
       <div className="flex-1 space-y-3 overflow-y-auto p-3">
         {inventory.length === 0 && (

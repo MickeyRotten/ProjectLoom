@@ -12,11 +12,10 @@ export function QuestsScreen() {
   const addQuest = useStore((s) => s.addQuest);
   const updateQuest = useStore((s) => s.updateQuest);
   const removeQuest = useStore((s) => s.removeQuest);
-  const setScreen = useStore((s) => s.setScreen);
 
   return (
     <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
-      <OverlayHeader title="Quests" onBack={() => setScreen("menu")} />
+      <OverlayHeader title="Quests" />
 
       <div className="flex-1 space-y-4 overflow-y-auto p-3">
         {quests.length === 0 && (

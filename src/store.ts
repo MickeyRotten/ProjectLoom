@@ -60,6 +60,9 @@ export interface LoomStore {
 
   // UI
   screen: Screen;
+  /** Screens navigated away from — Back pops this so it returns to wherever
+   *  you actually came from, not a hard-coded parent. */
+  history: Screen[];
   /** The member whose full-screen sheet is open (screen === "member"). */
   memberId: string | null;
 
@@ -74,6 +77,8 @@ export interface LoomStore {
 
   hydrate: () => Promise<void>;
   setScreen: (screen: Screen) => void;
+  /** Return to the previous screen (pops the navigation history). */
+  goBack: () => void;
   openMember: (id: string) => void;
   updateSettings: (patch: Partial<Settings>) => void;
 
@@ -239,6 +244,7 @@ export const useStore = create<LoomStore>((set, get) => {
   failedInput: null,
 
   screen: null,
+  history: [],
   memberId: null,
 
   images: {},
@@ -269,12 +275,21 @@ export const useStore = create<LoomStore>((set, get) => {
     // (the reversal is captured against the pre-turn snapshot), so block opening
     // any overlay while a turn streams — only closing (null) is allowed.
     if (screen !== null && get().streaming) return;
-    set({ screen });
+    const cur = get().screen;
+    if (screen === cur) return;
+    // Record where we came from so Back returns there, not a fixed parent.
+    set({ screen, history: [...get().history, cur] });
+  },
+
+  goBack() {
+    const hist = get().history;
+    const prev = hist.length ? hist[hist.length - 1] : null;
+    set({ screen: prev, history: hist.slice(0, -1) });
   },
 
   openMember(id) {
     if (get().streaming) return;
-    set({ screen: "member", memberId: id });
+    set({ screen: "member", memberId: id, history: [...get().history, get().screen] });
   },
 
   updateSettings(patch) {
@@ -462,6 +477,7 @@ export const useStore = create<LoomStore>((set, get) => {
       error: null,
       failedInput: null,
       screen: null,
+      history: [],
     });
     void saveActiveGame(game);
     get().syncImages();

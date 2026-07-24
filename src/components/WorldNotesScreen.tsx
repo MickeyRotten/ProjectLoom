@@ -12,11 +12,10 @@ export function WorldNotesScreen() {
   const addNote = useStore((s) => s.addNote);
   const updateNote = useStore((s) => s.updateNote);
   const removeNote = useStore((s) => s.removeNote);
-  const setScreen = useStore((s) => s.setScreen);
 
   return (
     <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
-      <OverlayHeader title="World Notes" onBack={() => setScreen("menu")} />
+      <OverlayHeader title="World Notes" />
 
       <div className="flex-1 space-y-4 overflow-y-auto p-3">
         {notes.length === 0 && (
