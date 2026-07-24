@@ -1,6 +1,13 @@
 import { describe, it, expect } from "vitest";
 import {
+  DEFAULT_BANNER_INSTRUCTIONS,
+  DEFAULT_PORTRAIT_ACTION,
+  DEFAULT_PORTRAIT_COMPOSITION,
+  DEFAULT_PORTRAIT_CONTEXT,
+  DEFAULT_PORTRAIT_STYLE,
+  DEFAULT_REFERENCE_INSTRUCTION,
   defaultPC,
+  defaultSettings,
   ensureGold,
   goldItem,
   isGold,
@@ -75,6 +82,35 @@ describe("migrateGame", () => {
     const g = migrateGame(current)!;
     expect(g.inventory).toHaveLength(1);
     expect(g.inventory[0].quantity).toBe(77);
+  });
+});
+
+describe("image prompt constants — hard constraints", () => {
+  const prompts = [
+    DEFAULT_BANNER_INSTRUCTIONS,
+    DEFAULT_PORTRAIT_ACTION,
+    DEFAULT_PORTRAIT_CONTEXT,
+    DEFAULT_PORTRAIT_COMPOSITION,
+    DEFAULT_PORTRAIT_STYLE,
+    DEFAULT_REFERENCE_INSTRUCTION,
+  ];
+
+  it("never mentions pixels — pixelation is client-side post-processing", () => {
+    for (const p of prompts) expect(p.toLowerCase()).not.toContain("pixel");
+  });
+
+  it("style clause carries no character-specific anatomy or gear language", () => {
+    const style = DEFAULT_PORTRAIT_STYLE.toLowerCase();
+    for (const word of ["heroic", "pauldron", "gauntlet", "jaw", "bust", "muscul", "armor"]) {
+      expect(style).not.toContain(word);
+    }
+  });
+
+  it("default settings ship dither mode on and zero reference images", () => {
+    const s = defaultSettings();
+    expect(s.ditherMode).toBe("bayer4");
+    expect(s.portraitRefImages).toEqual([]);
+    expect(s.portraitRefInstruction).toBe(DEFAULT_REFERENCE_INSTRUCTION);
   });
 });
 

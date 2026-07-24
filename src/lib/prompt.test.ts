@@ -37,6 +37,21 @@ describe("buildMessages — ordering", () => {
     expect(msgs[protocolIdx].role).toBe("system");
   });
 
+  it("folds the editable appearance rule into the protocol's party line", () => {
+    const custom = {
+      ...settings,
+      appearanceInstructions: 'Write "description" as three vivid clauses.',
+    };
+    const msgs = buildMessages({ settings: custom, game: newGame(), playerMessage: "go" });
+    const protocol = msgs.find((m) => m.content.includes("<<<LOOM>>>"))!;
+    expect(protocol.content).toContain('Write "description" as three vivid clauses.');
+    // A blank rule falls back to a built-in minimal one, never an empty gap.
+    const blank = { ...settings, appearanceInstructions: "  " };
+    const msgs2 = buildMessages({ settings: blank, game: newGame(), playerMessage: "go" });
+    const protocol2 = msgs2.find((m) => m.content.includes("<<<LOOM>>>"))!;
+    expect(protocol2.content).toContain('"description" is physical appearance only');
+  });
+
   it("includes PC summary and inventory in the system context", () => {
     const g = newGame();
     g.inventory = [{ label: "Compass", description: "spins", quantity: 2 }];

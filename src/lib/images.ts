@@ -1,4 +1,6 @@
-import type { Character, Settings } from "../types";
+import type { Character, DitherMode, RefImage, Settings } from "../types";
+import { quantizeToOneBit } from "./onebit";
+import { backoffMs, isRetryableStatus, MAX_ATTEMPTS, sleep } from "./retry";
 
 /**
  * Image generation over OpenRouter (DESIGN.md → Image Generation). Two kinds,
@@ -61,36 +63,41 @@ export interface PortraitInstructions {
   style: string;
 }
 
-/** Labels and joins the four clauses into one trailing paragraph. */
-function formatPortraitInstructions(instructions: PortraitInstructions): string {
+/**
+ * The trailing clauses as unlabeled narrative paragraphs, in the
+ * Action → Context → Composition → Style order. The defaults are full
+ * sentences, so no `Action:`-style labels — the assembled prompt must read as
+ * one coherent visual description.
+ */
+function formatPortraitInstructions(instructions: PortraitInstructions): string[] {
   return [
-    instructions.action.trim() && `Action: ${instructions.action.trim()}`,
-    instructions.context.trim() && `Location/context: ${instructions.context.trim()}`,
-    instructions.composition.trim() && `Composition: ${instructions.composition.trim()}`,
-    instructions.style.trim() && `Style: ${instructions.style.trim()}`,
-  ]
-    .filter(Boolean)
-    .join(" ");
+    instructions.action.trim(),
+    instructions.context.trim(),
+    instructions.composition.trim(),
+    instructions.style.trim(),
+  ].filter(Boolean);
 }
 
 /**
  * Portrait prompt: follows the Subject → Action → Location/context →
  * Composition → Style formula. The member's name/species/description
  * (Subject) leads; the (editable) Action/Context/Composition/Style clauses
- * trail as one paragraph, so framing and 1-bit style stay consistent across
- * every party member regardless of what the Subject describes. Subject is
- * never a settings field — it always comes from the character. When the
- * character opts into a custom prompt, that text replaces the auto-built
- * Subject but the clauses still trail it.
+ * trail, so framing and style stay consistent across every party member
+ * regardless of what the Subject describes. Subject is never a settings field
+ * — it always comes from the character. When the character opts into a custom
+ * prompt, that text replaces the auto-built Subject but the clauses still
+ * trail it. `refInstruction` (set only when reference images ride along in the
+ * request) lands as the final line.
  */
 export function buildPortraitPrompt(
   member: Pick<Character, "name" | "species" | "description"> &
     Partial<Pick<Character, "useCustomPortraitPrompt" | "customPortraitPrompt">>,
   instructions: PortraitInstructions,
+  refInstruction?: string,
 ): string {
-  const trailer = formatPortraitInstructions(instructions);
+  const trailer = [...formatPortraitInstructions(instructions), refInstruction?.trim() ?? ""];
   if (member.useCustomPortraitPrompt && member.customPortraitPrompt?.trim()) {
-    return [member.customPortraitPrompt.trim(), trailer].filter(Boolean).join("\n\n");
+    return [member.customPortraitPrompt.trim(), ...trailer].filter(Boolean).join("\n\n");
   }
   const who = [
     member.name.trim() && `Name: ${member.name.trim()}.`,
@@ -102,7 +109,7 @@ export function buildPortraitPrompt(
   if (who) parts.push(who);
   const appearance = member.description.trim();
   if (appearance) parts.push(`Appearance: ${appearance}`);
-  parts.push(trailer);
+  parts.push(...trailer);
   return parts.filter(Boolean).join("\n\n");
 }
 
@@ -197,59 +204,199 @@ export function imageRequestKey(settings: Settings): string {
 export interface GenerateImageOptions {
   settings: Settings;
   prompt: string;
-  /** Source image as a data URL — when set, the request is an edit (image + text in). */
-  image?: string;
+  /**
+   * Input images as data URLs — style references and/or an edit source. Sent
+   * as `image_url` parts *before* the text part.
+   */
+  images?: string[];
+  /** e.g. "2:3" — forwarded as `image_config.aspect_ratio` when set. */
+  aspectRatio?: string;
   signal?: AbortSignal;
+}
+
+/** True when an OpenRouter error looks like the request body was too big. */
+function isPayloadError(status: number, detail: string): boolean {
+  return status === 413 || /too large|payload|exceed/i.test(detail);
 }
 
 /**
  * Generate one image via OpenRouter and return it as a Blob. Non-streamed:
- * image models return the whole payload at once. Throws ImageError on a missing
- * key, a non-OK response, or a response with no image — callers treat any
- * failure as non-fatal (a failed image never blocks the turn).
+ * image models return the whole payload at once. Transient statuses retry with
+ * backoff (same policy as the narration stream, lib/retry.ts); a 200 with no
+ * image in it — the model sometimes answers text-only — is a soft failure worth
+ * exactly one retry. Throws ImageError otherwise; callers treat any failure as
+ * non-fatal (a failed image never blocks the turn).
  */
 export async function generateImage(opts: GenerateImageOptions): Promise<Blob> {
-  const { settings, prompt, image, signal } = opts;
+  const { settings, prompt, images, aspectRatio, signal } = opts;
 
   const key = imageRequestKey(settings);
   if (!key) {
     throw new ImageError("No OpenRouter API key set. Add one in Model & Key.");
   }
 
-  const content = image
+  const content = images?.length
     ? [
+        ...images.map((url) => ({ type: "image_url", image_url: { url } })),
         { type: "text", text: prompt },
-        { type: "image_url", image_url: { url: image } },
       ]
     : prompt;
 
-  const res = await fetch(ENDPOINT, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": "https://github.com/MickeyRotten/ProjectLoom",
-      "X-Title": "Project Loom",
-    },
-    body: JSON.stringify({
-      model: settings.imageModelId,
-      modalities: ["image", "text"],
-      messages: [{ role: "user", content }],
-    }),
-    signal,
+  const body = JSON.stringify({
+    model: settings.imageModelId,
+    // Both modalities must be present — image-only requests are rejected.
+    modalities: ["image", "text"],
+    messages: [{ role: "user", content }],
+    // No image_size: Lite models output 1K only.
+    ...(aspectRatio ? { image_config: { aspect_ratio: aspectRatio } } : {}),
   });
 
-  if (!res.ok) {
-    const detail = await safeErrorText(res);
-    throw new ImageError(
-      `OpenRouter ${res.status} ${res.statusText}${detail ? ` — ${detail}` : ""}`,
-    );
-  }
+  let softRetried = false;
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(ENDPOINT, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://github.com/MickeyRotten/ProjectLoom",
+        "X-Title": "Project Loom",
+      },
+      body,
+      signal,
+    });
 
-  const json: unknown = await res.json();
-  const dataUrl = extractImageDataUrl(json);
-  if (!dataUrl) throw new ImageError("No image returned by the model.");
-  return dataUrlToBlob(dataUrl);
+    if (!res.ok) {
+      if (isRetryableStatus(res.status) && attempt < MAX_ATTEMPTS - 1) {
+        await sleep(backoffMs(attempt), signal);
+        continue;
+      }
+      const detail = await safeErrorText(res);
+      if (images?.length && isPayloadError(res.status, detail)) {
+        throw new ImageError(
+          "Image request too large — remove a reference image or use smaller ones (Advanced → Portrait Style).",
+        );
+      }
+      throw new ImageError(
+        `OpenRouter ${res.status} ${res.statusText}${detail ? ` — ${detail}` : ""}`,
+      );
+    }
+
+    const json: unknown = await res.json();
+    const dataUrl = extractImageDataUrl(json);
+    if (!dataUrl) {
+      if (!softRetried) {
+        softRetried = true;
+        continue;
+      }
+      throw new ImageError("No image returned by the model.");
+    }
+    return dataUrlToBlob(dataUrl);
+  }
+}
+
+/* --------------------------- 1-bit post-process -------------------------- */
+
+/**
+ * Stored pixel widths. Small on purpose: the blobs stay tiny in IndexedDB and
+ * the display upscale is nearest-neighbor via the existing CSS
+ * `image-rendering: pixelated` on every `<img>`.
+ */
+export const PORTRAIT_PIXEL_WIDTH = 128;
+export const BANNER_PIXEL_WIDTH = 256;
+
+/**
+ * Downscale + quantize a generated image to true 1-bit (the pure math lives in
+ * onebit.ts). Downscaling steps by halves before the final resize — one big
+ * jump would alias, since canvas resampling only looks at a few source pixels.
+ * Any failure (no canvas, undecodable blob) returns the original blob: the
+ * image pipeline is fire-and-forget and must never get worse than "unprocessed".
+ */
+export async function toOneBitBlob(
+  blob: Blob,
+  targetWidth: number,
+  mode: DitherMode,
+): Promise<Blob> {
+  try {
+    const bitmap = await createImageBitmap(blob);
+    const targetHeight = Math.max(1, Math.round((targetWidth * bitmap.height) / bitmap.width));
+
+    let source: ImageBitmap | HTMLCanvasElement = bitmap;
+    let w = bitmap.width;
+    let h = bitmap.height;
+    while (w / 2 >= targetWidth) {
+      w = Math.round(w / 2);
+      h = Math.round(h / 2);
+      const half = document.createElement("canvas");
+      half.width = w;
+      half.height = h;
+      const halfCtx = half.getContext("2d");
+      if (!halfCtx) return blob;
+      halfCtx.imageSmoothingEnabled = true;
+      halfCtx.drawImage(source, 0, 0, w, h);
+      source = half;
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return blob;
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(source, 0, 0, targetWidth, targetHeight);
+
+    const imageData = ctx.getImageData(0, 0, targetWidth, targetHeight);
+    quantizeToOneBit(imageData.data, targetWidth, targetHeight, mode);
+    ctx.putImageData(imageData, 0, 0);
+    bitmap.close();
+
+    const out = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, "image/png"),
+    );
+    return out ?? blob;
+  } catch {
+    return blob;
+  }
+}
+
+/* ---------------------------- reference images --------------------------- */
+
+/** At most this many style reference images ride along with a portrait. */
+export const MAX_REF_IMAGES = 3;
+
+/** Longest side a stored reference is scaled down to on upload. */
+export const REF_MAX_SIDE = 768;
+
+/**
+ * Prepare an uploaded file as a stored reference: scale to fit REF_MAX_SIDE
+ * and re-encode as JPEG. References live base64-inline in Settings
+ * (localStorage, ~5MB quota), so a raw camera photo must shrink before it's
+ * stored — and a smaller request body is cheaper to send every generation too.
+ */
+export async function blobToRefImage(blob: Blob, maxSide = REF_MAX_SIDE): Promise<RefImage> {
+  const bitmap = await createImageBitmap(blob);
+  const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+  const w = Math.max(1, Math.round(bitmap.width * scale));
+  const h = Math.max(1, Math.round(bitmap.height * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new ImageError("Could not read the reference image.");
+  ctx.imageSmoothingEnabled = true;
+  // JPEG has no alpha — flatten onto white so transparent art keeps its paper.
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, 0, w, h);
+  ctx.drawImage(bitmap, 0, 0, w, h);
+  bitmap.close();
+  const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
+  const comma = dataUrl.indexOf(",");
+  if (comma === -1) throw new ImageError("Could not encode the reference image.");
+  return { mime: "image/jpeg", b64: dataUrl.slice(comma + 1) };
+}
+
+/** Rehydrate a stored reference into the data URL the API expects. */
+export function refImageToDataUrl(ref: RefImage): string {
+  return `data:${ref.mime};base64,${ref.b64}`;
 }
 
 async function safeErrorText(res: Response): Promise<string> {

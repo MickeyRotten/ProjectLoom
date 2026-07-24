@@ -21,13 +21,18 @@ import { applyDeltas } from "./lib/deltas";
 import { captureReversal, applyReversal } from "./lib/reversal";
 import { detectSpeakers } from "./lib/spotlight";
 import {
+  BANNER_PIXEL_WIDTH,
   bannerKey,
   blobToDataUrl,
   buildBannerPrompt,
   buildEditPrompt,
   buildPortraitPrompt,
   generateImage,
+  PORTRAIT_PIXEL_WIDTH,
   portraitKey,
+  refImageToDataUrl,
+  toOneBitBlob,
+  type GenerateImageOptions,
 } from "./lib/images";
 
 /** Full-screen overlay currently shown over the chat. */
@@ -150,14 +155,20 @@ export const uid = () =>
     : `id-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
 export const useStore = create<LoomStore>((set, get) => {
+  /** Stored pixel width for a cache key — banners are wider than portraits. */
+  const pixelWidth = (key: string) =>
+    key.startsWith("banner:") ? BANNER_PIXEL_WIDTH : PORTRAIT_PIXEL_WIDTH;
+
   /**
    * Cache-then-generate an image blob under `key`, exposing it as an object URL
-   * in `images`. `force` skips the cache and regenerates. Fire-and-forget:
-   * every failure is swallowed so an image never blocks a turn.
+   * in `images`. Fresh generations are downscaled + quantized to true 1-bit
+   * before caching; already-cached blobs load as-is (regenerate reprocesses).
+   * `force` skips the cache and regenerates. Fire-and-forget: every failure is
+   * swallowed so an image never blocks a turn.
    */
   async function ensureImage(
     key: string,
-    buildPrompt: () => string,
+    buildRequest: () => Pick<GenerateImageOptions, "prompt" | "images" | "aspectRatio">,
     force = false,
   ): Promise<void> {
     if (get().imgPending[key]) return;
@@ -167,7 +178,8 @@ export const useStore = create<LoomStore>((set, get) => {
     try {
       let blob = force ? null : await loadImage(key);
       if (!blob) {
-        blob = await generateImage({ settings: get().settings, prompt: buildPrompt() });
+        blob = await generateImage({ settings: get().settings, ...buildRequest() });
+        blob = await toOneBitBlob(blob, pixelWidth(key), get().settings.ditherMode);
         await saveImage(key, blob);
       }
       const url = URL.createObjectURL(blob);
@@ -200,11 +212,13 @@ export const useStore = create<LoomStore>((set, get) => {
       imgError: { ...get().imgError, [key]: false },
     });
     try {
-      const blob = await generateImage({
+      let blob = await generateImage({
         settings: get().settings,
         prompt: buildEditPrompt(instruction),
-        image: await blobToDataUrl(source),
+        images: [await blobToDataUrl(source)],
+        aspectRatio: key.startsWith("portrait:") ? "2:3" : undefined,
       });
+      blob = await toOneBitBlob(blob, pixelWidth(key), get().settings.ditherMode);
       await saveImage(key, blob);
       const url = URL.createObjectURL(blob);
       const prev = get().images[key];
@@ -229,13 +243,26 @@ export const useStore = create<LoomStore>((set, get) => {
     if (!member) return;
     void ensureImage(
       portraitKey(member.id),
-      () =>
-        buildPortraitPrompt(member, {
-          action: get().settings.portraitAction,
-          context: get().settings.portraitContext,
-          composition: get().settings.portraitComposition,
-          style: get().settings.portraitStyle,
-        }),
+      () => {
+        const s = get().settings;
+        // Style references ride along when set; the matching instruction line
+        // is appended only then — zero references is a fully supported state.
+        const refs = s.portraitRefImages.map(refImageToDataUrl);
+        return {
+          prompt: buildPortraitPrompt(
+            member,
+            {
+              action: s.portraitAction,
+              context: s.portraitContext,
+              composition: s.portraitComposition,
+              style: s.portraitStyle,
+            },
+            refs.length ? s.portraitRefInstruction : undefined,
+          ),
+          images: refs.length ? refs : undefined,
+          aspectRatio: "2:3",
+        };
+      },
       force,
     );
   };
@@ -736,9 +763,9 @@ export const useStore = create<LoomStore>((set, get) => {
     const location = g.location.trim();
     if (location) {
       const excerpt = lastNarration(g);
-      void ensureImage(bannerKey(location), () =>
-        buildBannerPrompt(location, excerpt, get().settings.bannerInstructions),
-      );
+      void ensureImage(bannerKey(location), () => ({
+        prompt: buildBannerPrompt(location, excerpt, get().settings.bannerInstructions),
+      }));
     }
     // The PC rides the strip too, so its portrait must generate up front — not
     // only after the PC sheet is opened once.
@@ -758,7 +785,9 @@ export const useStore = create<LoomStore>((set, get) => {
     const excerpt = lastNarration(g);
     void ensureImage(
       bannerKey(location),
-      () => buildBannerPrompt(location, excerpt, get().settings.bannerInstructions),
+      () => ({
+        prompt: buildBannerPrompt(location, excerpt, get().settings.bannerInstructions),
+      }),
       true,
     );
   },

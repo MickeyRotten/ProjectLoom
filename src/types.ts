@@ -118,6 +118,19 @@ export interface GameState {
   weather: string;
 }
 
+/** 1-bit post-process mode: Bayer ordered dither (textured) or plain 50% threshold (flat). */
+export type DitherMode = "bayer4" | "threshold";
+
+/**
+ * A user-uploaded portrait style reference image. Stored inline in Settings
+ * (localStorage) as base64 — uploads are downscaled client-side first so up to
+ * three of them stay well under the storage quota.
+ */
+export interface RefImage {
+  mime: string;
+  b64: string;
+}
+
 export interface Settings {
   openRouterKey: string;
   /**
@@ -140,6 +153,17 @@ export interface Settings {
   portraitContext: string;
   portraitComposition: string;
   portraitStyle: string;
+  /** Style reference images (0–3, ordered) sent with every portrait generation. */
+  portraitRefImages: RefImage[];
+  /** Line appended to portrait prompts only when reference images are present. */
+  portraitRefInstruction: string;
+  /** How generated images are quantized to true 1-bit on-device. */
+  ditherMode: DitherMode;
+  /**
+   * Narrator guidance for party "description" fields — the appearance text
+   * that later becomes the member's portrait Subject verbatim.
+   */
+  appearanceInstructions: string;
   optionInstructions: string;
   spotlightRule: string;
 }
