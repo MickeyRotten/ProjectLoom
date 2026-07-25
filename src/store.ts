@@ -62,7 +62,10 @@ import {
   portraitKey,
   prepareUploadedImage,
   refImageToDataUrl,
+  sourceKey,
+  toExportBlob,
   toOneBitBlob,
+  toSourceBlob,
   type GenerateImageOptions,
 } from "./lib/images";
 import { imageFileName, saveBlobAsFile } from "./lib/download";
@@ -268,12 +271,37 @@ export const useStore = create<LoomStore>((set, get) => {
     set({ imgPending });
   }
 
+  /** Flag (or clear) the "image failed" indicator for one key. */
+  function setImageError(key: string, failed: boolean) {
+    set({ imgError: { ...get().imgError, [key]: failed } });
+  }
+
+  /**
+   * Store the pre-1-bit master behind `key`, so a later edit is fed real pixels
+   * instead of the tiny display copy. Every write path calls this, which is
+   * also how a regeneration disowns an upload: the new master overwrites the
+   * uploaded one, and the next edit can no longer reach back to it.
+   */
+  async function saveSource(key: string, raw: Blob) {
+    try {
+      await saveImage(sourceKey(key), await toSourceBlob(raw));
+    } catch {
+      // A master copy is an optimization — losing it must not fail the image.
+    }
+  }
+
+  /** Master copy for an edit round-trip, falling back to the display blob. */
+  async function loadEditSource(key: string): Promise<Blob | null> {
+    return (await loadImage(sourceKey(key))) ?? (await loadImage(key));
+  }
+
   /**
    * Cache-then-generate an image blob under `key`, exposing it as an object URL
    * in `images`. Fresh generations are downscaled + quantized to true 1-bit
    * before caching; already-cached blobs load as-is (regenerate reprocesses).
-   * `force` skips the cache and regenerates. Fire-and-forget: every failure is
-   * swallowed so an image never blocks a turn.
+   * `force` skips the cache and regenerates, replacing whatever was there —
+   * generated, edited, or uploaded. Fire-and-forget: every failure is swallowed
+   * so an image never blocks a turn.
    */
   async function ensureImage(
     key: string,
@@ -284,30 +312,41 @@ export const useStore = create<LoomStore>((set, get) => {
     if (!force && get().images[key]) return;
 
     set({ imgPending: { ...get().imgPending, [key]: true } });
+    // A forced run is the player pressing ⟳ — clear any stale failure so the
+    // indicator reflects THIS attempt.
+    if (force) setImageError(key, false);
     try {
-      let blob = force ? null : await loadImage(key);
-      if (!blob) {
-        blob = await generateImage({ settings: get().settings, ...buildRequest() });
-        blob = await toOneBitBlob(blob, pixelWidth(key), get().settings.ditherMode);
-        await saveImage(key, blob);
+      const cached = force ? null : await loadImage(key);
+      if (cached) {
+        publishImage(key, cached);
+        return;
       }
+      const raw = await generateImage({ settings: get().settings, ...buildRequest() });
+      const blob = await toOneBitBlob(raw, pixelWidth(key), get().settings.ditherMode);
+      await saveImage(key, blob);
+      await saveSource(key, raw);
       publishImage(key, blob);
     } catch {
-      // Non-fatal — a failed image never blocks the turn (DESIGN.md).
+      // Non-fatal — a failed image never blocks the turn (DESIGN.md). A forced
+      // regeneration is different: swallowing it silently leaves the OLD image
+      // on screen, which reads as "⟳ refused to replace my picture", so say so.
+      if (force) setImageError(key, true);
     } finally {
       clearPending(key);
     }
   }
 
   /**
-   * Edit the cached image under `key` with a text instruction: send the current
-   * blob + instruction to the image model, replace the cache with the result.
-   * No cached blob → nothing to edit → no-op. Failures are swallowed like
-   * ensureImage's — an image never blocks anything.
+   * Edit the cached image under `key` with a text instruction: send the master
+   * copy + instruction to the image model, replace the cache with the result —
+   * the edited image becomes the new image, master included, whether what it
+   * replaces was generated or uploaded. Nothing cached → nothing to edit →
+   * no-op. Failures are swallowed like ensureImage's — an image never blocks
+   * anything.
    */
   async function editImage(key: string, instruction: string): Promise<void> {
     if (get().imgPending[key] || !instruction.trim()) return;
-    const source = await loadImage(key);
+    const source = await loadEditSource(key);
     if (!source) return;
 
     // Clear any prior edit error for this key while the retry is in flight.
@@ -316,14 +355,15 @@ export const useStore = create<LoomStore>((set, get) => {
       imgError: { ...get().imgError, [key]: false },
     });
     try {
-      let blob = await generateImage({
+      const raw = await generateImage({
         settings: get().settings,
         prompt: buildEditPrompt(instruction),
         images: [await blobToDataUrl(source)],
         aspectRatio: key.startsWith("portrait:") ? "2:3" : undefined,
       });
-      blob = await toOneBitBlob(blob, pixelWidth(key), get().settings.ditherMode);
+      const blob = await toOneBitBlob(raw, pixelWidth(key), get().settings.ditherMode);
       await saveImage(key, blob);
+      await saveSource(key, raw);
       publishImage(key, blob);
     } catch {
       // Non-fatal for the turn, but a swallowed edit looks like nothing
@@ -559,10 +599,12 @@ export const useStore = create<LoomStore>((set, get) => {
     const g = get().game;
     const game = { ...g, roster: dropEntry(g.roster, id) };
 
-    // Free the character's portrait blob + object URL — nothing references it
-    // once they're gone, so it would otherwise orphan in IndexedDB.
+    // Free the character's portrait blob (+ its master copy) and object URL —
+    // nothing references them once they're gone, so they would otherwise orphan
+    // in IndexedDB.
     const key = portraitKey(id);
     void deleteImage(key);
+    void deleteImage(sourceKey(key));
     const prevUrl = get().images[key];
     if (prevUrl) URL.revokeObjectURL(prevUrl);
     const images = { ...get().images };
@@ -1039,13 +1081,16 @@ export const useStore = create<LoomStore>((set, get) => {
     });
     try {
       // Same downscale/quantize pass a generated portrait gets, so an upload
-      // sits in the 1-bit look (and stays small in IndexedDB).
+      // sits in the 1-bit look (and stays small in IndexedDB). The file itself
+      // is kept as the master, so editing an upload starts from the real
+      // picture and saving it out isn't limited to the display copy.
       const blob = await prepareUploadedImage(
         file,
         PORTRAIT_PIXEL_WIDTH,
         get().settings.ditherMode,
       );
       await saveImage(key, blob);
+      await saveSource(key, file);
       publishImage(key, blob);
     } catch {
       // An unreadable file just doesn't replace the portrait — flagged so the
@@ -1061,7 +1106,10 @@ export const useStore = create<LoomStore>((set, get) => {
     if (!blob) return false;
     const name = get().characters.find((c) => c.id === memberId)?.name ?? "";
     try {
-      await saveBlobAsFile(blob, imageFileName(name));
+      // The stored blob is the display copy — a ~192px sliver that only looks
+      // right because the app renders it `pixelated`. Bake that upscale into
+      // the exported pixels so the saved file isn't a thumbnail.
+      await saveBlobAsFile(await toExportBlob(blob), imageFileName(name));
       return true;
     } catch {
       return false;

@@ -90,6 +90,9 @@ done. **MVP complete.** Post-MVP: character-sheet **Auto-Update** (`autoUpdate.t
 Post-MVP also: custom character art (`download.ts` — member-sheet **Upload Image**
 replaces a portrait with a device file through the same 1-bit pass; **Download Image**
 saves it out via Capacitor Filesystem+Share on the APK → Web Share → `<a download>` fallback).
+Post-MVP also: **image masters** (`sourceKey` — every image key keeps a pre-1-bit master
+under `src:<key>`; ✎ edits round-trip through the master and write both copies, ⟳ replaces
+both and flags failures, downloads nearest-neighbor upscale via `toExportBlob`).
 Post-MVP also: **Characters ⟂ Party split** (`roster.ts` — the global character
 library lives outside `GameState`; `GameState.roster` holds per-adventure
 membership / `lastSpokeTurn` / `status` / story `overrides`; New Adventure keeps the
