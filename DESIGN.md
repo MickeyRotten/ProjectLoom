@@ -69,6 +69,7 @@ loop. The model returns **narration prose followed by one machine-read JSON bloc
 - Client **parses tolerantly** (brace-matched salvage, always strip the block from displayed prose even if JSON is malformed — port `parse_action_block`'s tolerance from `narrator_actions.py`).
 - `options` are the **AI-generated action buttons** — inline in the same call, so no extra request per turn (Wayward's `inline` action-suggestions mode).
 - State changes (`location`/`day`/`weather`/`party`/`inventory`/`quests`) are applied to the active save (op-based add/update/remove; inventory carries `quantity`, quests carry `reward`). `spoke` is a hint, but **`lastSpokeTurn` is updated deterministically** from the prose via the ported `detectSpeakers` (never trust the model alone).
+- `party` ops match **by name across the whole character library**, so a companion from an earlier adventure is re-used, not duplicated. An `add` for a known character writes `overrides`; only a genuinely new name creates a `Character`. A `remove` may carry `"status": "departed" | "fallen"` and never deletes anyone — see *Characters ⟂ Party*.
 - **Reversal** (swipe/regenerate): record the applied deltas on the message, unwind on redo — same shape as Wayward's `_reverse_message_effects`, minus item instances.
 
 ---
@@ -125,9 +126,17 @@ Settings {                    // global, edited in Settings
   customInstructions, bannerInstructions, portraitInstructions, optionInstructions, spotlightRule
 }
 
-GameState {                   // the active game (autosaved) + what each save slot stores
+Character[]                   // GLOBAL cast library — outlives every adventure
+Character {
+  id, role, name, species, description, personality, drive,
+  strengths: { name, description },
+  equipment: { label, description }[],   // simple text fields, no catalog
+  useCustomPortraitPrompt?, customPortraitPrompt?
+}
+
+GameState {                   // the active adventure (autosaved) + what each save slot stores
   scenario: { title, premise, openingNarration, startDay }   // the editable pre-made scenario
-  characters: Character[]     // PC (role:'pc') + party (role:'member')
+  roster: RosterEntry[]       // per-adventure character state (SPARSE — absent = defaults)
   worldNotes: Note[]          // { id, title, keywords[], content }  — single-category lorebook
   inventory: Item[]           // { label, description, quantity }  — shared party inventory
   quests: Quest[]             // { id, label, description, reward, status }
@@ -135,15 +144,44 @@ GameState {                   // the active game (autosaved) + what each save sl
   turnNumber, day, location, weather
 }
 
-Character {
-  id, role, name, species, description, personality, drive,
-  strengths: { name, description },
-  equipment: { label, description }[],   // simple text fields, no catalog
-  portraitKey?, lastSpokeTurn, inParty
+RosterEntry {
+  id,                                   // Character.id
+  inParty, lastSpokeTurn,
+  status: 'active' | 'departed' | 'fallen',
+  overrides?: { species?, description?, personality?, drive?, strengths? }
 }
 ```
 
-- **No world/adventure split.** Editing anything in Settings/panels edits the active game (matches "edit everything, no Edit mode"). "New Adventure" seeds a fresh game from the editable scenario + roster; "Save"/"Load" snapshot/restore slots.
+### Characters ⟂ Party — `src/lib/roster.ts`
+
+**Characters is the cast; Party is who's walking with you.** They're separate on
+purpose, and `roster.ts` is the only place they join (`resolve(base, entry)` →
+`PartyMember`; `partyMembers`, `presentMembers`, `setEntry`, `mergeOverrides`).
+Everything downstream — prompt, spotlight, images, UI — consumes resolved
+`PartyMember`s, never the raw halves.
+
+- **Characters are global.** The model creates a character there first, and the
+  player adds them to the Party from there. **"New Adventure" preserves the whole
+  cast and empties the Party** (`roster: []`); a companion written in one
+  adventure can be recruited into the next with their portrait and sheet intact.
+  Save slots snapshot the *adventure*, never the cast, so restoring an old slot
+  can't delete a character authored since. A slot naming a since-deleted
+  character degrades to a smaller party rather than breaking.
+- **Player edits the base; the story writes overrides.** A sheet edit the player
+  saves writes the global character and retires the override on the fields they
+  touched (editing adopts the story's change). Narrator `party` deltas and
+  Auto-Update write adventure-local `overrides`, so a companion wounded in one
+  save is fine in another. **Revert Story Changes** drops them.
+- **Nothing the model emits destroys a character.** Narrator `remove` and the
+  sheet's **Kick from Party** both only un-party; `status` records why
+  (`departed` / `fallen`, player-editable). A `fallen` character is never
+  re-recruited by the narrator — only the player can bring them back, which
+  clears the flag. Deleting is a player-only act, from the member sheet.
+- **One portrait per character**, keyed `portrait:<characterId>` and shared
+  across adventures, generated from how they look *in the current adventure*.
+- **No world/adventure split beyond this.** Editing anything in Settings/panels
+  edits the active game (matches "edit everything, no Edit mode"); "Save"/"Load"
+  snapshot/restore slots.
 - **Strengths** carries Wayward's writing guidance as a placeholder in the editor (teaches the format).
 
 ---
@@ -188,7 +226,9 @@ Parsing is tolerant like the `<<<LOOM>>>` block (fences/preamble/trailing commas
 ### Secondary screens
 All secondary screens — **member sheet, Party, Inventory, Quests, and every Settings sub-screen** — are **full-screen overlays with a Back button** in a top header (the mobile pattern; no split panes). They open over the chat and return to it on Back. Same store/components regardless.
 
-- **Menu (gear)** → full-screen screens: **Quests**, **Scenario** editor, **Characters** (PC + party CRUD), **World Notes**, **Model & Key**, **Advanced instructions**, **Saves**.
+- **Menu (gear)** → full-screen screens: **Quests**, **Scenario** editor, **Characters** (the whole cast), **World Notes**, **Model & Key**, **Advanced instructions**, **Saves**.
+- **Characters screen** lists the global cast — PC, then *In Party n/3*, then *Everyone Else* — each row opening the sheet and carrying a one-tap **Add to Party** / **Kick from Party**. **+ New Character** creates someone in the library only. A filter box appears once the cast grows past 8.
+- **Party screen** lists only the current company, with **Kick from Party** per row and a route to Characters when empty. The member sheet carries the same Kick/Add control, the adventure **standing** (active / departed / fallen), **Revert Story Changes** when the story has diverged, and **Delete Character** (library-wide, player-only).
 - **Style:** pure black/white, monospace, square borders, no rounded corners, no color. Small token set in `theme.css` (`--ink #000`, `--paper #fff`) so it stays one system.
 
 ---

@@ -1,6 +1,6 @@
 import { openDB, type IDBPDatabase } from "idb";
-import type { GameState } from "../types";
-import { migrateGame } from "./defaults";
+import type { Character, GameState } from "../types";
+import { splitLegacyGame, type LoadedGame } from "./defaults";
 
 /**
  * IndexedDB handle for on-device persistence (DESIGN.md → Persistence).
@@ -19,6 +19,13 @@ export const IMAGES_STORE = "images";
 
 /** Reserved key for the continuously-autosaved active game. */
 export const ACTIVE_KEY = "__active__";
+
+/**
+ * Reserved key for the GLOBAL character library. It sits outside every game
+ * snapshot on purpose: the cast survives New Adventure, and restoring an old
+ * save slot must never delete a character authored since that save.
+ */
+export const CHARACTERS_KEY = "__characters__";
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
 
@@ -44,12 +51,28 @@ export async function saveActiveGame(game: GameState): Promise<void> {
   await db.put(SAVES_STORE, game, ACTIVE_KEY);
 }
 
-/** Load the autosaved active game, or null on a fresh install. */
-export async function loadActiveGame(): Promise<GameState | null> {
+/**
+ * Load the autosaved active game, or null on a fresh install. Merges over a
+ * fresh skeleton so older-shape saves gain later-phase slices, and returns any
+ * characters recovered from a pre-split save alongside the game.
+ */
+export async function loadActiveGame(): Promise<LoadedGame | null> {
   const db = await getDB();
   const game = (await db.get(SAVES_STORE, ACTIVE_KEY)) as GameState | undefined;
-  // Merge over a fresh skeleton so older-shape saves gain later-phase slices.
-  return migrateGame(game);
+  return splitLegacyGame(game);
+}
+
+/** Persist the global character library. */
+export async function saveCharacters(characters: Character[]): Promise<void> {
+  const db = await getDB();
+  await db.put(SAVES_STORE, characters, CHARACTERS_KEY);
+}
+
+/** Load the global character library, or null before it has ever been written. */
+export async function loadCharacters(): Promise<Character[] | null> {
+  const db = await getDB();
+  const stored = (await db.get(SAVES_STORE, CHARACTERS_KEY)) as Character[] | undefined;
+  return Array.isArray(stored) ? stored : null;
 }
 
 /* ------------------------------------------------------------------ *
@@ -78,10 +101,10 @@ export async function saveSlot(slot: SaveSlot): Promise<void> {
 }
 
 /** Restore a slot's game snapshot, or null if the slot is gone. */
-export async function loadSlot(id: string): Promise<GameState | null> {
+export async function loadSlot(id: string): Promise<LoadedGame | null> {
   const db = await getDB();
   const slot = (await db.get(SAVES_STORE, slotKey(id))) as SaveSlot | undefined;
-  return migrateGame(slot?.game);
+  return splitLegacyGame(slot?.game);
 }
 
 /** Delete a named slot. */

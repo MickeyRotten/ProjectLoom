@@ -1,10 +1,11 @@
-import type { Character, GameState, Settings } from "../types";
+import type { Character, GameState, PartyMember, Settings } from "../types";
 import {
   computeRelevantGear,
   computeSpotlightSignals,
   formatGearBlock,
   formatSpotlightBlock,
 } from "./spotlight";
+import { partyMembers, playerCharacter, presentMembers } from "./roster";
 import { matchWorldNotes, formatWorldNotesBlock } from "./worldNotes";
 
 /**
@@ -23,6 +24,8 @@ export interface ChatMessage {
 export interface BuildOptions {
   settings: Settings;
   game: GameState;
+  /** The global character library the game's roster refers into. */
+  characters: Character[];
   /** The player's new message for this turn. */
   playerMessage: string;
   /** Token budget for the rolling history window (approximate). */
@@ -39,25 +42,20 @@ const SPOTLIGHT_CONTEXT_TURNS = 4;
 /** How many recent beats fold into the World Notes keyword scan (#7). */
 const WORLD_NOTES_CONTEXT_TURNS = 3;
 
-/** In-party members (role "member", inParty), roster + spotlight subject. */
-function partyMembers(game: GameState): Character[] {
-  return game.characters.filter((c) => c.role === "member" && c.inParty);
-}
-
 /** Cheap token estimate (~4 chars/token), enough for windowing. */
 export function approxTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
 export function buildMessages(opts: BuildOptions): ChatMessage[] {
-  const { settings, game, playerMessage } = opts;
+  const { settings, game, characters, playerMessage } = opts;
   const budget = opts.historyBudgetTokens ?? DEFAULT_HISTORY_BUDGET;
   const currentTurn = opts.currentTurn ?? game.turnNumber + 1;
 
   const messages: ChatMessage[] = [];
 
   // 1–6. Core role + scenario + PC + party + inventory + quests, one block.
-  messages.push({ role: "system", content: buildSystemContext(settings, game) });
+  messages.push({ role: "system", content: buildSystemContext(settings, game, characters) });
 
   // 7. World Notes — lore matched by keyword against the new message + last
   //    few beats (single-category lorebook, titles are implicit keywords).
@@ -65,13 +63,13 @@ export function buildMessages(opts: BuildOptions): ChatMessage[] {
   if (worldNotes) messages.push({ role: "system", content: worldNotes });
 
   // 8. Spotlight block — deterministic per-member signals + the rule.
-  const spotlight = buildSpotlightBlock(settings, game, playerMessage, currentTurn);
+  const spotlight = buildSpotlightBlock(settings, game, characters, playerMessage, currentTurn);
   if (spotlight) messages.push({ role: "system", content: spotlight });
 
   // 8b. Relevant gear — equipped items (PC + party) whose keywords surface in
   //     the action, spotlighted with full name + description so the narrator
   //     uses them. Same keyword machinery + context window as the spotlight.
-  const gear = buildGearBlock(game, playerMessage);
+  const gear = buildGearBlock(game, characters, playerMessage);
   if (gear) messages.push({ role: "system", content: gear });
 
   // 9. History window: opening narration as the first assistant turn, then a
@@ -87,7 +85,11 @@ export function buildMessages(opts: BuildOptions): ChatMessage[] {
   return messages;
 }
 
-function buildSystemContext(settings: Settings, game: GameState): string {
+function buildSystemContext(
+  settings: Settings,
+  game: GameState,
+  characters: Character[],
+): string {
   const parts: string[] = [];
 
   // 1. Core narrator instructions + player custom instructions.
@@ -98,7 +100,7 @@ function buildSystemContext(settings: Settings, game: GameState): string {
   parts.push(`SCENARIO — ${s.title}\n${s.premise}`);
 
   // 3. PC summary + equipment.
-  const pc = game.characters.find((c) => c.role === "pc");
+  const pc = playerCharacter(characters, game.roster);
   if (pc) {
     const lines = [
       `PLAYER CHARACTER — ${pc.name} (${pc.species})`,
@@ -114,7 +116,7 @@ function buildSystemContext(settings: Settings, game: GameState): string {
   }
 
   // 4. Party roster — in-company members with skill + equipment.
-  const roster = formatPartyRoster(partyMembers(game));
+  const roster = formatPartyRoster(partyMembers(characters, game.roster));
   if (roster) parts.push(roster);
 
   // 5. Inventory (compact).
@@ -150,7 +152,7 @@ function buildSystemContext(settings: Settings, game: GameState): string {
  * personality, drive, Strengths, equipment. Compact but complete enough for
  * the narrator to voice them in character.
  */
-export function formatPartyRoster(members: Character[]): string {
+export function formatPartyRoster(members: PartyMember[]): string {
   if (!members.length) return "";
   const entries = members.map((m) => {
     const lines = [
@@ -198,10 +200,11 @@ function buildWorldNotesBlock(game: GameState, playerMessage: string): string {
 function buildSpotlightBlock(
   settings: Settings,
   game: GameState,
+  characters: Character[],
   playerMessage: string,
   currentTurn: number,
 ): string {
-  const party = partyMembers(game);
+  const party = partyMembers(characters, game.roster);
   if (!party.length) return "";
   const recentContext = game.messages
     // ×2: a turn is a player + narrator message pair.
@@ -216,10 +219,12 @@ function buildSpotlightBlock(
  * Relevant-gear block (#8b) — equipped items on the PC + in-party members
  * whose keywords overlap the new message or the recent beats.
  */
-function buildGearBlock(game: GameState, playerMessage: string): string {
-  const carriers = game.characters.filter(
-    (c) => c.role === "pc" || (c.role === "member" && c.inParty),
-  );
+function buildGearBlock(
+  game: GameState,
+  characters: Character[],
+  playerMessage: string,
+): string {
+  const carriers = presentMembers(characters, game.roster);
   if (!carriers.some((c) => c.equipment.length)) return "";
   const recentContext = game.messages
     // ×2: a turn is a player + narrator message pair.
@@ -294,6 +299,7 @@ function buildOutputProtocol(settings: Settings): string {
     '- "location", "weather", "day": the current scene (strings / number).',
     optionsLine,
     `- "party": array of { "op": "add|update|remove", "name", "species", "description", "personality", "drive", "strengths": { "name", "description" } }. ${appearanceRule} Add a member only when they join; remove when they leave.`,
+    '- On a party "remove", you may add "status": "departed" (they walked away — they can rejoin later) or "status": "fallen" (they died — never write them back into the party). Removing never deletes anyone; they simply stop travelling with the player.',
     '- On every party "add", ALWAYS write "personality", "drive" and "strengths" — never omit them and never leave them blank. "personality" is temperament and speech habits in a phrase or two; "drive" is the one thing they want; "strengths" is their standout capability as a short name plus one sentence of what it lets them do.',
     '- "inventory": array of { "op": "add|update|remove", "label", "description", "quantity" }.',
     '- Gold is the permanent currency item in "inventory" — never remove it. When the player gains or spends money, emit { "op": "update", "label": "Gold", "quantity": <new total> }.',

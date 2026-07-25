@@ -1,13 +1,33 @@
-import type { Character, GameState, Item, LoomBlock, PartyDelta, Quest } from "../types";
-import { isGold, PARTY_LIMIT } from "./defaults";
+import type {
+  Character,
+  CharacterOverride,
+  GameState,
+  Item,
+  LoomBlock,
+  PartyDelta,
+  Quest,
+  RosterEntry,
+} from "../types";
+import { isGold } from "./defaults";
+import { getEntry, mergeOverrides, partyFull, setEntry } from "./roster";
 
 /**
  * Apply a parsed <<<LOOM>>> block to the active game (loom-turn-protocol):
  *  - location/day/weather OVERWRITE the scene.
  *  - party/inventory/quests are OP-BASED (add | update | remove), keyed by
- *    slugged name/label. Party members are Characters with role "member";
- *    `remove` benches (inParty=false) rather than deleting, so a rejoin or a
- *    portrait survives.
+ *    slugged name/label.
+ *
+ * Party ops span BOTH halves of the cast model. Names are matched against the
+ * whole global character library, so a companion written in an earlier
+ * adventure is re-used — portrait, sheet and all — instead of duplicated. What
+ * an op writes depends on which half owns it:
+ *  - membership / status / last-spoke → this adventure's roster;
+ *  - field changes on a KNOWN character → that adventure's overrides, so the
+ *    player's authored text is never overwritten by the story;
+ *  - a brand-new character → the library, since there is no base to diverge
+ *    from yet.
+ * `remove` only un-parties (and records why); nothing the model emits ever
+ * deletes a character.
  *
  * Pure: returns the changed slices; callers merge into the store. Keeping this
  * pure is what makes the turn contract testable.
@@ -17,6 +37,7 @@ export interface AppliedScene {
   location: string;
   weather: string;
   characters: Character[];
+  roster: RosterEntry[];
   inventory: Item[];
   quests: Quest[];
 }
@@ -28,77 +49,122 @@ const slug = (s: string) =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 
-export function applyDeltas(game: GameState, block: LoomBlock): AppliedScene {
+export function applyDeltas(
+  game: GameState,
+  characters: Character[],
+  block: LoomBlock,
+): AppliedScene {
   const day = block.day ?? game.day;
   const location = block.location ?? game.location;
   const weather = block.weather ?? game.weather;
+  const party = applyParty(characters, game.roster, block);
 
   return {
     day,
     location,
     weather,
-    characters: applyParty(game.characters, block),
+    characters: party.characters,
+    roster: party.roster,
     inventory: applyInventory(game.inventory, block),
     quests: applyQuests(game.quests, block),
   };
 }
 
 /**
- * Op-based party roster, keyed by slugged member name. Only members
- * (role "member") are matched — the PC is never touched by a party delta.
- *  - add: create a new benched-in member, or re-enlist + refresh a known one.
- *    Enlisting respects PARTY_LIMIT — past the cap the member joins benched,
- *    matching the UI's enlist rule (the strip only has PARTY_LIMIT slots).
- *  - update: patch species/description/personality/drive/strengths of a known
- *    member.
- *  - remove: bench the member (inParty=false); the record is kept.
+ * Op-based party membership, keyed by slugged character name across the whole
+ * library. Only members (role "member") are matched — the PC is never touched
+ * by a party delta.
+ *  - add: enlist a known character (refreshing fields as overrides), or create
+ *    one in the library. Enlisting respects PARTY_LIMIT — past the cap the
+ *    character joins the adventure out of the party, matching the UI's rule
+ *    (the strip only has PARTY_LIMIT slots). A `fallen` character is never
+ *    re-recruited by the narrator; only the player can bring them back.
+ *  - update: override species/description/personality/drive/strengths for this
+ *    adventure. Never creates.
+ *  - remove: un-party and record why (`departed` unless the model says
+ *    otherwise). The character itself is kept, forever.
  */
-function applyParty(current: Character[], block: LoomBlock): Character[] {
-  if (!block.party?.length) return current;
-  const next = current.slice();
-  const partyFull = () =>
-    next.filter((c) => c.role === "member" && c.inParty).length >= PARTY_LIMIT;
+function applyParty(
+  characters: Character[],
+  roster: RosterEntry[],
+  block: LoomBlock,
+): { characters: Character[]; roster: RosterEntry[] } {
+  if (!block.party?.length) return { characters, roster };
+  let nextChars = characters;
+  let nextRoster = roster;
 
   for (const d of block.party) {
     if (!d?.name) continue;
     const key = slug(d.name);
-    const i = next.findIndex((c) => c.role === "member" && slug(c.name) === key);
+    const found = nextChars.find((c) => c.role === "member" && slug(c.name) === key);
 
     if (d.op === "remove") {
-      if (i !== -1) next[i] = { ...next[i], inParty: false };
+      if (found) {
+        nextRoster = setEntry(nextRoster, found.id, {
+          inParty: false,
+          status: d.status ?? "departed",
+        });
+      }
       continue;
     }
 
     if (d.op === "update") {
-      if (i !== -1) next[i] = patchMember(next[i], d);
+      if (found) nextRoster = mergeOverrides(nextRoster, found.id, overridesOf(d));
       continue;
     }
 
-    // add — re-enlist + refresh an existing member, else create one.
-    if (i !== -1) {
-      next[i] = { ...patchMember(next[i], d), inParty: next[i].inParty || !partyFull() };
+    // add — enlist + refresh a known character, else write a new one.
+    if (found) {
+      const entry = getEntry(nextRoster, found.id);
+      // The dead stay dead as far as the narrator is concerned.
+      if (entry.status === "fallen") continue;
+      nextRoster = mergeOverrides(nextRoster, found.id, overridesOf(d));
+      nextRoster = setEntry(nextRoster, found.id, {
+        status: "active",
+        inParty: entry.inParty || !partyFull(nextRoster),
+      });
     } else {
-      next.push({ ...makeMember(d, key), inParty: !partyFull() });
+      const created = makeCharacter(d, uniqueId(nextChars, `m-${key}`));
+      nextChars = [...nextChars, created];
+      nextRoster = setEntry(nextRoster, created.id, { inParty: !partyFull(nextRoster) });
     }
   }
 
-  return next;
+  return { characters: nextChars, roster: nextRoster };
 }
 
-function patchMember(c: Character, d: PartyDelta): Character {
-  return {
-    ...c,
-    species: d.species ?? c.species,
-    description: d.description ?? c.description,
-    personality: d.personality ?? c.personality,
-    drive: d.drive ?? c.drive,
-    strengths: d.strengths ?? c.strengths,
-  };
+/** The subset of a party delta that can diverge from the base character. */
+function overridesOf(d: PartyDelta): CharacterOverride {
+  const o: CharacterOverride = {};
+  if (d.species !== undefined) o.species = d.species;
+  if (d.description !== undefined) o.description = d.description;
+  if (d.personality !== undefined) o.personality = d.personality;
+  if (d.drive !== undefined) o.drive = d.drive;
+  if (d.strengths !== undefined) o.strengths = d.strengths;
+  return o;
 }
 
-function makeMember(d: PartyDelta, key: string): Character {
+/**
+ * Keep the name-derived id unique. A rename in the sheet can leave an old
+ * `m-<slug>` id parked on a different character; a duplicate id would then
+ * collide on the `portrait:<id>` cache key and on every id-keyed lookup.
+ */
+function uniqueId(characters: Character[], base: string): string {
+  if (!characters.some((c) => c.id === base)) return base;
+  for (let n = 2; ; n++) {
+    const candidate = `${base}-${n}`;
+    if (!characters.some((c) => c.id === candidate)) return candidate;
+  }
+}
+
+/**
+ * A character the narrator just introduced. The id stays name-derived so a
+ * portrait generated for "Riley" survives into any later adventure that
+ * recruits Riley again.
+ */
+function makeCharacter(d: PartyDelta, id: string): Character {
   return {
-    id: `m-${key}`,
+    id,
     role: "member",
     name: d.name,
     species: d.species ?? "",
@@ -107,8 +173,6 @@ function makeMember(d: PartyDelta, key: string): Character {
     drive: d.drive ?? "",
     strengths: d.strengths ?? { name: "", description: "" },
     equipment: [],
-    lastSpokeTurn: 0,
-    inParty: true,
   };
 }
 

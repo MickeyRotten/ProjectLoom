@@ -10,9 +10,10 @@ import {
   segmentDialogue,
   extractKeywords,
 } from "./spotlight";
-import type { Character } from "../types";
+import type { PartyMember } from "../types";
 
-function member(patch: Partial<Character> & { id: string; name: string }): Character {
+/** A character already resolved against an adventure — what the party is. */
+function member(patch: Partial<PartyMember> & { id: string; name: string }): PartyMember {
   return {
     role: "member",
     species: "human",
@@ -23,6 +24,7 @@ function member(patch: Partial<Character> & { id: string; name: string }): Chara
     equipment: [],
     lastSpokeTurn: 0,
     inParty: true,
+    status: "active",
     ...patch,
   };
 }

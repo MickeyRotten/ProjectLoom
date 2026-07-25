@@ -58,7 +58,8 @@ Stack: **React + TS + Vite · Tailwind (1-bit tokens) · Zustand · idb · Capac
 - `npm run dev` — Vite dev server.
 
 Layout: pure logic in `src/lib/` (`loomBlock.ts` parse/truncate · `deltas.ts` op-apply ·
-`prompt.ts` message assembly · `openrouter.ts` streaming + `completeChat` side calls ·
+`roster.ts` character-library ⟂ party join · `prompt.ts` message assembly ·
+`openrouter.ts` streaming + `completeChat` side calls ·
 `autoUpdate.ts` sheet auto-update · `spotlight.ts` **Phase 2** ·
 `images.ts` **Phase 3**), colocated `*.test.ts`; UI in `src/components/`; store in
 `src/store.ts`; types in `src/types.ts`; 1-bit tokens in `src/theme.css`. Keep `lib/`
@@ -89,6 +90,11 @@ done. **MVP complete.** Post-MVP: character-sheet **Auto-Update** (`autoUpdate.t
 Post-MVP also: custom character art (`download.ts` — member-sheet **Upload Image**
 replaces a portrait with a device file through the same 1-bit pass; **Download Image**
 saves it out via Web Share → `<a download>` fallback).
+Post-MVP also: **Characters ⟂ Party split** (`roster.ts` — the global character
+library lives outside `GameState`; `GameState.roster` holds per-adventure
+membership / `lastSpokeTurn` / `status` / story `overrides`; New Adventure keeps the
+cast and empties the party; **Kick from Party** on the sheet; `splitLegacyGame`
+migration). See `DESIGN.md → Characters ⟂ Party`.
 Deferred (post-MVP): history summarization, NPC/item art, TTS,
 weather animation, multi-world. Track scope in `DESIGN.md → Build Phases`.
 

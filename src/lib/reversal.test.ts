@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { captureReversal, applyReversal } from "./reversal";
 import { applyDeltas } from "./deltas";
-import { newGame } from "./defaults";
-import type { GameState, LoomBlock } from "../types";
+import { defaultPC, newGame } from "./defaults";
+import { getEntry, partyMembers } from "./roster";
+import type { Character, GameState, LoomBlock, Reversal } from "../types";
 
 /** A pre-turn game with a known scene + one item + one quest. */
 function seed(): GameState {
@@ -18,16 +19,23 @@ function seed(): GameState {
 }
 
 /** Mirror the store: apply a block, fold the changed slices into a post game. */
-function turn(pre: GameState, block: LoomBlock): GameState {
-  const scene = applyDeltas(pre, block);
+function turn(
+  pre: GameState,
+  characters: Character[],
+  block: LoomBlock,
+): { game: GameState; characters: Character[] } {
+  const scene = applyDeltas(pre, characters, block);
   return {
-    ...pre,
+    game: {
+      ...pre,
+      roster: scene.roster,
+      inventory: scene.inventory,
+      quests: scene.quests,
+      day: scene.day,
+      location: scene.location,
+      weather: scene.weather,
+    },
     characters: scene.characters,
-    inventory: scene.inventory,
-    quests: scene.quests,
-    day: scene.day,
-    location: scene.location,
-    weather: scene.weather,
   };
 }
 
@@ -40,29 +48,48 @@ describe("captureReversal", () => {
 
   it("omits unchanged slices (a plain narration turn stores only scalars)", () => {
     const pre = seed();
-    const post = turn(pre, { location: "The Ridge", weather: "clear", day: 4 });
+    const { game: post } = turn(pre, [defaultPC()], {
+      location: "The Ridge",
+      weather: "clear",
+      day: 4,
+    });
     const rev = captureReversal(pre, post);
-    expect(rev.characters).toBeUndefined();
+    expect(rev.roster).toBeUndefined();
     expect(rev.inventory).toBeUndefined();
     expect(rev.quests).toBeUndefined();
   });
 
   it("captures a slice only when the turn changed it", () => {
     const pre = seed();
-    const post = turn(pre, { inventory: [{ op: "add", label: "Rope", quantity: 1 }] });
+    const { game: post } = turn(pre, [defaultPC()], {
+      inventory: [{ op: "add", label: "Rope", quantity: 1 }],
+    });
     const rev = captureReversal(pre, post);
     expect(rev.inventory).toBe(pre.inventory);
-    expect(rev.characters).toBeUndefined();
+    expect(rev.roster).toBeUndefined();
     expect(rev.quests).toBeUndefined();
+  });
+
+  it("never captures the global character library", () => {
+    const pre = seed();
+    const { game: post } = turn(pre, [defaultPC()], {
+      party: [{ op: "add", name: "Riley" }],
+    });
+    const rev = captureReversal(pre, post);
+    expect(rev.roster).toBe(pre.roster);
+    expect(rev.characters).toBeUndefined();
   });
 });
 
 describe("applyReversal round-trips", () => {
   it("restores scalars overwritten by the turn", () => {
     const pre = seed();
-    const post = turn(pre, { location: "The Ridge", weather: "clear", day: 9 });
-    const rev = captureReversal(pre, post);
-    const back = applyReversal(post, rev);
+    const { game: post } = turn(pre, [defaultPC()], {
+      location: "The Ridge",
+      weather: "clear",
+      day: 9,
+    });
+    const back = applyReversal(post, captureReversal(pre, post));
     expect(back.location).toBe("The Dusty Path");
     expect(back.weather).toBe("windy");
     expect(back.day).toBe(3);
@@ -70,30 +97,95 @@ describe("applyReversal round-trips", () => {
 
   it("restores an item lost to a remove (lossy op, exact undo)", () => {
     const pre = seed();
-    const post = turn(pre, { inventory: [{ op: "remove", label: "Canteen" }] });
+    const { game: post } = turn(pre, [defaultPC()], {
+      inventory: [{ op: "remove", label: "Canteen" }],
+    });
     expect(post.inventory).toHaveLength(0);
     const back = applyReversal(post, captureReversal(pre, post));
     expect(back.inventory).toEqual(pre.inventory);
   });
 
-  it("restores a benched member added by the turn", () => {
+  it("un-parties someone the turn recruited, but leaves them in Characters", () => {
     const pre = seed();
-    const post = turn(pre, {
+    const { game: post, characters } = turn(pre, [defaultPC()], {
       party: [{ op: "add", name: "Riley", species: "human", description: "scout" }],
     });
-    expect(post.characters.some((c) => c.name === "Riley")).toBe(true);
+    expect(partyMembers(characters, post.roster).map((m) => m.name)).toEqual(["Riley"]);
+
     const back = applyReversal(post, captureReversal(pre, post));
-    expect(back.characters).toEqual(pre.characters);
-    expect(back.characters.some((c) => c.name === "Riley")).toBe(false);
+    expect(back.roster).toEqual(pre.roster);
+    expect(partyMembers(characters, back.roster)).toEqual([]);
+    // Undo never destroys a character — only the player deletes.
+    expect(characters.some((c) => c.name === "Riley")).toBe(true);
+  });
+
+  it("restores overrides the turn wrote", () => {
+    const characters = [
+      defaultPC(),
+      {
+        id: "m-navi",
+        role: "member" as const,
+        name: "Navi",
+        species: "sprite",
+        description: "a darting spark",
+        personality: "",
+        drive: "",
+        strengths: { name: "", description: "" },
+        equipment: [],
+      },
+    ];
+    const pre = {
+      ...seed(),
+      roster: [{ id: "m-navi", inParty: true, lastSpokeTurn: 0, status: "active" as const }],
+    };
+    const { game: post } = turn(pre, characters, {
+      party: [{ op: "update", name: "Navi", description: "singed" }],
+    });
+    expect(getEntry(post.roster, "m-navi").overrides).toEqual({ description: "singed" });
+
+    const back = applyReversal(post, captureReversal(pre, post));
+    expect(getEntry(back.roster, "m-navi").overrides).toBeUndefined();
   });
 
   it("leaves untouched slices referentially identical", () => {
     const pre = seed();
-    const post = turn(pre, { quests: [{ op: "add", label: "Find shade" }] });
+    const { game: post } = turn(pre, [defaultPC()], {
+      quests: [{ op: "add", label: "Find shade" }],
+    });
     const back = applyReversal(post, captureReversal(pre, post));
-    // Inventory/characters were never touched, so undo keeps the live refs.
+    // Inventory/roster were never touched, so undo keeps the live refs.
     expect(back.inventory).toBe(post.inventory);
-    expect(back.characters).toBe(post.characters);
+    expect(back.roster).toBe(post.roster);
     expect(back.quests).toEqual(pre.quests);
+  });
+
+  it("still undoes turns recorded before the Characters/Party split", () => {
+    // A pre-split reversal stored the whole character array.
+    const legacy: Reversal = {
+      day: 3,
+      location: "The Dusty Path",
+      weather: "windy",
+      characters: [
+        { ...defaultPC(), lastSpokeTurn: 0, inParty: false },
+        {
+          id: "m-navi",
+          role: "member",
+          name: "Navi",
+          species: "sprite",
+          description: "",
+          personality: "",
+          drive: "",
+          strengths: { name: "", description: "" },
+          equipment: [],
+          inParty: true,
+          lastSpokeTurn: 5,
+        },
+      ],
+    };
+    const back = applyReversal({ ...seed(), roster: [] }, legacy);
+    expect(back.roster).toEqual([
+      { id: "pc", inParty: false, lastSpokeTurn: 0, status: "active" },
+      { id: "m-navi", inParty: true, lastSpokeTurn: 5, status: "active" },
+    ]);
   });
 });

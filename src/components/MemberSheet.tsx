@@ -6,8 +6,11 @@ import { TextField, AreaField, ReadBlock, EditToolbar, btn, btnSmall } from "./f
 import { AutoUpdateModal } from "./AutoUpdateModal";
 import { useEditBuffer } from "./useEditBuffer";
 import { portraitKey } from "../lib/images";
-import { PARTY_LIMIT } from "../lib/defaults";
-import type { Character, Equipment } from "../types";
+import { getEntry, hasOverrides, partyFull as isPartyFull, resolve } from "../lib/roster";
+import type { Character, CharacterStatus, Equipment } from "../types";
+
+/** Player-settable standings, in the order they appear on the sheet. */
+const STATUSES: CharacterStatus[] = ["active", "departed", "fallen"];
 
 /** The character fields that are player-editable on this sheet. */
 type MemberDraft = Pick<
@@ -33,13 +36,14 @@ type MemberDraft = Pick<
  */
 export function MemberSheet() {
   const id = useStore((s) => s.memberId);
-  const member = useStore((s) => s.game.characters.find((c) => c.id === id));
+  const base = useStore((s) => s.characters.find((c) => c.id === id));
+  const roster = useStore((s) => s.game.roster);
   const update = useStore((s) => s.updateCharacter);
   const removeCharacter = useStore((s) => s.removeCharacter);
   const setInParty = useStore((s) => s.setInParty);
-  const partyFull = useStore(
-    (s) => s.game.characters.filter((c) => c.role === "member" && c.inParty).length >= PARTY_LIMIT,
-  );
+  const setStatus = useStore((s) => s.setStatus);
+  const revertOverrides = useStore((s) => s.revertOverrides);
+  const partyFull = isPartyFull(roster);
   const ensurePortrait = useStore((s) => s.ensurePortrait);
   const regeneratePortrait = useStore((s) => s.regeneratePortrait);
   const editPortrait = useStore((s) => s.editPortrait);
@@ -51,6 +55,14 @@ export function MemberSheet() {
   const [zoom, setZoom] = useState(false);
   const [autoUpdate, setAutoUpdate] = useState(false);
   const portraitFile = useRef<HTMLInputElement>(null);
+
+  // The sheet shows the character AS THEY ARE THIS ADVENTURE — the authored
+  // character with any story-written override folded on top.
+  const member = useMemo(
+    () => (base ? resolve(base, getEntry(roster, base.id)) : undefined),
+    [base, roster],
+  );
+  const storyChanged = !!base && hasOverrides(roster, base.id);
 
   const source = useMemo<MemberDraft>(
     () => ({
@@ -78,8 +90,8 @@ export function MemberSheet() {
   if (!member) {
     return (
       <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
-        <OverlayHeader title="Member" />
-        <p className="p-3 uppercase tracking-widest">No such member.</p>
+        <OverlayHeader title="Character" />
+        <p className="p-3 uppercase tracking-widest">No such character.</p>
       </main>
     );
   }
@@ -94,7 +106,7 @@ export function MemberSheet() {
 
   return (
     <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
-      <OverlayHeader title={member.name || "Member"} />
+      <OverlayHeader title={member.name || "Character"} />
 
       <div className="flex-1 space-y-5 overflow-y-auto p-3">
         <div className="relative mx-auto aspect-[2/3] w-full max-w-xs border-2 border-ink">
@@ -185,6 +197,24 @@ export function MemberSheet() {
           <button type="button" onClick={() => setAutoUpdate(true)} className={`w-full ${btn}`}>
             Auto-Update
           </button>
+        )}
+
+        {/* The story (a narrator delta or Auto-Update) has rewritten fields for
+            THIS adventure only; the authored character is untouched. Saving an
+            edit adopts the change, this button throws it away. */}
+        {storyChanged && !editing && (
+          <div className="space-y-2 border-2 border-ink p-3">
+            <p className="text-sm uppercase tracking-widest opacity-70">
+              Changed this adventure
+            </p>
+            <button
+              type="button"
+              onClick={() => revertOverrides(member.id)}
+              className={`w-full ${btnSmall}`}
+            >
+              Revert Story Changes
+            </button>
+          </div>
         )}
 
         <div className="space-y-4">
@@ -303,26 +333,59 @@ export function MemberSheet() {
         </fieldset>
 
         {member.role === "member" && (
-          <div className="flex flex-wrap gap-2 border-t-2 border-ink pt-4">
-            <button
-              type="button"
-              disabled={!member.inParty && partyFull}
-              onClick={() => setInParty(member.id, !member.inParty)}
-              className="border-2 border-ink px-3 py-2 text-sm uppercase tracking-widest disabled:opacity-40 active:bg-ink active:text-paper"
-            >
-              {member.inParty ? "Bench Member" : partyFull ? "Party Full" : "Enlist Member"}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (confirm(`Delete ${member.name || "this member"}? This can't be undone.`)) {
-                  removeCharacter(member.id);
-                }
-              }}
-              className="border-2 border-ink px-3 py-2 text-sm uppercase tracking-widest active:bg-ink active:text-paper"
-            >
-              Delete Member
-            </button>
+          <div className="space-y-4 border-t-2 border-ink pt-4">
+            <fieldset className="space-y-2">
+              <legend className="text-sm uppercase tracking-widest opacity-70">
+                Standing this adventure
+              </legend>
+              <div className="flex gap-2">
+                {STATUSES.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    aria-pressed={member.status === s}
+                    onClick={() => setStatus(member.id, s)}
+                    className={`flex-1 border-2 border-ink px-2 py-1 text-xs uppercase tracking-widest ${
+                      member.status === s ? "bg-ink text-paper" : "active:bg-ink active:text-paper"
+                    }`}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+
+            <div className="flex flex-wrap gap-2">
+              {/* Kicking ends party membership only — they stay in Characters,
+                  with their portrait and sheet, and can be added back later. */}
+              <button
+                type="button"
+                disabled={!member.inParty && partyFull}
+                onClick={() => setInParty(member.id, !member.inParty)}
+                className="border-2 border-ink px-3 py-2 text-sm uppercase tracking-widest disabled:opacity-40 active:bg-ink active:text-paper"
+              >
+                {member.inParty
+                  ? "Kick from Party"
+                  : partyFull
+                    ? "Party Full"
+                    : "Add to Party"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (
+                    confirm(
+                      `Delete ${member.name || "this character"} from Characters? They are removed from every adventure, along with their portrait. This can't be undone.`,
+                    )
+                  ) {
+                    removeCharacter(member.id);
+                  }
+                }}
+                className="border-2 border-ink px-3 py-2 text-sm uppercase tracking-widest active:bg-ink active:text-paper"
+              >
+                Delete Character
+              </button>
+            </div>
           </div>
         )}
       </div>
