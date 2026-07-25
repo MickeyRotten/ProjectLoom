@@ -1,5 +1,32 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { imageFileName, saveBlobAsFile } from "./download";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { blobToBase64, imageFileName, saveBlobAsFile } from "./download";
+
+// The APK's three moving parts. `native` flips the platform check per test;
+// the plugins themselves are never real here (they'd need a device).
+const cap = vi.hoisted(() => ({
+  native: false,
+  writeFile: vi.fn<
+    (opts: { path: string; data: string; directory: string }) => Promise<{ uri: string }>
+  >(async () => ({ uri: "file:///cache/loom-a-portrait.png" })),
+  share: vi.fn<(opts: { files?: string[]; title?: string }) => Promise<unknown>>(
+    async () => ({}),
+  ),
+}));
+
+vi.mock("@capacitor/core", () => ({
+  Capacitor: { isNativePlatform: () => cap.native },
+}));
+vi.mock("@capacitor/filesystem", () => ({
+  Filesystem: { writeFile: cap.writeFile },
+  Directory: { Cache: "CACHE" },
+}));
+vi.mock("@capacitor/share", () => ({ Share: { share: cap.share } }));
+
+beforeEach(() => {
+  cap.native = false;
+  cap.writeFile.mockClear();
+  cap.share.mockClear();
+});
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -94,9 +121,78 @@ describe("saveBlobAsFile", () => {
     expect(document.querySelector("a")).toBeNull(); // the anchor is removed again
   });
 
+  it("attempts a share the platform won't vouch for, and still falls back", async () => {
+    // An engine with `share` but no `canShare` used to skip sharing entirely.
+    stubShare({ share: vi.fn().mockRejectedValue(new Error("nope")) });
+    stubObjectUrl();
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+
+    await saveBlobAsFile(blob, "loom-a-portrait.png");
+
+    expect(click).toHaveBeenCalledTimes(1);
+  });
+
   it("throws when neither path exists", async () => {
     stubShare({});
     vi.stubGlobal("URL", {});
     await expect(saveBlobAsFile(blob, "x.png")).rejects.toThrow();
+  });
+});
+
+describe("saveBlobAsFile on the APK", () => {
+  const blob = new Blob(["x"], { type: "image/png" });
+
+  it("writes to the cache dir and opens the native share sheet", async () => {
+    cap.native = true;
+    // The WebView offers neither web path — this is the real device shape.
+    stubShare({});
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+
+    await saveBlobAsFile(blob, "loom-a-portrait.png");
+
+    expect(cap.writeFile).toHaveBeenCalledWith({
+      path: "loom-a-portrait.png",
+      data: await blobToBase64(blob),
+      directory: "CACHE",
+    });
+    expect(cap.share.mock.calls[0][0]).toMatchObject({
+      files: ["file:///cache/loom-a-portrait.png"],
+    });
+    expect(click).not.toHaveBeenCalled(); // never the dead WebView fallback
+  });
+
+  it("treats a dismissed native sheet as done", async () => {
+    cap.native = true;
+    cap.share.mockRejectedValueOnce(new Error("Share canceled"));
+    await expect(saveBlobAsFile(blob, "loom-a-portrait.png")).resolves.toBeUndefined();
+  });
+
+  it("reports a real native failure instead of falling through", async () => {
+    cap.native = true;
+    cap.share.mockRejectedValueOnce(new Error("no activity found"));
+    stubObjectUrl();
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+
+    await expect(saveBlobAsFile(blob, "loom-a-portrait.png")).rejects.toThrow(
+      "no activity found",
+    );
+    expect(click).not.toHaveBeenCalled();
+  });
+
+  it("stays off the plugins on the web build", async () => {
+    stubShare({});
+    stubObjectUrl();
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+
+    await saveBlobAsFile(blob, "loom-a-portrait.png");
+
+    expect(cap.writeFile).not.toHaveBeenCalled();
+    expect(cap.share).not.toHaveBeenCalled();
+  });
+});
+
+describe("blobToBase64", () => {
+  it("strips the data-URL prefix", async () => {
+    expect(await blobToBase64(new Blob(["hi"], { type: "image/png" }))).toBe("aGk=");
   });
 });

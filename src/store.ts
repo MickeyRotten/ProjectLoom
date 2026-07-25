@@ -205,8 +205,12 @@ export interface LoomStore {
   editPortrait: (memberId: string, instruction: string) => void;
   /** Replace a member's portrait with a user-supplied image file. */
   uploadPortrait: (memberId: string, file: Blob) => Promise<void>;
-  /** Save a member's portrait to the device (share sheet / download). */
-  downloadPortrait: (memberId: string) => Promise<void>;
+  /**
+   * Save a member's portrait to the device (share sheet / download). Resolves
+   * false when there was nothing to save or the platform refused, so the sheet
+   * can say so — a failed SAVE must not flag the portrait itself as broken.
+   */
+  downloadPortrait: (memberId: string) => Promise<boolean>;
 }
 
 /** The sheet fields the story is allowed to diverge from the base character. */
@@ -1053,14 +1057,14 @@ export const useStore = create<LoomStore>((set, get) => {
   },
 
   async downloadPortrait(memberId) {
-    const key = portraitKey(memberId);
-    const blob = await loadImage(key);
-    if (!blob) return;
+    const blob = await loadImage(portraitKey(memberId));
+    if (!blob) return false;
     const name = get().characters.find((c) => c.id === memberId)?.name ?? "";
     try {
       await saveBlobAsFile(blob, imageFileName(name));
+      return true;
     } catch {
-      set({ imgError: { ...get().imgError, [key]: true } });
+      return false;
     }
   },
   };
