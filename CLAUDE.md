@@ -123,6 +123,18 @@ Post-MVP also: **location image cooldown** (`Settings.bannerCooldown` in Advance
 `GameState.lastBannerTurn`, stamped only on a real generation). Gates generation
 only: cached locations still show instantly, ⟳ ignores the cooldown but restarts
 it, and the placeholder counts the turns left.
+Post-MVP also: **frozen character sheets** — the narrator authors a sheet exactly
+once, on the `add` that creates a character; every later `add`/`update` moves
+`standing` and nothing else (`deltas.ts → applyParty` drops the fields, so no
+prompt wording can reopen it). Party deltas no longer write `overrides` at all —
+`autoUpdate.ts` is the only writer left. The character-authoring prompt rules are
+now player-editable settings (`characterCreationInstructions`,
+`characterUpdateInstructions`, `standingInstructions`, `departureInstructions`,
+alongside `appearanceInstructions`), each folded into the output protocol as a
+whole bullet that a blank field **removes**. **Advanced is now an index of
+sub-menus** — Narrator · Characters · Images · Portraits — with the depth held in
+`AdvancedScreen` local state and `OverlayHeader`'s new `onBack` popping the
+sub-menu before the screen.
 Deferred (post-MVP): history summarization, NPC/item art, TTS,
 weather animation, multi-world. Track scope in `DESIGN.md → Build Phases`.
 

@@ -496,12 +496,47 @@ describe("output protocol — party standing", () => {
 
   it("teaches the bench and the NPC tier, and states the party cap", () => {
     const content = proto().content;
-    expect(content).toContain('"standing": "active"');
+    expect(content).toContain('"standing"');
+    expect(content).toContain('"active"');
     expect(content).toContain('"benched"');
     expect(content).toContain('"npc"');
     // The cap used to be enforced silently client-side; a model that doesn't
     // know it keeps writing a fourth companion into the scene.
     expect(content).toContain(`only ${PARTY_LIMIT} companions can be active at once`);
+  });
+
+  it("tells the model a created sheet is frozen", () => {
+    expect(proto().content).toContain("FROZEN");
+  });
+});
+
+describe("output protocol — editable character rules", () => {
+  const proto = (patch: Partial<Settings>) =>
+    build({
+      settings: { ...settings, ...patch },
+      game: newGame(),
+      playerMessage: "go",
+    }).find((m) => m.content.includes("OUTPUT PROTOCOL"))!.content;
+
+  it("folds each Advanced character rule into the protocol verbatim", () => {
+    const content = proto({
+      characterCreationInstructions: "CREATION-RULE",
+      characterUpdateInstructions: "UPDATE-RULE",
+      standingInstructions: "STANDING-RULE",
+      departureInstructions: "DEPARTURE-RULE",
+    });
+    expect(content).toContain("- CREATION-RULE");
+    expect(content).toContain("- UPDATE-RULE");
+    expect(content).toContain("- STANDING-RULE");
+    expect(content).toContain("- DEPARTURE-RULE");
+  });
+
+  it("drops a rule the player blanked instead of falling back to a default", () => {
+    const content = proto({ departureInstructions: "   " });
+    expect(content).not.toContain("Removing never deletes anyone");
+    // The surrounding JSON shape is the parser's contract, not guidance — it
+    // survives however the player edits the rules around it.
+    expect(content).toContain('"party": array of character ops');
   });
 });
 

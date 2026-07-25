@@ -76,8 +76,9 @@ export type CharacterStatus = "active" | "departed" | "fallen";
 
 /**
  * Fields the story may diverge from the base character for this adventure only.
- * Narrator party deltas and Auto-Update write here; the player's own sheet edits
- * write the base character (and clear the matching overrides).
+ * Auto-Update writes here — the narrator no longer does, since a sheet freezes
+ * once the character exists. The player's own sheet edits write the base
+ * character (and clear the matching overrides).
  */
 export type CharacterOverride = Partial<
   Pick<Character, "species" | "description" | "personality" | "drive" | "strengths">
@@ -275,6 +276,21 @@ export interface Settings {
    * that later becomes the member's portrait Subject verbatim.
    */
   appearanceInstructions: string;
+  /**
+   * What the narrator must write when it introduces a character (`add`) — the
+   * one moment it authors a sheet, since everything below freezes afterwards.
+   */
+  characterCreationInstructions: string;
+  /**
+   * The freeze rule: a created character's sheet is no longer the narrator's to
+   * rewrite. `deltas.ts` enforces it regardless; this is what stops the model
+   * spending tokens trying.
+   */
+  characterUpdateInstructions: string;
+  /** How the narrator seats a character — active / benched / npc. */
+  standingInstructions: string;
+  /** How the narrator writes someone out — departed / fallen. */
+  departureInstructions: string;
   optionInstructions: string;
   spotlightRule: string;
 }
@@ -284,6 +300,11 @@ export interface Settings {
  * All fields optional; op-based arrays for party/inventory/quests.
  * ------------------------------------------------------------------ */
 
+/**
+ * A character op. The sheet fields are read on CREATION only — an op naming a
+ * character who already exists moves their `standing` and nothing else (see
+ * `deltas.ts → applyParty`), so the story can never rewrite an authored sheet.
+ */
 export interface PartyDelta {
   op: Op;
   name: string;
