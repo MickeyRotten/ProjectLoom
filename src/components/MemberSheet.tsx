@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useStore } from "../store";
 import { OverlayHeader } from "./OverlayHeader";
 import { EditImageButton } from "./EditImageButton";
-import { TextField, AreaField, ReadBlock, EditToolbar } from "./fields";
+import { TextField, AreaField, ReadBlock, EditToolbar, btn } from "./fields";
+import { AutoUpdateModal } from "./AutoUpdateModal";
 import { useEditBuffer } from "./useEditBuffer";
 import { portraitKey } from "../lib/images";
 import { PARTY_LIMIT } from "../lib/defaults";
@@ -46,6 +47,7 @@ export function MemberSheet() {
   const portraitPending = useStore((s) => (id ? s.imgPending[portraitKey(id)] : false));
   const editFailed = useStore((s) => (id ? s.imgError[portraitKey(id)] : false));
   const [zoom, setZoom] = useState(false);
+  const [autoUpdate, setAutoUpdate] = useState(false);
 
   const source = useMemo<MemberDraft>(
     () => ({
@@ -140,6 +142,14 @@ export function MemberSheet() {
         </div>
 
         <EditToolbar editing={editing} onEdit={startEdit} onSave={save} onDiscard={discard} />
+
+        {/* Gated behind read mode — an open draft would overwrite whatever the
+            model just wrote the moment the player hits Save Changes. */}
+        {!editing && (
+          <button type="button" onClick={() => setAutoUpdate(true)} className={`w-full ${btn}`}>
+            Auto-Update
+          </button>
+        )}
 
         <div className="space-y-4">
           <TextField label="Name" value={v.name} editing={editing} onChange={(x) => setField("name", x)} />
@@ -280,6 +290,14 @@ export function MemberSheet() {
           </div>
         )}
       </div>
+
+      {autoUpdate && (
+        <AutoUpdateModal
+          memberId={member.id}
+          memberName={member.name}
+          onClose={() => setAutoUpdate(false)}
+        />
+      )}
 
       {zoom && portraitUrl && (
         <button
