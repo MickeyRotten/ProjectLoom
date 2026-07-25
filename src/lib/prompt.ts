@@ -5,8 +5,9 @@ import {
   formatGearBlock,
   formatSpotlightBlock,
 } from "./spotlight";
-import { partyMembers, playerCharacter, presentMembers } from "./roster";
+import { partedMembers, partyMembers, playerCharacter, presentMembers } from "./roster";
 import { matchWorldNotes, formatWorldNotesBlock } from "./worldNotes";
+import { PARTY_LIMIT } from "./defaults";
 
 /**
  * Prompt assembly (DESIGN.md → Prompt assembly, trimmed port of
@@ -75,6 +76,13 @@ export function buildMessages(opts: BuildOptions): ChatMessage[] {
   // 9. History window: opening narration as the first assistant turn, then a
   //    budget-trimmed tail of recent turns.
   messages.push(...buildHistory(game, budget));
+
+  // 9b. Active-party roll call — the authoritative composition, re-read from
+  //     the roster every turn and placed AFTER the history on purpose: the
+  //     history outlives membership, so the last thing the model reads before
+  //     the action must be who is actually here. Always emitted, even for an
+  //     empty party — "you travel alone" is exactly the case history drifts on.
+  messages.push({ role: "system", content: buildPartyCompositionBlock(game, characters) });
 
   // 10. Output-protocol instruction (how to emit prose + the <<<LOOM>>> block).
   messages.push({ role: "system", content: buildOutputProtocol(settings) });
@@ -175,6 +183,59 @@ function indent(block: string): string {
     .split("\n")
     .map((l) => (l ? `  ${l}` : l))
     .join("\n");
+}
+
+/** How many past departures the roll call names before it stops listing. */
+const PARTED_LIMIT = 6;
+
+/**
+ * Active-party roll call (#9b). One compact, deterministic block naming who is
+ * travelling with the player RIGHT NOW, plus the companions who left and why.
+ */
+function buildPartyCompositionBlock(game: GameState, characters: Character[]): string {
+  return formatPartyComposition(
+    partyMembers(characters, game.roster),
+    // Newest departures only — an old adventure can accumulate many, and the
+    // stale ones are the least likely to still be bleeding into the scene.
+    partedMembers(characters, game.roster).slice(-PARTED_LIMIT),
+  );
+}
+
+/**
+ * The ACTIVE PARTY block. Deliberately short — the full sheets already rode in
+ * the roster block (#4); this one is a membership fact, stated last.
+ */
+export function formatPartyComposition(
+  party: PartyMember[],
+  parted: PartyMember[] = [],
+): string {
+  const lines = [
+    "ACTIVE PARTY — THIS TURN (authoritative: it overrides anything earlier beats imply about who is present)",
+    party.length
+      ? `Travelling with the player (${party.length}/${PARTY_LIMIT}): ${party
+          .map((m) => m.name)
+          .join(", ")}`
+      : "Travelling with the player (0): nobody — the player is ALONE this turn.",
+  ];
+
+  if (parted.length) {
+    const gone = parted.map((m) => `${m.name} (${m.status})`).join(" · ");
+    lines.push(`No longer travelling with the player: ${gone}`);
+  }
+
+  lines.push(
+    party.length
+      ? "Only these companions are present. Do not voice, move, or describe anyone else as travelling with the player, however recently they appeared in the scene."
+      : "No companions are present. Do not voice or act for a companion this turn — anyone in earlier beats has already left.",
+  );
+
+  if (parted.some((m) => m.status === "fallen")) {
+    lines.push(
+      "A fallen companion is DEAD — never write them back into the scene as present.",
+    );
+  }
+
+  return lines.join("\n");
 }
 
 /**

@@ -71,6 +71,29 @@ export function partyMembers(
   return out;
 }
 
+/**
+ * The companions this adventure has LOST — departed or fallen, and no longer
+ * travelling. Named in the prompt every turn so the narrator stops writing
+ * them into the scene: the history window outlives membership, so a member who
+ * left three beats ago is still all over the freshest context.
+ *
+ * Roster order, which is the order they were written — the tail is the most
+ * recent departure.
+ */
+export function partedMembers(
+  characters: Character[],
+  roster: RosterEntry[],
+): PartyMember[] {
+  const out: PartyMember[] = [];
+  for (const e of roster) {
+    if (e.inParty || e.status === "active") continue;
+    const base = characters.find((c) => c.id === e.id);
+    if (!base || base.role !== "member") continue;
+    out.push(resolve(base, e));
+  }
+  return out;
+}
+
 /** The player character, resolved. */
 export function playerCharacter(
   characters: Character[],

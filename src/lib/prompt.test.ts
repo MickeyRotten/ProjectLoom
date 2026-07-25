@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { buildMessages, buildHistory, approxTokens, formatPartyRoster } from "./prompt";
+import {
+  buildMessages,
+  buildHistory,
+  approxTokens,
+  formatPartyRoster,
+  formatPartyComposition,
+} from "./prompt";
 import { defaultPC, newGame, defaultSettings } from "./defaults";
 import type { Character, GameState, Message, RosterEntry, Settings } from "../types";
 
@@ -161,6 +167,95 @@ describe("party roster + spotlight", () => {
 
   it("characters outside the party are excluded from the roster", () => {
     expect(formatPartyRoster([])).toBe("");
+  });
+});
+
+describe("active party roll call", () => {
+  const navi = member({ id: "m-navi", name: "Navi", species: "sprite" });
+  const bram = member({ id: "m-bram", name: "Bram", species: "human" });
+  const cast = [defaultPC(), navi, bram];
+
+  function rollCall(msgs: { content: string }[]) {
+    return msgs.find((m) => m.content.includes("ACTIVE PARTY — THIS TURN"));
+  }
+
+  it("names the current party after the history, right before the protocol", () => {
+    const g = withParty(newGame(), "m-navi", "m-bram");
+    g.messages = [narr(1, "The road forks.")];
+    const msgs = build({ settings, game: g, characters: cast, playerMessage: "go" });
+    const idx = msgs.findIndex((m) => m.content.includes("ACTIVE PARTY — THIS TURN"));
+    const protocolIdx = msgs.findIndex((m) => m.content.includes("OUTPUT PROTOCOL"));
+    expect(idx).toBe(protocolIdx - 1);
+    expect(msgs[idx].role).toBe("system");
+    expect(msgs[idx].content).toContain("Travelling with the player (2/3): Navi, Bram");
+  });
+
+  it("is emitted even with an empty party, saying the player is alone", () => {
+    const msgs = build({ settings, game: newGame(), characters: cast, playerMessage: "go" });
+    const block = rollCall(msgs);
+    expect(block?.content).toContain("nobody — the player is ALONE this turn.");
+    expect(block?.content).toContain("Do not voice or act for a companion");
+  });
+
+  it("re-reads membership every turn — a kicked member drops out of the roll call", () => {
+    const g = withParty(newGame(), "m-navi", "m-bram");
+    const after: GameState = {
+      ...g,
+      roster: g.roster.map((e) => (e.id === "m-bram" ? { ...e, inParty: false } : e)),
+    };
+    const block = rollCall(build({ settings, game: after, characters: cast, playerMessage: "go" }));
+    expect(block?.content).toContain("Navi");
+    expect(block?.content).not.toContain("Bram");
+  });
+
+  it("lists who left and why, and forbids resurrecting the fallen", () => {
+    const g: GameState = {
+      ...newGame(),
+      roster: [
+        { id: "m-navi", inParty: true, lastSpokeTurn: 0, status: "active" },
+        { id: "m-bram", inParty: false, lastSpokeTurn: 2, status: "fallen" },
+      ],
+    };
+    const block = rollCall(build({ settings, game: g, characters: cast, playerMessage: "go" }));
+    expect(block?.content).toContain("No longer travelling with the player: Bram (fallen)");
+    expect(block?.content).toContain("never write them back into the scene as present");
+  });
+
+  it("keeps a departed member out of the travelling line but names the departure", () => {
+    const g: GameState = {
+      ...newGame(),
+      roster: [{ id: "m-navi", inParty: false, lastSpokeTurn: 1, status: "departed" }],
+    };
+    const block = rollCall(build({ settings, game: g, characters: cast, playerMessage: "go" }));
+    expect(block?.content).toContain("nobody — the player is ALONE this turn.");
+    expect(block?.content).toContain("Navi (departed)");
+    // Only the fallen get the resurrection ban.
+    expect(block?.content).not.toContain("never write them back");
+  });
+
+  it("caps the departure list to the most recent few", () => {
+    const gone = Array.from({ length: 9 }, (_, i) =>
+      member({ id: `m-${i}`, name: `Gone${i}` }),
+    );
+    const g: GameState = {
+      ...newGame(),
+      roster: gone.map((c) => ({
+        id: c.id,
+        inParty: false,
+        lastSpokeTurn: 0,
+        status: "departed" as const,
+      })),
+    };
+    const block = rollCall(
+      build({ settings, game: g, characters: [defaultPC(), ...gone], playerMessage: "go" }),
+    );
+    expect(block?.content).not.toContain("Gone0");
+    expect(block?.content).toContain("Gone8");
+  });
+
+  it("formats a bare composition without a departure line", () => {
+    const solo = formatPartyComposition([]);
+    expect(solo).not.toContain("No longer travelling");
   });
 });
 

@@ -6,6 +6,7 @@ import {
   getEntry,
   hasOverrides,
   mergeOverrides,
+  partedMembers,
   partyCount,
   partyFull,
   partyMembers,
@@ -107,6 +108,34 @@ describe("partyMembers", () => {
   it("is full only at PARTY_LIMIT resolvable members", () => {
     const ghosts = ["x", "y", "z"].map((id) => entry(id, { inParty: true }));
     expect(partyFull(chars, ghosts)).toBe(false);
+  });
+});
+
+describe("partedMembers", () => {
+  const chars = [defaultPC(), member("a", "Ada"), member("b", "Bel")];
+
+  it("returns non-active members who are no longer travelling, in roster order", () => {
+    const roster = [
+      entry("b", { status: "fallen" }),
+      entry("a", { status: "departed" }),
+    ];
+    expect(partedMembers(chars, roster).map((m) => [m.name, m.status])).toEqual([
+      ["Bel", "fallen"],
+      ["Ada", "departed"],
+    ]);
+  });
+
+  it("excludes anyone still in the party, whatever their status", () => {
+    // A rejoined member is active again; nothing 'lost' about them.
+    expect(partedMembers(chars, [entry("a", { inParty: true, status: "departed" })])).toEqual([]);
+  });
+
+  it("excludes characters the adventure simply never recruited", () => {
+    expect(partedMembers(chars, [entry("a")])).toEqual([]);
+  });
+
+  it("skips ids whose character was deleted from the library", () => {
+    expect(partedMembers(chars, [entry("gone", { status: "departed" })])).toEqual([]);
   });
 });
 

@@ -103,6 +103,11 @@ library lives outside `GameState`; `GameState.roster` holds per-adventure
 membership / `lastSpokeTurn` / `status` / story `overrides`; New Adventure keeps the
 cast and empties the party; **Kick from Party** on the sheet; `splitLegacyGame`
 migration). See `DESIGN.md → Characters ⟂ Party`.
+Post-MVP also: **active-party roll call** (`prompt.ts → formatPartyComposition` +
+`roster.ts → partedMembers`) — a compact authoritative party-composition block re-read
+from the roster every turn and injected *after* the history, naming who travels with the
+player (`n/PARTY_LIMIT`) and who left (`departed`/`fallen`); emitted even when the party
+is empty, so the narrator stops voicing companions the history still remembers.
 Deferred (post-MVP): history summarization, NPC/item art, TTS,
 weather animation, multi-world. Track scope in `DESIGN.md → Build Phases`.
 
