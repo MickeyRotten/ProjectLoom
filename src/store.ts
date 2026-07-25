@@ -15,7 +15,14 @@ import {
   type SaveSlot,
 } from "./lib/db";
 import { buildMessages } from "./lib/prompt";
-import { streamChat, OpenRouterError } from "./lib/openrouter";
+import { completeChat, streamChat, OpenRouterError } from "./lib/openrouter";
+import {
+  AUTO_UPDATE_TEMPERATURE,
+  buildAutoUpdateMessages,
+  normalizeFields,
+  parseAutoUpdate,
+  type AutoField,
+} from "./lib/autoUpdate";
 import { parseLoomResponse, truncateForDisplay } from "./lib/loomBlock";
 import { applyDeltas } from "./lib/deltas";
 import { captureReversal, applyReversal } from "./lib/reversal";
@@ -80,6 +87,11 @@ export interface LoomStore {
   // Named save slots (Phase 4).
   slots: SaveSlot[];
 
+  /** A character-sheet auto-update is in flight (one at a time, app-wide). */
+  autoUpdating: boolean;
+  /** Why the last auto-update failed, shown in the modal until dismissed. */
+  autoUpdateError: string | null;
+
   hydrate: () => Promise<void>;
   setScreen: (screen: Screen) => void;
   /** Return to the previous screen (pops the navigation history). */
@@ -91,6 +103,14 @@ export interface LoomStore {
   updateScenario: (patch: Partial<Scenario>) => void;
   updateCharacter: (id: string, patch: Partial<Character>) => void;
   addMember: () => string;
+  /**
+   * Ask the text model to rewrite the selected sheet fields for one character
+   * (Appearance / Personality / Drive) and apply the result. Resolves true when
+   * something was written.
+   */
+  autoUpdateCharacter: (id: string, fields: AutoField[]) => Promise<boolean>;
+  /** Clear a stale auto-update failure (modal close / new run). */
+  clearAutoUpdateError: () => void;
   removeCharacter: (id: string) => void;
   /** Enlist/bench a member into the active party, capped at PARTY_LIMIT. */
   setInParty: (id: string, inParty: boolean) => void;
@@ -288,6 +308,9 @@ export const useStore = create<LoomStore>((set, get) => {
 
   slots: [],
 
+  autoUpdating: false,
+  autoUpdateError: null,
+
   async hydrate() {
     const saved = await loadActiveGame();
     if (saved) {
@@ -362,6 +385,47 @@ export const useStore = create<LoomStore>((set, get) => {
     set({ game });
     void saveActiveGame(game);
     return member.id;
+  },
+
+  async autoUpdateCharacter(id, fields) {
+    const selected = normalizeFields(fields);
+    // A turn in flight owns the roster (its reversal snapshot is already
+    // captured), so a sheet rewrite mid-stream would be silently undone.
+    if (!selected.length || get().autoUpdating || get().streaming) return false;
+    const character = get().game.characters.find((c) => c.id === id);
+    if (!character) return false;
+
+    set({ autoUpdating: true, autoUpdateError: null });
+    try {
+      const raw = await completeChat({
+        settings: get().settings,
+        messages: buildAutoUpdateMessages({ game: get().game, character, fields: selected }),
+        temperature: AUTO_UPDATE_TEMPERATURE,
+      });
+      const patch = parseAutoUpdate(raw, selected);
+      if (!Object.keys(patch).length) {
+        throw new Error("The model returned no usable fields. Try again.");
+      }
+      // The character can be deleted while the call is in flight.
+      if (!get().game.characters.some((c) => c.id === id)) {
+        set({ autoUpdating: false });
+        return false;
+      }
+      get().updateCharacter(id, patch);
+      set({ autoUpdating: false });
+      return true;
+    } catch (err) {
+      const message =
+        err instanceof OpenRouterError || err instanceof Error
+          ? err.message
+          : "Auto-update failed.";
+      set({ autoUpdating: false, autoUpdateError: message });
+      return false;
+    }
+  },
+
+  clearAutoUpdateError() {
+    set({ autoUpdateError: null });
   },
 
   removeCharacter(id) {

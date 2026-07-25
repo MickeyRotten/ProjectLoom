@@ -107,6 +107,101 @@ export async function streamChat(opts: StreamOptions): Promise<string> {
   throw lastErr;
 }
 
+export interface CompleteOptions {
+  settings: Settings;
+  messages: ChatMessage[];
+  signal?: AbortSignal;
+  /** Sampling override — side calls (sheet updates) run tighter than narration. */
+  temperature?: number;
+}
+
+/**
+ * One non-streamed chat completion, for side calls that want the whole answer
+ * at once (character-sheet auto-update). Same key, headers, and retry policy as
+ * the narration stream; returns the assistant text. Throws OpenRouterError.
+ */
+export async function completeChat(opts: CompleteOptions): Promise<string> {
+  const { settings, signal } = opts;
+
+  if (!settings.openRouterKey.trim()) {
+    throw new OpenRouterError("No OpenRouter API key set. Add one in Model & Key.");
+  }
+
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    try {
+      return await completeOnce(opts);
+    } catch (err) {
+      if (signal?.aborted) throw err;
+      lastErr = err;
+      const retryable =
+        err instanceof OpenRouterError ? err.retryable : err instanceof TypeError;
+      if (!retryable || attempt === MAX_ATTEMPTS - 1) throw err;
+      await sleep(backoffMs(attempt), signal);
+    }
+  }
+  throw lastErr;
+}
+
+async function completeOnce(opts: CompleteOptions): Promise<string> {
+  const { settings, messages, signal, temperature } = opts;
+
+  const res = await fetch(ENDPOINT, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${settings.openRouterKey.trim()}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": "https://github.com/MickeyRotten/ProjectLoom",
+      "X-Title": "Project Loom",
+    },
+    body: JSON.stringify({
+      model: settings.textModelId,
+      temperature: temperature ?? settings.temperature,
+      stream: false,
+      messages,
+    }),
+    signal,
+  });
+
+  if (!res.ok) {
+    const detail = await safeErrorText(res);
+    throw new OpenRouterError(
+      `OpenRouter ${res.status} ${res.statusText}${detail ? ` — ${detail}` : ""}`,
+      { status: res.status, retryable: isRetryableStatus(res.status) },
+    );
+  }
+
+  const json: unknown = await res.json();
+  const text = extractMessageText(json);
+  if (!text.trim()) {
+    // A 200 with an empty message is a soft failure — worth another attempt.
+    throw new OpenRouterError("OpenRouter returned an empty response.", { retryable: true });
+  }
+  return text;
+}
+
+/**
+ * Assistant text from a completion response. Tolerates the two content shapes
+ * in the wild: a plain string, or an array of `{ type: "text", text }` parts.
+ */
+export function extractMessageText(json: unknown): string {
+  const choice = (json as { choices?: unknown[] } | null)?.choices?.[0] as
+    | { message?: { content?: unknown } }
+    | undefined;
+  const content = choice?.message?.content;
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((part) =>
+        part && typeof part === "object" && typeof (part as { text?: unknown }).text === "string"
+          ? (part as { text: string }).text
+          : "",
+      )
+      .join("");
+  }
+  return "";
+}
+
 async function streamOnce(opts: StreamOptions): Promise<string> {
   const { settings, messages, signal, onDelta } = opts;
 

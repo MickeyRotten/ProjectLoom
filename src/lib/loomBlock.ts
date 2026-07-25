@@ -47,15 +47,16 @@ export function parseLoomResponse(raw: string): ParsedResponse {
   const json = extractFirstJsonObject(after);
   if (json === null) return { prose, block: null };
 
-  const block = parseBlockTolerant(json);
+  const block = parseJsonTolerant<LoomBlock>(json);
   return { prose, block };
 }
 
 /**
  * Extract the first brace-balanced `{…}` object from `text`, ignoring braces
  * inside strings. Returns the raw substring, or null if none is balanced.
+ * Exported so other model-JSON readers (autoUpdate.ts) salvage identically.
  */
-function extractFirstJsonObject(text: string): string | null {
+export function extractFirstJsonObject(text: string): string | null {
   const start = text.indexOf("{");
   if (start === -1) return null;
 
@@ -87,12 +88,12 @@ function extractFirstJsonObject(text: string): string | null {
 }
 
 /** JSON.parse with a light salvage pass for trailing commas. */
-function parseBlockTolerant(json: string): LoomBlock | null {
+export function parseJsonTolerant<T>(json: string): T | null {
   const attempts = [json, json.replace(/,\s*([}\]])/g, "$1")];
   for (const attempt of attempts) {
     try {
       const parsed = JSON.parse(attempt);
-      if (parsed && typeof parsed === "object") return parsed as LoomBlock;
+      if (parsed && typeof parsed === "object") return parsed as T;
     } catch {
       // try next salvage form
     }
