@@ -121,12 +121,14 @@ function applyParty(
       nextRoster = mergeOverrides(nextRoster, found.id, overridesOf(d));
       nextRoster = setEntry(nextRoster, found.id, {
         status: "active",
-        inParty: entry.inParty || !partyFull(nextRoster),
+        inParty: entry.inParty || !partyFull(nextChars, nextRoster),
       });
     } else {
       const created = makeCharacter(d, uniqueId(nextChars, `m-${key}`));
       nextChars = [...nextChars, created];
-      nextRoster = setEntry(nextRoster, created.id, { inParty: !partyFull(nextRoster) });
+      nextRoster = setEntry(nextRoster, created.id, {
+        inParty: !partyFull(nextChars, nextRoster),
+      });
     }
   }
 

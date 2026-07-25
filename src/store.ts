@@ -34,6 +34,7 @@ import {
   mergeOverrides,
   partyFull,
   partyMembers,
+  pruneRoster,
   resolve,
   setEntry,
 } from "./lib/roster";
@@ -677,7 +678,8 @@ export const useStore = create<LoomStore>((set, get) => {
     const target = get().characters.find((c) => c.id === id);
     if (!target || target.role !== "member") return;
     // Joining is capped by the strip's slots; leaving is always allowed.
-    if (inParty && !getEntry(g.roster, id).inParty && partyFull(g.roster)) return;
+    if (inParty && !getEntry(g.roster, id).inParty && partyFull(get().characters, g.roster))
+      return;
     // Bringing someone back is the player overruling how they left, so their
     // departed/fallen standing clears; kicking records a plain departure.
     const roster = setEntry(g.roster, id, {
@@ -1023,13 +1025,17 @@ export const useStore = create<LoomStore>((set, get) => {
 
     const narrator = g.messages[idx];
     const restored = narrator.reversal ? applyReversal(g, narrator.reversal) : g;
+    // The snapshot predates any character deleted since the turn ran, and undo
+    // never touches the library — so drop entries nothing can resolve rather
+    // than let them sit in the adventure holding party slots.
+    const roster = pruneRoster(get().characters, restored.roster);
 
     // Drop both messages of that turn; restore options from the now-latest beat.
     const messages = g.messages.filter((m) => m.turn !== narrator.turn);
     const prevNarrator = [...messages].reverse().find((m) => m.role === "narrator");
     const turnNumber = messages.reduce((max, m) => Math.max(max, m.turn), 0);
 
-    const game: GameState = { ...restored, messages, turnNumber };
+    const game: GameState = { ...restored, roster, messages, turnNumber };
     set({
       game,
       options: prevNarrator?.appliedDeltas?.options ?? [],

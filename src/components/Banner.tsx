@@ -5,7 +5,9 @@ import { EditImageButton } from "./EditImageButton";
 
 /**
  * The location banner (DESIGN.md → UI): a wide 1-bit establishing image for the
- * current location, under the header. Generated on a scene change to an
+ * current location. Full-bleed — edge to edge, flush against the header, with
+ * only a bottom rule separating it from the log — so the image reads as part of
+ * the top bar instead of a floating card. Generated on a scene change to an
  * uncached location; a placeholder shows while it renders. Tap ⟳ to regenerate.
  */
 export function Banner() {
@@ -20,7 +22,7 @@ export function Banner() {
   const [showWhy, setShowWhy] = useState(false);
 
   return (
-    <div className="relative aspect-[16/5] shrink-0 overflow-hidden border-2 border-ink mx-3 mt-1">
+    <div className="relative aspect-[16/5] shrink-0 overflow-hidden border-b-2 border-ink">
       {url ? (
         <button
           type="button"
