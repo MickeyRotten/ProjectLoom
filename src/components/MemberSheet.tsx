@@ -96,7 +96,7 @@ export function MemberSheet() {
       <OverlayHeader title={member.name || "Member"} />
 
       <div className="flex-1 space-y-5 overflow-y-auto p-3">
-        <div className="relative mx-auto aspect-[3/4] w-full max-w-xs border-2 border-ink">
+        <div className="relative mx-auto aspect-[2/3] w-full max-w-xs border-2 border-ink">
           {portraitUrl ? (
             <button
               type="button"

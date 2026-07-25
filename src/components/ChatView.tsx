@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useStore } from "../store";
 import { Options } from "./Options";
 import { TurnControls } from "./TurnControls";
@@ -10,12 +10,22 @@ import type { Character, Message } from "../types";
 /** Which message (id) is being edited, and the working draft. */
 type Editing = { id: string; role: "player" | "narrator"; draft: string };
 
+/** How close to the tail still counts as "following the tail" (px). */
+const NEAR_BOTTOM_PX = 120;
+
+const isNearBottom = (el: HTMLElement) =>
+  el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
+
 /**
  * The message log. Renders the opening narration, each turn, the live
  * streaming beat, and — tethered under the latest beat — the AI options and
  * quick actions (loom-turn-protocol: options ride the same beat, above the
  * party strip). Tapping the latest beat reveals its controls: Regen/Edit/Undo
  * on the narrator beat, Edit on the player beat.
+ *
+ * Scroll behaviour: the log opens on the newest beat, follows the tail while
+ * the reader is parked there, and — once they scroll up into the history —
+ * stops following and offers a "↓ Latest" button back to the live edge.
  */
 export function ChatView() {
   const opening = useStore((s) => s.game.scenario.openingNarration);
@@ -51,14 +61,39 @@ export function ChatView() {
 
   const scrollRef = useRef<HTMLElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  // Whether the reader is parked at the live edge. Drives the jump-to-latest
+  // button (shown only while reading back through the history).
+  const [atBottom, setAtBottom] = useState(true);
+
+  const jumpToLatest = (behavior: ScrollBehavior = "smooth") => {
+    bottomRef.current?.scrollIntoView({ behavior, block: "end" });
+    setAtBottom(true);
+  };
+
+  // On start (and on every return from a full-screen overlay, which remounts
+  // this log) land on the newest beat rather than the first turn. Layout effect
+  // so the jump happens before paint — no flash of the top of the history.
+  useLayoutEffect(() => {
+    jumpToLatest("auto");
+  }, []);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onScroll = () => setAtBottom(isNearBottom(el));
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
+
   // Only follow the tail when the reader is already near the bottom — scrolling
   // up to reread must not get yanked back on every streaming delta. The bottom
   // marker sits below the quick actions, so following it keeps them in view.
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    const nearBottom = isNearBottom(el);
     if (nearBottom) bottomRef.current?.scrollIntoView({ block: "end" });
+    setAtBottom(nearBottom);
   }, [messages.length, streamText, error, streaming]);
 
   const toggle = (id: string) => {
@@ -67,99 +102,113 @@ export function ChatView() {
   };
 
   return (
-    <section
-      ref={scrollRef}
-      className="mt-3 flex-1 space-y-3 overflow-y-auto px-3 pb-3 text-base"
-    >
-      <Beat role="narrator" text={opening} party={party} />
+    <div className="relative mt-3 flex min-h-0 flex-1 flex-col">
+      <section
+        ref={scrollRef}
+        className="flex-1 space-y-3 overflow-y-auto px-3 pb-3 text-base"
+      >
+        <Beat role="narrator" text={opening} party={party} />
 
-      {messages.map((m) => {
-        const tappable = m.id === lastNarratorId || m.id === lastPlayerId;
-        const isEditing = editing?.id === m.id;
-        return (
-          <div key={m.id} className="space-y-2">
-            {isEditing ? (
-              <Editor
-                draft={editing.draft}
-                onChange={(v) => setEditing({ ...editing, draft: v })}
-                onSave={() => {
-                  if (editing.role === "narrator") editMessage(editing.id, editing.draft);
-                  else editUserTurn(editing.draft);
-                  setEditing(null);
-                  setActive(null);
-                }}
-                onCancel={() => setEditing(null)}
-              />
-            ) : (
-              <div
-                onClick={tappable ? () => toggle(m.id) : undefined}
-                className={tappable ? "cursor-pointer" : undefined}
-              >
-                <Beat role={m.role} text={m.content} party={party} />
-              </div>
+        {messages.map((m) => {
+          const tappable = m.id === lastNarratorId || m.id === lastPlayerId;
+          const isEditing = editing?.id === m.id;
+          return (
+            <div key={m.id} className="space-y-2">
+              {isEditing ? (
+                <Editor
+                  draft={editing.draft}
+                  onChange={(v) => setEditing({ ...editing, draft: v })}
+                  onSave={() => {
+                    if (editing.role === "narrator") editMessage(editing.id, editing.draft);
+                    else editUserTurn(editing.draft);
+                    setEditing(null);
+                    setActive(null);
+                  }}
+                  onCancel={() => setEditing(null)}
+                />
+              ) : (
+                <div
+                  onClick={tappable ? () => toggle(m.id) : undefined}
+                  className={tappable ? "cursor-pointer" : undefined}
+                >
+                  <Beat role={m.role} text={m.content} party={party} />
+                </div>
+              )}
+
+              {/* Inline state-change toasts, tethered under the beat that
+                  applied them (derived from its recorded deltas). */}
+              {m.role === "narrator" && !isEditing && <Toasts msg={m} />}
+
+              {/* Player beat: tap reveals an Edit button (edit + re-roll turn). */}
+              {m.id === lastPlayerId && active === m.id && !isEditing && (
+                <button
+                  type="button"
+                  onClick={() => setEditing({ id: m.id, role: "player", draft: m.content })}
+                  className="w-full border-2 border-ink py-1 text-xs uppercase tracking-widest opacity-70 active:bg-ink active:text-paper active:opacity-100"
+                >
+                  ✎ Edit
+                </button>
+              )}
+            </div>
+          );
+        })}
+
+        {streaming && <Beat role="narrator" text={streamText || "…"} party={party} pending />}
+
+        {/* Narrator beat controls — revealed by tapping the latest narrator beat. */}
+        {!streaming && active === lastNarratorId && editing?.id !== lastNarratorId && (
+          <TurnControls
+            onEdit={() => {
+              const m = messages.find((x) => x.id === lastNarratorId);
+              if (m) setEditing({ id: m.id, role: "narrator", draft: m.content });
+            }}
+          />
+        )}
+
+        {!streaming && <Options />}
+
+        {error && (
+          <div className="space-y-2 border-2 border-ink p-2">
+            {failedInput && (
+              <p className="uppercase tracking-wide opacity-80">&gt; {failedInput}</p>
             )}
-
-            {/* Inline state-change toasts, tethered under the beat that
-                applied them (derived from its recorded deltas). */}
-            {m.role === "narrator" && !isEditing && <Toasts msg={m} />}
-
-            {/* Player beat: tap reveals an Edit button (edit + re-roll turn). */}
-            {m.id === lastPlayerId && active === m.id && !isEditing && (
+            <p className="uppercase tracking-widest">! {error}</p>
+            {failedInput && (
               <button
                 type="button"
-                onClick={() => setEditing({ id: m.id, role: "player", draft: m.content })}
-                className="w-full border-2 border-ink py-1 text-xs uppercase tracking-widest opacity-70 active:bg-ink active:text-paper active:opacity-100"
+                onClick={retryTurn}
+                className="w-full border-2 border-ink py-1 uppercase tracking-widest active:bg-ink active:text-paper"
               >
-                ✎ Edit
+                ↻ Retry
+              </button>
+            )}
+            {!hasKey && (
+              <button
+                type="button"
+                onClick={() => setScreen("modelkey")}
+                className="w-full border-2 border-ink py-1 uppercase tracking-widest active:bg-ink active:text-paper"
+              >
+                ☰ Model &amp; Key
               </button>
             )}
           </div>
-        );
-      })}
+        )}
 
-      {streaming && <Beat role="narrator" text={streamText || "…"} party={party} pending />}
+        <div ref={bottomRef} />
+      </section>
 
-      {/* Narrator beat controls — revealed by tapping the latest narrator beat. */}
-      {!streaming && active === lastNarratorId && editing?.id !== lastNarratorId && (
-        <TurnControls
-          onEdit={() => {
-            const m = messages.find((x) => x.id === lastNarratorId);
-            if (m) setEditing({ id: m.id, role: "narrator", draft: m.content });
-          }}
-        />
+      {/* Jump to latest — only while reading back through the history. Floats
+          over the log's bottom edge so it never displaces a beat. */}
+      {!atBottom && (
+        <button
+          type="button"
+          onClick={() => jumpToLatest()}
+          className="absolute bottom-2 right-3 z-10 border-2 border-ink bg-paper px-3 py-1 text-xs uppercase tracking-widest active:bg-ink active:text-paper"
+        >
+          ↓ Latest
+        </button>
       )}
-
-      {!streaming && <Options />}
-
-      {error && (
-        <div className="space-y-2 border-2 border-ink p-2">
-          {failedInput && (
-            <p className="uppercase tracking-wide opacity-80">&gt; {failedInput}</p>
-          )}
-          <p className="uppercase tracking-widest">! {error}</p>
-          {failedInput && (
-            <button
-              type="button"
-              onClick={retryTurn}
-              className="w-full border-2 border-ink py-1 uppercase tracking-widest active:bg-ink active:text-paper"
-            >
-              ↻ Retry
-            </button>
-          )}
-          {!hasKey && (
-            <button
-              type="button"
-              onClick={() => setScreen("modelkey")}
-              className="w-full border-2 border-ink py-1 uppercase tracking-widest active:bg-ink active:text-paper"
-            >
-              ☰ Model &amp; Key
-            </button>
-          )}
-        </div>
-      )}
-
-      <div ref={bottomRef} />
-    </section>
+    </div>
   );
 }
 

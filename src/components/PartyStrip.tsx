@@ -12,7 +12,9 @@ const MEMBER_SLOTS = 3;
  * screen width with gutters between and at the sides. Tap a filled slot to
  * open that character's full-screen sheet. Empty member slots always render so
  * the row keeps its shape. Portraits (Phase 3) drop into the face; until then a
- * filled slot shows initials.
+ * filled slot shows initials. Portraits are zoomed 50% and pinned to the top of
+ * the slot (`origin-top scale-150 object-top`) so the face fills the frame
+ * instead of sitting small in a tall crop.
  */
 export function PartyStrip() {
   const pc = useStore((s) => s.game.characters.find((c) => c.role === "pc"));
@@ -46,7 +48,7 @@ export function PartyStrip() {
                 <img
                   src={images[portraitKey(c.id)]}
                   alt={c.name}
-                  className="h-full w-full object-cover [image-rendering:pixelated]"
+                  className="h-full w-full origin-top scale-150 object-cover object-top [image-rendering:pixelated]"
                 />
               ) : (
                 initials(c)

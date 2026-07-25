@@ -129,6 +129,16 @@ describe("world notes injection", () => {
     expect(msgs.some((m) => m.content.includes("WORLD NOTES"))).toBe(false);
   });
 
+  it("injects a permanent note even when nothing in the scan text matches", () => {
+    const g = newGame();
+    g.worldNotes = [
+      { id: "n1", title: "The Ash Law", keywords: [], content: "no fires", permanent: true },
+    ];
+    const msgs = buildMessages({ settings, game: g, playerMessage: "I climb the ridge" });
+    const block = msgs.find((m) => m.content.includes("WORLD NOTES"));
+    expect(block?.content).toContain("The Ash Law: no fires");
+  });
+
   it("matches keywords against recent beats, not just the new message", () => {
     const g = newGame();
     g.worldNotes = [{ id: "n1", title: "Ash Cult", keywords: ["ashers"], content: "zealots" }];

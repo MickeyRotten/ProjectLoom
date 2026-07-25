@@ -92,7 +92,7 @@ One isolated function returning the OpenRouter `messages[]`, in order:
 4. **Party roster** — description, personality/likes/dislikes, Field Skill, equipment (port `_format_equipment`, simplified to `{label, description}` — no catalog lookup).
 5. **Inventory** (compact `label ×qty — description` list).
 6. **Active quests** (compact `label — description (reward: …)` list; done quests omitted).
-7. **World Notes** matched by keyword (single-category, simplified `match_entries`; titles are implicit keywords; scan the new message + last few turns).
+7. **World Notes** matched by keyword (single-category, simplified `match_entries`; titles are implicit keywords; scan the new message + last few turns). Notes flagged **permanent** skip matching and inject every turn.
 8. **Spotlight block** (from `spotlight.ts`).
 9. **Chat history** window (trim to a token budget; prepend the opening narration as the first assistant turn — port `_trim_to_budget`). *History summarization is deferred* — messages stay short, so a rolling window suffices for MVP.
 10. **Output-protocol instruction** — how to emit prose + the `<<<LOOM>>>` block, and the `option` instruction (player-editable).
@@ -169,7 +169,8 @@ Layout top-to-bottom (the reference screenshot is a **style guide, not literal t
 ```
 
 - **AI options:** 3–4 contextual choices from the `<<<LOOM>>>` block, rendered **in the chat view, directly under the latest narration beat** and **above the party portrait strip**; number keys submit; each just sends its text as a normal turn. They scroll with the chat, tethered to the beat that produced them.
-- **Party strip** sits below the options, above the fixed buttons; always visible; tapping a portrait opens that member's **full-screen sheet** (info · edit fields · **regenerate portrait**).
+- **Chat scrolling:** the log opens on the newest beat and follows the tail while the reader is parked there; scrolling up into the history stops the follow and shows a **↓ LATEST** button back to the live edge.
+- **Party strip** sits below the options, above the fixed buttons; always visible; tapping a portrait opens that member's **full-screen sheet** (info · edit fields · **regenerate portrait**). Strip portraits are zoomed 50% and top-aligned so the face fills the tall slot; the sheet's portrait frame is **2:3**.
 - **Fixed buttons:** `LOOK` sends "I look around."; `PARTY` and `INVENTORY` open full-screen views. (LOOK is a narrative action; PARTY/INVENTORY are views.)
 - **Inventory view:** a list of `Label · Description · Quantity` rows, editable inline.
 - **Quests view:** a list of `Label · Description · Reward` rows (+ active/done status), editable inline; reached from the menu/header (kept off the 3-button row to preserve the screenshot's layout).
