@@ -55,6 +55,11 @@ export function MemberSheet() {
   const [zoom, setZoom] = useState(false);
   const [autoUpdate, setAutoUpdate] = useState(false);
   const portraitFile = useRef<HTMLInputElement>(null);
+  // Saving hands off to the OS (share sheet / download) and leaves no trace in
+  // the app, so the sheet says what happened for a few seconds. `at` makes each
+  // note a fresh object, so a second save restarts the timer.
+  const [saveNote, setSaveNote] = useState<{ text: string; at: number } | null>(null);
+  const [saving, setSaving] = useState(false);
 
   // The sheet shows the character AS THEY ARE THIS ADVENTURE — the authored
   // character with any story-written override folded on top.
@@ -86,6 +91,22 @@ export function MemberSheet() {
   useEffect(() => {
     if (id) ensurePortrait(id);
   }, [id, ensurePortrait]);
+
+  useEffect(() => {
+    if (!saveNote) return;
+    const t = setTimeout(() => setSaveNote(null), 4000);
+    return () => clearTimeout(t);
+  }, [saveNote]);
+
+  async function savePortrait(memberId: string) {
+    setSaving(true);
+    try {
+      const ok = await downloadPortrait(memberId);
+      setSaveNote({ text: ok ? "Image saved" : "Couldn't save image", at: Date.now() });
+    } finally {
+      setSaving(false);
+    }
+  }
 
   if (!member) {
     return (
@@ -181,13 +202,18 @@ export function MemberSheet() {
           </button>
           <button
             type="button"
-            disabled={!portraitUrl || portraitPending}
-            onClick={() => void downloadPortrait(member.id)}
+            disabled={!portraitUrl || portraitPending || saving}
+            onClick={() => void savePortrait(member.id)}
             className={`flex-1 ${btnSmall}`}
           >
-            Download Image
+            {saving ? "Saving…" : "Download Image"}
           </button>
         </div>
+        {saveNote && (
+          <p className="text-center text-[0.65rem] uppercase tracking-widest" aria-live="polite">
+            {saveNote.text}
+          </p>
+        )}
 
         <EditToolbar editing={editing} onEdit={startEdit} onSave={save} onDiscard={discard} />
 

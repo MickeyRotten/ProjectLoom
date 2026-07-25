@@ -89,7 +89,7 @@ done. **MVP complete.** Post-MVP: character-sheet **Auto-Update** (`autoUpdate.t
 — appearance re-dressed from Equipment, personality/drive re-read from name-mentioning beats).
 Post-MVP also: custom character art (`download.ts` — member-sheet **Upload Image**
 replaces a portrait with a device file through the same 1-bit pass; **Download Image**
-saves it out via Web Share → `<a download>` fallback).
+saves it out via Capacitor Filesystem+Share on the APK → Web Share → `<a download>` fallback).
 Post-MVP also: **Characters ⟂ Party split** (`roster.ts` — the global character
 library lives outside `GameState`; `GameState.roster` holds per-adventure
 membership / `lastSpokeTurn` / `status` / story `overrides`; New Adventure keeps the
