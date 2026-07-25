@@ -306,10 +306,7 @@ export const BANNER_PIXEL_WIDTH = 256;
 
 /**
  * Downscale + quantize a generated image to true 1-bit (the pure math lives in
- * onebit.ts). Downscaling steps by halves before the final resize — one big
- * jump would alias, since canvas resampling only looks at a few source pixels.
- * Any failure (no canvas, undecodable blob) returns the original blob: the
- * image pipeline is fire-and-forget and must never get worse than "unprocessed".
+ * onebit.ts). `mode === "off"` keeps the raw model output untouched.
  */
 export async function toOneBitBlob(
   blob: Blob,
@@ -317,6 +314,35 @@ export async function toOneBitBlob(
   mode: DitherMode,
 ): Promise<Blob> {
   if (mode === "off") return blob;
+  return rescaleAndQuantize(blob, targetWidth, mode);
+}
+
+/**
+ * Prepare a user-supplied image (custom portrait upload) for the blob store:
+ * always downscaled to the stored width — an untouched camera photo would be
+ * megabytes in IndexedDB — and quantized to 1-bit unless shading is "off", so
+ * an upload lands in the same visual system as a generated image.
+ */
+export async function prepareUploadedImage(
+  blob: Blob,
+  targetWidth: number,
+  mode: DitherMode,
+): Promise<Blob> {
+  return rescaleAndQuantize(blob, targetWidth, mode);
+}
+
+/**
+ * Shared resize (+ optional quantize) pass. Downscaling steps by halves before
+ * the final resize — one big jump would alias, since canvas resampling only
+ * looks at a few source pixels. Any failure (no canvas, undecodable blob)
+ * returns the original blob: the image pipeline is fire-and-forget and must
+ * never get worse than "unprocessed".
+ */
+async function rescaleAndQuantize(
+  blob: Blob,
+  targetWidth: number,
+  mode: DitherMode,
+): Promise<Blob> {
   try {
     const bitmap = await createImageBitmap(blob);
     const targetHeight = Math.max(1, Math.round((targetWidth * bitmap.height) / bitmap.width));
@@ -345,9 +371,11 @@ export async function toOneBitBlob(
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(source, 0, 0, targetWidth, targetHeight);
 
-    const imageData = ctx.getImageData(0, 0, targetWidth, targetHeight);
-    quantizeToOneBit(imageData.data, targetWidth, targetHeight, mode);
-    ctx.putImageData(imageData, 0, 0);
+    if (mode !== "off") {
+      const imageData = ctx.getImageData(0, 0, targetWidth, targetHeight);
+      quantizeToOneBit(imageData.data, targetWidth, targetHeight, mode);
+      ctx.putImageData(imageData, 0, 0);
+    }
     bitmap.close();
 
     const out = await new Promise<Blob | null>((resolve) =>

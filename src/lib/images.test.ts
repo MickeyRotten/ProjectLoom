@@ -10,6 +10,7 @@ import {
   generateImage,
   imageRequestKey,
   portraitKey,
+  prepareUploadedImage,
   toOneBitBlob,
 } from "./images";
 import type { Settings } from "../types";
@@ -18,6 +19,11 @@ import type { PortraitInstructions } from "./images";
 function instr(overrides: Partial<PortraitInstructions> = {}): PortraitInstructions {
   return { action: "", context: "", composition: "", style: "", ...overrides };
 }
+
+// Several suites stub globals (fetch, createImageBitmap) — never leak one.
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("cache keys", () => {
   it("banner key is case/whitespace-insensitive", () => {
@@ -185,7 +191,27 @@ describe("blobToDataUrl", () => {
 describe("toOneBitBlob", () => {
   it('returns the blob untouched when mode is "off"', async () => {
     const blob = dataUrlToBlob("data:image/png;base64,AAAA");
+    const decode = vi.fn();
+    vi.stubGlobal("createImageBitmap", decode);
     await expect(toOneBitBlob(blob, 128, "off")).resolves.toBe(blob);
+    // "off" keeps the raw model output — no decode, no resize.
+    expect(decode).not.toHaveBeenCalled();
+  });
+});
+
+describe("prepareUploadedImage", () => {
+  it('still downscales when shading is "off" — uploads must not be stored raw', async () => {
+    const blob = dataUrlToBlob("data:image/png;base64,AAAA");
+    const decode = vi.fn().mockRejectedValue(new Error("no canvas"));
+    vi.stubGlobal("createImageBitmap", decode);
+    await prepareUploadedImage(blob, 192, "off");
+    expect(decode).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to the original blob when the image can't be decoded", async () => {
+    const blob = dataUrlToBlob("data:image/png;base64,AAAA");
+    vi.stubGlobal("createImageBitmap", vi.fn().mockRejectedValue(new Error("bad file")));
+    await expect(prepareUploadedImage(blob, 192, "threshold")).resolves.toBe(blob);
   });
 });
 

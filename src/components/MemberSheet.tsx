@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "../store";
 import { OverlayHeader } from "./OverlayHeader";
 import { EditImageButton } from "./EditImageButton";
-import { TextField, AreaField, ReadBlock, EditToolbar, btn } from "./fields";
+import { TextField, AreaField, ReadBlock, EditToolbar, btn, btnSmall } from "./fields";
 import { AutoUpdateModal } from "./AutoUpdateModal";
 import { useEditBuffer } from "./useEditBuffer";
 import { portraitKey } from "../lib/images";
@@ -43,11 +43,14 @@ export function MemberSheet() {
   const ensurePortrait = useStore((s) => s.ensurePortrait);
   const regeneratePortrait = useStore((s) => s.regeneratePortrait);
   const editPortrait = useStore((s) => s.editPortrait);
+  const uploadPortrait = useStore((s) => s.uploadPortrait);
+  const downloadPortrait = useStore((s) => s.downloadPortrait);
   const portraitUrl = useStore((s) => (id ? s.images[portraitKey(id)] : undefined));
   const portraitPending = useStore((s) => (id ? s.imgPending[portraitKey(id)] : false));
-  const editFailed = useStore((s) => (id ? s.imgError[portraitKey(id)] : false));
+  const imageFailed = useStore((s) => (id ? s.imgError[portraitKey(id)] : false));
   const [zoom, setZoom] = useState(false);
   const [autoUpdate, setAutoUpdate] = useState(false);
+  const portraitFile = useRef<HTMLInputElement>(null);
 
   const source = useMemo<MemberDraft>(
     () => ({
@@ -134,11 +137,44 @@ export function MemberSheet() {
               className="absolute right-9 top-1 border-2 border-ink bg-paper px-2 leading-none disabled:opacity-40 active:bg-ink active:text-paper"
             />
           )}
-          {editFailed && !portraitPending && (
+          {imageFailed && !portraitPending && (
             <span className="absolute bottom-1 right-1 border-2 border-ink bg-paper px-1 text-[0.6rem] uppercase tracking-widest">
-              edit failed
+              image failed
             </span>
           )}
+        </div>
+
+        {/* Custom art in / stored art out. Upload replaces the cached portrait
+            (⟳ still regenerates over it); download hands the blob to the share
+            sheet on mobile, a file download on desktop. */}
+        <div className="flex gap-2">
+          <input
+            ref={portraitFile}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void uploadPortrait(member.id, file);
+              e.target.value = "";
+            }}
+          />
+          <button
+            type="button"
+            disabled={portraitPending}
+            onClick={() => portraitFile.current?.click()}
+            className={`flex-1 ${btnSmall}`}
+          >
+            Upload Image
+          </button>
+          <button
+            type="button"
+            disabled={!portraitUrl || portraitPending}
+            onClick={() => void downloadPortrait(member.id)}
+            className={`flex-1 ${btnSmall}`}
+          >
+            Download Image
+          </button>
         </div>
 
         <EditToolbar editing={editing} onEdit={startEdit} onSave={save} onDiscard={discard} />

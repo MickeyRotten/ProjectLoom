@@ -108,6 +108,7 @@ One isolated function returning the OpenRouter `messages[]`, in order:
   - **Party portrait** — keyed by `portrait:<memberId>`. When a member has no portrait, generate from their description + the **portrait style instructions**.
 - **Style baked in:** default banner/portrait instructions enforce **1-bit monochrome pixel/line art**. Player-editable under Advanced.
 - **Regenerate:** a button on the banner and on each party sheet re-runs generation and replaces the cached blob.
+- **Upload / download (member sheet):** *Upload Image* replaces a member's portrait with a file from the device — put through the same downscale + 1-bit pass as a generated portrait, so custom art lands in the same visual system and stays small in IndexedDB; ⟳ still regenerates over it. *Download Image* saves the stored portrait out (`lib/download.ts`: Web Share with files → Android share/save sheet; `<a download>` fallback on desktop).
 - **Storage:** image blobs in IndexedDB, referenced by key; UI reads via object URLs.
 - Fire-and-forget with a visible placeholder while generating; a failed image never blocks the turn.
 
