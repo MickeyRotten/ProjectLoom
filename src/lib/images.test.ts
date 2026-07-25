@@ -6,12 +6,20 @@ import {
   buildEditPrompt,
   buildPortraitPrompt,
   dataUrlToBlob,
+  EXPORT_MIN_WIDTH,
+  exportScale,
   extractImageDataUrl,
   generateImage,
   imageRequestKey,
+  PORTRAIT_PIXEL_WIDTH,
   portraitKey,
   prepareUploadedImage,
+  sourceKey,
+  toExportBlob,
   toOneBitBlob,
+  toSourceBlob,
+  UPLOAD_PLAIN_WIDTH,
+  uploadStoredWidth,
 } from "./images";
 import type { Settings } from "../types";
 import type { PortraitInstructions } from "./images";
@@ -33,6 +41,13 @@ describe("cache keys", () => {
 
   it("portrait key is the raw member id", () => {
     expect(portraitKey("m-navi")).toBe("portrait:m-navi");
+  });
+
+  it("source key namespaces the master copy under its display key", () => {
+    expect(sourceKey(portraitKey("m-navi"))).toBe("src:portrait:m-navi");
+    expect(sourceKey(bannerKey("Ruins"))).toBe("src:banner:ruins");
+    // Never collides with a display key — that would overwrite the art itself.
+    expect(sourceKey(portraitKey("m-navi"))).not.toBe(portraitKey("m-navi"));
   });
 });
 
@@ -212,6 +227,80 @@ describe("prepareUploadedImage", () => {
     const blob = dataUrlToBlob("data:image/png;base64,AAAA");
     vi.stubGlobal("createImageBitmap", vi.fn().mockRejectedValue(new Error("bad file")));
     await expect(prepareUploadedImage(blob, 192, "threshold")).resolves.toBe(blob);
+  });
+});
+
+describe("uploadStoredWidth", () => {
+  it("quantized modes keep the 1-bit pixel width", () => {
+    expect(uploadStoredWidth(PORTRAIT_PIXEL_WIDTH, "threshold")).toBe(PORTRAIT_PIXEL_WIDTH);
+    expect(uploadStoredWidth(PORTRAIT_PIXEL_WIDTH, "bayer4")).toBe(PORTRAIT_PIXEL_WIDTH);
+  });
+
+  it('shading "off" keeps a real display width — no pixel grid to snap to', () => {
+    expect(uploadStoredWidth(PORTRAIT_PIXEL_WIDTH, "off")).toBe(UPLOAD_PLAIN_WIDTH);
+    // Never smaller than what was asked for.
+    expect(uploadStoredWidth(UPLOAD_PLAIN_WIDTH * 2, "off")).toBe(UPLOAD_PLAIN_WIDTH * 2);
+  });
+});
+
+describe("exportScale", () => {
+  it("blows a stored display copy up to at least the export width", () => {
+    expect(exportScale(PORTRAIT_PIXEL_WIDTH)).toBe(6); // 192 → 1152
+    expect(exportScale(256)).toBe(4); // banner 256 → 1024
+    expect(PORTRAIT_PIXEL_WIDTH * exportScale(PORTRAIT_PIXEL_WIDTH)).toBeGreaterThanOrEqual(
+      EXPORT_MIN_WIDTH,
+    );
+  });
+
+  it("leaves an already-large image alone", () => {
+    expect(exportScale(EXPORT_MIN_WIDTH)).toBe(1);
+    expect(exportScale(2048)).toBe(1);
+  });
+
+  it("is a whole number, so every stored pixel maps to an exact square", () => {
+    for (const w of [7, 100, 192, 256, 333, 1023]) {
+      expect(Number.isInteger(exportScale(w))).toBe(true);
+      expect(exportScale(w)).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  it("survives a nonsense width", () => {
+    expect(exportScale(0)).toBe(1);
+    expect(exportScale(-5)).toBe(1);
+    expect(exportScale(Number.NaN)).toBe(1);
+  });
+});
+
+describe("toExportBlob / toSourceBlob", () => {
+  it("both return the original blob when the image can't be decoded", async () => {
+    const blob = dataUrlToBlob("data:image/png;base64,AAAA");
+    vi.stubGlobal("createImageBitmap", vi.fn().mockRejectedValue(new Error("no canvas")));
+    // Saving a file and keeping a master are both best-effort — neither may
+    // turn an undecodable blob into a failure.
+    await expect(toExportBlob(blob)).resolves.toBe(blob);
+    await expect(toSourceBlob(blob)).resolves.toBe(blob);
+  });
+
+  it("keeps a master that already fits the box as-is", async () => {
+    const blob = dataUrlToBlob("data:image/png;base64,AAAA");
+    const close = vi.fn();
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn().mockResolvedValue({ width: 512, height: 768, close }),
+    );
+    await expect(toSourceBlob(blob, 1024)).resolves.toBe(blob);
+    expect(close).toHaveBeenCalled();
+  });
+
+  it("passes an already-large image straight through the export", async () => {
+    const blob = dataUrlToBlob("data:image/png;base64,AAAA");
+    const close = vi.fn();
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn().mockResolvedValue({ width: 1600, height: 900, close }),
+    );
+    await expect(toExportBlob(blob)).resolves.toBe(blob);
+    expect(close).toHaveBeenCalled();
   });
 });
 

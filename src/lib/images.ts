@@ -34,6 +34,18 @@ export function portraitKey(memberId: string): string {
   return `portrait:${memberId}`;
 }
 
+/**
+ * Blob-store key for the MASTER copy behind a cached image — the pixels before
+ * the downscale + 1-bit pass (a raw generation, or the file the player
+ * uploaded). The displayed blob is deliberately tiny, which makes it a terrible
+ * thing to hand back to an image model: an edit round-trip fed a 192px 1-bit
+ * thumbnail comes back as mush, or as a text-only reply that fails the whole
+ * edit. Every write path stores its master here so edits start from real pixels.
+ */
+export function sourceKey(key: string): string {
+  return `src:${key}`;
+}
+
 /* ---------------------------- prompt builders --------------------------- */
 
 /**
@@ -305,6 +317,20 @@ export const PORTRAIT_PIXEL_WIDTH = 192;
 export const BANNER_PIXEL_WIDTH = 256;
 
 /**
+ * Display width an upload keeps when 1-bit shading is OFF. With no quantization
+ * there is no pixel grid for the art to land on, so the stored-width constants
+ * above are just destruction — the image still has to be bounded (IndexedDB),
+ * but at a size worth looking at.
+ */
+export const UPLOAD_PLAIN_WIDTH = 1024;
+
+/** Longest side a master copy is scaled down to before it's stored. */
+export const SOURCE_MAX_SIDE = 1024;
+
+/** Width a saved-to-device image is upscaled to reach (see `toExportBlob`). */
+export const EXPORT_MIN_WIDTH = 1024;
+
+/**
  * Downscale + quantize a generated image to true 1-bit (the pure math lives in
  * onebit.ts). `mode === "off"` keeps the raw model output untouched.
  */
@@ -319,16 +345,107 @@ export async function toOneBitBlob(
 
 /**
  * Prepare a user-supplied image (custom portrait upload) for the blob store:
- * always downscaled to the stored width — an untouched camera photo would be
- * megabytes in IndexedDB — and quantized to 1-bit unless shading is "off", so
- * an upload lands in the same visual system as a generated image.
+ * always downscaled — an untouched camera photo would be megabytes in
+ * IndexedDB — and quantized to 1-bit unless shading is "off", so an upload
+ * lands in the same visual system as a generated image. With shading off it
+ * keeps a real display width instead of the 1-bit pixel width: there is no
+ * pixel grid to snap to, so crushing it that far only loses the photo.
  */
 export async function prepareUploadedImage(
   blob: Blob,
   targetWidth: number,
   mode: DitherMode,
 ): Promise<Blob> {
-  return rescaleAndQuantize(blob, targetWidth, mode);
+  return rescaleAndQuantize(blob, uploadStoredWidth(targetWidth, mode), mode);
+}
+
+/** The width `prepareUploadedImage` stores an upload at, per shading mode. */
+export function uploadStoredWidth(targetWidth: number, mode: DitherMode): number {
+  return mode === "off" ? Math.max(targetWidth, UPLOAD_PLAIN_WIDTH) : targetWidth;
+}
+
+/**
+ * The master copy kept for later edits: the same pixels, bounded to
+ * SOURCE_MAX_SIDE and re-encoded as JPEG so it stays a couple hundred KB in
+ * IndexedDB and a sane payload to POST back as an edit source. An image already
+ * inside the box is stored as-is. Any failure (no canvas, undecodable blob)
+ * returns the original — a master copy is an optimization, never a hard
+ * requirement.
+ */
+export async function toSourceBlob(blob: Blob, maxSide = SOURCE_MAX_SIDE): Promise<Blob> {
+  try {
+    const bitmap = await createImageBitmap(blob);
+    const longest = Math.max(bitmap.width, bitmap.height);
+    if (longest <= maxSide) {
+      bitmap.close();
+      return blob;
+    }
+    const scale = maxSide / longest;
+    const w = Math.max(1, Math.round(bitmap.width * scale));
+    const h = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return blob;
+    ctx.imageSmoothingEnabled = true;
+    // JPEG has no alpha — flatten onto white so transparent art keeps its paper.
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(bitmap, 0, 0, w, h);
+    bitmap.close();
+    const out = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, "image/jpeg", 0.92),
+    );
+    return out ?? blob;
+  } catch {
+    return blob;
+  }
+}
+
+/**
+ * Integer upscale factor that takes `width` to at least `minWidth`. Integer on
+ * purpose: a whole-number nearest-neighbor blow-up maps every stored pixel to
+ * an exact square, so the exported file is the on-screen art enlarged, not a
+ * resampled approximation of it.
+ */
+export function exportScale(width: number, minWidth = EXPORT_MIN_WIDTH): number {
+  if (!Number.isFinite(width) || width <= 0) return 1;
+  return Math.max(1, Math.ceil(minWidth / width));
+}
+
+/**
+ * Blow a stored image up for saving to the device. The cached blob is the
+ * display copy — 192–256px wide for 1-bit art — which lands in a gallery as a
+ * postage stamp; the app only gets away with it because every `<img>` renders
+ * `image-rendering: pixelated`. A file has no such CSS, so the export bakes the
+ * same nearest-neighbor upscale into the pixels. Already-large images (shading
+ * off) pass through untouched, as does anything we can't decode.
+ */
+export async function toExportBlob(blob: Blob, minWidth = EXPORT_MIN_WIDTH): Promise<Blob> {
+  try {
+    const bitmap = await createImageBitmap(blob);
+    const scale = exportScale(bitmap.width, minWidth);
+    if (scale === 1) {
+      bitmap.close();
+      return blob;
+    }
+    const w = bitmap.width * scale;
+    const h = bitmap.height * scale;
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return blob;
+    // Nearest-neighbor: smoothing here would blur the 1-bit pixels into grey.
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(bitmap, 0, 0, w, h);
+    bitmap.close();
+    const out = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+    return out ?? blob;
+  } catch {
+    return blob;
+  }
 }
 
 /**
@@ -340,11 +457,14 @@ export async function prepareUploadedImage(
  */
 async function rescaleAndQuantize(
   blob: Blob,
-  targetWidth: number,
+  requestedWidth: number,
   mode: DitherMode,
 ): Promise<Blob> {
   try {
     const bitmap = await createImageBitmap(blob);
+    // Never enlarge: a small source stretched to the stored width is fake
+    // detail, and the display upscale already happens in CSS.
+    const targetWidth = Math.max(1, Math.min(requestedWidth, bitmap.width));
     const targetHeight = Math.max(1, Math.round((targetWidth * bitmap.height) / bitmap.width));
 
     let source: ImageBitmap | HTMLCanvasElement = bitmap;

@@ -13,7 +13,7 @@ export function Banner() {
   const key = bannerKey(location);
   const url = useStore((s) => s.images[key]);
   const pending = useStore((s) => s.imgPending[key]);
-  const editFailed = useStore((s) => s.imgError[key]);
+  const imageFailed = useStore((s) => s.imgError[key]);
   const regenerate = useStore((s) => s.regenerateBanner);
   const edit = useStore((s) => s.editBanner);
   const [zoom, setZoom] = useState(false);
@@ -55,9 +55,9 @@ export function Banner() {
           className="absolute right-9 top-1 border-2 border-ink bg-paper px-2 leading-none disabled:opacity-40 active:bg-ink active:text-paper"
         />
       )}
-      {editFailed && !pending && (
+      {imageFailed && !pending && (
         <span className="absolute bottom-1 right-1 border-2 border-ink bg-paper px-1 text-[0.6rem] uppercase tracking-widest">
-          edit failed
+          image failed
         </span>
       )}
 
