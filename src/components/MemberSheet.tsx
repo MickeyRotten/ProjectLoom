@@ -16,9 +16,7 @@ type MemberDraft = Pick<
   | "description"
   | "personality"
   | "drive"
-  | "likes"
-  | "dislikes"
-  | "fieldSkill"
+  | "strengths"
   | "equipment"
   | "useCustomPortraitPrompt"
   | "customPortraitPrompt"
@@ -56,9 +54,7 @@ export function MemberSheet() {
       description: member?.description ?? "",
       personality: member?.personality ?? "",
       drive: member?.drive ?? "",
-      likes: member?.likes ?? "",
-      dislikes: member?.dislikes ?? "",
-      fieldSkill: member?.fieldSkill ?? { name: "", description: "" },
+      strengths: member?.strengths ?? { name: "", description: "" },
       equipment: member?.equipment ?? [],
       useCustomPortraitPrompt: member?.useCustomPortraitPrompt ?? false,
       customPortraitPrompt: member?.customPortraitPrompt ?? "",
@@ -199,28 +195,21 @@ export function MemberSheet() {
           onChange={(x) => setField("personality", x)}
         />
         <TextField label="Drive" value={v.drive} editing={editing} onChange={(x) => setField("drive", x)} />
-        <TextField label="Likes" value={v.likes} editing={editing} onChange={(x) => setField("likes", x)} />
-        <TextField
-          label="Dislikes"
-          value={v.dislikes}
-          editing={editing}
-          onChange={(x) => setField("dislikes", x)}
-        />
 
         <fieldset className="space-y-3 border-2 border-ink p-3">
-          <legend className="px-1 uppercase tracking-widest text-sm">Field Skill</legend>
+          <legend className="px-1 uppercase tracking-widest text-sm">Strengths</legend>
           <TextField
             label="Name"
-            value={v.fieldSkill.name}
+            value={v.strengths.name}
             editing={editing}
-            onChange={(x) => setField("fieldSkill", { ...v.fieldSkill, name: x })}
+            onChange={(x) => setField("strengths", { ...v.strengths, name: x })}
           />
           <AreaField
             label="Description"
-            value={v.fieldSkill.description}
+            value={v.strengths.description}
             editing={editing}
             rows={2}
-            onChange={(x) => setField("fieldSkill", { ...v.fieldSkill, description: x })}
+            onChange={(x) => setField("strengths", { ...v.strengths, description: x })}
           />
         </fieldset>
 

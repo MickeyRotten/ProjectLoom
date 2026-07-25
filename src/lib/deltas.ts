@@ -49,7 +49,8 @@ export function applyDeltas(game: GameState, block: LoomBlock): AppliedScene {
  *  - add: create a new benched-in member, or re-enlist + refresh a known one.
  *    Enlisting respects PARTY_LIMIT — past the cap the member joins benched,
  *    matching the UI's enlist rule (the strip only has PARTY_LIMIT slots).
- *  - update: patch species/description/fieldSkill of a known member.
+ *  - update: patch species/description/personality/drive/strengths of a known
+ *    member.
  *  - remove: bench the member (inParty=false); the record is kept.
  */
 function applyParty(current: Character[], block: LoomBlock): Character[] {
@@ -89,7 +90,9 @@ function patchMember(c: Character, d: PartyDelta): Character {
     ...c,
     species: d.species ?? c.species,
     description: d.description ?? c.description,
-    fieldSkill: d.fieldSkill ?? c.fieldSkill,
+    personality: d.personality ?? c.personality,
+    drive: d.drive ?? c.drive,
+    strengths: d.strengths ?? c.strengths,
   };
 }
 
@@ -100,11 +103,9 @@ function makeMember(d: PartyDelta, key: string): Character {
     name: d.name,
     species: d.species ?? "",
     description: d.description ?? "",
-    personality: "",
-    drive: "",
-    likes: "",
-    dislikes: "",
-    fieldSkill: d.fieldSkill ?? { name: "", description: "" },
+    personality: d.personality ?? "",
+    drive: d.drive ?? "",
+    strengths: d.strengths ?? { name: "", description: "" },
     equipment: [],
     lastSpokeTurn: 0,
     inParty: true,

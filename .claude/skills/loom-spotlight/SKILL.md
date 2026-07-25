@@ -14,14 +14,14 @@ Spotlight stays deterministic + single-call. NO per-member classifier LLM call. 
 
 Per in-party member:
 - **directlyAddressed** — player message contains member name (full OR first token, word-boundary, case-insensitive) OR a group address (`we`, `everyone`, `you all`, `you guys`, `party`, `team`, `group`, `everybody`). HARD override.
-- **fieldSkillRelevant** — keyword overlap between (message + recent scene context) and the member's Field Skill name+description. Soft bias. Extract keywords: lowercase words len≥4, minus stopwords; skill NAME tokens count.
+- **strengthsRelevant** — keyword overlap between (message + recent scene context) and the member's Strengths name+description. Soft bias. Extract keywords: lowercase words len≥4, minus stopwords; Strengths NAME tokens count.
 - **turnsSinceLastSpoke** = currentTurn − lastSpokeTurn. Soft bias.
 
 ## Prompt block
 
-Inject a `PARTY SPOTLIGHT — THIS TURN` block every call: one line per member (addressed? · skill-relevant? · last spoke N turns ago) + the RULE. Rule (editable in Settings, default):
+Inject a `PARTY SPOTLIGHT — THIS TURN` block every call: one line per member (addressed? · strengths-relevant? · last spoke N turns ago) + the RULE. Rule (editable in Settings, default):
 
-> Voice a party member only when directly addressed, clearly relevant, or significantly overdue. Default to silence — most turns nobody speaks. If directly addressed, they MUST respond. Never more than one react to the same beat unless the player addressed the whole group. When voiced, one or two sentences, in character + true to Field Skill.
+> Voice a party member only when directly addressed, clearly relevant, or significantly overdue. Default to silence — most turns nobody speaks. If directly addressed, they MUST respond. Never more than one react to the same beat unless the player addressed the whole group. When voiced, one or two sentences, in character + true to their Strengths.
 
 directlyAddressed = hard "must respond"; the other two = soft nudges, never forced.
 

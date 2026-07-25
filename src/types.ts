@@ -6,7 +6,7 @@
 
 export type Op = "add" | "update" | "remove";
 
-export interface FieldSkill {
+export interface Strengths {
   name: string;
   description: string;
 }
@@ -26,9 +26,7 @@ export interface Character {
   description: string;
   personality: string;
   drive: string;
-  likes: string;
-  dislikes: string;
-  fieldSkill: FieldSkill;
+  strengths: Strengths;
   equipment: Equipment[];
   portraitKey?: string;
   lastSpokeTurn: number;
@@ -187,7 +185,9 @@ export interface PartyDelta {
   name: string;
   species?: string;
   description?: string;
-  fieldSkill?: FieldSkill;
+  personality?: string;
+  drive?: string;
+  strengths?: Strengths;
 }
 
 export interface InventoryDelta {

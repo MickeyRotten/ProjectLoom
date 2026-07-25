@@ -100,20 +100,13 @@ function buildSystemContext(settings: Settings, game: GameState): string {
   // 3. PC summary + equipment.
   const pc = game.characters.find((c) => c.role === "pc");
   if (pc) {
-    const traits = [
-      pc.personality ? `Personality: ${pc.personality}` : "",
-      pc.likes ? `Likes: ${pc.likes}` : "",
-      pc.dislikes ? `Dislikes: ${pc.dislikes}` : "",
-    ]
-      .filter(Boolean)
-      .join(" · ");
     const lines = [
       `PLAYER CHARACTER — ${pc.name} (${pc.species})`,
       pc.description,
-      traits,
+      pc.personality ? `Personality: ${pc.personality}` : "",
       pc.drive ? `Drive: ${pc.drive}` : "",
-      pc.fieldSkill.name
-        ? `Field Skill — ${pc.fieldSkill.name}: ${pc.fieldSkill.description}`
+      pc.strengths.name
+        ? `Strengths — ${pc.strengths.name}: ${pc.strengths.description}`
         : "",
       formatEquipment(pc.equipment),
     ].filter(Boolean);
@@ -154,25 +147,18 @@ function buildSystemContext(settings: Settings, game: GameState): string {
 
 /**
  * Party roster block (#4). One entry per in-company member: identity,
- * personality/likes/dislikes, drive, Field Skill, equipment. Compact but
- * complete enough for the narrator to voice them in character.
+ * personality, drive, Strengths, equipment. Compact but complete enough for
+ * the narrator to voice them in character.
  */
 export function formatPartyRoster(members: Character[]): string {
   if (!members.length) return "";
   const entries = members.map((m) => {
-    const traits = [
-      m.personality ? `Personality: ${m.personality}` : "",
-      m.likes ? `Likes: ${m.likes}` : "",
-      m.dislikes ? `Dislikes: ${m.dislikes}` : "",
-    ]
-      .filter(Boolean)
-      .join(" · ");
     const lines = [
       `- ${m.name} (${m.species})${m.description ? ` — ${m.description}` : ""}`,
-      traits ? `  ${traits}` : "",
+      m.personality ? `  Personality: ${m.personality}` : "",
       m.drive ? `  Drive: ${m.drive}` : "",
-      m.fieldSkill.name
-        ? `  Field Skill — ${m.fieldSkill.name}: ${m.fieldSkill.description}`
+      m.strengths.name
+        ? `  Strengths — ${m.strengths.name}: ${m.strengths.description}`
         : "",
       m.equipment.length ? indent(formatEquipment(m.equipment)) : "",
     ].filter(Boolean);
@@ -307,7 +293,8 @@ function buildOutputProtocol(settings: Settings): string {
     "JSON fields (include only what changed this turn):",
     '- "location", "weather", "day": the current scene (strings / number).',
     optionsLine,
-    `- "party": array of { "op": "add|update|remove", "name", "species", "description", "fieldSkill": { "name", "description" } }. ${appearanceRule} Add a member only when they join; remove when they leave.`,
+    `- "party": array of { "op": "add|update|remove", "name", "species", "description", "personality", "drive", "strengths": { "name", "description" } }. ${appearanceRule} Add a member only when they join; remove when they leave.`,
+    '- On every party "add", ALWAYS write "personality", "drive" and "strengths" — never omit them and never leave them blank. "personality" is temperament and speech habits in a phrase or two; "drive" is the one thing they want; "strengths" is their standout capability as a short name plus one sentence of what it lets them do.',
     '- "inventory": array of { "op": "add|update|remove", "label", "description", "quantity" }.',
     '- Gold is the permanent currency item in "inventory" — never remove it. When the player gains or spends money, emit { "op": "update", "label": "Gold", "quantity": <new total> }.',
     '- "quests": array of { "op": "add|update|remove", "label", "description", "reward", "status": "active"|"done" }. Update a quest with status "done" when the player completes it.',
