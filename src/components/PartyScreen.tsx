@@ -42,8 +42,8 @@ export function PartyScreen() {
                   {m.inParty ? "" : " · benched"}
                 </span>
               </div>
-              {m.fieldSkill.name && (
-                <p className="mt-1 text-sm opacity-80">Field Skill — {m.fieldSkill.name}</p>
+              {m.strengths.name && (
+                <p className="mt-1 text-sm opacity-80">Strengths — {m.strengths.name}</p>
               )}
             </button>
             <button

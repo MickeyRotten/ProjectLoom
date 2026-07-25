@@ -15,7 +15,7 @@ function play(turn: number, content: string): Message {
 function member(patch: Partial<Character> & { id: string; name: string }): Character {
   return {
     role: "member", species: "human", description: "", personality: "", drive: "",
-    likes: "", dislikes: "", fieldSkill: { name: "", description: "" }, equipment: [],
+    strengths: { name: "", description: "" }, equipment: [],
     lastSpokeTurn: 0, inParty: true, ...patch,
   };
 }
@@ -52,6 +52,15 @@ describe("buildMessages — ordering", () => {
     expect(protocol2.content).toContain('"description" is physical appearance only');
   });
 
+  it("demands personality, drive and strengths on every party add", () => {
+    const msgs = buildMessages({ settings, game: newGame(), playerMessage: "go" });
+    const protocol = msgs.find((m) => m.content.includes("<<<LOOM>>>"))!;
+    expect(protocol.content).toContain('"personality"');
+    expect(protocol.content).toContain('"drive"');
+    expect(protocol.content).toContain('"strengths"');
+    expect(protocol.content).toContain('On every party "add", ALWAYS write');
+  });
+
   it("includes PC summary and inventory in the system context", () => {
     const g = newGame();
     g.inventory = [{ label: "Compass", description: "spins", quantity: 2 }];
@@ -60,23 +69,21 @@ describe("buildMessages — ordering", () => {
     expect(msgs[0].content).toContain("Compass ×2");
   });
 
-  it("includes PC personality/likes/dislikes in the system context", () => {
+  it("includes PC personality + drive in the system context", () => {
     const g = newGame();
     const pc = g.characters.find((c) => c.role === "pc")!;
     pc.personality = "Stoic, dry-witted.";
-    pc.likes = "Maps";
-    pc.dislikes = "Crowds";
+    pc.drive = "Find the last archive.";
     const msgs = buildMessages({ settings, game: g, playerMessage: "go" });
     expect(msgs[0].content).toContain("Personality: Stoic, dry-witted.");
-    expect(msgs[0].content).toContain("Likes: Maps");
-    expect(msgs[0].content).toContain("Dislikes: Crowds");
+    expect(msgs[0].content).toContain("Drive: Find the last archive.");
   });
 });
 
 describe("party roster + spotlight", () => {
   const navi = member({
     id: "m-navi", name: "Navi", species: "sprite", description: "a darting spark",
-    fieldSkill: { name: "Lockpicking", description: "opens any lock" },
+    strengths: { name: "Lockpicking", description: "opens any lock" },
   });
 
   it("includes the party roster in the system context", () => {
@@ -85,7 +92,7 @@ describe("party roster + spotlight", () => {
     const msgs = buildMessages({ settings, game: g, playerMessage: "go" });
     expect(msgs[0].content).toContain("PARTY — in your company");
     expect(msgs[0].content).toContain("Navi (sprite)");
-    expect(msgs[0].content).toContain("Field Skill — Lockpicking");
+    expect(msgs[0].content).toContain("Strengths — Lockpicking");
   });
 
   it("injects a spotlight block after the system context, before history", () => {

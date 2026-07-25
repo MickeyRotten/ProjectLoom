@@ -94,7 +94,9 @@ describe("applyDeltas — party ops", () => {
           name: "Navi",
           species: "sprite",
           description: "a darting spark",
-          fieldSkill: { name: "Lockpicking", description: "opens anything" },
+          personality: "Impatient, chirpy.",
+          drive: "See every locked room in the world.",
+          strengths: { name: "Lockpicking", description: "opens anything" },
         },
       ],
     });
@@ -105,8 +107,25 @@ describe("applyDeltas — party ops", () => {
       role: "member",
       inParty: true,
       species: "sprite",
-      fieldSkill: { name: "Lockpicking", description: "opens anything" },
+      personality: "Impatient, chirpy.",
+      drive: "See every locked room in the world.",
+      strengths: { name: "Lockpicking", description: "opens anything" },
     });
+  });
+
+  it("patches personality and drive on update", () => {
+    const g = game();
+    const scene = applyDeltas(g, {
+      party: [{ op: "add", name: "Navi", personality: "Chirpy.", drive: "Open every lock." }],
+    });
+    const patched = applyDeltas(
+      { ...g, characters: scene.characters },
+      { party: [{ op: "update", name: "navi", personality: "Subdued." }] },
+    );
+    const navi = patched.characters.find((c) => c.name === "Navi");
+    expect(navi?.personality).toBe("Subdued.");
+    // An omitted field keeps its current value.
+    expect(navi?.drive).toBe("Open every lock.");
   });
 
   it("never touches the PC", () => {
@@ -122,8 +141,8 @@ describe("applyDeltas — party ops", () => {
       ...g.characters,
       {
         id: "m-navi", role: "member", name: "Navi", species: "sprite", description: "old",
-        personality: "", drive: "", likes: "", dislikes: "",
-        fieldSkill: { name: "Lockpicking", description: "opens anything" },
+        personality: "", drive: "",
+        strengths: { name: "Lockpicking", description: "opens anything" },
         equipment: [], lastSpokeTurn: 0, inParty: true,
       },
     ];
@@ -139,8 +158,8 @@ describe("applyDeltas — party ops", () => {
       ...g.characters,
       {
         id: "m-navi", role: "member", name: "Navi", species: "sprite", description: "",
-        personality: "", drive: "", likes: "", dislikes: "",
-        fieldSkill: { name: "", description: "" }, equipment: [], lastSpokeTurn: 2, inParty: true,
+        personality: "", drive: "",
+        strengths: { name: "", description: "" }, equipment: [], lastSpokeTurn: 2, inParty: true,
       },
     ];
     const scene = applyDeltas(g, { party: [{ op: "remove", name: "Navi" }] });
@@ -155,8 +174,8 @@ describe("applyDeltas — party ops", () => {
       ...g.characters,
       {
         id: "m-navi", role: "member", name: "Navi", species: "sprite", description: "",
-        personality: "", drive: "", likes: "", dislikes: "",
-        fieldSkill: { name: "", description: "" }, equipment: [], lastSpokeTurn: 0, inParty: false,
+        personality: "", drive: "",
+        strengths: { name: "", description: "" }, equipment: [], lastSpokeTurn: 0, inParty: false,
       },
     ];
     const scene = applyDeltas(g, { party: [{ op: "add", name: "Navi" }] });

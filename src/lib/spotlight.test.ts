@@ -19,9 +19,7 @@ function member(patch: Partial<Character> & { id: string; name: string }): Chara
     description: "",
     personality: "",
     drive: "",
-    likes: "",
-    dislikes: "",
-    fieldSkill: { name: "", description: "" },
+    strengths: { name: "", description: "" },
     equipment: [],
     lastSpokeTurn: 0,
     inParty: true,
@@ -32,7 +30,7 @@ function member(patch: Partial<Character> & { id: string; name: string }): Chara
 const navi = member({
   id: "m-navi",
   name: "Navi",
-  fieldSkill: { name: "Lockpicking", description: "Opens any lock, door, or mechanism." },
+  strengths: { name: "Lockpicking", description: "Opens any lock, door, or mechanism." },
 });
 const riley = member({ id: "m-riley", name: "Riley Vance" });
 
@@ -78,17 +76,17 @@ describe("extractKeywords", () => {
 describe("computeSpotlightSignals", () => {
   it("flags field-skill relevance from message + context keyword overlap", () => {
     const [s] = computeSpotlightSignals("can you pick this lock", "", [navi], 5);
-    expect(s.fieldSkillRelevant).toBe(true);
+    expect(s.strengthsRelevant).toBe(true);
   });
 
   it("relevance can come from recent context, not just the message", () => {
     const [s] = computeSpotlightSignals("hurry", "the mechanism clicks behind the door", [navi], 5);
-    expect(s.fieldSkillRelevant).toBe(true);
+    expect(s.strengthsRelevant).toBe(true);
   });
 
   it("no overlap ⇒ not relevant", () => {
     const [s] = computeSpotlightSignals("the sky burns red", "wind and dust", [navi], 5);
-    expect(s.fieldSkillRelevant).toBe(false);
+    expect(s.strengthsRelevant).toBe(false);
   });
 
   it("turnsSinceLastSpoke = currentTurn − lastSpokeTurn, floored at 0", () => {
@@ -105,7 +103,7 @@ describe("formatSpotlightBlock", () => {
     const signals = computeSpotlightSignals("navi open the lock", "", [navi, riley], 4);
     const block = formatSpotlightBlock(signals, "Default to silence.");
     expect(block).toContain("PARTY SPOTLIGHT — THIS TURN");
-    expect(block).toContain("Navi: addressed=yes · skill-relevant=yes");
+    expect(block).toContain("Navi: addressed=yes · strengths-relevant=yes");
     expect(block).toContain("Riley Vance: addressed=no");
     expect(block).toContain("RULE: Default to silence.");
   });
@@ -216,7 +214,7 @@ describe("computeRelevantGear", () => {
     expect(computeRelevantGear("I wave hello", "", [hiro, packRat])).toEqual([]);
   });
 
-  it("short label tokens still count (like Field Skill name tokens)", () => {
+  it("short label tokens still count (like Strengths name tokens)", () => {
     const withMap = member({
       id: "m-map",
       name: "Scout",

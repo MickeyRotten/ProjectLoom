@@ -57,7 +57,7 @@ loop. The model returns **narration prose followed by one machine-read JSON bloc
   "weather": "windy",
   "day": 37,
   "options": ["Approach the ruins", "Signal the party to hold", "Scan the treeline"],
-  "party": [ { "op":"add", "name":"Riley", "species":"human", "description":"...", "fieldSkill": {"name":"...","description":"..."} } ],
+  "party": [ { "op":"add", "name":"Riley", "species":"human", "description":"...", "personality":"...", "drive":"...", "strengths": {"name":"...","description":"..."} } ],
   "inventory": [ { "op":"add", "label":"Cracked Compass", "description":"...", "quantity":1 } ],
   "quests": [ { "op":"add", "label":"Reach the Old Settlement", "description":"...", "reward":"..." } ],
   "spoke": ["Navi"]
@@ -78,7 +78,7 @@ loop. The model returns **narration prose followed by one machine-read JSON bloc
 ### 1. Spotlight — `src/lib/spotlight.ts` (near-verbatim port of `server/ai/spotlight.py`)
 The single most valuable carry-over. Port faithfully:
 - `STOPWORDS`, `GROUP_ADDRESS_RE`, `_SAID_VERBS`, `_name_pattern`, `_member_spoke`.
-- `computeSpotlightSignals(playerMsg, recentContext, party, currentTurn)` → `{directlyAddressed, fieldSkillRelevant, turnsSinceLastSpoke}`.
+- `computeSpotlightSignals(playerMsg, recentContext, party, currentTurn)` → `{directlyAddressed, strengthsRelevant, turnsSinceLastSpoke}`.
 - `formatSpotlightBlock(signals, rule)` → the `PARTY SPOTLIGHT — THIS TURN` block.
 - `detectSpeakers(responseText, party)` → ids that actually got a line, to bump `lastSpokeTurn`.
 - Keep the rule text (`DEFAULT_SPOTLIGHT_RULE`) editable in Settings.
@@ -89,7 +89,7 @@ One isolated function returning the OpenRouter `messages[]`, in order:
 1. **Core narrator instructions** (Loom role: short punchy second-person shonen adventure, uncensored, sandbox) + player **custom instructions** appended.
 2. **Scenario / premise** (the editable pre-made scenario).
 3. **PC summary** + equipment text fields.
-4. **Party roster** — description, personality/likes/dislikes, Field Skill, equipment (port `_format_equipment`, simplified to `{label, description}` — no catalog lookup).
+4. **Party roster** — description, personality, drive, Strengths, equipment (port `_format_equipment`, simplified to `{label, description}` — no catalog lookup).
 5. **Inventory** (compact `label ×qty — description` list).
 6. **Active quests** (compact `label — description (reward: …)` list; done quests omitted).
 7. **World Notes** matched by keyword (single-category, simplified `match_entries`; titles are implicit keywords; scan the new message + last few turns). Notes flagged **permanent** skip matching and inject every turn.
@@ -135,15 +135,15 @@ GameState {                   // the active game (autosaved) + what each save sl
 }
 
 Character {
-  id, role, name, species, description, personality, drive, likes, dislikes,
-  fieldSkill: { name, description },
+  id, role, name, species, description, personality, drive,
+  strengths: { name, description },
   equipment: { label, description }[],   // simple text fields, no catalog
   portraitKey?, lastSpokeTurn, inParty
 }
 ```
 
 - **No world/adventure split.** Editing anything in Settings/panels edits the active game (matches "edit everything, no Edit mode"). "New Adventure" seeds a fresh game from the editable scenario + roster; "Save"/"Load" snapshot/restore slots.
-- **Field Skill** carries Wayward's writing guidance as a placeholder in the editor (teaches the format).
+- **Strengths** carries Wayward's writing guidance as a placeholder in the editor (teaches the format).
 
 ---
 

@@ -76,6 +76,30 @@ describe("migrateGame", () => {
     expect(g.characters).toEqual(current.characters);
   });
 
+  it("carries a legacy fieldSkill onto strengths and drops likes/dislikes", () => {
+    const legacy = {
+      characters: [
+        {
+          ...defaultPC(),
+          strengths: undefined,
+          fieldSkill: { name: "Superhuman Strength", description: "lifts anything" },
+          likes: "Adventure",
+          dislikes: "Boredom",
+        },
+      ],
+    };
+    const c = migrateGame(legacy)!.characters[0];
+    expect(c.strengths).toEqual({ name: "Superhuman Strength", description: "lifts anything" });
+    expect(c).not.toHaveProperty("fieldSkill");
+    expect(c).not.toHaveProperty("likes");
+    expect(c).not.toHaveProperty("dislikes");
+  });
+
+  it("gives a character with neither field a blank strengths", () => {
+    const legacy = { characters: [{ ...defaultPC(), strengths: undefined }] };
+    expect(migrateGame(legacy)!.characters[0].strengths).toEqual({ name: "", description: "" });
+  });
+
   it("keeps an existing Gold row (and its quantity) on migrate", () => {
     const current = newGame();
     current.inventory = [{ label: "Gold", description: "Currency", quantity: 77 }];

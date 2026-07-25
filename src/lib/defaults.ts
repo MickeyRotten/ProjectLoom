@@ -1,4 +1,4 @@
-import type { Character, GameState, Item, Scenario, Settings } from "../types";
+import type { Character, GameState, Item, Scenario, Settings, Strengths } from "../types";
 
 /**
  * Ship-time defaults. The pre-made scenario is intentionally minimal for
@@ -109,7 +109,7 @@ export const DEFAULT_REFERENCE_INSTRUCTION = `Match only the art style, line wei
  */
 export const DEFAULT_APPEARANCE_INSTRUCTIONS = `"description" is physical appearance ONLY — hair, eyes, build, clothing, notable features — used verbatim to generate the member's portrait, so keep it concrete and visual, never personality or backstory.`;
 
-export const DEFAULT_SPOTLIGHT_RULE = `Give the spotlight to at most one party member per turn, and only when it earns a moment: they were directly addressed, their Field Skill is relevant, or they have been silent for a while. Otherwise keep them quiet.`;
+export const DEFAULT_SPOTLIGHT_RULE = `Give the spotlight to at most one party member per turn, and only when it earns a moment: they were directly addressed, their Strengths are relevant, or they have been silent for a while. Otherwise keep them quiet.`;
 
 export function defaultSettings(): Settings {
   return {
@@ -159,9 +159,7 @@ export function defaultPC(): Character {
     description: "A young and curious adventurer, standing six feet tall with a lean build. His dark hair is tousled, and his eyes gleam with determination and a hint of mischief. He wears a simple white tunic and black baggy trousers, with a worn leather satchel slung across his shoulder.",
     personality: "Optimistic, curious, adventurous, overconfident.",
     drive: "Become the greatest adventurer in the land.",
-    likes: "Adventure, food, boobs, butts, excitement.",
-    dislikes: "Boredom, jerks, bullies, alcohol, being told what to do.",
-    fieldSkill: {
+    strengths: {
       name: "Superhuman Strength",
       description: "Can lift incredibly heavy objects with ease, punch through walls and brittle stone, and take hits that would kill a normal person.",
     },
@@ -187,9 +185,7 @@ export function newMember(id: string): Character {
     description: "",
     personality: "",
     drive: "",
-    likes: "",
-    dislikes: "",
-    fieldSkill: { name: "", description: "" },
+    strengths: { name: "", description: "" },
     equipment: [],
     lastSpokeTurn: 0,
     inParty: true,
@@ -224,6 +220,27 @@ export function newGame(
 }
 
 /**
+ * Carry a stored character onto the current shape: `fieldSkill` was renamed to
+ * `strengths` (and likes/dislikes dropped), so older saves would otherwise hand
+ * the prompt builder an undefined `strengths`.
+ */
+function migrateCharacter(saved: Character): Character {
+  const legacy = saved as Character & {
+    fieldSkill?: Strengths;
+    likes?: string;
+    dislikes?: string;
+  };
+  const rest = { ...legacy };
+  delete rest.fieldSkill;
+  delete rest.likes;
+  delete rest.dislikes;
+  return {
+    ...rest,
+    strengths: saved.strengths ?? legacy.fieldSkill ?? { name: "", description: "" },
+  };
+}
+
+/**
  * Merge a stored game over a fresh skeleton so saves written by older app
  * versions (missing later-phase slices like worldNotes/quests) load without
  * crashing the turn builder. Mirrors loadSettings' merge-over-defaults.
@@ -236,6 +253,7 @@ export function migrateGame(saved: unknown): GameState | null {
     ...base,
     ...partial,
     scenario: { ...base.scenario, ...(partial.scenario ?? {}) },
+    characters: (partial.characters ?? base.characters).map(migrateCharacter),
     // Saves from before Gold existed gain the permanent currency row.
     inventory: ensureGold(partial.inventory ?? []),
   };

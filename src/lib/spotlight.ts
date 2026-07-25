@@ -46,8 +46,8 @@ export interface SpotlightSignal {
   name: string;
   /** Player addressed this member by name, or addressed the whole group. */
   directlyAddressed: boolean;
-  /** Field Skill keywords overlap the message + recent scene context. */
-  fieldSkillRelevant: boolean;
+  /** Strengths keywords overlap the message + recent scene context. */
+  strengthsRelevant: boolean;
   /** currentTurn − lastSpokeTurn. Large ⇒ overdue. */
   turnsSinceLastSpoke: number;
 }
@@ -73,7 +73,7 @@ export function namePattern(name: string): string {
 
 /**
  * Keywords for relevance matching: lowercase tokens of length ≥ 4, minus
- * stopwords. Field Skill NAME tokens are always kept (they carry the signal
+ * stopwords. Strengths NAME tokens are always kept (they carry the signal
  * even when short, e.g. "lock", "map").
  */
 export function extractKeywords(text: string, keepShort: Iterable<string> = []): Set<string> {
@@ -90,9 +90,9 @@ export function extractKeywords(text: string, keepShort: Iterable<string> = []):
   return out;
 }
 
-/** Lowercase word tokens of a Field Skill name (always count as keywords). */
-function skillNameTokens(skillName: string): string[] {
-  return (skillName.toLowerCase().match(/[a-z0-9']+/g) ?? []).filter(
+/** Lowercase word tokens of a short label (always count as keywords). */
+function labelTokens(label: string): string[] {
+  return (label.toLowerCase().match(/[a-z0-9']+/g) ?? []).filter(
     (w) => w.length >= 3 && !STOPWORDS.has(w),
   );
 }
@@ -121,18 +121,18 @@ export function computeSpotlightSignals(
   const contextKeywords = extractKeywords(`${playerMsg}\n${recentContext}`);
 
   return party.map((m) => {
-    const nameTokens = skillNameTokens(m.fieldSkill?.name ?? "");
-    const skillKeywords = extractKeywords(
-      `${m.fieldSkill?.name ?? ""} ${m.fieldSkill?.description ?? ""}`,
+    const nameTokens = labelTokens(m.strengths?.name ?? "");
+    const strengthsKeywords = extractKeywords(
+      `${m.strengths?.name ?? ""} ${m.strengths?.description ?? ""}`,
       nameTokens,
     );
-    const fieldSkillRelevant = intersects(contextKeywords, skillKeywords);
+    const strengthsRelevant = intersects(contextKeywords, strengthsKeywords);
 
     return {
       id: m.id,
       name: m.name,
       directlyAddressed: isDirectlyAddressed(playerMsg, m.name),
-      fieldSkillRelevant,
+      strengthsRelevant,
       turnsSinceLastSpoke: Math.max(0, currentTurn - (m.lastSpokeTurn ?? 0)),
     };
   });
@@ -152,8 +152,8 @@ export function formatSpotlightBlock(signals: SpotlightSignal[], rule: string): 
   if (!signals.length) return "";
   const lines = signals.map((s) => {
     const addressed = s.directlyAddressed ? "yes" : "no";
-    const relevant = s.fieldSkillRelevant ? "yes" : "no";
-    return `- ${s.name}: addressed=${addressed} · skill-relevant=${relevant} · last spoke ${s.turnsSinceLastSpoke} turn(s) ago`;
+    const relevant = s.strengthsRelevant ? "yes" : "no";
+    return `- ${s.name}: addressed=${addressed} · strengths-relevant=${relevant} · last spoke ${s.turnsSinceLastSpoke} turn(s) ago`;
   });
   return [
     "PARTY SPOTLIGHT — THIS TURN",
@@ -164,7 +164,7 @@ export function formatSpotlightBlock(signals: SpotlightSignal[], rule: string): 
 }
 
 /* ------------------------------------------------------------------ *
- * Relevant gear — the same keyword machinery as Field Skill relevance,
+ * Relevant gear — the same keyword machinery as Strengths relevance,
  * applied to equipped items. When an equipped item's label/description
  * keywords surface in the player's message or the recent scene, the item's
  * full name + description is spotlighted in its own prompt block so the
@@ -181,7 +181,7 @@ export interface GearSignal {
 /**
  * Equipped items whose keywords overlap the message + recent context.
  * Label tokens always count (they carry the signal even when short, like
- * Field Skill name tokens — "rope", "map").
+ * Strengths name tokens — "rope", "map").
  */
 export function computeRelevantGear(
   playerMsg: string,
@@ -191,7 +191,7 @@ export function computeRelevantGear(
   // Keep every label token in the context scan too, so a short label like
   // "Map" can still meet its own keyword in the player's message.
   const allLabelTokens = characters.flatMap((c) =>
-    (c.equipment ?? []).flatMap((e) => skillNameTokens(e.label)),
+    (c.equipment ?? []).flatMap((e) => labelTokens(e.label)),
   );
   const contextKeywords = extractKeywords(`${playerMsg}\n${recentContext}`, allLabelTokens);
   const out: GearSignal[] = [];
@@ -200,7 +200,7 @@ export function computeRelevantGear(
       if (!e.label) continue;
       const gearKeywords = extractKeywords(
         `${e.label} ${e.description ?? ""}`,
-        skillNameTokens(e.label),
+        labelTokens(e.label),
       );
       if (intersects(contextKeywords, gearKeywords)) {
         out.push({ owner: c.name, label: e.label, description: e.description ?? "" });

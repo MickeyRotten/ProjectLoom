@@ -21,7 +21,7 @@ One player action = one OpenRouter chat completion (streamed). No on-device tool
   "weather": "windy",
   "day": 37,
   "options": ["Approach the ruins", "Signal the party to hold", "Scan the treeline"],
-  "party":     [ { "op": "add", "name": "Riley", "species": "human", "description": "...", "fieldSkill": { "name": "...", "description": "..." } } ],
+  "party":     [ { "op": "add", "name": "Riley", "species": "human", "description": "...", "personality": "...", "drive": "...", "strengths": { "name": "...", "description": "..." } } ],
   "inventory": [ { "op": "add", "label": "Cracked Compass", "description": "...", "quantity": 1 } ],
   "quests":    [ { "op": "add", "label": "Reach the Old Settlement", "description": "...", "reward": "..." } ],
   "spoke": ["Navi"]
@@ -30,6 +30,7 @@ One player action = one OpenRouter chat completion (streamed). No on-device tool
 ```
 
 All block fields optional except when state changed. `op`: `add` | `update` | `remove`.
+A party `add` MUST carry `personality`, `drive` and `strengths` — the output protocol demands them so a new member never lands blank.
 
 ## Client contract (invariants)
 
