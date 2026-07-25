@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  bannerCooldownLeft,
   bannerKey,
+  bannerOnCooldown,
   blobToDataUrl,
+  clampBannerCooldown,
+  MAX_BANNER_COOLDOWN,
   buildBannerPrompt,
   buildEditPrompt,
   buildPortraitPrompt,
@@ -51,6 +55,42 @@ describe("cache keys", () => {
     expect(sourceKey(bannerKey("Ruins"))).toBe("src:banner:ruins");
     // Never collides with a display key — that would overwrite the art itself.
     expect(sourceKey(portraitKey("m-navi"))).not.toBe(portraitKey("m-navi"));
+  });
+});
+
+describe("banner cooldown", () => {
+  it("clamps a typed cooldown to whole turns in range", () => {
+    expect(clampBannerCooldown(3)).toBe(3);
+    expect(clampBannerCooldown(2.7)).toBe(2);
+    expect(clampBannerCooldown(-5)).toBe(0);
+    expect(clampBannerCooldown(NaN)).toBe(0);
+    expect(clampBannerCooldown(1e6)).toBe(MAX_BANNER_COOLDOWN);
+  });
+
+  it("is off at 0, and off when nothing has ever been generated", () => {
+    expect(bannerOnCooldown(0, 5, 6)).toBe(false);
+    expect(bannerOnCooldown(3, undefined, 9)).toBe(false);
+  });
+
+  it("blocks exactly the N turns after the generating turn", () => {
+    // Generated on turn 10 with cooldown 3 → 11, 12, 13 blocked; 14 draws.
+    expect(bannerOnCooldown(3, 10, 10)).toBe(true);
+    expect(bannerOnCooldown(3, 10, 11)).toBe(true);
+    expect(bannerOnCooldown(3, 10, 13)).toBe(true);
+    expect(bannerOnCooldown(3, 10, 14)).toBe(false);
+    expect(bannerOnCooldown(3, 10, 40)).toBe(false);
+  });
+
+  it("counts down the turns left to wait", () => {
+    expect(bannerCooldownLeft(3, 10, 11)).toBe(3);
+    expect(bannerCooldownLeft(3, 10, 12)).toBe(2);
+    expect(bannerCooldownLeft(3, 10, 13)).toBe(1);
+    expect(bannerCooldownLeft(3, 10, 14)).toBe(0);
+  });
+
+  it("holds the wait when undo walks the turn number back past the stamp", () => {
+    expect(bannerOnCooldown(3, 10, 8)).toBe(true);
+    expect(bannerCooldownLeft(3, 10, 8)).toBe(4);
   });
 });
 

@@ -46,6 +46,54 @@ export function sourceKey(key: string): string {
   return `src:${key}`;
 }
 
+/* ------------------------------- cooldown ------------------------------- */
+
+/**
+ * Upper bound on the banner cooldown (Advanced). Anything past a couple of
+ * dozen turns is indistinguishable from "off" in practice; the cap only exists
+ * so a mistyped number can't silently kill banners for the rest of the save.
+ */
+export const MAX_BANNER_COOLDOWN = 99;
+
+/** Clamp a player-typed cooldown to a whole number of turns in range. */
+export function clampBannerCooldown(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(MAX_BANNER_COOLDOWN, Math.max(0, Math.floor(value)));
+}
+
+/**
+ * Turns still to wait before another location banner may be generated
+ * automatically — 0 when generation is allowed right now.
+ *
+ * A cooldown of N means the N turns *after* the generating turn are skipped:
+ * generated on turn T, turns T+1…T+N draw nothing new, T+N+1 draws again. The
+ * gate is on GENERATION only — a location whose banner is already cached still
+ * shows it instantly, and ⟳ ignores the cooldown entirely.
+ *
+ * `turnNumber` below `lastBannerTurn` (an undo walked the story back past the
+ * generating turn) counts as no turns elapsed, so the wait holds rather than
+ * evaporating.
+ */
+export function bannerCooldownLeft(
+  cooldown: number,
+  lastBannerTurn: number | undefined,
+  turnNumber: number,
+): number {
+  const turns = clampBannerCooldown(cooldown);
+  if (turns === 0 || lastBannerTurn === undefined || !Number.isFinite(lastBannerTurn)) return 0;
+  const elapsed = Math.max(0, turnNumber - lastBannerTurn);
+  return Math.max(0, turns + 1 - elapsed);
+}
+
+/** True while automatic banner generation is suppressed. */
+export function bannerOnCooldown(
+  cooldown: number,
+  lastBannerTurn: number | undefined,
+  turnNumber: number,
+): boolean {
+  return bannerCooldownLeft(cooldown, lastBannerTurn, turnNumber) > 0;
+}
+
 /* ---------------------------- prompt builders --------------------------- */
 
 /**

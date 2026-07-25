@@ -58,6 +58,7 @@ import { detectSpeakers } from "./lib/spotlight";
 import {
   BANNER_PIXEL_WIDTH,
   bannerKey,
+  bannerOnCooldown,
   blobToDataUrl,
   buildBannerPrompt,
   buildEditPrompt,
@@ -75,6 +76,17 @@ import {
   type GenerateImageOptions,
 } from "./lib/images";
 import { imageFileName, saveBlobAsFile } from "./lib/download";
+
+/** Per-call knobs for the shared cache-then-generate image helper. */
+interface EnsureImageOptions {
+  /**
+   * Publish a cached blob if there is one, but never hit the network — the
+   * banner cooldown (Advanced → Location Image Cooldown) rides on this.
+   */
+  cacheOnly?: boolean;
+  /** Ran only when a NEW image came off the wire, never on a cache hit. */
+  onGenerated?: () => void;
+}
 
 /** Full-screen overlay currently shown over the chat. */
 export type Screen =
@@ -352,9 +364,19 @@ export const useStore = create<LoomStore>((set, get) => {
     key: string,
     buildRequest: () => Pick<GenerateImageOptions, "prompt" | "images" | "aspectRatio">,
     force = false,
+    opts: EnsureImageOptions = {},
   ): Promise<void> {
     if (get().imgPending[key]) return;
     if (!force && get().images[key]) return;
+
+    // Nothing may be drawn (banner cooldown): probe the cache and stop there.
+    // Deliberately ahead of `imgPending` — flagging a generation that can't
+    // happen would blink "rendering…" under every suppressed banner.
+    if (opts.cacheOnly && !force) {
+      const cached = await loadImage(key);
+      if (cached) publishImage(key, cached);
+      return;
+    }
 
     set({ imgPending: { ...get().imgPending, [key]: true } });
     // A forced run is the player pressing ⟳ — clear any stale failure so the
@@ -371,6 +393,7 @@ export const useStore = create<LoomStore>((set, get) => {
       await saveImage(key, blob);
       await saveSource(key, raw);
       publishImage(key, blob);
+      opts.onGenerated?.();
     } catch (err) {
       // Non-fatal — a failed image never blocks the turn (DESIGN.md). A forced
       // regeneration is different: swallowing it silently leaves the OLD image
@@ -423,6 +446,17 @@ export const useStore = create<LoomStore>((set, get) => {
     } finally {
       clearPending(key);
     }
+  }
+
+  /**
+   * Record that a location banner was drawn on the current turn — the anchor
+   * the cooldown counts from. Stamped only on a real generation (never a cache
+   * hit), so revisiting known locations doesn't stall the next new one.
+   */
+  function stampBannerTurn() {
+    const game = { ...get().game, lastBannerTurn: get().game.turnNumber };
+    set({ game });
+    void saveActiveGame(game);
   }
 
   /** Abort handle for the in-flight turn (closure state — not reactive). */
@@ -1093,9 +1127,21 @@ export const useStore = create<LoomStore>((set, get) => {
     const location = g.location.trim();
     if (location) {
       const excerpt = lastNarration(g);
-      void ensureImage(bannerKey(location), () => ({
-        prompt: buildBannerPrompt(location, excerpt, get().settings.bannerInstructions),
-      }));
+      // The cooldown gates GENERATION only: a location whose banner is already
+      // cached still shows it immediately, however recently we drew something.
+      const cacheOnly = bannerOnCooldown(
+        get().settings.bannerCooldown,
+        g.lastBannerTurn,
+        g.turnNumber,
+      );
+      void ensureImage(
+        bannerKey(location),
+        () => ({
+          prompt: buildBannerPrompt(location, excerpt, get().settings.bannerInstructions),
+        }),
+        false,
+        { cacheOnly, onGenerated: stampBannerTurn },
+      );
     }
     // The PC rides the strip too, so its portrait must generate up front — not
     // only after the PC sheet is opened once. Benched members are covered as
@@ -1115,12 +1161,14 @@ export const useStore = create<LoomStore>((set, get) => {
     const location = g.location.trim();
     if (!location) return;
     const excerpt = lastNarration(g);
+    // ⟳ ignores the cooldown — but it IS a generation, so it restarts the clock.
     void ensureImage(
       bannerKey(location),
       () => ({
         prompt: buildBannerPrompt(location, excerpt, get().settings.bannerInstructions),
       }),
       true,
+      { onGenerated: stampBannerTurn },
     );
   },
 

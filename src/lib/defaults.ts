@@ -92,7 +92,13 @@ export const DEFAULT_OPTION_INSTRUCTIONS = `Offer 3–4 distinct, concrete next 
 
 export const DEFAULT_BANNER_INSTRUCTIONS = `A wide establishing view of the location itself, empty of characters. Clean black-and-white ink illustration with bold ink lines and large, solid black shadow shapes with hard edges. The entire image uses strictly two tones, pure black and pure white, with no grey tones, no gradients, and no fine hatching. Sharp, high-contrast finish with no anti-aliasing.`;
 
-export const DEFAULT_PORTRAIT_ACTION = `The pose is perfectly neutral and still: arms relaxed at the sides, shoulders square to the camera, head level, mouth closed, eyes open, with a calm, expressionless face.`;
+/**
+ * Turns to suppress automatic location-banner generation for after one is
+ * generated (Advanced → Location Image Cooldown). 0 = off.
+ */
+export const DEFAULT_BANNER_COOLDOWN = 0;
+
+export const DEFAULT_PORTRAIT_ACTION =`The pose is perfectly neutral and still: arms relaxed at the sides, shoulders square to the camera, head level, mouth closed, eyes open, with a calm, expressionless face.`;
 
 export const DEFAULT_PORTRAIT_CONTEXT = `The background is flat, pure white and completely empty.`;
 
@@ -129,6 +135,9 @@ export function defaultSettings(): Settings {
     invert: false,
     customInstructions: DEFAULT_CUSTOM_INSTRUCTIONS,
     bannerInstructions: DEFAULT_BANNER_INSTRUCTIONS,
+    // Off by default: shipping a brake on a feature nobody asked to slow down
+    // would just look like broken banners.
+    bannerCooldown: DEFAULT_BANNER_COOLDOWN,
     portraitAction: DEFAULT_PORTRAIT_ACTION,
     portraitContext: DEFAULT_PORTRAIT_CONTEXT,
     portraitComposition: DEFAULT_PORTRAIT_COMPOSITION,

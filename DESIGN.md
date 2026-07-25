@@ -110,6 +110,7 @@ One isolated function returning the OpenRouter `messages[]`, in order:
   - **Location banner** — keyed by `banner:<location>`. On a scene change to an **uncached** location, generate from location name + a short narration excerpt + the **banner style instructions**.
   - **Party portrait** — keyed by `portrait:<memberId>`. When a member has no portrait, generate from their description + the **portrait style instructions** — *unless* the player removed it (`Character.noPortrait`), see **Remove** below.
 - **Style baked in:** default banner/portrait instructions enforce **1-bit monochrome pixel/line art**. Player-editable under Advanced.
+- **Location image cooldown (Advanced → `Settings.bannerCooldown`, 0 = off):** turns to skip automatic banner generation for after one is drawn — `3` means the next 3 turns draw no new location image, the 4th does (`bannerOnCooldown` / `bannerCooldownLeft`, counted from `GameState.lastBannerTurn`). A location-hopping stretch otherwise bills one generation per turn, which is the single easiest way to burn image credit without noticing. Three deliberate limits: the gate is on **generation only**, so an already-cached location still shows its banner instantly; the stamp is written on a real generation only, never a cache hit, so re-treading known ground doesn't stall the next new one; and **⟳ ignores the cooldown** (but restarts it — it *is* a generation). While suppressed the banner placeholder says how many turns are left, so it never reads as a broken image. `lastBannerTurn` is deliberately outside `Reversal` — an undo can't un-spend a generation.
 - **Regenerate:** ⟳ on the banner and on each member sheet re-runs generation and **replaces the cached blob and its master** — generated, edited, or uploaded, whatever is there loses. A forced regeneration that fails flags `imgError` (an *image failed* badge) **with the reason** — "failed" alone is unactionable, and the causes are wildly different (no credit, a refused prompt, an unreadable file). ⟳ also clears `noPortrait`.
 - **Edit (✎):** instruction + the image back to the model; the result **becomes** the new image (display copy *and* master). The edit source is the master, never the display copy — handing a model a 192px 1-bit thumbnail comes back as mush or as a text-only reply that fails the edit outright.
 - **Remove (member sheet):** *Remove Image* deletes a member's portrait **and its master**, revokes the object URL, and sets `Character.noPortrait` on the global character. The flag is the whole point: the automatic trigger is "no cached portrait → draw one", so without it the next turn's `syncImages` would silently undo the removal. It's a character-level choice (a portrait is shared across adventures), and only ⟳ or an upload clears it.
@@ -128,7 +129,7 @@ One **active game state**, autosaved continuously; **named save slots** are full
 Settings {                    // global, edited in Settings
   openRouterKey, textModelId, imageModelId (default: nano-banana-2-lite), temperature
   // Advanced:
-  customInstructions, bannerInstructions, portraitInstructions, optionInstructions, spotlightRule
+  customInstructions, bannerInstructions, bannerCooldown, portraitInstructions, optionInstructions, spotlightRule
 }
 
 Character[]                   // GLOBAL cast library — outlives every adventure
@@ -147,6 +148,7 @@ GameState {                   // the active adventure (autosaved) + what each sa
   quests: Quest[]             // { id, label, description, reward, status }
   messages: Message[]         // { role, content, turn, appliedDeltas, day, location, weather }
   turnNumber, day, location, weather
+  lastBannerTurn?                       // turn a location banner was last GENERATED — cooldown anchor
 }
 
 RosterEntry {

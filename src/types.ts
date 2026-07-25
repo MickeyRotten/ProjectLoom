@@ -211,6 +211,12 @@ export interface GameState {
   day: number;
   location: string;
   weather: string;
+  /**
+   * Turn number the last location banner was GENERATED on (never a cache hit).
+   * Feeds `Settings.bannerCooldown` — see `images.ts → bannerOnCooldown`.
+   * Undefined on a fresh or pre-cooldown adventure, which reads as "never".
+   */
+  lastBannerTurn?: number;
 }
 
 /**
@@ -246,6 +252,13 @@ export interface Settings {
   // Advanced (player-editable, Phase 4):
   customInstructions: string;
   bannerInstructions: string;
+  /**
+   * Turns to skip automatic location-banner generation for after one is
+   * generated — a spend brake for location-heavy play. 0 = off (every new
+   * location draws immediately). Cached locations always show, and ⟳ always
+   * regenerates.
+   */
+  bannerCooldown: number;
   /** Portrait Action/Location-context/Composition/Style clauses (Nano Banana formula). Subject is auto-built from name/species/description, never a settings field. */
   portraitAction: string;
   portraitContext: string;
