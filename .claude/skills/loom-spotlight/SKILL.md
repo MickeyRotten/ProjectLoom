@@ -12,7 +12,10 @@ Spotlight stays deterministic + single-call. NO per-member classifier LLM call. 
 
 ## Signals (computed every turn, pre-call)
 
-Per in-party member:
+Per **active** member — the party in the scene. A `benched` member is still one
+of the player's, but they are elsewhere: no signals, no line, no `lastSpokeTurn`
+bump. NPCs (`standing: "npc"`) never enter the spotlight at all; they reach the
+prompt through the keyword-gated `KNOWN CHARACTERS` block (`cast.ts`).
 - **directlyAddressed** — player message contains member name (full OR first token, word-boundary, case-insensitive) OR a group address (`we`, `everyone`, `you all`, `you guys`, `party`, `team`, `group`, `everybody`). HARD override.
 - **strengthsRelevant** — keyword overlap between (message + recent scene context) and the member's Strengths name+description. Soft bias. Extract keywords: lowercase words len≥4, minus stopwords; Strengths NAME tokens count.
 - **turnsSinceLastSpoke** = currentTurn − lastSpokeTurn. Soft bias.
@@ -27,7 +30,7 @@ directlyAddressed = hard "must respond"; the other two = soft nudges, never forc
 
 ## Relevant gear (same machinery, separate block)
 
-`computeRelevantGear` reuses the keyword extractor on equipped items (PC + in-party):
+`computeRelevantGear` reuses the keyword extractor on equipped items (PC + active members):
 label tokens always count (like skill NAME tokens); a match against the message +
 recent context injects a `RELEVANT GEAR — THIS TURN` block with the item's full
 name + description. Soft signal only — never forces anyone to speak, never an LLM call.

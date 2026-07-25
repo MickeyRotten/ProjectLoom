@@ -31,16 +31,17 @@ One player action = one OpenRouter chat completion (streamed). No on-device tool
 
 All block fields optional except when state changed. `op`: `add` | `update` | `remove`.
 A party `add` MUST carry `personality`, `drive` and `strengths` — the output protocol demands them so a new member never lands blank.
-A party `remove` MAY carry `"status": "departed" | "fallen"` (default `departed`).
+A party `add`/`update` MAY carry `"standing": "active" | "benched" | "npc"` (default `active` on add); a `remove` MAY carry `"standing": "departed" | "fallen"` (default `departed`). Pre-rename blocks spell that last one `"status"` — still read, because reversal replays old blocks.
 
 ## Party ops span two stores
 
 Characters are GLOBAL (`Character[]`, outlives every adventure); party membership is per-adventure (`GameState.roster`). `applyDeltas(game, characters, block)` returns both halves; `lib/roster.ts` is the only place they join.
 
 - Match `name` (slugged) against the WHOLE character library, `role === "member"` — that's what re-uses a companion from an earlier adventure instead of duplicating them. The PC is never matched.
-- `add` on a KNOWN character: enlist (respecting `PARTY_LIMIT`), `status: "active"`, fields → `overrides`. `add` on an unknown name: create a `Character` in the library, fields → the character itself (no base to diverge from yet).
-- `update`: fields → `overrides`. Never creates.
-- `remove`: `inParty: false` + `status`. NEVER deletes.
+- `add` on a KNOWN character: seat them at the requested `standing`, fields → `overrides`. `add` on an unknown name: create a `Character` in the library, fields → the character itself (no base to diverge from yet).
+- `update`: fields → `overrides`, plus a `standing` move when the block asks for one. Never creates.
+- `remove`: `standing` becomes `departed`/`fallen`. NEVER deletes, and never leaves them in a party seat.
+- Only `active` is capped. An `active` join past `PARTY_LIMIT` lands **`benched`** — never a state the UI and the prompt can't show (the old `inParty: false, status: "active"` pair was exactly that).
 - A `fallen` entry rejects narrator `add` outright — only the player can bring them back.
 
 ## Client contract (invariants)
@@ -50,11 +51,11 @@ Characters are GLOBAL (`Character[]`, outlives every adventure); party membershi
 - **Options** = the AI action buttons, inline in the same call — no extra request per turn. Render under the latest beat, above the party strip. Number keys submit.
 - **Apply deltas** to the active save: `location`/`day`/`weather` overwrite; `party`/`inventory`/`quests` are op-based. Inventory carries `quantity`; quests carry `reward`.
 - **`spoke` is a hint only.** `lastSpokeTurn` updates DETERMINISTICALLY from the prose via loom-spotlight `detectSpeakers` — never trust `spoke` alone.
-- **Reversal**: record applied deltas on the message; swipe/regenerate/delete unwinds them (inverse of each op). Scene state restores to the prior message's values. `captureReversal` snapshots `roster` by REFERENCE-DIFF, so any roster helper must return the same array when nothing changed. The global character library is deliberately NEVER captured — undo un-parties, it does not delete.
+- **Reversal**: record applied deltas on the message; swipe/regenerate/delete unwinds them (inverse of each op). Scene state restores to the prior message's values. `captureReversal` snapshots `roster` by REFERENCE-DIFF, so any roster helper — `normalizeRoster` included — must return the same array when nothing changed. The global character library is deliberately NEVER captured — undo un-parties, it does not delete.
 
 ## Do not
 
 - Do not split narration into multiple messages server-side — one prose `Message`, client segments for display.
 - Do not add a second LLM call for options — they ride this block.
 - Do not apply state from prose text; only from the parsed block (except speaker detection).
-- Do not let a party op delete a character, write the base sheet of a KNOWN character, or re-implement the `inParty` predicate — go through `lib/roster.ts`.
+- Do not let a party op delete a character, write the base sheet of a KNOWN character, or re-implement the standing predicates — go through `lib/roster.ts` (`activeMembers`, `partyMembers`, `npcMembers`, `partedMembers`, `isInParty`).

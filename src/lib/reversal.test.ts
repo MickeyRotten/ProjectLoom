@@ -5,6 +5,21 @@ import { defaultPC, newGame } from "./defaults";
 import { getEntry, partyMembers } from "./roster";
 import type { Character, GameState, LoomBlock, Reversal } from "../types";
 
+/** A companion in the library, with nothing this adventure has changed. */
+function navi(): Character {
+  return {
+    id: "m-navi",
+    role: "member",
+    name: "Navi",
+    species: "sprite",
+    description: "a darting spark",
+    personality: "",
+    drive: "",
+    strengths: { name: "", description: "" },
+    equipment: [],
+  };
+}
+
 /** A pre-turn game with a known scene + one item + one quest. */
 function seed(): GameState {
   const g = newGame();
@@ -119,24 +134,40 @@ describe("applyReversal round-trips", () => {
     expect(characters.some((c) => c.name === "Riley")).toBe(true);
   });
 
-  it("restores overrides the turn wrote", () => {
-    const characters = [
-      defaultPC(),
-      {
-        id: "m-navi",
-        role: "member" as const,
-        name: "Navi",
-        species: "sprite",
-        description: "a darting spark",
-        personality: "",
-        drive: "",
-        strengths: { name: "", description: "" },
-        equipment: [],
-      },
-    ];
+  it("puts a benched member back in the scene", () => {
+    const characters = [defaultPC(), navi()];
     const pre = {
       ...seed(),
-      roster: [{ id: "m-navi", inParty: true, lastSpokeTurn: 0, status: "active" as const }],
+      roster: [{ id: "m-navi", standing: "active" as const, lastSpokeTurn: 0 }],
+    };
+    const { game: post } = turn(pre, characters, {
+      party: [{ op: "update", name: "Navi", standing: "benched" }],
+    });
+    expect(getEntry(post.roster, "m-navi").standing).toBe("benched");
+
+    const back = applyReversal(post, captureReversal(pre, post));
+    expect(getEntry(back.roster, "m-navi").standing).toBe("active");
+  });
+
+  it("normalizes a snapshot written before the standing ladder", () => {
+    // Reversals live inside saved messages, so the old shape keeps arriving.
+    const legacy: Reversal = {
+      day: 3,
+      location: "The Dusty Path",
+      weather: "windy",
+      roster: [
+        { id: "m-navi", inParty: true, lastSpokeTurn: 5, status: "active" },
+      ] as unknown as Reversal["roster"],
+    };
+    const back = applyReversal({ ...seed(), roster: [] }, legacy);
+    expect(back.roster).toEqual([{ id: "m-navi", standing: "active", lastSpokeTurn: 5 }]);
+  });
+
+  it("restores overrides the turn wrote", () => {
+    const characters = [defaultPC(), navi()];
+    const pre = {
+      ...seed(),
+      roster: [{ id: "m-navi", standing: "active" as const, lastSpokeTurn: 0 }],
     };
     const { game: post } = turn(pre, characters, {
       party: [{ op: "update", name: "Navi", description: "singed" }],
@@ -184,8 +215,8 @@ describe("applyReversal round-trips", () => {
     };
     const back = applyReversal({ ...seed(), roster: [] }, legacy);
     expect(back.roster).toEqual([
-      { id: "pc", inParty: false, lastSpokeTurn: 0, status: "active" },
-      { id: "m-navi", inParty: true, lastSpokeTurn: 5, status: "active" },
+      { id: "pc", standing: "none", lastSpokeTurn: 0 },
+      { id: "m-navi", standing: "active", lastSpokeTurn: 5 },
     ]);
   });
 });

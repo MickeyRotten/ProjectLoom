@@ -98,12 +98,30 @@ describe("splitLegacyGame", () => {
       expect(c).not.toHaveProperty("lastSpokeTurn");
     }
     expect(game.roster).toEqual([
-      { id: "pc", inParty: false, lastSpokeTurn: 4, status: "active" },
-      { id: "m-navi", inParty: true, lastSpokeTurn: 7, status: "active" },
-      { id: "m-bel", inParty: false, lastSpokeTurn: 0, status: "active" },
+      { id: "pc", standing: "none", lastSpokeTurn: 4 },
+      { id: "m-navi", standing: "active", lastSpokeTurn: 7 },
+      { id: "m-bel", standing: "none", lastSpokeTurn: 0 },
     ]);
     // The legacy array must not ride along into the re-saved game.
     expect(game).not.toHaveProperty("characters");
+  });
+
+  it("folds a pre-ladder roster's inParty + status into one standing", () => {
+    // Saves written after the Characters/Party split but before standings.
+    const saved = {
+      roster: [
+        { id: "m-navi", inParty: true, lastSpokeTurn: 7, status: "active" },
+        { id: "m-bel", inParty: false, lastSpokeTurn: 0, status: "fallen" },
+        // The old nowhere-state an over-cap join used to write.
+        { id: "m-cid", inParty: false, lastSpokeTurn: 0, status: "active" },
+      ],
+    };
+    const { game } = splitLegacyGame(saved)!;
+    expect(game.roster).toEqual([
+      { id: "m-navi", standing: "active", lastSpokeTurn: 7 },
+      { id: "m-bel", standing: "fallen", lastSpokeTurn: 0 },
+      { id: "m-cid", standing: "none", lastSpokeTurn: 0 },
+    ]);
   });
 
   it("carries a legacy fieldSkill onto strengths and drops likes/dislikes", () => {

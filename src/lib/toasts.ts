@@ -1,4 +1,4 @@
-import type { Message } from "../types";
+import type { Message, Standing } from "../types";
 import { isGold } from "./defaults";
 
 /**
@@ -28,8 +28,16 @@ export function deriveToasts(msg: Message): string[] {
 
   for (const d of block.party ?? []) {
     if (!d?.name) continue;
-    if (d.op === "add") toasts.push(`${d.name} joined the party`);
-    else if (d.op === "remove") toasts.push(`${d.name} left the party`);
+    if (d.op === "remove") {
+      toasts.push(`${d.name} left the party`);
+      continue;
+    }
+    // An `add` that isn't a join, and an `update` that moves someone along the
+    // ladder, are both real state changes — reporting either as "joined the
+    // party" would be a lie the transcript keeps forever.
+    const moved = standingToast(d.name, d.standing);
+    if (moved) toasts.push(moved);
+    else if (d.op === "add") toasts.push(`${d.name} joined the party`);
   }
 
   for (const d of block.inventory ?? []) {
@@ -62,4 +70,25 @@ export function deriveToasts(msg: Message): string[] {
   }
 
   return toasts;
+}
+
+/**
+ * How a party `add`/`update` that names a standing reads as a chip. Returns ""
+ * for `active` and for an omitted standing, so a plain join keeps its own
+ * wording and an `update` that only rewrote a sheet stays silent.
+ */
+function standingToast(name: string, standing?: Standing): string {
+  switch (standing) {
+    case "benched":
+      return `${name} stayed behind`;
+    case "npc":
+      return `${name} is known here`;
+    case "departed":
+    case "fallen":
+      return `${name} left the party`;
+    case "none":
+      return `${name} is no longer with the party`;
+    default:
+      return "";
+  }
 }

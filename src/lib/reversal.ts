@@ -1,10 +1,11 @@
 import type { GameState, Reversal, RosterEntry } from "../types";
+import { normalizeRoster } from "./roster";
 
 /**
  * Phase 5 reversal (loom-turn-protocol: "swipe/regenerate/delete unwinds").
  *
  * The applied <<<LOOM>>> block is op-based and lossy to invert — a party
- * `remove` benches rather than deletes, an inventory `add` merges quantity, an
+ * `remove` changes standing rather than deleting, an inventory `add` merges quantity, an
  * `update` drops the prior value — so rather than reconstruct an inverse block
  * we snapshot the exact pre-turn slices the turn is about to overwrite. Undo
  * restores them wholesale: exact, pure, order-preserving.
@@ -29,14 +30,22 @@ export function captureReversal(pre: GameState, post: GameState): Reversal {
   return rev;
 }
 
-/** Restore a game to its pre-turn slices from a captured reversal (pure). */
+/**
+ * Restore a game to its pre-turn slices from a captured reversal (pure).
+ *
+ * Snapshots live inside saved messages, so a reversal written before the
+ * `standing` ladder keeps arriving for the life of the save — every restored
+ * roster goes through `normalizeRoster`, which returns the same reference when
+ * the entries were already current.
+ */
 export function applyReversal(game: GameState, rev: Reversal): GameState {
+  const roster = rev.roster ?? legacyRoster(rev);
   return {
     ...game,
     day: rev.day,
     location: rev.location,
     weather: rev.weather,
-    roster: rev.roster ?? legacyRoster(rev) ?? game.roster,
+    roster: roster ? normalizeRoster(roster) : game.roster,
     inventory: rev.inventory ?? game.inventory,
     quests: rev.quests ?? game.quests,
   };
@@ -50,8 +59,7 @@ function legacyRoster(rev: Reversal): RosterEntry[] | undefined {
   if (!rev.characters) return undefined;
   return rev.characters.map((c) => ({
     id: c.id,
-    inParty: c.role === "member" && !!c.inParty,
+    standing: c.role === "member" && c.inParty ? ("active" as const) : ("none" as const),
     lastSpokeTurn: c.lastSpokeTurn ?? 0,
-    status: "active" as const,
   }));
 }

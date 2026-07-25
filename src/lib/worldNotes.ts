@@ -25,8 +25,12 @@ function noteKeywords(note: Note): string[] {
  * A keyword matches when it appears in `text` on word boundaries
  * (case-insensitive) — so "well" hits "the well" but not "farewell". Multi-word
  * keywords match as a loose phrase (internal whitespace is flexible).
+ *
+ * Exported because the cast matcher (`cast.ts`) gates NPC sheets the same way;
+ * one matcher, so lore and people can never disagree about what "mentioned"
+ * means.
  */
-function keywordHits(keyword: string, text: string): boolean {
+export function keywordHits(keyword: string, text: string): boolean {
   const pattern = escapeRe(keyword).replace(/\s+/g, "\\s+");
   return new RegExp(`(?<![\\w])${pattern}(?![\\w])`, "i").test(text);
 }

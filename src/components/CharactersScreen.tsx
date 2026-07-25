@@ -1,10 +1,10 @@
 import { useMemo, useState } from "react";
 import { useStore } from "../store";
+import type { PartyMember, Standing } from "../types";
 import { OverlayHeader } from "./OverlayHeader";
-import { CharacterRow } from "./CharacterRow";
-import { btn } from "./fields";
-import { PARTY_LIMIT } from "../lib/defaults";
-import { allMembers, partyCount } from "../lib/roster";
+import { CharacterRow, type RowAction } from "./CharacterRow";
+import { Section, btn } from "./fields";
+import { PARTY_LIMIT, allMembers, partyCount } from "../lib/roster";
 
 /** Above this many characters the list gets a filter box. */
 const FILTER_THRESHOLD = 8;
@@ -12,17 +12,17 @@ const FILTER_THRESHOLD = 8;
 /**
  * Characters (DESIGN.md → Menu) — the GLOBAL cast library. Every character ever
  * authored or written into the story lives here and survives New Adventure;
- * being in the party is a separate, per-adventure thing managed from these rows
- * (or the member sheet). "+ New Character" creates someone in the library only —
- * you add them to the party from here. The PC is always present and can't be
- * removed (handled in the sheet + store).
+ * what they are to you *this* adventure — in the scene, benched, an ally, gone —
+ * is a per-adventure standing managed from these rows (or the member sheet).
+ * "+ New Character" creates someone in the library only. The PC is always
+ * present and can't be removed (handled in the sheet + store).
  */
 export function CharactersScreen() {
   const characters = useStore((s) => s.characters);
   const roster = useStore((s) => s.game.roster);
   const openMember = useStore((s) => s.openMember);
   const addCharacter = useStore((s) => s.addCharacter);
-  const setInParty = useStore((s) => s.setInParty);
+  const setStanding = useStore((s) => s.setStanding);
 
   const [filter, setFilter] = useState("");
 
@@ -31,16 +31,44 @@ export function CharactersScreen() {
   const full = inParty >= PARTY_LIMIT;
 
   const q = filter.trim().toLowerCase();
-  const match = (name: string, species: string) =>
-    !q || name.toLowerCase().includes(q) || species.toLowerCase().includes(q);
+  const match = (c: PartyMember) =>
+    !q || c.name.toLowerCase().includes(q) || c.species.toLowerCase().includes(q);
 
   const pc = resolved.filter((c) => c.role === "pc");
-  const party = resolved.filter((c) => c.role === "member" && c.inParty);
-  const rest = resolved.filter((c) => c.role === "member" && !c.inParty);
+  const at = (...standings: Standing[]) =>
+    resolved.filter((c) => c.role === "member" && standings.includes(c.standing)).filter(match);
+
+  const active = at("active");
+  const benched = at("benched");
+  const npcs = at("npc");
+  const gone = at("departed", "fallen");
+  const rest = at("none");
+
+  /** Put someone in the scene — the one move the party cap can refuse. */
+  const activate = (c: PartyMember): RowAction => ({
+    label: full ? "Party Full" : "Add to Party",
+    disabled: full,
+    onClick: () => setStanding(c.id, "active"),
+  });
 
   const showFilter = resolved.length > FILTER_THRESHOLD;
-  const visibleParty = party.filter((c) => match(c.name, c.species));
-  const visibleRest = rest.filter((c) => match(c.name, c.species));
+
+  const group = (label: string, members: PartyMember[], actions: (c: PartyMember) => RowAction[]) =>
+    members.length > 0 && (
+      <>
+        <Section label={label} />
+        {members.map((c) => (
+          <CharacterRow
+            key={c.id}
+            name={c.name || "(unnamed)"}
+            sub={c.species}
+            standing={c.standing}
+            onOpen={() => openMember(c.id)}
+            actions={actions(c)}
+          />
+        ))}
+      </>
+    );
 
   return (
     <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
@@ -66,37 +94,38 @@ export function CharactersScreen() {
         ))}
 
         <Section label={`In Party ${inParty}/${PARTY_LIMIT}`} />
-        {visibleParty.length === 0 && (
+        {active.length === 0 && (
           <p className="text-sm uppercase tracking-widest opacity-60">
             Party is empty — add someone below.
           </p>
         )}
-        {visibleParty.map((c) => (
+        {active.map((c) => (
           <CharacterRow
             key={c.id}
             name={c.name || "(unnamed)"}
             sub={c.species}
-            status={c.status}
+            standing={c.standing}
             onOpen={() => openMember(c.id)}
-            action={{ label: "Kick from Party", onClick: () => setInParty(c.id, false) }}
+            actions={[
+              { label: "Bench", onClick: () => setStanding(c.id, "benched") },
+              { label: "Kick", onClick: () => setStanding(c.id, "none") },
+            ]}
           />
         ))}
 
-        {rest.length > 0 && <Section label="Everyone Else" />}
-        {visibleRest.map((c) => (
-          <CharacterRow
-            key={c.id}
-            name={c.name || "(unnamed)"}
-            sub={c.species}
-            status={c.status}
-            onOpen={() => openMember(c.id)}
-            action={{
-              label: full ? "Party Full" : "Add to Party",
-              disabled: full,
-              onClick: () => setInParty(c.id, true),
-            }}
-          />
-        ))}
+        {group("Benched", benched, (c) => [
+          activate(c),
+          { label: "Kick", onClick: () => setStanding(c.id, "none") },
+        ])}
+
+        {group("NPCs & Allies", npcs, (c) => [activate(c)])}
+
+        {group("Gone", gone, (c) => [activate(c)])}
+
+        {group("Everyone Else", rest, (c) => [
+          activate(c),
+          { label: "Make NPC", onClick: () => setStanding(c.id, "npc") },
+        ])}
 
         <button
           type="button"
@@ -108,8 +137,4 @@ export function CharactersScreen() {
       </div>
     </main>
   );
-}
-
-function Section({ label }: { label: string }) {
-  return <p className="pt-2 text-sm uppercase tracking-widest opacity-60">{label}</p>;
 }

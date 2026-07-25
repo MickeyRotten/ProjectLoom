@@ -46,7 +46,32 @@ export interface Character {
   noPortrait?: boolean;
 }
 
-/** Where a character stands in the current adventure. */
+/**
+ * Where a character stands in the CURRENT adventure — one ladder, not two
+ * orthogonal flags. `active`/`benched` are the party (benched = still one of
+ * yours, just not in this scene); `npc` is an important ally the world knows
+ * but who does not travel with you; `departed`/`fallen` left the story.
+ * `none` is a character this adventure simply hasn't involved.
+ */
+export type Standing =
+  | "none"
+  | "npc"
+  | "active"
+  | "benched"
+  | "departed"
+  | "fallen";
+
+/** The party standings — what `PARTY` and the strip are made of. */
+export const PARTY_STANDINGS = ["active", "benched"] as const;
+
+/** The standings a character can no longer travel back from on their own. */
+export const PARTED_STANDINGS = ["departed", "fallen"] as const;
+
+/**
+ * Pre-`Standing` vocabulary: party membership was a boolean and this enum
+ * recorded why someone wasn't in it. Read-only now — `normalizeEntry` folds
+ * both into `Standing`.
+ */
 export type CharacterStatus = "active" | "departed" | "fallen";
 
 /**
@@ -65,17 +90,26 @@ export type CharacterOverride = Partial<
  */
 export interface RosterEntry {
   id: string;
-  inParty: boolean;
+  standing: Standing;
   lastSpokeTurn: number;
-  status: CharacterStatus;
   overrides?: CharacterOverride;
 }
+
+/**
+ * A roster entry as it may arrive from storage: saves written before the
+ * `Standing` ladder carry `inParty` + `status` instead. `normalizeEntry` is the
+ * only thing that reads this shape.
+ */
+export type LegacyRosterEntry = Partial<RosterEntry> & {
+  id: string;
+  inParty?: boolean;
+  status?: CharacterStatus;
+};
 
 /** A character resolved for use: base ⊕ this adventure's override + state. */
 export interface PartyMember extends Character {
   lastSpokeTurn: number;
-  inParty: boolean;
-  status: CharacterStatus;
+  standing: Standing;
 }
 
 export interface Item {
@@ -126,7 +160,7 @@ export interface Message {
 
 /**
  * Phase 5 reversal snapshot. Op-based deltas are lossy to invert (a party
- * `remove` benches, an inventory `add` merges quantity), so a turn instead
+ * `remove` only changes standing, an inventory `add` merges quantity), so a turn instead
  * records exactly the mutable slices it is about to overwrite. Undo restores
  * them wholesale — exact and order-preserving. Scalars are always captured; a
  * slice is present only when the turn actually touched it, keeping most turns
@@ -245,7 +279,17 @@ export interface PartyDelta {
   personality?: string;
   drive?: string;
   strengths?: Strengths;
-  /** Honoured on `remove` only — why they left. Defaults to "departed". */
+  /**
+   * Where this character stands after the op. On `add`/`update` the narrator
+   * may say `active` (travelling), `benched` (with the party, out of the
+   * scene) or `npc` (known to the world, not a companion); on `remove` it is
+   * why they left. Defaults: `active` on add, `departed` on remove.
+   */
+  standing?: Standing;
+  /**
+   * Pre-`standing` spelling of the same thing on `remove`. Still read, because
+   * reversal replays `appliedDeltas` blocks recorded before the rename.
+   */
   status?: Exclude<CharacterStatus, "active">;
 }
 

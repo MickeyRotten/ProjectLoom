@@ -2,7 +2,6 @@ import { create } from "zustand";
 import type {
   Character,
   CharacterOverride,
-  CharacterStatus,
   GameState,
   Item,
   Message,
@@ -10,6 +9,7 @@ import type {
   Quest,
   Scenario,
   Settings,
+  Standing,
 } from "./types";
 import { defaultPC, ensureGold, newCharacter, newGame } from "./lib/defaults";
 import { loadSettings, saveSettings } from "./lib/settings";
@@ -28,15 +28,19 @@ import {
   type SaveSlot,
 } from "./lib/db";
 import {
+  activeMembers,
   clearOverrides as clearRosterOverrides,
   dropEntry,
   getEntry,
+  isInParty,
   mergeOverrides,
   partyFull,
   partyMembers,
   pruneRoster,
   resolve,
   setEntry,
+  setStanding as setEntryStanding,
+  standingOf,
 } from "./lib/roster";
 import { buildMessages } from "./lib/prompt";
 import { completeChat, streamChat, OpenRouterError } from "./lib/openrouter";
@@ -160,12 +164,12 @@ export interface LoomStore {
   /** Delete a character from the library entirely (and from every adventure). */
   removeCharacter: (id: string) => void;
   /**
-   * Add to / kick from the active party, capped at PARTY_LIMIT. Kicking only
-   * ends party membership — the character stays in Characters.
+   * Move a character along this adventure's standing ladder — into the party
+   * (`active`, capped at PARTY_LIMIT), onto the bench, to an NPC ally, out of
+   * the party entirely (`none` — what Kick does), or out of the story
+   * (`departed` / `fallen`). Never touches the global character.
    */
-  setInParty: (id: string, inParty: boolean) => void;
-  /** Player-set standing for this adventure (active / departed / fallen). */
-  setStatus: (id: string, status: CharacterStatus) => void;
+  setStanding: (id: string, standing: Standing) => void;
   /** Drop this adventure's story-written overrides, back to the authored sheet. */
   revertOverrides: (id: string) => void;
   addNote: () => void;
@@ -673,38 +677,27 @@ export const useStore = create<LoomStore>((set, get) => {
     void saveActiveGame(game);
   },
 
-  setInParty(id, inParty) {
+  setStanding(id, standing) {
     const g = get().game;
     const target = get().characters.find((c) => c.id === id);
     if (!target || target.role !== "member") return;
-    // Joining is capped by the strip's slots; leaving is always allowed.
-    if (inParty && !getEntry(g.roster, id).inParty && partyFull(get().characters, g.roster))
+    // Only the scene is capped. Everything else — bench, NPC, kick, departed —
+    // is always allowed, and a standing change is never coupled to another:
+    // kicking someone out of the party is not the story writing them off.
+    if (
+      standing === "active" &&
+      standingOf(g.roster, id) !== "active" &&
+      partyFull(get().characters, g.roster)
+    )
       return;
-    // Bringing someone back is the player overruling how they left, so their
-    // departed/fallen standing clears; kicking records a plain departure.
-    const roster = setEntry(g.roster, id, {
-      inParty,
-      status: inParty ? "active" : "departed",
-    });
+    const roster = setEntryStanding(g.roster, id, standing);
     if (roster === g.roster) return;
     const game = { ...g, roster };
     set({ game });
     void saveActiveGame(game);
-    // A freshly added member needs a portrait for the strip.
-    if (inParty) get().syncImages();
-  },
-
-  setStatus(id, status) {
-    const g = get().game;
-    // Someone travelling with you is by definition still with you.
-    const roster = setEntry(g.roster, id, {
-      status,
-      inParty: status === "active" ? getEntry(g.roster, id).inParty : false,
-    });
-    if (roster === g.roster) return;
-    const game = { ...g, roster };
-    set({ game });
-    void saveActiveGame(game);
+    // Anyone the player can now see in the strip or the Party screen needs a
+    // portrait.
+    if (isInParty(standing)) get().syncImages();
   },
 
   revertOverrides(id) {
@@ -806,10 +799,20 @@ export const useStore = create<LoomStore>((set, get) => {
 
   newAdventure() {
     // Reseed from the current scenario. Characters are global and untouched —
-    // the whole cast survives, but the PARTY starts empty (roster: []) and is
-    // rebuilt from Characters or by the narrator recruiting during play.
+    // the whole cast survives, but the PARTY starts empty and is rebuilt from
+    // Characters or by the narrator recruiting during play.
+    //
+    // The world's NPCs carry over: an ally is a fact about the setting, not
+    // about one run, and re-marking the whole supporting cast by hand every
+    // new adventure is the kind of chore that just doesn't get done.
     const g = get().game;
-    const game = newGame(g.scenario);
+    const fresh = newGame(g.scenario);
+    const game = {
+      ...fresh,
+      roster: g.roster
+        .filter((e) => e.standing === "npc")
+        .map((e) => ({ id: e.id, standing: "npc" as const, lastSpokeTurn: 0 })),
+    };
     set({ game, options: [], streamText: "", error: null, failedInput: null });
     void saveActiveGame(game);
     get().syncImages();
@@ -909,10 +912,11 @@ export const useStore = create<LoomStore>((set, get) => {
 
       // Party deltas apply first, THEN deterministic speaker detection bumps
       // lastSpokeTurn — the model's `spoke` hint never overrides the prose
-      // (loom-spotlight). Run against the post-delta in-party roster.
+      // (loom-spotlight). Run against the post-delta ACTIVE roster: only the
+      // members in the scene carry a spotlight debt worth tracking.
       const characters = scene?.characters ?? library;
       let roster = scene?.roster ?? g.roster;
-      const party = partyMembers(characters, roster);
+      const party = activeMembers(characters, roster);
       const spokeIds = new Set(detectSpeakers(prose, party));
       for (const id of spokeIds) roster = setEntry(roster, id, { lastSpokeTurn: turn });
 
@@ -1094,8 +1098,9 @@ export const useStore = create<LoomStore>((set, get) => {
       }));
     }
     // The PC rides the strip too, so its portrait must generate up front — not
-    // only after the PC sheet is opened once. Characters outside the party get
-    // theirs lazily, when their sheet opens.
+    // only after the PC sheet is opened once. Benched members are covered as
+    // well, since the Party screen shows them; everyone further out gets theirs
+    // lazily, when their sheet opens.
     const chars = get().characters;
     for (const c of chars) if (c.role === "pc") portrait(c.id, false);
     for (const m of partyMembers(chars, g.roster)) portrait(m.id, false);

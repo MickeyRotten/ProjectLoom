@@ -108,6 +108,15 @@ Post-MVP also: **active-party roll call** (`prompt.ts → formatPartyComposition
 from the roster every turn and injected *after* the history, naming who travels with the
 player (`n/PARTY_LIMIT`) and who left (`departed`/`fallen`); emitted even when the party
 is empty, so the narrator stops voicing companions the history still remembers.
+Post-MVP also: **standing ladder** (`RosterEntry.standing` replaces `inParty` + `status`)
+— one per-adventure enum `none | npc | active | benched | departed | fallen`, so the cast
+has an **NPC / ally** tier the narrator actually reads and the party has a real **bench**.
+Only `active` is capped (`PARTY_LIMIT`); the bench is unlimited and an over-cap narrator
+`add` lands benched instead of nowhere. Benched members get no prompt sheet, no spotlight,
+no gear scan. NPC sheets are keyword-gated (`cast.ts`, reusing `worldNotes.ts →
+keywordHits`) and every NPC is named in the roll call. **Kick** sets `none` — out of the
+party, still in Characters, no story stamp. `normalizeEntry`/`normalizeRoster` fold every
+older stored shape onto the ladder (reversal snapshots live inside saved messages).
 Deferred (post-MVP): history summarization, NPC/item art, TTS,
 weather animation, multi-world. Track scope in `DESIGN.md → Build Phases`.
 

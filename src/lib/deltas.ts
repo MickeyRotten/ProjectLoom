@@ -7,9 +7,15 @@ import type {
   PartyDelta,
   Quest,
   RosterEntry,
+  Standing,
 } from "../types";
 import { isGold } from "./defaults";
-import { getEntry, mergeOverrides, partyFull, setEntry } from "./roster";
+import {
+  mergeOverrides,
+  partyFull,
+  setStanding,
+  standingOf,
+} from "./roster";
 
 /**
  * Apply a parsed <<<LOOM>>> block to the active game (loom-turn-protocol):
@@ -26,8 +32,8 @@ import { getEntry, mergeOverrides, partyFull, setEntry } from "./roster";
  *    player's authored text is never overwritten by the story;
  *  - a brand-new character → the library, since there is no base to diverge
  *    from yet.
- * `remove` only un-parties (and records why); nothing the model emits ever
- * deletes a character.
+ * `remove` only changes standing (and records why); nothing the model emits
+ * ever deletes a character.
  *
  * Pure: returns the changed slices; callers merge into the store. Keeping this
  * pure is what makes the turn contract testable.
@@ -74,15 +80,17 @@ export function applyDeltas(
  * Op-based party membership, keyed by slugged character name across the whole
  * library. Only members (role "member") are matched — the PC is never touched
  * by a party delta.
- *  - add: enlist a known character (refreshing fields as overrides), or create
- *    one in the library. Enlisting respects PARTY_LIMIT — past the cap the
- *    character joins the adventure out of the party, matching the UI's rule
- *    (the strip only has PARTY_LIMIT slots). A `fallen` character is never
- *    re-recruited by the narrator; only the player can bring them back.
+ *  - add: bring a known character into the adventure (refreshing fields as
+ *    overrides), or create one in the library. `standing` says how they join —
+ *    `active` (default), `benched`, or `npc` for an ally who is not a
+ *    companion. An `active` join respects PARTY_LIMIT: past the cap they land
+ *    BENCHED rather than in a state nothing renders. A `fallen` character is
+ *    never re-recruited by the narrator; only the player can bring them back.
  *  - update: override species/description/personality/drive/strengths for this
- *    adventure. Never creates.
- *  - remove: un-party and record why (`departed` unless the model says
- *    otherwise). The character itself is kept, forever.
+ *    adventure, and move their standing when the block says so. Never creates.
+ *  - remove: they stop travelling with the player, and `standing` records why
+ *    (`departed` unless the model says otherwise). The character is kept,
+ *    forever.
  */
 function applyParty(
   characters: Character[],
@@ -99,40 +107,69 @@ function applyParty(
     const found = nextChars.find((c) => c.role === "member" && slug(c.name) === key);
 
     if (d.op === "remove") {
-      if (found) {
-        nextRoster = setEntry(nextRoster, found.id, {
-          inParty: false,
-          status: d.status ?? "departed",
-        });
-      }
+      if (found) nextRoster = setStanding(nextRoster, found.id, exitStanding(d));
       continue;
     }
 
     if (d.op === "update") {
-      if (found) nextRoster = mergeOverrides(nextRoster, found.id, overridesOf(d));
+      if (!found) continue;
+      nextRoster = mergeOverrides(nextRoster, found.id, overridesOf(d));
+      if (d.standing) {
+        nextRoster = setStanding(
+          nextRoster,
+          found.id,
+          seatFor(d.standing, nextChars, nextRoster, found.id),
+        );
+      }
       continue;
     }
 
-    // add — enlist + refresh a known character, else write a new one.
+    // add — seat + refresh a known character, else write a new one.
     if (found) {
-      const entry = getEntry(nextRoster, found.id);
       // The dead stay dead as far as the narrator is concerned.
-      if (entry.status === "fallen") continue;
+      if (standingOf(nextRoster, found.id) === "fallen") continue;
       nextRoster = mergeOverrides(nextRoster, found.id, overridesOf(d));
-      nextRoster = setEntry(nextRoster, found.id, {
-        status: "active",
-        inParty: entry.inParty || !partyFull(nextChars, nextRoster),
-      });
+      nextRoster = setStanding(
+        nextRoster,
+        found.id,
+        seatFor(d.standing ?? "active", nextChars, nextRoster, found.id),
+      );
     } else {
       const created = makeCharacter(d, uniqueId(nextChars, `m-${key}`));
       nextChars = [...nextChars, created];
-      nextRoster = setEntry(nextRoster, created.id, {
-        inParty: !partyFull(nextChars, nextRoster),
-      });
+      nextRoster = setStanding(
+        nextRoster,
+        created.id,
+        seatFor(d.standing ?? "active", nextChars, nextRoster, created.id),
+      );
     }
   }
 
   return { characters: nextChars, roster: nextRoster };
+}
+
+/** Standings a `remove` may leave someone in — never a party seat. */
+function exitStanding(d: PartyDelta): Standing {
+  const said = d.standing ?? d.status;
+  if (said === "fallen" || said === "none" || said === "npc") return said;
+  return "departed";
+}
+
+/**
+ * Where the narrator's requested standing actually lands. Only the active
+ * seats are capped; someone who would overflow the party joins the BENCH,
+ * which is visible in the UI and named in the roll call, rather than the
+ * nowhere-state the old `inParty: false, status: "active"` pair produced.
+ */
+function seatFor(
+  standing: Standing,
+  characters: Character[],
+  roster: RosterEntry[],
+  id: string,
+): Standing {
+  if (standing !== "active") return standing;
+  if (standingOf(roster, id) === "active") return "active";
+  return partyFull(characters, roster) ? "benched" : "active";
 }
 
 /** The subset of a party delta that can diverge from the base character. */

@@ -5,9 +5,17 @@ import {
   formatGearBlock,
   formatSpotlightBlock,
 } from "./spotlight";
-import { partedMembers, partyMembers, playerCharacter, presentMembers } from "./roster";
+import {
+  PARTY_LIMIT,
+  activeMembers,
+  benchedMembers,
+  npcMembers,
+  partedMembers,
+  playerCharacter,
+  presentMembers,
+} from "./roster";
+import { formatNpcBlock, matchNpcs } from "./cast";
 import { matchWorldNotes, formatWorldNotesBlock } from "./worldNotes";
-import { PARTY_LIMIT } from "./defaults";
 
 /**
  * Prompt assembly (DESIGN.md → Prompt assembly, trimmed port of
@@ -62,6 +70,13 @@ export function buildMessages(opts: BuildOptions): ChatMessage[] {
   //    few beats (single-category lorebook, titles are implicit keywords).
   const worldNotes = buildWorldNotesBlock(game, playerMessage);
   if (worldNotes) messages.push({ role: "system", content: worldNotes });
+
+  // 7b. Known characters — the sheets of important NPCs / allies the scene has
+  //     just named. Keyword-gated like the notes above, so an adventure can
+  //     know fifty people without any of them costing a turn they're absent
+  //     from. The roll call (#9b) still names them all, every turn.
+  const npcs = buildNpcBlock(game, characters, playerMessage);
+  if (npcs) messages.push({ role: "system", content: npcs });
 
   // 8. Spotlight block — deterministic per-member signals + the rule.
   const spotlight = buildSpotlightBlock(settings, game, characters, playerMessage, currentTurn);
@@ -123,8 +138,10 @@ function buildSystemContext(
     parts.push(lines.join("\n"));
   }
 
-  // 4. Party roster — in-company members with skill + equipment.
-  const roster = formatPartyRoster(partyMembers(characters, game.roster));
+  // 4. Party roster — the members actually in the scene, with skill +
+  //    equipment. Benched members get no sheet anywhere: they are the player's,
+  //    but they are not here, and a sheet is an invitation to write them in.
+  const roster = formatPartyRoster(activeMembers(characters, game.roster));
   if (roster) parts.push(roster);
 
   // 5. Inventory (compact).
@@ -194,42 +211,64 @@ const PARTED_LIMIT = 6;
  */
 function buildPartyCompositionBlock(game: GameState, characters: Character[]): string {
   return formatPartyComposition(
-    partyMembers(characters, game.roster),
+    activeMembers(characters, game.roster),
+    benchedMembers(characters, game.roster),
     // Newest departures only — an old adventure can accumulate many, and the
     // stale ones are the least likely to still be bleeding into the scene.
     partedMembers(characters, game.roster).slice(-PARTED_LIMIT),
+    npcMembers(characters, game.roster).slice(0, NPC_ROLL_CALL_LIMIT),
   );
 }
 
+/** How many NPCs the roll call names before it stops listing (names only). */
+const NPC_ROLL_CALL_LIMIT = 12;
+
 /**
  * The ACTIVE PARTY block. Deliberately short — the full sheets already rode in
- * the roster block (#4); this one is a membership fact, stated last.
+ * the roster block (#4); this one is a membership fact, stated last. Every
+ * standing that is NOT "in the scene" gets its own explicit negative, because
+ * the failure mode is always the same: the history remembers someone the
+ * roster has moved on from, and the model keeps walking them alongside the
+ * player.
  */
 export function formatPartyComposition(
-  party: PartyMember[],
+  active: PartyMember[],
+  benched: PartyMember[] = [],
   parted: PartyMember[] = [],
+  npcs: PartyMember[] = [],
 ): string {
+  const names = (members: PartyMember[]) => members.map((m) => m.name).join(", ");
   const lines = [
     "ACTIVE PARTY — THIS TURN (authoritative: it overrides anything earlier beats imply about who is present)",
-    party.length
-      ? `Travelling with the player (${party.length}/${PARTY_LIMIT}): ${party
-          .map((m) => m.name)
-          .join(", ")}`
+    active.length
+      ? `Travelling with the player (${active.length}/${PARTY_LIMIT}): ${names(active)}`
       : "Travelling with the player (0): nobody — the player is ALONE this turn.",
   ];
 
+  if (benched.length) {
+    lines.push(
+      `With the party but NOT in this scene: ${names(benched)} — they are elsewhere. Do not voice them, and do not describe them as present.`,
+    );
+  }
+
   if (parted.length) {
-    const gone = parted.map((m) => `${m.name} (${m.status})`).join(" · ");
+    const gone = parted.map((m) => `${m.name} (${m.standing})`).join(" · ");
     lines.push(`No longer travelling with the player: ${gone}`);
   }
 
+  if (npcs.length) {
+    lines.push(
+      `Known in this world, NOT companions: ${names(npcs)} — they live their own lives and only appear where the scene reaches them.`,
+    );
+  }
+
   lines.push(
-    party.length
+    active.length
       ? "Only these companions are present. Do not voice, move, or describe anyone else as travelling with the player, however recently they appeared in the scene."
       : "No companions are present. Do not voice or act for a companion this turn — anyone in earlier beats has already left.",
   );
 
-  if (parted.some((m) => m.status === "fallen")) {
+  if (parted.some((m) => m.standing === "fallen")) {
     lines.push(
       "A fallen companion is DEAD — never write them back into the scene as present.",
     );
@@ -255,6 +294,31 @@ function buildWorldNotesBlock(game: GameState, playerMessage: string): string {
 }
 
 /**
+ * Known-characters block (#7b) — the sheets of NPCs the new message or the
+ * recent beats name. Same scan window as the spotlight: the people the scene
+ * is actually about.
+ */
+function buildNpcBlock(
+  game: GameState,
+  characters: Character[],
+  playerMessage: string,
+): string {
+  const npcs = npcMembers(characters, game.roster);
+  if (!npcs.length) return "";
+  return formatNpcBlock(matchNpcs(npcs, scanText(game, playerMessage, SPOTLIGHT_CONTEXT_TURNS)));
+}
+
+/** The new message plus the last `turns` beats — the freshest context. */
+function scanText(game: GameState, playerMessage: string, turns: number): string {
+  // ×2: a turn is a player + narrator message pair.
+  const recent = game.messages
+    .slice(-turns * 2)
+    .map((m) => m.content)
+    .join("\n");
+  return `${playerMessage}\n${recent}`;
+}
+
+/**
  * Spotlight block (#8) — deterministic per-member signals + the editable rule.
  * Relevance/context folds in the last few beats alongside the new message.
  */
@@ -265,7 +329,8 @@ function buildSpotlightBlock(
   playerMessage: string,
   currentTurn: number,
 ): string {
-  const party = partyMembers(characters, game.roster);
+  // Active members only — a benched member owes nobody a line this turn.
+  const party = activeMembers(characters, game.roster);
   if (!party.length) return "";
   const recentContext = game.messages
     // ×2: a turn is a player + narrator message pair.
@@ -359,8 +424,9 @@ function buildOutputProtocol(settings: Settings): string {
     "JSON fields (include only what changed this turn):",
     '- "location", "weather", "day": the current scene (strings / number).',
     optionsLine,
-    `- "party": array of { "op": "add|update|remove", "name", "species", "description", "personality", "drive", "strengths": { "name", "description" } }. ${appearanceRule} Add a member only when they join; remove when they leave.`,
-    '- On a party "remove", you may add "status": "departed" (they walked away — they can rejoin later) or "status": "fallen" (they died — never write them back into the party). Removing never deletes anyone; they simply stop travelling with the player.',
+    `- "party": array of { "op": "add|update|remove", "name", "species", "description", "personality", "drive", "strengths": { "name", "description" } }. ${appearanceRule} Add a character when they join the player's story; remove when they leave it.`,
+    `- On a party "add" or "update", you may add "standing": "active" (travelling with the player — the default), "benched" (one of the party, but waiting elsewhere this scene) or "npc" (an important character of this world — an ally, a contact, a rival — who does NOT travel with the player). Use "npc" for anyone worth remembering who is not joining the journey; only ${PARTY_LIMIT} companions can be active at once, and anyone who joins past that is benched automatically.`,
+    '- On a party "remove", you may add "standing": "departed" (they walked away — they can rejoin later) or "standing": "fallen" (they died — never write them back into the party). Removing never deletes anyone; they simply stop travelling with the player.',
     '- On every party "add", ALWAYS write "personality", "drive" and "strengths" — never omit them and never leave them blank. "personality" is temperament and speech habits in a phrase or two; "drive" is the one thing they want; "strengths" is their standout capability as a short name plus one sentence of what it lets them do.',
     '- "inventory": array of { "op": "add|update|remove", "label", "description", "quantity" }.',
     '- Gold is the permanent currency item in "inventory" — never remove it. When the player gains or spends money, emit { "op": "update", "label": "Gold", "quantity": <new total> }.',
