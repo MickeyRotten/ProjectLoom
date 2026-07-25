@@ -117,6 +117,12 @@ no gear scan. NPC sheets are keyword-gated (`cast.ts`, reusing `worldNotes.ts �
 keywordHits`) and every NPC is named in the roll call. **Kick** sets `none` — out of the
 party, still in Characters, no story stamp. `normalizeEntry`/`normalizeRoster` fold every
 older stored shape onto the ladder (reversal snapshots live inside saved messages).
+Post-MVP also: **location image cooldown** (`Settings.bannerCooldown` in Advanced,
+0 = off) — N turns of automatic banner generation skipped after one is drawn
+(`images.ts → bannerOnCooldown`/`bannerCooldownLeft`, anchored on
+`GameState.lastBannerTurn`, stamped only on a real generation). Gates generation
+only: cached locations still show instantly, ⟳ ignores the cooldown but restarts
+it, and the placeholder counts the turns left.
 Deferred (post-MVP): history summarization, NPC/item art, TTS,
 weather animation, multi-world. Track scope in `DESIGN.md → Build Phases`.
 

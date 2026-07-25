@@ -15,7 +15,13 @@ import {
   DEFAULT_REFERENCE_INSTRUCTION,
   DEFAULT_SPOTLIGHT_RULE,
 } from "../lib/defaults";
-import { blobToRefImage, MAX_REF_IMAGES, refImageToDataUrl } from "../lib/images";
+import {
+  blobToRefImage,
+  clampBannerCooldown,
+  MAX_BANNER_COOLDOWN,
+  MAX_REF_IMAGES,
+  refImageToDataUrl,
+} from "../lib/images";
 
 /**
  * Advanced instructions (DESIGN.md → Menu): the player-editable prompt guidance
@@ -122,6 +128,25 @@ export function AdvancedScreen() {
                 : "THRESHOLD"}
           </span>
         </button>
+
+        <Field label="Location Image Cooldown">
+          <input
+            type="number"
+            inputMode="numeric"
+            min={0}
+            max={MAX_BANNER_COOLDOWN}
+            step={1}
+            value={settings.bannerCooldown}
+            onChange={(e) => update({ bannerCooldown: clampBannerCooldown(e.target.valueAsNumber) })}
+            className="w-full border-2 border-ink bg-paper p-2 focus:outline-none"
+          />
+          <p className="text-xs opacity-70">
+            Turns to wait after a location image is generated before another one is
+            drawn — "3" skips the next 3 turns' worth of new locations. 0 turns it off.
+            Locations you've already seen still show their cached image instantly, and ⟳
+            always redraws.
+          </p>
+        </Field>
 
         {FIELDS.filter(
           (f) => f.key !== "optionInstructions" || settings.showActionOptions,

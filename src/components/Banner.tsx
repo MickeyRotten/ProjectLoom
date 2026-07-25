@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useStore } from "../store";
-import { bannerKey } from "../lib/images";
+import { bannerCooldownLeft, bannerKey } from "../lib/images";
 import { EditImageButton } from "./EditImageButton";
 
 /**
@@ -17,6 +17,11 @@ export function Banner() {
   const pending = useStore((s) => s.imgPending[key]);
   const imageError = useStore((s) => s.imgError[key]);
   const regenerate = useStore((s) => s.regenerateBanner);
+  // Turns left on the generation cooldown (Advanced). Without this the
+  // placeholder is indistinguishable from a silently broken banner.
+  const waiting = useStore((s) =>
+    bannerCooldownLeft(s.settings.bannerCooldown, s.game.lastBannerTurn, s.game.turnNumber),
+  );
   const edit = useStore((s) => s.editBanner);
   const [zoom, setZoom] = useState(false);
   const [showWhy, setShowWhy] = useState(false);
@@ -37,8 +42,13 @@ export function Banner() {
           />
         </button>
       ) : (
-        <div className="flex h-full w-full items-center justify-center px-3 text-center uppercase tracking-widest opacity-50">
-          {pending ? "rendering banner…" : location}
+        <div className="flex h-full w-full flex-col items-center justify-center gap-1 px-3 text-center uppercase tracking-widest opacity-50">
+          <span>{pending ? "rendering banner…" : location}</span>
+          {!pending && waiting > 0 && (
+            <span className="text-[0.6rem]">
+              new image in {waiting} {waiting === 1 ? "turn" : "turns"} · ⟳ draws now
+            </span>
+          )}
         </div>
       )}
       <button
