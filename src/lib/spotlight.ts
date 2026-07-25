@@ -1,4 +1,4 @@
-import type { Character } from "../types";
+import type { Character, PartyMember } from "../types";
 
 /**
  * Party spotlight — deterministic, single-call (see
@@ -115,7 +115,7 @@ export function isDirectlyAddressed(message: string, name: string): boolean {
 export function computeSpotlightSignals(
   playerMsg: string,
   recentContext: string,
-  party: Character[],
+  party: PartyMember[],
   currentTurn: number,
 ): SpotlightSignal[] {
   const contextKeywords = extractKeywords(`${playerMsg}\n${recentContext}`);

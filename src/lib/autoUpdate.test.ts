@@ -6,7 +6,7 @@ import {
   recentMentions,
   type AutoField,
 } from "./autoUpdate";
-import { newGame, newMember } from "./defaults";
+import { newCharacter, newGame } from "./defaults";
 import type { Character, GameState, Message } from "../types";
 
 function msg(patch: Partial<Message> & { content: string; turn: number }): Message {
@@ -14,11 +14,11 @@ function msg(patch: Partial<Message> & { content: string; turn: number }): Messa
 }
 
 function member(patch: Partial<Character> = {}): Character {
-  return { ...newMember("m1"), name: "Elara", species: "elf", ...patch };
+  return { ...newCharacter("m1"), name: "Elara", species: "elf", ...patch };
 }
 
-function gameWith(messages: Message[], characters: Character[] = []): GameState {
-  return { ...newGame(), messages, characters };
+function gameWith(messages: Message[]): GameState {
+  return { ...newGame(), messages };
 }
 
 const beats: Message[] = [
@@ -61,7 +61,7 @@ describe("buildAutoUpdateMessages", () => {
     equipment: [{ label: "Ranger's Coat", description: "Oiled leather, deep hood." }],
   });
 
-  function joined(fields: AutoField[], game = gameWith(beats, [c])) {
+  function joined(fields: AutoField[], game = gameWith(beats)) {
     return buildAutoUpdateMessages({ game, character: c, fields }).map((m) => m.content).join("\n");
   }
 
@@ -90,13 +90,13 @@ describe("buildAutoUpdateMessages", () => {
   });
 
   it("says so explicitly when no beat mentions the character", () => {
-    const text = joined(["personality"], gameWith([msg({ content: "Rain falls.", turn: 1 })], [c]));
+    const text = joined(["personality"], gameWith([msg({ content: "Rain falls.", turn: 1 })]));
     expect(text).toContain("no recent beat mentions Elara");
   });
 
   it("ends with the user instruction naming the selected fields", () => {
     const messages = buildAutoUpdateMessages({
-      game: gameWith(beats, [c]),
+      game: gameWith(beats),
       character: c,
       fields: ["drive", "appearance"],
     });

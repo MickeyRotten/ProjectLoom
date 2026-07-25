@@ -11,33 +11,36 @@ import {
   ensureGold,
   goldItem,
   isGold,
-  migrateGame,
+  newCharacter,
   newGame,
-  newMember,
+  splitLegacyGame,
   STARTING_GOLD,
 } from "./defaults";
 import type { GameState } from "../types";
 
-describe("newGame — roster carry-over", () => {
-  it("seeds the default PC when no roster is passed", () => {
-    const g = newGame();
-    expect(g.characters).toHaveLength(1);
-    expect(g.characters[0].role).toBe("pc");
+describe("newGame — a fresh adventure", () => {
+  it("starts with an empty party; the cast lives in the global library", () => {
+    expect(newGame().roster).toEqual([]);
   });
 
-  it("carries an authored roster into the new game with lastSpokeTurn reset", () => {
-    const pc = { ...defaultPC(), name: "Vale" };
-    const ally = { ...newMember("m-1"), name: "Navi", lastSpokeTurn: 7 };
-    const g = newGame(undefined, [pc, ally]);
-    expect(g.characters.map((c) => c.name)).toEqual(["Vale", "Navi"]);
-    expect(g.characters.every((c) => c.lastSpokeTurn === 0)).toBe(true);
+  it("seeds no characters of its own", () => {
+    expect(newGame()).not.toHaveProperty("characters");
   });
 });
 
-describe("migrateGame", () => {
+describe("newCharacter", () => {
+  it("creates a member outside the party — you add them from Characters", () => {
+    const c = newCharacter("m-1");
+    expect(c.role).toBe("member");
+    expect(c).not.toHaveProperty("inParty");
+    expect(c).not.toHaveProperty("lastSpokeTurn");
+  });
+});
+
+describe("splitLegacyGame", () => {
   it("returns null for a missing save", () => {
-    expect(migrateGame(undefined)).toBeNull();
-    expect(migrateGame(null)).toBeNull();
+    expect(splitLegacyGame(undefined)).toBeNull();
+    expect(splitLegacyGame(null)).toBeNull();
   });
 
   it("fills slices missing from an older-shape save", () => {
@@ -50,30 +53,57 @@ describe("migrateGame", () => {
       weather: "rain",
       // no scenario/worldNotes/inventory/quests — pre-Phase-4 shape
     };
-    const g = migrateGame(old)!;
-    expect(g.worldNotes).toEqual([]);
+    const { game } = splitLegacyGame(old)!;
+    expect(game.worldNotes).toEqual([]);
     // Pre-Gold saves gain the permanent currency row.
-    expect(g.inventory).toEqual([goldItem()]);
-    expect(g.quests).toEqual([]);
-    expect(g.scenario.title).toBeTruthy();
-    expect(g.location).toBe("Old Well");
-    expect(g.turnNumber).toBe(3);
+    expect(game.inventory).toEqual([goldItem()]);
+    expect(game.quests).toEqual([]);
+    expect(game.scenario.title).toBeTruthy();
+    expect(game.location).toBe("Old Well");
+    expect(game.turnNumber).toBe(3);
   });
 
   it("merges a partial scenario over the default one", () => {
     const old = { scenario: { title: "My World" } } as Partial<GameState>;
-    const g = migrateGame(old)!;
-    expect(g.scenario.title).toBe("My World");
-    expect(g.scenario.openingNarration).toBeTruthy();
-    expect(g.scenario.startLocation).toBeTruthy();
+    const { game } = splitLegacyGame(old)!;
+    expect(game.scenario.title).toBe("My World");
+    expect(game.scenario.openingNarration).toBeTruthy();
+    expect(game.scenario.startLocation).toBeTruthy();
   });
 
-  it("passes a current-shape game through unchanged", () => {
+  it("passes a post-split game through unchanged", () => {
     const current = newGame();
     current.quests = [{ id: "q1", label: "Find it", description: "", reward: "", status: "active" }];
-    const g = migrateGame(current)!;
-    expect(g.quests).toEqual(current.quests);
-    expect(g.characters).toEqual(current.characters);
+    const { game, characters } = splitLegacyGame(current)!;
+    expect(game.quests).toEqual(current.quests);
+    expect(game.roster).toEqual([]);
+    expect(characters).toEqual([]);
+  });
+
+  it("lifts a pre-split roster into the library plus adventure entries", () => {
+    const legacy = {
+      characters: [
+        { ...defaultPC(), lastSpokeTurn: 4 },
+        { ...newCharacter("m-navi"), name: "Navi", inParty: true, lastSpokeTurn: 7 },
+        { ...newCharacter("m-bel"), name: "Bel", inParty: false, lastSpokeTurn: 0 },
+      ],
+    };
+    const { game, characters } = splitLegacyGame(legacy)!;
+
+    // Ids are preserved, so every existing portrait blob keeps resolving.
+    expect(characters.map((c) => c.id)).toEqual(["pc", "m-navi", "m-bel"]);
+    // Party state moved off the character and onto the adventure.
+    for (const c of characters) {
+      expect(c).not.toHaveProperty("inParty");
+      expect(c).not.toHaveProperty("lastSpokeTurn");
+    }
+    expect(game.roster).toEqual([
+      { id: "pc", inParty: false, lastSpokeTurn: 4, status: "active" },
+      { id: "m-navi", inParty: true, lastSpokeTurn: 7, status: "active" },
+      { id: "m-bel", inParty: false, lastSpokeTurn: 0, status: "active" },
+    ]);
+    // The legacy array must not ride along into the re-saved game.
+    expect(game).not.toHaveProperty("characters");
   });
 
   it("carries a legacy fieldSkill onto strengths and drops likes/dislikes", () => {
@@ -88,7 +118,7 @@ describe("migrateGame", () => {
         },
       ],
     };
-    const c = migrateGame(legacy)!.characters[0];
+    const c = splitLegacyGame(legacy)!.characters[0];
     expect(c.strengths).toEqual({ name: "Superhuman Strength", description: "lifts anything" });
     expect(c).not.toHaveProperty("fieldSkill");
     expect(c).not.toHaveProperty("likes");
@@ -97,15 +127,15 @@ describe("migrateGame", () => {
 
   it("gives a character with neither field a blank strengths", () => {
     const legacy = { characters: [{ ...defaultPC(), strengths: undefined }] };
-    expect(migrateGame(legacy)!.characters[0].strengths).toEqual({ name: "", description: "" });
+    expect(splitLegacyGame(legacy)!.characters[0].strengths).toEqual({ name: "", description: "" });
   });
 
   it("keeps an existing Gold row (and its quantity) on migrate", () => {
     const current = newGame();
     current.inventory = [{ label: "Gold", description: "Currency", quantity: 77 }];
-    const g = migrateGame(current)!;
-    expect(g.inventory).toHaveLength(1);
-    expect(g.inventory[0].quantity).toBe(77);
+    const { game } = splitLegacyGame(current)!;
+    expect(game.inventory).toHaveLength(1);
+    expect(game.inventory[0].quantity).toBe(77);
   });
 });
 

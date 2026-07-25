@@ -9,7 +9,7 @@ import { OverlayHeader } from "./OverlayHeader";
 // Quests + World Notes moved to the main-screen ⋯ context menu (beside GO).
 const ENTRIES: { screen: Screen; label: string; note: string }[] = [
   { screen: "scenario", label: "Scenario", note: "Title · premise · opening" },
-  { screen: "characters", label: "Characters", note: "PC + party roster" },
+  { screen: "characters", label: "Characters", note: "Full cast · add to party" },
   { screen: "modelkey", label: "Model & Key", note: "OpenRouter key · models" },
   { screen: "advanced", label: "Advanced", note: "Narrator + image instructions" },
   { screen: "saves", label: "Saves", note: "Snapshot · restore slots" },
@@ -51,7 +51,11 @@ export function MenuScreen() {
         <button
           type="button"
           onClick={() => {
-            if (confirm("Start a new adventure? The current game is replaced.")) {
+            if (
+              confirm(
+                "Start a new adventure? Your Characters are kept, but the party empties and the current game is replaced.",
+              )
+            ) {
               newAdventure();
               setScreen(null);
             }

@@ -1,6 +1,8 @@
+import { useMemo } from "react";
 import { useStore } from "../store";
 import { portraitKey } from "../lib/images";
-import type { Character } from "../types";
+import { partyMembers, playerCharacter } from "../lib/roster";
+import type { PartyMember } from "../types";
 
 /** Number of party members shown alongside the PC (PC + 3 = 4 slots). */
 const MEMBER_SLOTS = 3;
@@ -17,16 +19,17 @@ const MEMBER_SLOTS = 3;
  * instead of sitting small in a tall crop.
  */
 export function PartyStrip() {
-  const pc = useStore((s) => s.game.characters.find((c) => c.role === "pc"));
-  const members = useStore((s) =>
-    s.game.characters.filter((c) => c.role === "member" && c.inParty),
-  );
+  const characters = useStore((s) => s.characters);
+  const roster = useStore((s) => s.game.roster);
   const openMember = useStore((s) => s.openMember);
   const setScreen = useStore((s) => s.setScreen);
   const images = useStore((s) => s.images);
   const streaming = useStore((s) => s.streaming);
 
-  const slots: (Character | null)[] = [
+  const pc = useMemo(() => playerCharacter(characters, roster), [characters, roster]);
+  const members = useMemo(() => partyMembers(characters, roster), [characters, roster]);
+
+  const slots: (PartyMember | null)[] = [
     pc ?? null,
     ...Array.from({ length: MEMBER_SLOTS }, (_, i) => members[i] ?? null),
   ];
@@ -78,7 +81,7 @@ export function PartyStrip() {
   );
 }
 
-function initials(c: Character): string {
+function initials(c: PartyMember): string {
   return c.name
     .split(/\s+/)
     .filter(Boolean)

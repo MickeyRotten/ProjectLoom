@@ -1,4 +1,13 @@
-import type { Character, GameState, Item, Scenario, Settings, Strengths } from "../types";
+import type {
+  Character,
+  GameState,
+  Item,
+  LegacyCharacter,
+  RosterEntry,
+  Scenario,
+  Settings,
+  Strengths,
+} from "../types";
 
 /**
  * Ship-time defaults. The pre-made scenario is intentionally minimal for
@@ -168,15 +177,16 @@ export function defaultPC(): Character {
       { label: "Black Trousers", description: "Simple, worn, baggy trousers." },
       { label: "Leather Satchel", description: "Worn leather satchel for carrying supplies." },
     ],
-    lastSpokeTurn: 0,
-    inParty: false,
     useCustomPortraitPrompt: false,
     customPortraitPrompt: "",
   };
 }
 
-/** A blank in-party member for manual authoring (Characters screen, Phase 4). */
-export function newMember(id: string): Character {
+/**
+ * A blank character for manual authoring (Characters screen). New characters
+ * land in the library only — the player adds them to the party from there.
+ */
+export function newCharacter(id: string): Character {
   return {
     id,
     role: "member",
@@ -187,27 +197,21 @@ export function newMember(id: string): Character {
     drive: "",
     strengths: { name: "", description: "" },
     equipment: [],
-    lastSpokeTurn: 0,
-    inParty: true,
     useCustomPortraitPrompt: false,
     customPortraitPrompt: "",
   };
 }
 
 /**
- * A fresh active game seeded from the editable scenario + roster. When a
- * roster is passed (New Adventure), the authored PC and members carry over
- * with per-run state (lastSpokeTurn) reset; without one, the default PC seeds.
+ * A fresh adventure seeded from the editable scenario. The cast lives in the
+ * global character library and is untouched here — a new adventure starts with
+ * an EMPTY party (`roster: []`), and the player recruits from Characters or
+ * lets the narrator do it.
  */
-export function newGame(
-  scenario: Scenario = DEFAULT_SCENARIO,
-  characters?: Character[],
-): GameState {
+export function newGame(scenario: Scenario = DEFAULT_SCENARIO): GameState {
   return {
     scenario,
-    characters: characters?.length
-      ? characters.map((c) => ({ ...c, lastSpokeTurn: 0 }))
-      : [defaultPC()],
+    roster: [],
     worldNotes: [],
     inventory: [goldItem()],
     quests: [],
@@ -220,12 +224,14 @@ export function newGame(
 }
 
 /**
- * Carry a stored character onto the current shape: `fieldSkill` was renamed to
- * `strengths` (and likes/dislikes dropped), so older saves would otherwise hand
- * the prompt builder an undefined `strengths`.
+ * Carry a stored character onto the current shape. Two historical renames:
+ * `fieldSkill` → `strengths` (likes/dislikes dropped), and the Characters/Party
+ * split, which moved `lastSpokeTurn` / `inParty` off the character and onto the
+ * adventure's roster. `portraitKey` was always dead — the blob key is derived
+ * from the id — so it is dropped here too.
  */
-function migrateCharacter(saved: Character): Character {
-  const legacy = saved as Character & {
+function migrateCharacter(saved: LegacyCharacter): Character {
+  const legacy = saved as LegacyCharacter & {
     fieldSkill?: Strengths;
     likes?: string;
     dislikes?: string;
@@ -234,27 +240,60 @@ function migrateCharacter(saved: Character): Character {
   delete rest.fieldSkill;
   delete rest.likes;
   delete rest.dislikes;
+  delete rest.lastSpokeTurn;
+  delete rest.inParty;
+  delete rest.portraitKey;
   return {
     ...rest,
     strengths: saved.strengths ?? legacy.fieldSkill ?? { name: "", description: "" },
   };
 }
 
+export interface LoadedGame {
+  game: GameState;
+  /**
+   * Characters recovered from a pre-split save. Empty for saves written since —
+   * the cast lives in its own store now.
+   */
+  characters: Character[];
+}
+
 /**
  * Merge a stored game over a fresh skeleton so saves written by older app
- * versions (missing later-phase slices like worldNotes/quests) load without
- * crashing the turn builder. Mirrors loadSettings' merge-over-defaults.
+ * versions load without crashing the turn builder, and split a pre-refactor
+ * `characters: Character[]` into the global library plus this adventure's
+ * roster. Ids are preserved, so every existing portrait blob keeps resolving.
  */
-export function migrateGame(saved: unknown): GameState | null {
+export function splitLegacyGame(saved: unknown): LoadedGame | null {
   if (!saved || typeof saved !== "object") return null;
   const base = newGame();
-  const partial = saved as Partial<GameState>;
+  // Copy before stripping — the caller's object must not be mutated.
+  const partial = { ...(saved as Partial<GameState> & { characters?: LegacyCharacter[] }) };
+
+  const legacy = Array.isArray(partial.characters) ? partial.characters : [];
+  const characters = legacy.map(migrateCharacter);
+  // Don't let the legacy array ride along into the re-saved game.
+  delete partial.characters;
+  // Pre-split saves carried party state on the character; rebuild entries from
+  // it so a migrated game opens with exactly the party it was saved with.
+  const roster: RosterEntry[] =
+    partial.roster ??
+    legacy.map((c) => ({
+      id: c.id,
+      inParty: c.role === "member" && !!c.inParty,
+      lastSpokeTurn: c.lastSpokeTurn ?? 0,
+      status: "active" as const,
+    }));
+
   return {
-    ...base,
-    ...partial,
-    scenario: { ...base.scenario, ...(partial.scenario ?? {}) },
-    characters: (partial.characters ?? base.characters).map(migrateCharacter),
-    // Saves from before Gold existed gain the permanent currency row.
-    inventory: ensureGold(partial.inventory ?? []),
+    game: {
+      ...base,
+      ...partial,
+      scenario: { ...base.scenario, ...(partial.scenario ?? {}) },
+      roster,
+      // Saves from before Gold existed gain the permanent currency row.
+      inventory: ensureGold(partial.inventory ?? []),
+    },
+    characters,
   };
 }

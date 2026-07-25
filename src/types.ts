@@ -18,6 +18,11 @@ export interface Equipment {
 
 export type CharacterRole = "pc" | "member";
 
+/**
+ * An authored character in the GLOBAL cast library — adventure-independent and
+ * outliving every New Adventure. Party membership and everything else that is
+ * true only "this run" lives in `RosterEntry`, not here.
+ */
 export interface Character {
   id: string;
   role: CharacterRole;
@@ -28,13 +33,42 @@ export interface Character {
   drive: string;
   strengths: Strengths;
   equipment: Equipment[];
-  portraitKey?: string;
-  lastSpokeTurn: number;
-  inParty: boolean;
   /** When true, `customPortraitPrompt` replaces the auto-built portrait prompt. */
   useCustomPortraitPrompt?: boolean;
   /** Player-authored portrait prompt, used only when the flag above is on. */
   customPortraitPrompt?: string;
+}
+
+/** Where a character stands in the current adventure. */
+export type CharacterStatus = "active" | "departed" | "fallen";
+
+/**
+ * Fields the story may diverge from the base character for this adventure only.
+ * Narrator party deltas and Auto-Update write here; the player's own sheet edits
+ * write the base character (and clear the matching overrides).
+ */
+export type CharacterOverride = Partial<
+  Pick<Character, "species" | "description" | "personality" | "drive" | "strengths">
+>;
+
+/**
+ * Per-adventure state for one character, keyed by `Character.id`. SPARSE — a
+ * character with no entry is simply not in the party and has never spoken, so a
+ * fresh adventure ships `roster: []` and the party is empty by construction.
+ */
+export interface RosterEntry {
+  id: string;
+  inParty: boolean;
+  lastSpokeTurn: number;
+  status: CharacterStatus;
+  overrides?: CharacterOverride;
+}
+
+/** A character resolved for use: base ⊕ this adventure's override + state. */
+export interface PartyMember extends Character {
+  lastSpokeTurn: number;
+  inParty: boolean;
+  status: CharacterStatus;
 }
 
 export interface Item {
@@ -95,10 +129,25 @@ export interface Reversal {
   day: number;
   location: string;
   weather: string;
-  characters?: Character[];
+  roster?: RosterEntry[];
+  /**
+   * Pre-split saves stored the whole character array here. Kept readable so
+   * undo still works on turns recorded before the roster/library split.
+   */
+  characters?: LegacyCharacter[];
   inventory?: Item[];
   quests?: Quest[];
 }
+
+/**
+ * A character record as written before the Characters/Party split, when party
+ * state lived on the character itself. Only migration + legacy reversal read it.
+ */
+export type LegacyCharacter = Character & {
+  lastSpokeTurn?: number;
+  inParty?: boolean;
+  portraitKey?: string;
+};
 
 export interface Scenario {
   title: string;
@@ -111,7 +160,8 @@ export interface Scenario {
 
 export interface GameState {
   scenario: Scenario;
-  characters: Character[];
+  /** Per-adventure character state. The cast itself is stored globally. */
+  roster: RosterEntry[];
   worldNotes: Note[];
   inventory: Item[];
   quests: Quest[];
@@ -188,6 +238,8 @@ export interface PartyDelta {
   personality?: string;
   drive?: string;
   strengths?: Strengths;
+  /** Honoured on `remove` only — why they left. Defaults to "departed". */
+  status?: Exclude<CharacterStatus, "active">;
 }
 
 export interface InventoryDelta {
