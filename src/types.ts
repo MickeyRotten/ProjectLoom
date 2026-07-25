@@ -37,6 +37,13 @@ export interface Character {
   useCustomPortraitPrompt?: boolean;
   /** Player-authored portrait prompt, used only when the flag above is on. */
   customPortraitPrompt?: string;
+  /**
+   * The player removed this character's portrait and wants them to STAY
+   * portrait-less: the deterministic "no cached portrait → generate one" trigger
+   * skips them, so the removal survives the next turn instead of being undone by
+   * it. Cleared by an explicit ⟳ regenerate or an upload.
+   */
+  noPortrait?: boolean;
 }
 
 /** Where a character stands in the current adventure. */

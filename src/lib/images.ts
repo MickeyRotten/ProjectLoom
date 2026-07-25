@@ -174,6 +174,32 @@ export function extractImageDataUrl(json: unknown): string | null {
   return null;
 }
 
+/**
+ * The assistant's TEXT reply, when there is one. A model that answers a
+ * generation request in words instead of pixels is usually saying why —
+ * "I can't create images of real people", a content-policy line, a request for
+ * clarification. Throwing that away leaves the player with a bare "image
+ * failed" and nothing to change, so failures quote it back.
+ */
+export function extractMessageText(json: unknown): string {
+  if (!isRecord(json)) return "";
+  const first = Array.isArray(json.choices) ? json.choices[0] : undefined;
+  if (!isRecord(first) || !isRecord(first.message)) return "";
+  const content = first.message.content;
+  if (typeof content === "string") {
+    return content.startsWith("data:image") ? "" : content.trim();
+  }
+  // Some providers answer with the parts array instead of a bare string.
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => (isRecord(part) && typeof part.text === "string" ? part.text : ""))
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+  }
+  return "";
+}
+
 /** Decode a `data:` URL (base64 or percent-encoded) into a Blob. */
 export function dataUrlToBlob(dataUrl: string): Blob {
   const comma = dataUrl.indexOf(",");
@@ -191,6 +217,19 @@ export function dataUrlToBlob(dataUrl: string): Blob {
     return new Blob([bytes], { type: mime });
   }
   return new Blob([decodeURIComponent(body)], { type: mime });
+}
+
+/**
+ * Image types an image model will actually accept as an input part. A phone
+ * gallery hands out plenty of things that are NOT on this list — HEIC/HEIF from
+ * iOS, AVIF, BMP, TIFF — and posting one back as an edit source is rejected
+ * every single time, which reads as "this picture can never be edited".
+ */
+const MODEL_SAFE_MIME = new Set(["image/png", "image/jpeg", "image/webp"]);
+
+/** True when `blob` can ride along in a request as-is. */
+export function isModelSafeImage(blob: Blob): boolean {
+  return MODEL_SAFE_MIME.has(blob.type.toLowerCase());
 }
 
 /** Encode a Blob as a base64 data URL (for sending a source image to edit). */
@@ -300,7 +339,12 @@ export async function generateImage(opts: GenerateImageOptions): Promise<Blob> {
         softRetried = true;
         continue;
       }
-      throw new ImageError("No image returned by the model.");
+      const said = extractMessageText(json);
+      throw new ImageError(
+        said
+          ? `The model answered with text instead of an image — ${said.slice(0, 160)}`
+          : "No image returned by the model.",
+      );
     }
     return dataUrlToBlob(dataUrl);
   }
@@ -350,13 +394,18 @@ export async function toOneBitBlob(
  * lands in the same visual system as a generated image. With shading off it
  * keeps a real display width instead of the 1-bit pixel width: there is no
  * pixel grid to snap to, so crushing it that far only loses the photo.
+ *
+ * Strict, unlike the generated-image path: a file the browser cannot decode
+ * (HEIC straight off an iPhone, a renamed non-image) throws instead of being
+ * stored verbatim. Storing it "succeeds" and then shows a broken portrait that
+ * no later edit can ever repair, so the upload has to fail loudly here.
  */
 export async function prepareUploadedImage(
   blob: Blob,
   targetWidth: number,
   mode: DitherMode,
 ): Promise<Blob> {
-  return rescaleAndQuantize(blob, uploadStoredWidth(targetWidth, mode), mode);
+  return rescaleAndQuantize(blob, uploadStoredWidth(targetWidth, mode), mode, true);
 }
 
 /** The width `prepareUploadedImage` stores an upload at, per shading mode. */
@@ -367,27 +416,32 @@ export function uploadStoredWidth(targetWidth: number, mode: DitherMode): number
 /**
  * The master copy kept for later edits: the same pixels, bounded to
  * SOURCE_MAX_SIDE and re-encoded as JPEG so it stays a couple hundred KB in
- * IndexedDB and a sane payload to POST back as an edit source. An image already
- * inside the box is stored as-is. Any failure (no canvas, undecodable blob)
- * returns the original — a master copy is an optimization, never a hard
- * requirement.
+ * IndexedDB and a sane payload to POST back as an edit source. An image that is
+ * already model-safe (PNG/JPEG/WebP) and inside the box is stored as-is.
+ *
+ * Returns **null** when no usable master can be made — an undecodable upload,
+ * or a decodable one in a format no image model accepts (HEIC, AVIF, BMP…) that
+ * we also can't re-encode. A master is an optimization, never a hard
+ * requirement, and no master at all is strictly better than one that makes
+ * every future edit fail on the wire.
  */
-export async function toSourceBlob(blob: Blob, maxSide = SOURCE_MAX_SIDE): Promise<Blob> {
+export async function toSourceBlob(blob: Blob, maxSide = SOURCE_MAX_SIDE): Promise<Blob | null> {
   try {
     const bitmap = await createImageBitmap(blob);
     const longest = Math.max(bitmap.width, bitmap.height);
-    if (longest <= maxSide) {
+    if (longest <= maxSide && isModelSafeImage(blob)) {
       bitmap.close();
       return blob;
     }
-    const scale = maxSide / longest;
+    // Never enlarge — an in-the-box image is here only to be re-encoded.
+    const scale = Math.min(1, maxSide / longest);
     const w = Math.max(1, Math.round(bitmap.width * scale));
     const h = Math.max(1, Math.round(bitmap.height * scale));
     const canvas = document.createElement("canvas");
     canvas.width = w;
     canvas.height = h;
     const ctx = canvas.getContext("2d");
-    if (!ctx) return blob;
+    if (!ctx) return isModelSafeImage(blob) ? blob : null;
     ctx.imageSmoothingEnabled = true;
     // JPEG has no alpha — flatten onto white so transparent art keeps its paper.
     ctx.fillStyle = "#fff";
@@ -397,9 +451,9 @@ export async function toSourceBlob(blob: Blob, maxSide = SOURCE_MAX_SIDE): Promi
     const out = await new Promise<Blob | null>((resolve) =>
       canvas.toBlob(resolve, "image/jpeg", 0.92),
     );
-    return out ?? blob;
+    return out ?? (isModelSafeImage(blob) ? blob : null);
   } catch {
-    return blob;
+    return isModelSafeImage(blob) ? blob : null;
   }
 }
 
@@ -454,12 +508,21 @@ export async function toExportBlob(blob: Blob, minWidth = EXPORT_MIN_WIDTH): Pro
  * looks at a few source pixels. Any failure (no canvas, undecodable blob)
  * returns the original blob: the image pipeline is fire-and-forget and must
  * never get worse than "unprocessed".
+ *
+ * `strict` flips that for user-supplied files, where "unprocessed" means
+ * storing something the browser could not even decode — see
+ * `prepareUploadedImage`.
  */
 async function rescaleAndQuantize(
   blob: Blob,
   requestedWidth: number,
   mode: DitherMode,
+  strict = false,
 ): Promise<Blob> {
+  const bail = (why: string): Blob => {
+    if (strict) throw new ImageError(why);
+    return blob;
+  };
   try {
     const bitmap = await createImageBitmap(blob);
     // Never enlarge: a small source stretched to the stored width is fake
@@ -477,7 +540,7 @@ async function rescaleAndQuantize(
       half.width = w;
       half.height = h;
       const halfCtx = half.getContext("2d");
-      if (!halfCtx) return blob;
+      if (!halfCtx) return bail("This device could not process the image.");
       halfCtx.imageSmoothingEnabled = true;
       halfCtx.drawImage(source, 0, 0, w, h);
       source = half;
@@ -487,7 +550,7 @@ async function rescaleAndQuantize(
     canvas.width = targetWidth;
     canvas.height = targetHeight;
     const ctx = canvas.getContext("2d");
-    if (!ctx) return blob;
+    if (!ctx) return bail("This device could not process the image.");
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(source, 0, 0, targetWidth, targetHeight);
 
@@ -501,9 +564,10 @@ async function rescaleAndQuantize(
     const out = await new Promise<Blob | null>((resolve) =>
       canvas.toBlob(resolve, "image/png"),
     );
-    return out ?? blob;
-  } catch {
-    return blob;
+    return out ?? bail("This device could not encode the image.");
+  } catch (err) {
+    if (err instanceof ImageError) throw err;
+    return bail("Could not read that image file — try a JPG, PNG, or WebP.");
   }
 }
 
