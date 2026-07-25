@@ -28,11 +28,12 @@ type MemberDraft = Pick<
 
 /**
  * Full-screen member sheet (DESIGN.md → Secondary screens): info · edit fields ·
- * regenerate portrait. Field editing is gated behind Edit mode — fields render as
+ * regenerate / upload / remove portrait. Field editing is gated behind Edit mode — fields render as
  * read-only text blocks until the player toggles Edit, and changes live in a local
  * draft until Save Changes. Discard Changes (or leaving the screen) reverts and
  * exits edit mode. Portrait / enlist / delete actions stay available either way.
- * Opening the sheet ensures a portrait exists; ⟳ force-regenerates it.
+ * Opening the sheet ensures a portrait exists (unless the player removed it);
+ * ⟳ force-regenerates it.
  */
 export function MemberSheet() {
   const id = useStore((s) => s.memberId);
@@ -48,10 +49,11 @@ export function MemberSheet() {
   const regeneratePortrait = useStore((s) => s.regeneratePortrait);
   const editPortrait = useStore((s) => s.editPortrait);
   const uploadPortrait = useStore((s) => s.uploadPortrait);
+  const removePortrait = useStore((s) => s.removePortrait);
   const downloadPortrait = useStore((s) => s.downloadPortrait);
   const portraitUrl = useStore((s) => (id ? s.images[portraitKey(id)] : undefined));
   const portraitPending = useStore((s) => (id ? s.imgPending[portraitKey(id)] : false));
-  const imageFailed = useStore((s) => (id ? s.imgError[portraitKey(id)] : false));
+  const imageError = useStore((s) => (id ? s.imgError[portraitKey(id)] : undefined));
   const [zoom, setZoom] = useState(false);
   const [autoUpdate, setAutoUpdate] = useState(false);
   const portraitFile = useRef<HTMLInputElement>(null);
@@ -170,16 +172,26 @@ export function MemberSheet() {
               className="absolute right-9 top-1 border-2 border-ink bg-paper px-2 leading-none disabled:opacity-40 active:bg-ink active:text-paper"
             />
           )}
-          {imageFailed && !portraitPending && (
+          {imageError && !portraitPending && (
             <span className="absolute bottom-1 right-1 border-2 border-ink bg-paper px-1 text-[0.6rem] uppercase tracking-widest">
               image failed
             </span>
           )}
         </div>
 
-        {/* Custom art in / stored art out. Upload replaces the cached portrait
-            (⟳ still regenerates over it); download hands the blob to the share
-            sheet on mobile, a file download on desktop. */}
+        {/* The reason, not just the fact: "image failed" alone gives the player
+            nothing to act on, and the causes are wildly different (no credit, a
+            refused prompt, a file the browser can't read). */}
+        {imageError && !portraitPending && (
+          <p className="text-center text-[0.65rem] uppercase tracking-widest" aria-live="polite">
+            {imageError}
+          </p>
+        )}
+
+        {/* Custom art in / stored art out / no art at all. Upload replaces the
+            cached portrait (⟳ still regenerates over it); download hands the
+            blob to the share sheet on mobile, a file download on desktop;
+            remove deletes it and stops the automatic redraw. */}
         <div className="flex gap-2">
           <input
             ref={portraitFile}
@@ -209,6 +221,22 @@ export function MemberSheet() {
             {saving ? "Saving…" : "Download Image"}
           </button>
         </div>
+        <button
+          type="button"
+          disabled={!portraitUrl || portraitPending}
+          onClick={() => {
+            if (
+              confirm(
+                `Remove ${member.name || "this character"}'s image? The picture is deleted and none is drawn automatically until you regenerate or upload one.`,
+              )
+            ) {
+              removePortrait(member.id);
+            }
+          }}
+          className={`w-full ${btnSmall}`}
+        >
+          Remove Image
+        </button>
         {saveNote && (
           <p className="text-center text-[0.65rem] uppercase tracking-widest" aria-live="polite">
             {saveNote.text}

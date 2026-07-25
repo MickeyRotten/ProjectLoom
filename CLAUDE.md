@@ -92,7 +92,12 @@ replaces a portrait with a device file through the same 1-bit pass; **Download I
 saves it out via Capacitor Filesystem+Share on the APK → Web Share → `<a download>` fallback).
 Post-MVP also: **image masters** (`sourceKey` — every image key keeps a pre-1-bit master
 under `src:<key>`; ✎ edits round-trip through the master and write both copies, ⟳ replaces
-both and flags failures, downloads nearest-neighbor upscale via `toExportBlob`).
+both and flags failures, downloads nearest-neighbor upscale via `toExportBlob`; masters are
+kept model-safe — `isModelSafeImage`, else re-encoded or not kept — and uploads are decoded
+strictly so an unreadable file fails loudly instead of poisoning every later edit).
+Post-MVP also: **Remove Image** (member sheet — deletes portrait + master and sets
+`Character.noPortrait`, which keeps `syncImages` from silently redrawing it; ⟳/upload clear
+the flag) and `imgError` carrying the failure **reason**, not just a badge.
 Post-MVP also: **Characters ⟂ Party split** (`roster.ts` — the global character
 library lives outside `GameState`; `GameState.roster` holds per-adventure
 membership / `lastSpokeTurn` / `status` / story `overrides`; New Adventure keeps the

@@ -13,10 +13,11 @@ export function Banner() {
   const key = bannerKey(location);
   const url = useStore((s) => s.images[key]);
   const pending = useStore((s) => s.imgPending[key]);
-  const imageFailed = useStore((s) => s.imgError[key]);
+  const imageError = useStore((s) => s.imgError[key]);
   const regenerate = useStore((s) => s.regenerateBanner);
   const edit = useStore((s) => s.editBanner);
   const [zoom, setZoom] = useState(false);
+  const [showWhy, setShowWhy] = useState(false);
 
   return (
     <div className="relative aspect-[16/5] shrink-0 overflow-hidden border-2 border-ink mx-3 mt-1">
@@ -55,10 +56,15 @@ export function Banner() {
           className="absolute right-9 top-1 border-2 border-ink bg-paper px-2 leading-none disabled:opacity-40 active:bg-ink active:text-paper"
         />
       )}
-      {imageFailed && !pending && (
-        <span className="absolute bottom-1 right-1 border-2 border-ink bg-paper px-1 text-[0.6rem] uppercase tracking-widest">
-          image failed
-        </span>
+      {imageError && !pending && (
+        <button
+          type="button"
+          title={imageError}
+          onClick={() => setShowWhy((v) => !v)}
+          className="absolute bottom-1 right-1 max-w-[calc(100%-0.5rem)] border-2 border-ink bg-paper px-1 text-left text-[0.6rem] uppercase tracking-widest"
+        >
+          {showWhy ? imageError : "image failed"}
+        </button>
       )}
 
       {zoom && url && (

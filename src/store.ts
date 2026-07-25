@@ -58,6 +58,7 @@ import {
   buildEditPrompt,
   buildPortraitPrompt,
   generateImage,
+  isModelSafeImage,
   PORTRAIT_PIXEL_WIDTH,
   portraitKey,
   prepareUploadedImage,
@@ -115,8 +116,13 @@ export interface LoomStore {
   // Generated images (Phase 3): cache key → object URL, plus in-flight keys.
   images: Record<string, string>;
   imgPending: Record<string, boolean>;
-  /** Keys whose last edit failed — surfaced as a small indicator, cleared on retry. */
-  imgError: Record<string, boolean>;
+  /**
+   * Keys whose last player-driven image action failed → why it failed. Surfaced
+   * as a small indicator plus the reason, cleared on retry. The reason matters:
+   * "image failed" alone is unactionable, and the causes are wildly different
+   * (no credit, a refused prompt, an unreadable file).
+   */
+  imgError: Record<string, string>;
 
   // Named save slots (Phase 4).
   slots: SaveSlot[];
@@ -209,6 +215,11 @@ export interface LoomStore {
   /** Replace a member's portrait with a user-supplied image file. */
   uploadPortrait: (memberId: string, file: Blob) => Promise<void>;
   /**
+   * Drop a member's portrait entirely — cached image, master copy, and the
+   * automatic re-generation that would otherwise put one straight back.
+   */
+  removePortrait: (memberId: string) => void;
+  /**
    * Save a member's portrait to the device (share sheet / download). Resolves
    * false when there was nothing to save or the platform refused, so the sheet
    * can say so — a failed SAVE must not flag the portrait itself as broken.
@@ -271,9 +282,17 @@ export const useStore = create<LoomStore>((set, get) => {
     set({ imgPending });
   }
 
-  /** Flag (or clear) the "image failed" indicator for one key. */
-  function setImageError(key: string, failed: boolean) {
-    set({ imgError: { ...get().imgError, [key]: failed } });
+  /** Flag (with a reason) or clear the "image failed" indicator for one key. */
+  function setImageError(key: string, reason: string | null) {
+    const imgError = { ...get().imgError };
+    if (reason) imgError[key] = reason;
+    else delete imgError[key];
+    set({ imgError });
+  }
+
+  /** What to show the player for a thrown image failure. */
+  function imageFailure(err: unknown): string {
+    return err instanceof Error && err.message ? err.message : "Image request failed.";
   }
 
   /**
@@ -284,15 +303,36 @@ export const useStore = create<LoomStore>((set, get) => {
    */
   async function saveSource(key: string, raw: Blob) {
     try {
-      await saveImage(sourceKey(key), await toSourceBlob(raw));
+      const master = await toSourceBlob(raw);
+      // No usable master (an undecodable or model-hostile file) → drop any
+      // stale one rather than leave the previous image's master behind it.
+      if (master) await saveImage(sourceKey(key), master);
+      else await deleteImage(sourceKey(key));
     } catch {
       // A master copy is an optimization — losing it must not fail the image.
     }
   }
 
-  /** Master copy for an edit round-trip, falling back to the display blob. */
+  /**
+   * Master copy for an edit round-trip, falling back to the display blob. The
+   * result is always something an image model will accept as an input part:
+   * masters written before uploads were normalized can be any format the
+   * device's gallery handed over (HEIC off an iPhone), and posting one back is
+   * rejected every single time — which is what made editing an uploaded
+   * portrait fail forever. Unconvertible masters fall through to the display
+   * copy, which is always canvas-encoded PNG.
+   */
   async function loadEditSource(key: string): Promise<Blob | null> {
-    return (await loadImage(sourceKey(key))) ?? (await loadImage(key));
+    const master = await loadImage(sourceKey(key));
+    if (master) {
+      if (isModelSafeImage(master)) return master;
+      const converted = await toSourceBlob(master);
+      if (converted) return converted;
+    }
+    const display = await loadImage(key);
+    if (!display) return null;
+    if (isModelSafeImage(display)) return display;
+    return await toSourceBlob(display);
   }
 
   /**
@@ -314,7 +354,7 @@ export const useStore = create<LoomStore>((set, get) => {
     set({ imgPending: { ...get().imgPending, [key]: true } });
     // A forced run is the player pressing ⟳ — clear any stale failure so the
     // indicator reflects THIS attempt.
-    if (force) setImageError(key, false);
+    if (force) setImageError(key, null);
     try {
       const cached = force ? null : await loadImage(key);
       if (cached) {
@@ -326,11 +366,12 @@ export const useStore = create<LoomStore>((set, get) => {
       await saveImage(key, blob);
       await saveSource(key, raw);
       publishImage(key, blob);
-    } catch {
+    } catch (err) {
       // Non-fatal — a failed image never blocks the turn (DESIGN.md). A forced
       // regeneration is different: swallowing it silently leaves the OLD image
-      // on screen, which reads as "⟳ refused to replace my picture", so say so.
-      if (force) setImageError(key, true);
+      // on screen, which reads as "⟳ refused to replace my picture", so say so —
+      // with the reason, since "failed" alone leaves nothing to act on.
+      if (force) setImageError(key, imageFailure(err));
     } finally {
       clearPending(key);
     }
@@ -347,13 +388,18 @@ export const useStore = create<LoomStore>((set, get) => {
   async function editImage(key: string, instruction: string): Promise<void> {
     if (get().imgPending[key] || !instruction.trim()) return;
     const source = await loadEditSource(key);
-    if (!source) return;
+    if (!source) {
+      // Nothing cached at all is a plain no-op; a cached image we can't send is
+      // a dead end the player has to be told about, or ✎ just does nothing.
+      if (get().images[key]) {
+        setImageError(key, "This image can't be edited — regenerate or upload a JPG/PNG.");
+      }
+      return;
+    }
 
     // Clear any prior edit error for this key while the retry is in flight.
-    set({
-      imgPending: { ...get().imgPending, [key]: true },
-      imgError: { ...get().imgError, [key]: false },
-    });
+    setImageError(key, null);
+    set({ imgPending: { ...get().imgPending, [key]: true } });
     try {
       const raw = await generateImage({
         settings: get().settings,
@@ -365,10 +411,10 @@ export const useStore = create<LoomStore>((set, get) => {
       await saveImage(key, blob);
       await saveSource(key, raw);
       publishImage(key, blob);
-    } catch {
+    } catch (err) {
       // Non-fatal for the turn, but a swallowed edit looks like nothing
       // happened — flag it so the UI can show a small "image failed" indicator.
-      set({ imgError: { ...get().imgError, [key]: true } });
+      setImageError(key, imageFailure(err));
     } finally {
       clearPending(key);
     }
@@ -386,6 +432,15 @@ export const useStore = create<LoomStore>((set, get) => {
   const portrait = (memberId: string, force: boolean) => {
     const base = get().characters.find((c) => c.id === memberId);
     if (!base) return;
+    // A removed portrait stays removed: the automatic trigger is "no cached
+    // image → draw one", so without this the next turn would silently undo the
+    // player's removal. Only ⟳ (force) or an upload overrides it.
+    if (!force && base.noPortrait) return;
+    if (force && base.noPortrait) {
+      commitCharacters(
+        get().characters.map((c) => (c.id === memberId ? { ...c, noPortrait: false } : c)),
+      );
+    }
     // Portraits are drawn from what the character looks like IN THIS ADVENTURE,
     // so a story-rewritten appearance regenerates correctly. The cache key stays
     // the bare character id — one portrait per character, shared everywhere.
@@ -1075,10 +1130,8 @@ export const useStore = create<LoomStore>((set, get) => {
   async uploadPortrait(memberId, file) {
     const key = portraitKey(memberId);
     if (get().imgPending[key]) return;
-    set({
-      imgPending: { ...get().imgPending, [key]: true },
-      imgError: { ...get().imgError, [key]: false },
-    });
+    setImageError(key, null);
+    set({ imgPending: { ...get().imgPending, [key]: true } });
     try {
       // Same downscale/quantize pass a generated portrait gets, so an upload
       // sits in the 1-bit look (and stays small in IndexedDB). The file itself
@@ -1092,13 +1145,38 @@ export const useStore = create<LoomStore>((set, get) => {
       await saveImage(key, blob);
       await saveSource(key, file);
       publishImage(key, blob);
-    } catch {
-      // An unreadable file just doesn't replace the portrait — flagged so the
-      // sheet can say something happened.
-      set({ imgError: { ...get().imgError, [key]: true } });
+      // Supplying art is the clearest possible "I want a picture here".
+      if (get().characters.some((c) => c.id === memberId && c.noPortrait)) {
+        commitCharacters(
+          get().characters.map((c) => (c.id === memberId ? { ...c, noPortrait: false } : c)),
+        );
+      }
+    } catch (err) {
+      // An unreadable file just doesn't replace the portrait — flagged, with the
+      // reason, so the sheet can say what went wrong instead of "image failed".
+      setImageError(key, imageFailure(err));
     } finally {
       clearPending(key);
     }
+  },
+
+  removePortrait(memberId) {
+    const key = portraitKey(memberId);
+    if (get().imgPending[key]) return;
+    // Both copies go: the display blob and its master. Leaving the master would
+    // orphan a few hundred KB in IndexedDB and let a later edit resurrect art
+    // the player deleted.
+    void deleteImage(key);
+    void deleteImage(sourceKey(key));
+    const prevUrl = get().images[key];
+    if (prevUrl) URL.revokeObjectURL(prevUrl);
+    const images = { ...get().images };
+    delete images[key];
+    set({ images });
+    setImageError(key, null);
+    commitCharacters(
+      get().characters.map((c) => (c.id === memberId ? { ...c, noPortrait: true } : c)),
+    );
   },
 
   async downloadPortrait(memberId) {

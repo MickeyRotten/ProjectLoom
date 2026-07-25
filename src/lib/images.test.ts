@@ -9,8 +9,11 @@ import {
   EXPORT_MIN_WIDTH,
   exportScale,
   extractImageDataUrl,
+  extractMessageText,
   generateImage,
+  ImageError,
   imageRequestKey,
+  isModelSafeImage,
   PORTRAIT_PIXEL_WIDTH,
   portraitKey,
   prepareUploadedImage,
@@ -182,6 +185,26 @@ describe("extractImageDataUrl", () => {
   });
 });
 
+describe("extractMessageText", () => {
+  it("returns the assistant's words when it answered in text", () => {
+    const json = { choices: [{ message: { content: "  I can't draw real people.  " } }] };
+    expect(extractMessageText(json)).toBe("I can't draw real people.");
+  });
+
+  it("joins a parts-array reply", () => {
+    const json = {
+      choices: [{ message: { content: [{ text: "policy:" }, { text: "no." }, { foo: 1 }] } }],
+    };
+    expect(extractMessageText(json)).toBe("policy: no.");
+  });
+
+  it("is empty when the content IS the image, or there is none", () => {
+    expect(extractMessageText({ choices: [{ message: { content: "data:image/png;base64,AA" } }] })).toBe("");
+    expect(extractMessageText({ choices: [] })).toBe("");
+    expect(extractMessageText(null)).toBe("");
+  });
+});
+
 describe("dataUrlToBlob", () => {
   it("decodes a base64 data URL to a typed Blob", () => {
     const blob = dataUrlToBlob("data:image/png;base64,AAAA");
@@ -215,18 +238,37 @@ describe("toOneBitBlob", () => {
 });
 
 describe("prepareUploadedImage", () => {
-  it('still downscales when shading is "off" — uploads must not be stored raw', async () => {
+  it('still decodes when shading is "off" — uploads must not be stored raw', async () => {
     const blob = dataUrlToBlob("data:image/png;base64,AAAA");
     const decode = vi.fn().mockRejectedValue(new Error("no canvas"));
     vi.stubGlobal("createImageBitmap", decode);
-    await prepareUploadedImage(blob, 192, "off");
+    await expect(prepareUploadedImage(blob, 192, "off")).rejects.toThrow(ImageError);
     expect(decode).toHaveBeenCalledTimes(1);
   });
 
-  it("falls back to the original blob when the image can't be decoded", async () => {
-    const blob = dataUrlToBlob("data:image/png;base64,AAAA");
+  it("rejects a file the browser can't decode instead of storing it raw", async () => {
+    // Storing an undecodable upload (HEIC off a phone) "succeeds" and then shows
+    // a broken portrait no edit can ever repair — it has to fail at the door.
+    const blob = dataUrlToBlob("data:image/heic;base64,AAAA");
     vi.stubGlobal("createImageBitmap", vi.fn().mockRejectedValue(new Error("bad file")));
-    await expect(prepareUploadedImage(blob, 192, "threshold")).resolves.toBe(blob);
+    await expect(prepareUploadedImage(blob, 192, "threshold")).rejects.toThrow(
+      /try a JPG, PNG, or WebP/,
+    );
+  });
+});
+
+describe("isModelSafeImage", () => {
+  it("accepts what an image model takes as an input part", () => {
+    for (const mime of ["image/png", "image/jpeg", "image/webp"]) {
+      expect(isModelSafeImage(new Blob([], { type: mime }))).toBe(true);
+    }
+    expect(isModelSafeImage(new Blob([], { type: "IMAGE/PNG" }))).toBe(true);
+  });
+
+  it("rejects the formats a phone gallery hands over", () => {
+    for (const mime of ["image/heic", "image/heif", "image/avif", "image/bmp", ""]) {
+      expect(isModelSafeImage(new Blob([], { type: mime }))).toBe(false);
+    }
   });
 });
 
@@ -272,13 +314,23 @@ describe("exportScale", () => {
 });
 
 describe("toExportBlob / toSourceBlob", () => {
-  it("both return the original blob when the image can't be decoded", async () => {
+  it("both survive an image that can't be decoded", async () => {
     const blob = dataUrlToBlob("data:image/png;base64,AAAA");
     vi.stubGlobal("createImageBitmap", vi.fn().mockRejectedValue(new Error("no canvas")));
     // Saving a file and keeping a master are both best-effort — neither may
     // turn an undecodable blob into a failure.
     await expect(toExportBlob(blob)).resolves.toBe(blob);
+    // A PNG is still safe to post back as an edit source even undecoded here.
     await expect(toSourceBlob(blob)).resolves.toBe(blob);
+  });
+
+  it("keeps NO master for an undecodable, model-hostile file", async () => {
+    // The alternative — storing the HEIC — is what made every later edit of an
+    // uploaded portrait fail on the wire. No master falls back to the display
+    // copy, which is always canvas-encoded PNG.
+    const blob = dataUrlToBlob("data:image/heic;base64,AAAA");
+    vi.stubGlobal("createImageBitmap", vi.fn().mockRejectedValue(new Error("no canvas")));
+    await expect(toSourceBlob(blob)).resolves.toBeNull();
   });
 
   it("keeps a master that already fits the box as-is", async () => {
@@ -433,10 +485,19 @@ describe("generateImage request shapes", () => {
 
     const alwaysText = vi.fn().mockResolvedValue(textOnly);
     vi.stubGlobal("fetch", alwaysText);
+    // The model's own words are the diagnosis — quote them, don't discard them.
+    await expect(generateImage({ settings, prompt: "a tower" })).rejects.toThrow(
+      "sorry, words only",
+    );
+    expect(alwaysText).toHaveBeenCalledTimes(2);
+  });
+
+  it("falls back to a plain message when the text-only reply is empty", async () => {
+    const empty = { ok: true, json: () => Promise.resolve({ choices: [{ message: {} }] }) };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(empty));
     await expect(generateImage({ settings, prompt: "a tower" })).rejects.toThrow(
       "No image returned",
     );
-    expect(alwaysText).toHaveBeenCalledTimes(2);
   });
 
   it("surfaces a settings-aware message on a payload-size failure with references", async () => {
