@@ -96,8 +96,9 @@ One isolated function returning the OpenRouter `messages[]`, in order:
 7. **World Notes** matched by keyword (single-category, simplified `match_entries`; titles are implicit keywords; scan the new message + last few turns). Notes flagged **permanent** skip matching and inject every turn.
 8. **Spotlight block** (from `spotlight.ts`).
 9. **Chat history** window (trim to a token budget; prepend the opening narration as the first assistant turn — port `_trim_to_budget`). *History summarization is deferred* — messages stay short, so a rolling window suffices for MVP.
-10. **Output-protocol instruction** — how to emit prose + the `<<<LOOM>>>` block, and the `option` instruction (player-editable).
-11. **Player's new message.**
+10. **Active-party roll call** (`formatPartyComposition`) — the *authoritative* composition, re-read from the roster **every turn** and placed **after** the history on purpose: history outlives membership, so the last thing the model reads before the action is who is actually here. Names the in-party members `n/PARTY_LIMIT`, plus the most recent departures with their `status` (`partedMembers`) so the narrator stops writing them in — and never resurrects a `fallen` one. **Always emitted, even for an empty party** ("the player is ALONE") — the empty case is exactly where the history drifts.
+11. **Output-protocol instruction** — how to emit prose + the `<<<LOOM>>>` block, and the `option` instruction (player-editable).
+12. **Player's new message.**
 
 ---
 
