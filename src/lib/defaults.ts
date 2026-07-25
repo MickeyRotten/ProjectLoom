@@ -8,7 +8,7 @@ import type {
   Settings,
   Strengths,
 } from "../types";
-import { normalizeRoster } from "./roster";
+import { PARTY_LIMIT, normalizeRoster } from "./roster";
 
 /**
  * Ship-time defaults. The pre-made scenario is intentionally minimal for
@@ -122,6 +122,29 @@ export const DEFAULT_REFERENCE_INSTRUCTION = `Match only the art style, line wei
  */
 export const DEFAULT_APPEARANCE_INSTRUCTIONS = `"description" is physical appearance ONLY — hair, eyes, build, clothing, notable features — used verbatim to generate the member's portrait, so keep it concrete and visual, never personality or backstory.`;
 
+/**
+ * What the narrator must fill in the one time it authors a sheet. Everything
+ * here is unrecoverable if skipped: an `add` is the only op that writes these
+ * fields, so a blank drive is blank for the rest of the character's life.
+ */
+export const DEFAULT_CHARACTER_CREATION_INSTRUCTIONS = `On every party "add", ALWAYS write "personality", "drive" and "strengths" — never omit them and never leave them blank. "personality" is temperament and speech habits in a phrase or two; "drive" is the one thing they want; "strengths" is their standout capability as a short name plus one sentence of what it lets them do.`;
+
+/**
+ * The freeze rule. `deltas.ts` drops post-creation sheet fields whatever the
+ * model sends, so this exists to stop it wasting tokens writing them — and to
+ * tell it where character change belongs instead (the prose).
+ */
+export const DEFAULT_CHARACTER_UPDATE_INSTRUCTIONS = `A character's sheet is authored ONCE, on the "add" that introduces them, and is FROZEN afterwards. Never re-send "species", "description", "personality", "drive" or "strengths" for a character who already exists — those fields are ignored. Show how someone changes in the narration instead; their sheet stays as written.`;
+
+/**
+ * The seating vocabulary. `PARTY_LIMIT` is baked into the shipped text rather
+ * than interpolated at build time — once the player edits this field, their
+ * wording is the wording, and a hidden placeholder would break in their copy.
+ */
+export const DEFAULT_STANDING_INSTRUCTIONS = `On a party "add" or "update", "standing" says where that character sits: "active" (travelling with the player — the default), "benched" (one of the party, but waiting elsewhere this scene) or "npc" (an important character of this world — an ally, a contact, a rival — who does NOT travel with the player). Use "npc" for anyone worth remembering who is not joining the journey; only ${PARTY_LIMIT} companions can be active at once, and anyone who joins past that is benched automatically.`;
+
+export const DEFAULT_DEPARTURE_INSTRUCTIONS = `On a party "remove", you may add "standing": "departed" (they walked away — they can rejoin later) or "standing": "fallen" (they died — never write them back into the party). Removing never deletes anyone; they simply stop travelling with the player.`;
+
 export const DEFAULT_SPOTLIGHT_RULE = `Give the spotlight to at most one party member per turn, and only when it earns a moment: they were directly addressed, their Strengths are relevant, or they have been silent for a while. Otherwise keep them quiet.`;
 
 export function defaultSettings(): Settings {
@@ -149,6 +172,10 @@ export function defaultSettings(): Settings {
     // texture costs legibility at portrait size.
     ditherMode: "threshold",
     appearanceInstructions: DEFAULT_APPEARANCE_INSTRUCTIONS,
+    characterCreationInstructions: DEFAULT_CHARACTER_CREATION_INSTRUCTIONS,
+    characterUpdateInstructions: DEFAULT_CHARACTER_UPDATE_INSTRUCTIONS,
+    standingInstructions: DEFAULT_STANDING_INSTRUCTIONS,
+    departureInstructions: DEFAULT_DEPARTURE_INSTRUCTIONS,
     optionInstructions: DEFAULT_OPTION_INSTRUCTIONS,
     spotlightRule: DEFAULT_SPOTLIGHT_RULE,
   };

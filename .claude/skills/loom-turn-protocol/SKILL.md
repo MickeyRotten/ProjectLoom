@@ -30,7 +30,7 @@ One player action = one OpenRouter chat completion (streamed). No on-device tool
 ```
 
 All block fields optional except when state changed. `op`: `add` | `update` | `remove`.
-A party `add` MUST carry `personality`, `drive` and `strengths` — the output protocol demands them so a new member never lands blank.
+A party `add` for a NEW name MUST carry `personality`, `drive` and `strengths` — the output protocol demands them so a new member never lands blank. That `add` is the ONLY op that writes a sheet: once a character exists, `species`/`description`/`personality`/`drive`/`strengths` are frozen and dropped from every later op.
 A party `add`/`update` MAY carry `"standing": "active" | "benched" | "npc"` (default `active` on add); a `remove` MAY carry `"standing": "departed" | "fallen"` (default `departed`). Pre-rename blocks spell that last one `"status"` — still read, because reversal replays old blocks.
 
 ## Party ops span two stores
@@ -38,8 +38,8 @@ A party `add`/`update` MAY carry `"standing": "active" | "benched" | "npc"` (def
 Characters are GLOBAL (`Character[]`, outlives every adventure); party membership is per-adventure (`GameState.roster`). `applyDeltas(game, characters, block)` returns both halves; `lib/roster.ts` is the only place they join.
 
 - Match `name` (slugged) against the WHOLE character library, `role === "member"` — that's what re-uses a companion from an earlier adventure instead of duplicating them. The PC is never matched.
-- `add` on a KNOWN character: seat them at the requested `standing`, fields → `overrides`. `add` on an unknown name: create a `Character` in the library, fields → the character itself (no base to diverge from yet).
-- `update`: fields → `overrides`, plus a `standing` move when the block asks for one. Never creates.
+- `add` on a KNOWN character: seat them at the requested `standing` and NOTHING else — their sheet is already authored, so every field in the delta is ignored. `add` on an unknown name: create a `Character` in the library, fields → the character itself. This is the only write.
+- `update`: a `standing` move, nothing more. Never creates, never writes a sheet field, never writes `overrides` (only `autoUpdate.ts` does that now).
 - `remove`: `standing` becomes `departed`/`fallen`. NEVER deletes, and never leaves them in a party seat.
 - Only `active` is capped. An `active` join past `PARTY_LIMIT` lands **`benched`** — never a state the UI and the prompt can't show (the old `inParty: false, status: "active"` pair was exactly that).
 - A `fallen` entry rejects narrator `add` outright — only the player can bring them back.
@@ -58,4 +58,4 @@ Characters are GLOBAL (`Character[]`, outlives every adventure); party membershi
 - Do not split narration into multiple messages server-side — one prose `Message`, client segments for display.
 - Do not add a second LLM call for options — they ride this block.
 - Do not apply state from prose text; only from the parsed block (except speaker detection).
-- Do not let a party op delete a character, write the base sheet of a KNOWN character, or re-implement the standing predicates — go through `lib/roster.ts` (`activeMembers`, `partyMembers`, `npcMembers`, `partedMembers`, `isInParty`).
+- Do not let a party op delete a character, write ANY sheet field of a character who already exists (base or override — the sheet is frozen at creation), or re-implement the standing predicates — go through `lib/roster.ts` (`activeMembers`, `partyMembers`, `npcMembers`, `partedMembers`, `isInParty`).

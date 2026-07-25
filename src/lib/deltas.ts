@@ -1,6 +1,5 @@
 import type {
   Character,
-  CharacterOverride,
   GameState,
   Item,
   LoomBlock,
@@ -10,12 +9,7 @@ import type {
   Standing,
 } from "../types";
 import { isGold } from "./defaults";
-import {
-  mergeOverrides,
-  partyFull,
-  setStanding,
-  standingOf,
-} from "./roster";
+import { partyFull, setStanding, standingOf } from "./roster";
 
 /**
  * Apply a parsed <<<LOOM>>> block to the active game (loom-turn-protocol):
@@ -27,13 +21,14 @@ import {
  * whole global character library, so a companion written in an earlier
  * adventure is re-used — portrait, sheet and all — instead of duplicated. What
  * an op writes depends on which half owns it:
- *  - membership / status / last-spoke → this adventure's roster;
- *  - field changes on a KNOWN character → that adventure's overrides, so the
- *    player's authored text is never overwritten by the story;
- *  - a brand-new character → the library, since there is no base to diverge
- *    from yet.
- * `remove` only changes standing (and records why); nothing the model emits
- * ever deletes a character.
+ *  - membership / standing / last-spoke → this adventure's roster;
+ *  - a brand-new character's sheet → the library, written ONCE at creation.
+ * A character who already exists is FROZEN: their species, appearance,
+ * personality, drive and strengths are the player's, and no later delta —
+ * `add` or `update` — touches them. Sheet drift was the story quietly
+ * rewriting a cast the player had authored, one turn at a time; the narration
+ * is where a character changes now. `remove` only changes standing (and
+ * records why); nothing the model emits ever deletes a character.
  *
  * Pure: returns the changed slices; callers merge into the store. Keeping this
  * pure is what makes the turn contract testable.
@@ -80,14 +75,16 @@ export function applyDeltas(
  * Op-based party membership, keyed by slugged character name across the whole
  * library. Only members (role "member") are matched — the PC is never touched
  * by a party delta.
- *  - add: bring a known character into the adventure (refreshing fields as
- *    overrides), or create one in the library. `standing` says how they join —
- *    `active` (default), `benched`, or `npc` for an ally who is not a
- *    companion. An `active` join respects PARTY_LIMIT: past the cap they land
- *    BENCHED rather than in a state nothing renders. A `fallen` character is
- *    never re-recruited by the narrator; only the player can bring them back.
- *  - update: override species/description/personality/drive/strengths for this
- *    adventure, and move their standing when the block says so. Never creates.
+ *  - add: bring a known character into the adventure, or CREATE one in the
+ *    library from the delta's fields. Creation is the only path that writes a
+ *    sheet; seating a character who already exists ignores every field but
+ *    `standing`. `standing` says how they join — `active` (default),
+ *    `benched`, or `npc` for an ally who is not a companion. An `active` join
+ *    respects PARTY_LIMIT: past the cap they land BENCHED rather than in a
+ *    state nothing renders. A `fallen` character is never re-recruited by the
+ *    narrator; only the player can bring them back.
+ *  - update: move an existing character's standing. Nothing else — the sheet is
+ *    frozen after creation — and it never creates.
  *  - remove: they stop travelling with the player, and `standing` records why
  *    (`departed` unless the model says otherwise). The character is kept,
  *    forever.
@@ -112,23 +109,21 @@ function applyParty(
     }
 
     if (d.op === "update") {
-      if (!found) continue;
-      nextRoster = mergeOverrides(nextRoster, found.id, overridesOf(d));
-      if (d.standing) {
-        nextRoster = setStanding(
-          nextRoster,
-          found.id,
-          seatFor(d.standing, nextChars, nextRoster, found.id),
-        );
-      }
+      // Standing is all an update can say now: every sheet field it carries is
+      // dropped on the floor, whatever the model wrote.
+      if (!found || !d.standing) continue;
+      nextRoster = setStanding(
+        nextRoster,
+        found.id,
+        seatFor(d.standing, nextChars, nextRoster, found.id),
+      );
       continue;
     }
 
-    // add — seat + refresh a known character, else write a new one.
+    // add — seat a known character (sheet untouched), else write a new one.
     if (found) {
       // The dead stay dead as far as the narrator is concerned.
       if (standingOf(nextRoster, found.id) === "fallen") continue;
-      nextRoster = mergeOverrides(nextRoster, found.id, overridesOf(d));
       nextRoster = setStanding(
         nextRoster,
         found.id,
@@ -170,17 +165,6 @@ function seatFor(
   if (standing !== "active") return standing;
   if (standingOf(roster, id) === "active") return "active";
   return partyFull(characters, roster) ? "benched" : "active";
-}
-
-/** The subset of a party delta that can diverge from the base character. */
-function overridesOf(d: PartyDelta): CharacterOverride {
-  const o: CharacterOverride = {};
-  if (d.species !== undefined) o.species = d.species;
-  if (d.description !== undefined) o.description = d.description;
-  if (d.personality !== undefined) o.personality = d.personality;
-  if (d.drive !== undefined) o.drive = d.drive;
-  if (d.strengths !== undefined) o.strengths = d.strengths;
-  return o;
 }
 
 /**

@@ -156,19 +156,53 @@ describe("applyDeltas — party ops", () => {
     expect(partyMembers(scene.characters, scene.roster).map((m) => m.id)).toEqual(["m-navi"]);
   });
 
-  it("writes story field changes as overrides, never onto the character", () => {
+  it("ignores sheet fields on update — a created character is frozen", () => {
+    const characters = lib(
+      member("m-navi", "Navi", { personality: "Chirpy.", description: "a darting spark" }),
+    );
+    const g = { ...game(), roster: [{ id: "m-navi", standing: "active" as const, lastSpokeTurn: 0 }] };
+    const scene = applyDeltas(g, characters, {
+      party: [
+        {
+          op: "update",
+          name: "navi",
+          personality: "Subdued.",
+          description: "gone grey",
+          species: "wraith",
+          drive: "Rest.",
+          strengths: { name: "Wailing", description: "chills a room" },
+        },
+      ],
+    });
+    // Neither the authored character nor this adventure's view of them moves.
+    const navi = resolve(scene.characters[1], getEntry(scene.roster, "m-navi"));
+    expect(navi).toMatchObject({
+      personality: "Chirpy.",
+      description: "a darting spark",
+      species: "sprite",
+    });
+    expect(getEntry(scene.roster, "m-navi").overrides).toBeUndefined();
+  });
+
+  it("still moves standing on an update that also carries sheet fields", () => {
     const characters = lib(member("m-navi", "Navi", { personality: "Chirpy." }));
     const g = { ...game(), roster: [{ id: "m-navi", standing: "active" as const, lastSpokeTurn: 0 }] };
     const scene = applyDeltas(g, characters, {
-      party: [{ op: "update", name: "navi", personality: "Subdued." }],
+      party: [{ op: "update", name: "navi", personality: "Subdued.", standing: "benched" }],
     });
-    // The authored character is untouched...
+    expect(getEntry(scene.roster, "m-navi").standing).toBe("benched");
     expect(scene.characters.find((c) => c.id === "m-navi")?.personality).toBe("Chirpy.");
-    // ...but this adventure sees the rewritten value.
-    const navi = resolve(scene.characters[1], getEntry(scene.roster, "m-navi"));
-    expect(navi.personality).toBe("Subdued.");
-    // An omitted field is not overridden at all.
-    expect(getEntry(scene.roster, "m-navi").overrides).toEqual({ personality: "Subdued." });
+  });
+
+  it("ignores sheet fields when re-adding a character who already exists", () => {
+    const characters = lib(member("m-navi", "Navi", { description: "a darting spark" }));
+    const scene = applyDeltas(game(), characters, {
+      party: [{ op: "add", name: "navi", description: "now nine feet tall", drive: "Conquest." }],
+    });
+    // Re-used, not re-authored: the library record is the same object.
+    expect(scene.characters).toBe(characters);
+    expect(getEntry(scene.roster, "m-navi").overrides).toBeUndefined();
+    expect(getEntry(scene.roster, "m-navi").standing).toBe("active");
   });
 
   it("never touches the PC", () => {

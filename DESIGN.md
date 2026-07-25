@@ -69,7 +69,7 @@ loop. The model returns **narration prose followed by one machine-read JSON bloc
 - Client **parses tolerantly** (brace-matched salvage, always strip the block from displayed prose even if JSON is malformed — port `parse_action_block`'s tolerance from `narrator_actions.py`).
 - `options` are the **AI-generated action buttons** — inline in the same call, so no extra request per turn (Wayward's `inline` action-suggestions mode).
 - State changes (`location`/`day`/`weather`/`party`/`inventory`/`quests`) are applied to the active save (op-based add/update/remove; inventory carries `quantity`, quests carry `reward`). `spoke` is a hint, but **`lastSpokeTurn` is updated deterministically** from the prose via the ported `detectSpeakers` (never trust the model alone).
-- `party` ops match **by name across the whole character library**, so a companion from an earlier adventure is re-used, not duplicated. An `add` for a known character writes `overrides`; only a genuinely new name creates a `Character`. An `add`/`update` may carry `"standing": "active" | "benched" | "npc"`, and a `remove` `"standing": "departed" | "fallen"` — nothing the model emits ever deletes anyone. See *Characters ⟂ Party*.
+- `party` ops match **by name across the whole character library**, so a companion from an earlier adventure is re-used, not duplicated. **A sheet is authored once, at creation, and frozen after**: only an `add` naming someone genuinely new writes `species`/`description`/`personality`/`drive`/`strengths` (straight onto the new `Character`). Every later op — `add` or `update` — carries `standing` and nothing else; sheet fields on a character who already exists are dropped. An `add`/`update` may carry `"standing": "active" | "benched" | "npc"`, and a `remove` `"standing": "departed" | "fallen"` — nothing the model emits ever deletes anyone. See *Characters ⟂ Party*.
 - **Reversal** (swipe/regenerate): record the applied deltas on the message, unwind on redo — same shape as Wayward's `_reverse_message_effects`, minus item instances.
 
 ---
@@ -128,8 +128,14 @@ One **active game state**, autosaved continuously; **named save slots** are full
 ```ts
 Settings {                    // global, edited in Settings
   openRouterKey, textModelId, imageModelId (default: nano-banana-2-lite), temperature
-  // Advanced:
-  customInstructions, bannerInstructions, bannerCooldown, portraitInstructions, optionInstructions, spotlightRule
+  // Advanced (grouped into sub-menus: Narrator · Characters · Images · Portraits):
+  customInstructions, optionInstructions                                // Narrator
+  appearanceInstructions, characterCreationInstructions,                // Characters
+    characterUpdateInstructions, standingInstructions,
+    departureInstructions, spotlightRule
+  ditherMode, bannerCooldown, bannerInstructions                        // Images
+  portraitAction/Context/Composition/Style, portraitRefImages,          // Portraits
+    portraitRefInstruction
 }
 
 Character[]                   // GLOBAL cast library — outlives every adventure
@@ -213,11 +219,17 @@ consumes resolved `PartyMember`s, never the raw halves.
   player deleted that character — can't hold a slot that shows nobody
   ("Party Full" over an empty seat). Undo also `pruneRoster`s the restored
   roster so the dead entry doesn't persist.
-- **Player edits the base; the story writes overrides.** A sheet edit the player
-  saves writes the global character and retires the override on the fields they
-  touched (editing adopts the story's change). Narrator `party` deltas and
-  Auto-Update write adventure-local `overrides`, so a companion wounded in one
-  save is fine in another. **Revert Story Changes** drops them.
+- **A character's sheet is written once, then frozen.** The narrator authors
+  appearance/personality/drive/strengths on the `add` that *creates* someone,
+  and never again — later deltas move `standing` only. Sheet drift was the
+  story quietly rewriting an authored cast a turn at a time; character change
+  belongs in the narration, and a deliberate re-read is what the member sheet's
+  **Auto-Update** is for.
+- **Player edits the base; only Auto-Update writes overrides.** A sheet edit the
+  player saves writes the global character and retires the override on the
+  fields they touched (editing adopts the story's change). Auto-Update writes
+  adventure-local `overrides`, so a companion wounded in one save is fine in
+  another. **Revert Story Changes** drops them.
 - **Nothing the model emits destroys a character.** Narrator `remove` only
   moves them along the ladder, and `standing` records why (`departed` /
   `fallen`, player-editable). A `fallen` character is never re-recruited by the
@@ -272,6 +284,15 @@ Parsing is tolerant like the `<<<LOOM>>>` block (fences/preamble/trailing commas
 All secondary screens — **member sheet, Party, Inventory, Quests, and every Settings sub-screen** — are **full-screen overlays with a Back button** in a top header (the mobile pattern; no split panes). They open over the chat and return to it on Back. Same store/components regardless.
 
 - **Menu (gear)** → full-screen screens: **Quests**, **Scenario** editor, **Characters** (the whole cast), **World Notes**, **Model & Key**, **Advanced instructions**, **Saves**.
+- **Advanced screen** is an **index of sub-menus**, not one scroll: **Narrator**
+  (voice + suggested actions), **Characters** (appearance · creation · the freeze
+  rule · standings · departures · spotlight), **Images** (1-bit shading · location
+  cooldown · banner style), **Portraits** (the Action/Context/Composition/Style
+  clauses + style references). Every prompt rule the story writes characters by is
+  editable there, each with its own Reset; blanking one **drops that line** from the
+  protocol rather than falling back to a built-in. The JSON *shape* around them is
+  the parser's contract and is never editable. Sub-menu depth is local component
+  state — Back pops to the index first, then out of Advanced.
 - **Characters screen** lists the global cast grouped by this adventure's standing — PC, then *In Party n/3*, *Benched*, *NPCs & Allies*, *Gone*, and *Everyone Else* — each row opening the sheet and carrying one-tap moves (**Add to Party** / **Bench** / **Kick** / **Make NPC**). **+ New Character** creates someone in the library only. A filter box appears once the cast grows past 8.
 - **Party screen** lists the company in two halves — *In the scene n/3* (**Bench** / **Kick**) and *Benched* (**Activate** / **Kick**) — with a route to Characters when both are empty. The member sheet carries the same Kick/Add control, the adventure **standing** (active / benched / npc / departed / fallen) with a one-line explanation of what the current one means, **Revert Story Changes** when the story has diverged, and **Delete Character** (library-wide, player-only).
 - **Style:** pure black/white, monospace, square borders, no rounded corners, no color. Small token set in `theme.css` (`--ink #000`, `--paper #fff`) so it stays one system.

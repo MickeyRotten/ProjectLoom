@@ -414,6 +414,21 @@ function buildOutputProtocol(settings: Settings): string {
     ? '- "options": array of 3–4 action strings. ' + optionRule
     : '- "options": OMIT this field entirely — do not suggest actions this turn.';
 
+  // The character-authoring rules (Advanced → Characters). Each is a whole
+  // bullet the player owns: blanking one drops the line rather than falling
+  // back to a built-in, so "I don't want the model told this" is expressible.
+  // The JSON SHAPE around them stays fixed — that half is the parser's
+  // contract, not guidance.
+  const characterLines = [
+    settings.characterCreationInstructions,
+    settings.characterUpdateInstructions,
+    settings.standingInstructions,
+    settings.departureInstructions,
+  ]
+    .map((rule) => rule.trim())
+    .filter(Boolean)
+    .map((rule) => `- ${rule}`);
+
   return [
     "OUTPUT PROTOCOL — every turn, emit narration prose FIRST, then exactly one machine block.",
     "The prose is short and punchy. After the prose, on its own lines, emit:",
@@ -424,10 +439,9 @@ function buildOutputProtocol(settings: Settings): string {
     "JSON fields (include only what changed this turn):",
     '- "location", "weather", "day": the current scene (strings / number).',
     optionsLine,
-    `- "party": array of { "op": "add|update|remove", "name", "species", "description", "personality", "drive", "strengths": { "name", "description" } }. ${appearanceRule} Add a character when they join the player's story; remove when they leave it.`,
-    `- On a party "add" or "update", you may add "standing": "active" (travelling with the player — the default), "benched" (one of the party, but waiting elsewhere this scene) or "npc" (an important character of this world — an ally, a contact, a rival — who does NOT travel with the player). Use "npc" for anyone worth remembering who is not joining the journey; only ${PARTY_LIMIT} companions can be active at once, and anyone who joins past that is benched automatically.`,
-    '- On a party "remove", you may add "standing": "departed" (they walked away — they can rejoin later) or "standing": "fallen" (they died — never write them back into the party). Removing never deletes anyone; they simply stop travelling with the player.',
-    '- On every party "add", ALWAYS write "personality", "drive" and "strengths" — never omit them and never leave them blank. "personality" is temperament and speech habits in a phrase or two; "drive" is the one thing they want; "strengths" is their standout capability as a short name plus one sentence of what it lets them do.',
+    '- "party": array of character ops, each { "op": "add|update|remove", "name", "standing" }. Add a character when they enter the player\'s story; remove when they leave it.',
+    `- A NEW character's "add" also carries "species", "description", "personality", "drive" and "strengths": { "name", "description" } — this is the only op that writes them. ${appearanceRule}`,
+    ...characterLines,
     '- "inventory": array of { "op": "add|update|remove", "label", "description", "quantity" }.',
     '- Gold is the permanent currency item in "inventory" — never remove it. When the player gains or spends money, emit { "op": "update", "label": "Gold", "quantity": <new total> }.',
     '- "quests": array of { "op": "add|update|remove", "label", "description", "reward", "status": "active"|"done" }. Update a quest with status "done" when the player completes it.',

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { captureReversal, applyReversal } from "./reversal";
 import { applyDeltas } from "./deltas";
 import { defaultPC, newGame } from "./defaults";
-import { getEntry, partyMembers } from "./roster";
+import { getEntry, mergeOverrides, partyMembers } from "./roster";
 import type { Character, GameState, LoomBlock, Reversal } from "../types";
 
 /** A companion in the library, with nothing this adventure has changed. */
@@ -163,15 +163,18 @@ describe("applyReversal round-trips", () => {
     expect(back.roster).toEqual([{ id: "m-navi", standing: "active", lastSpokeTurn: 5 }]);
   });
 
-  it("restores overrides the turn wrote", () => {
-    const characters = [defaultPC(), navi()];
+  it("restores overrides written during the turn window", () => {
+    // Party deltas no longer write overrides (a created sheet is frozen), but
+    // Auto-Update still does — and an undo must roll one back with the rest of
+    // the roster rather than strand it on a turn that no longer exists.
     const pre = {
       ...seed(),
       roster: [{ id: "m-navi", standing: "active" as const, lastSpokeTurn: 0 }],
     };
-    const { game: post } = turn(pre, characters, {
-      party: [{ op: "update", name: "Navi", description: "singed" }],
-    });
+    const post = {
+      ...pre,
+      roster: mergeOverrides(pre.roster, "m-navi", { description: "singed" }),
+    };
     expect(getEntry(post.roster, "m-navi").overrides).toEqual({ description: "singed" });
 
     const back = applyReversal(post, captureReversal(pre, post));
