@@ -2,10 +2,20 @@ import type {
   Character,
   CharacterOverride,
   GameState,
+  LegacyRosterEntry,
   PartyMember,
   RosterEntry,
+  Standing,
 } from "../types";
-import { PARTY_LIMIT } from "./defaults";
+import { PARTED_STANDINGS, PARTY_STANDINGS } from "../types";
+
+/**
+ * Max companions in the scene at once (PC + 3). The BENCH is uncapped — it is
+ * the stable, not the marching order. Defined here, not in `defaults.ts`, so
+ * this module stays free of imports and the cap lives with the predicate that
+ * enforces it.
+ */
+export const PARTY_LIMIT = 3;
 
 /**
  * The join between the two halves of the cast model:
@@ -18,18 +28,79 @@ import { PARTY_LIMIT } from "./defaults";
  * values produced here, never the raw halves. Keeping this pure is what makes
  * the split testable, and it collapses the `role === "member" && inParty`
  * predicate that used to be re-implemented at eight call sites.
+ *
+ * One `standing` ladder carries all of it — party membership, presence in the
+ * scene, ally-but-not-companion, and how someone left. Two orthogonal flags
+ * (`inParty` + `status`) could spell states nothing downstream could render:
+ * an over-cap joiner used to land `inParty: false, status: "active"` and
+ * appear in no prompt block and no screen.
  */
 
 /** State for a character the adventure has never touched. */
 export const DEFAULT_ENTRY: Omit<RosterEntry, "id"> = {
-  inParty: false,
+  standing: "none",
   lastSpokeTurn: 0,
-  status: "active",
 };
+
+/**
+ * Read an entry written in ANY shape this app has shipped. Saves and — more
+ * stubbornly — reversal snapshots buried in old messages carry the pre-ladder
+ * `inParty` + `status` pair, so this keeps arriving forever.
+ */
+export function normalizeEntry(entry: LegacyRosterEntry): RosterEntry {
+  const out: RosterEntry = {
+    id: entry.id,
+    standing: entry.standing ?? legacyStanding(entry),
+    lastSpokeTurn: entry.lastSpokeTurn ?? 0,
+  };
+  if (entry.overrides) out.overrides = entry.overrides;
+  return out;
+}
+
+/** `inParty` won; otherwise a non-active `status` is how they left. */
+function legacyStanding(entry: LegacyRosterEntry): Standing {
+  if (entry.inParty) return "active";
+  if (entry.status === "departed" || entry.status === "fallen") return entry.status;
+  return "none";
+}
+
+/**
+ * Normalize a whole roster, returning the SAME array reference when every
+ * entry was already current — `captureReversal` reference-diffs the roster, so
+ * loading a modern save must not look like a change.
+ */
+export function normalizeRoster(roster: LegacyRosterEntry[]): RosterEntry[] {
+  let changed = false;
+  const out = roster.map((e) => {
+    const next = normalizeEntry(e);
+    if (
+      e.standing !== next.standing ||
+      e.lastSpokeTurn !== next.lastSpokeTurn ||
+      e.overrides !== next.overrides ||
+      "inParty" in e ||
+      "status" in e
+    ) {
+      changed = true;
+      return next;
+    }
+    return e as RosterEntry;
+  });
+  return changed ? out : (roster as RosterEntry[]);
+}
+
+/** Is this standing "one of ours", active or benched? */
+export function isInParty(standing: Standing): boolean {
+  return standing === "active" || standing === "benched";
+}
 
 /** This adventure's entry for `id`, or the default (never undefined). */
 export function getEntry(roster: RosterEntry[], id: string): RosterEntry {
   return roster.find((e) => e.id === id) ?? { id, ...DEFAULT_ENTRY };
+}
+
+/** This adventure's standing for `id` — "none" when it has never touched them. */
+export function standingOf(roster: RosterEntry[], id: string): Standing {
+  return getEntry(roster, id).standing;
 }
 
 /** Base ⊕ this adventure's overrides ⊕ its per-run state. */
@@ -39,8 +110,7 @@ export function resolve(base: Character, entry?: RosterEntry): PartyMember {
     ...base,
     ...(e.overrides ?? {}),
     lastSpokeTurn: e.lastSpokeTurn,
-    inParty: e.inParty,
-    status: e.status,
+    standing: e.standing,
   };
 }
 
@@ -53,17 +123,20 @@ export function allMembers(
 }
 
 /**
- * The in-party companions, in ROSTER order — that order is the party order the
- * strip renders. Entries whose character has since been deleted are skipped, so
- * restoring an old save slot degrades gracefully instead of crashing.
+ * Members at any of the given standings, in ROSTER order — that order is the
+ * party order the strip renders, and the order companions were written.
+ * Entries whose character has since been deleted are skipped, so restoring an
+ * old save slot degrades gracefully instead of crashing. The PC never matches:
+ * they hold no party slot and are not a companion.
  */
-export function partyMembers(
+export function membersAt(
   characters: Character[],
   roster: RosterEntry[],
+  standings: readonly Standing[],
 ): PartyMember[] {
   const out: PartyMember[] = [];
   for (const e of roster) {
-    if (!e.inParty) continue;
+    if (!standings.includes(e.standing)) continue;
     const base = characters.find((c) => c.id === e.id);
     if (!base || base.role !== "member") continue;
     out.push(resolve(base, e));
@@ -72,26 +145,59 @@ export function partyMembers(
 }
 
 /**
- * The companions this adventure has LOST — departed or fallen, and no longer
- * travelling. Named in the prompt every turn so the narrator stops writing
- * them into the scene: the history window outlives membership, so a member who
- * left three beats ago is still all over the freshest context.
+ * The companions actually in the scene — the party slots, the spotlight, the
+ * strip. This is the narrow "who is here right now" list; benched members are
+ * yours but absent, so they are deliberately NOT in it.
+ */
+export function activeMembers(
+  characters: Character[],
+  roster: RosterEntry[],
+): PartyMember[] {
+  return membersAt(characters, roster, ["active"]);
+}
+
+/** Party members sitting this scene out — still yours, not present. */
+export function benchedMembers(
+  characters: Character[],
+  roster: RosterEntry[],
+): PartyMember[] {
+  return membersAt(characters, roster, ["benched"]);
+}
+
+/** The whole company, active and benched — what the Party screen manages. */
+export function partyMembers(
+  characters: Character[],
+  roster: RosterEntry[],
+): PartyMember[] {
+  return membersAt(characters, roster, PARTY_STANDINGS);
+}
+
+/**
+ * Important characters this adventure knows who are NOT companions — allies,
+ * contacts, rivals. They hold no party slot and never take the spotlight; the
+ * prompt reaches for their sheet only when the scene names them.
+ */
+export function npcMembers(
+  characters: Character[],
+  roster: RosterEntry[],
+): PartyMember[] {
+  return membersAt(characters, roster, ["npc"]);
+}
+
+/**
+ * The companions this adventure has LOST — departed or fallen. Named in the
+ * prompt every turn so the narrator stops writing them into the scene: the
+ * history window outlives membership, so a member who left three beats ago is
+ * still all over the freshest context. Someone merely kicked is NOT here —
+ * that is a party change, not a story exit.
  *
- * Roster order, which is the order they were written — the tail is the most
- * recent departure.
+ * Roster order — the tail is the most recent departure.
  */
 export function partedMembers(
   characters: Character[],
   roster: RosterEntry[],
 ): PartyMember[] {
-  const out: PartyMember[] = [];
-  for (const e of roster) {
-    if (e.inParty || e.status === "active") continue;
-    const base = characters.find((c) => c.id === e.id);
-    if (!base || base.role !== "member") continue;
-    out.push(resolve(base, e));
-  }
-  return out;
+  return membersAt(characters, roster, PARTED_STANDINGS);
 }
 
 /** The player character, resolved. */
@@ -103,24 +209,26 @@ export function playerCharacter(
   return pc ? resolve(pc, roster.find((e) => e.id === pc.id)) : undefined;
 }
 
-/** PC + in-party companions — the people whose gear is on the scene. */
+/** PC + companions in the scene — the people whose gear is on the scene. */
 export function presentMembers(
   characters: Character[],
   roster: RosterEntry[],
 ): PartyMember[] {
   const pc = playerCharacter(characters, roster);
-  const party = partyMembers(characters, roster);
-  return pc ? [pc, ...party] : party;
+  const active = activeMembers(characters, roster);
+  return pc ? [pc, ...active] : active;
 }
 
 /**
- * How many party slots are taken. Counted through `partyMembers` on purpose, so
- * the count is the same predicate as the list — an entry the library can no
- * longer resolve (a reversal snapshot or a restored save can name a character
- * deleted since) must not hold a slot that shows nobody.
+ * How many party slots are taken. ACTIVE members only — the bench is unlimited
+ * on purpose, so it can hold a whole stable of companions without starving the
+ * scene. Counted through `activeMembers` so the count is the same predicate as
+ * the list: an entry the library can no longer resolve (a reversal snapshot or
+ * a restored save can name a character deleted since) must not hold a slot that
+ * shows nobody.
  */
 export function partyCount(characters: Character[], roster: RosterEntry[]): number {
-  return partyMembers(characters, roster).length;
+  return activeMembers(characters, roster).length;
 }
 
 export function partyFull(characters: Character[], roster: RosterEntry[]): boolean {
@@ -161,10 +269,12 @@ export function setEntry(
   }
   const cur = roster[i];
   const next = { ...cur, ...patch };
+  // Every mutable field of RosterEntry must be compared here — a field left
+  // out silently makes its changes invisible to `captureReversal`, which
+  // reference-diffs the roster to decide whether the turn touched it.
   if (
-    next.inParty === cur.inParty &&
+    next.standing === cur.standing &&
     next.lastSpokeTurn === cur.lastSpokeTurn &&
-    next.status === cur.status &&
     next.overrides === cur.overrides
   ) {
     return roster;
@@ -172,6 +282,15 @@ export function setEntry(
   const out = roster.slice();
   out[i] = next;
   return out;
+}
+
+/** Move a character to a standing in this adventure. */
+export function setStanding(
+  roster: RosterEntry[],
+  id: string,
+  standing: Standing,
+): RosterEntry[] {
+  return setEntry(roster, id, { standing });
 }
 
 /** Merge story-written field changes onto an entry's overrides. */

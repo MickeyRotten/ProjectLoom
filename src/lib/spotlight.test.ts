@@ -23,8 +23,7 @@ function member(patch: Partial<PartyMember> & { id: string; name: string }): Par
     strengths: { name: "", description: "" },
     equipment: [],
     lastSpokeTurn: 0,
-    inParty: true,
-    status: "active",
+    standing: "active",
     ...patch,
   };
 }

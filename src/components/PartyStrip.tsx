@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useStore } from "../store";
 import { portraitKey } from "../lib/images";
-import { partyMembers, playerCharacter } from "../lib/roster";
+import { activeMembers, playerCharacter } from "../lib/roster";
 import type { PartyMember } from "../types";
 
 /** Number of party members shown alongside the PC (PC + 3 = 4 slots). */
@@ -11,7 +11,9 @@ const MEMBER_SLOTS = 3;
  * The party portrait strip — always visible below the AI options, above the
  * fixed buttons (DESIGN.md → UI). A fixed row of four portrait faces (the PC
  * plus MEMBER_SLOTS party members) with a name label under each, spanning the
- * screen width with gutters between and at the sides. Tap a filled slot to
+ * screen width with gutters between and at the sides. ACTIVE members only —
+ * the strip is who is in the scene, so a benched member leaves an empty slot
+ * and is managed from the Party screen. Tap a filled slot to
  * open that character's full-screen sheet. Empty member slots always render so
  * the row keeps its shape. Portraits (Phase 3) drop into the face; until then a
  * filled slot shows initials. Portraits are zoomed 50% and pinned to the top of
@@ -27,7 +29,7 @@ export function PartyStrip() {
   const streaming = useStore((s) => s.streaming);
 
   const pc = useMemo(() => playerCharacter(characters, roster), [characters, roster]);
-  const members = useMemo(() => partyMembers(characters, roster), [characters, roster]);
+  const members = useMemo(() => activeMembers(characters, roster), [characters, roster]);
 
   const slots: (PartyMember | null)[] = [
     pc ?? null,

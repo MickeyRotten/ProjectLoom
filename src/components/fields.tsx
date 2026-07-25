@@ -16,6 +16,11 @@ export const btn =
 export const btnSmall =
   "border-2 border-ink px-2 py-1 text-xs uppercase tracking-widest active:bg-ink active:text-paper disabled:opacity-40";
 
+/** A group heading inside a list — Characters and Party split by standing. */
+export function Section({ label }: { label: string }) {
+  return <p className="pt-2 text-sm uppercase tracking-widest opacity-60">{label}</p>;
+}
+
 export function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block space-y-1">

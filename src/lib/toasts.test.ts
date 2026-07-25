@@ -15,6 +15,35 @@ function narr(block?: LoomBlock, reversal?: Reversal): Message {
 
 const rev = (location: string): Reversal => ({ day: 1, location, weather: "clear" });
 
+describe("deriveToasts — party standings", () => {
+  it("reports a plain add as joining the party", () => {
+    expect(deriveToasts(narr({ party: [{ op: "add", name: "Navi" }] }))).toEqual([
+      "Navi joined the party",
+    ]);
+  });
+
+  it("never calls an NPC or a benched arrival a party join", () => {
+    expect(deriveToasts(narr({ party: [{ op: "add", name: "Mira", standing: "npc" }] }))).toEqual([
+      "Mira is known here",
+    ]);
+    expect(
+      deriveToasts(narr({ party: [{ op: "add", name: "Bram", standing: "benched" }] })),
+    ).toEqual(["Bram stayed behind"]);
+  });
+
+  it("reports a standing move made by an update", () => {
+    expect(
+      deriveToasts(narr({ party: [{ op: "update", name: "Navi", standing: "benched" }] })),
+    ).toEqual(["Navi stayed behind"]);
+  });
+
+  it("stays silent for an update that only rewrote a sheet", () => {
+    expect(deriveToasts(narr({ party: [{ op: "update", name: "Navi", drive: "revenge" }] }))).toEqual(
+      [],
+    );
+  });
+});
+
 describe("deriveToasts", () => {
   it("returns nothing without an applied block", () => {
     expect(deriveToasts(narr())).toEqual([]);

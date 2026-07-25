@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { applyDeltas } from "./deltas";
 import { defaultPC, newGame } from "./defaults";
-import { getEntry, partyMembers, resolve } from "./roster";
+import { activeMembers, getEntry, partyMembers, resolve } from "./roster";
 import type { Character, GameState } from "../types";
 
 function game(): GameState {
@@ -140,7 +140,7 @@ describe("applyDeltas — party ops", () => {
       drive: "See every locked room in the world.",
       strengths: { name: "Lockpicking", description: "opens anything" },
     });
-    expect(getEntry(scene.roster, "m-navi").inParty).toBe(true);
+    expect(getEntry(scene.roster, "m-navi").standing).toBe("active");
     expect(getEntry(scene.roster, "m-navi").overrides).toBeUndefined();
   });
 
@@ -158,7 +158,7 @@ describe("applyDeltas — party ops", () => {
 
   it("writes story field changes as overrides, never onto the character", () => {
     const characters = lib(member("m-navi", "Navi", { personality: "Chirpy." }));
-    const g = { ...game(), roster: [{ id: "m-navi", inParty: true, lastSpokeTurn: 0, status: "active" as const }] };
+    const g = { ...game(), roster: [{ id: "m-navi", standing: "active" as const, lastSpokeTurn: 0 }] };
     const scene = applyDeltas(g, characters, {
       party: [{ op: "update", name: "navi", personality: "Subdued." }],
     });
@@ -189,46 +189,45 @@ describe("applyDeltas — party ops", () => {
     expect(scene.characters.filter((c) => c.role === "member")).toHaveLength(0);
   });
 
-  it("un-parties on remove, keeps the character, and records why", () => {
+  it("stops them travelling on remove, keeps the character, and records why", () => {
     const characters = lib(member("m-navi", "Navi"));
-    const g = { ...game(), roster: [{ id: "m-navi", inParty: true, lastSpokeTurn: 2, status: "active" as const }] };
+    const g = { ...game(), roster: [{ id: "m-navi", standing: "active" as const, lastSpokeTurn: 2 }] };
     const scene = applyDeltas(g, characters, { party: [{ op: "remove", name: "Navi" }] });
     expect(scene.characters.find((c) => c.name === "Navi")).toBeDefined();
     expect(getEntry(scene.roster, "m-navi")).toMatchObject({
-      inParty: false,
-      status: "departed",
+      standing: "departed",
       // Per-run history survives the departure.
       lastSpokeTurn: 2,
     });
   });
 
-  it("honours an explicit status on remove", () => {
+  it("honours an explicit standing on remove", () => {
     const characters = lib(member("m-navi", "Navi"));
-    const g = { ...game(), roster: [{ id: "m-navi", inParty: true, lastSpokeTurn: 0, status: "active" as const }] };
+    const g = { ...game(), roster: [{ id: "m-navi", standing: "active" as const, lastSpokeTurn: 0 }] };
     const scene = applyDeltas(g, characters, {
-      party: [{ op: "remove", name: "Navi", status: "fallen" }],
+      party: [{ op: "remove", name: "Navi", standing: "fallen" }],
     });
-    expect(getEntry(scene.roster, "m-navi").status).toBe("fallen");
+    expect(getEntry(scene.roster, "m-navi").standing).toBe("fallen");
   });
 
   it("never re-recruits a fallen character", () => {
     const characters = lib(member("m-navi", "Navi"));
-    const g = { ...game(), roster: [{ id: "m-navi", inParty: false, lastSpokeTurn: 0, status: "fallen" as const }] };
+    const g = { ...game(), roster: [{ id: "m-navi", standing: "fallen" as const, lastSpokeTurn: 0 }] };
     const scene = applyDeltas(g, characters, {
       party: [{ op: "add", name: "Navi", description: "somehow back" }],
     });
-    expect(getEntry(scene.roster, "m-navi")).toMatchObject({ inParty: false, status: "fallen" });
+    expect(getEntry(scene.roster, "m-navi").standing).toBe("fallen");
     expect(getEntry(scene.roster, "m-navi").overrides).toBeUndefined();
   });
 
   it("re-adds a departed character and clears their standing", () => {
     const characters = lib(member("m-navi", "Navi"));
-    const g = { ...game(), roster: [{ id: "m-navi", inParty: false, lastSpokeTurn: 0, status: "departed" as const }] };
+    const g = { ...game(), roster: [{ id: "m-navi", standing: "departed" as const, lastSpokeTurn: 0 }] };
     const scene = applyDeltas(g, characters, { party: [{ op: "add", name: "Navi" }] });
-    expect(getEntry(scene.roster, "m-navi")).toMatchObject({ inParty: true, status: "active" });
+    expect(getEntry(scene.roster, "m-navi").standing).toBe("active");
   });
 
-  it("caps party adds at PARTY_LIMIT — the overflow joins out of the party", () => {
+  it("caps party adds at PARTY_LIMIT — the overflow joins BENCHED", () => {
     const scene = applyDeltas(game(), lib(), {
       party: [
         { op: "add", name: "Ada" },
@@ -237,10 +236,11 @@ describe("applyDeltas — party ops", () => {
         { op: "add", name: "Dee" },
       ],
     });
-    // All four become characters; only three travel with the player.
+    // All four become characters; only three travel with the player, and the
+    // fourth lands somewhere the player can actually see them.
     expect(scene.characters.filter((c) => c.role === "member")).toHaveLength(4);
-    expect(partyMembers(scene.characters, scene.roster)).toHaveLength(3);
-    expect(getEntry(scene.roster, "m-dee").inParty).toBe(false);
+    expect(activeMembers(scene.characters, scene.roster)).toHaveLength(3);
+    expect(getEntry(scene.roster, "m-dee").standing).toBe("benched");
   });
 
   it("does not let an unresolvable entry hold a party slot", () => {
@@ -248,7 +248,7 @@ describe("applyDeltas — party ops", () => {
     // nothing — the cap is measured against who actually travels with you.
     const g = {
       ...game(),
-      roster: [{ id: "gone", inParty: true, lastSpokeTurn: 0, status: "active" as const }],
+      roster: [{ id: "gone", standing: "active" as const, lastSpokeTurn: 0 }],
     };
     const scene = applyDeltas(g, lib(), {
       party: [
@@ -257,10 +257,10 @@ describe("applyDeltas — party ops", () => {
         { op: "add", name: "Cid" },
       ],
     });
-    expect(partyMembers(scene.characters, scene.roster)).toHaveLength(3);
+    expect(activeMembers(scene.characters, scene.roster)).toHaveLength(3);
   });
 
-  it("does not add a waiting character when the party is full", () => {
+  it("does not pull a benched character into a full party", () => {
     const first = applyDeltas(game(), lib(), {
       party: [
         { op: "add", name: "Ada" },
@@ -271,7 +271,73 @@ describe("applyDeltas — party ops", () => {
     });
     const g = { ...game(), roster: first.roster };
     const scene = applyDeltas(g, first.characters, { party: [{ op: "add", name: "Dee" }] });
-    expect(getEntry(scene.roster, "m-dee").inParty).toBe(false);
+    expect(getEntry(scene.roster, "m-dee").standing).toBe("benched");
+  });
+
+  it("adds an important NPC without spending a party slot", () => {
+    const scene = applyDeltas(game(), lib(), {
+      party: [
+        { op: "add", name: "Mira", species: "human", description: "the blacksmith" },
+      ],
+    });
+    expect(scene.characters.find((c) => c.name === "Mira")).toBeDefined();
+    expect(getEntry(scene.roster, "m-mira").standing).toBe("active");
+
+    const npc = applyDeltas(game(), lib(), {
+      party: [{ op: "add", name: "Mira", standing: "npc", description: "the blacksmith" }],
+    });
+    expect(getEntry(npc.roster, "m-mira").standing).toBe("npc");
+    expect(partyMembers(npc.characters, npc.roster)).toEqual([]);
+  });
+
+  it("benches and un-benches a member on update, without touching their sheet", () => {
+    const characters = lib(member("m-navi", "Navi", { personality: "Chirpy." }));
+    const g = {
+      ...game(),
+      roster: [{ id: "m-navi", standing: "active" as const, lastSpokeTurn: 3 }],
+    };
+    const benched = applyDeltas(g, characters, {
+      party: [{ op: "update", name: "Navi", standing: "benched" }],
+    });
+    expect(getEntry(benched.roster, "m-navi")).toMatchObject({
+      standing: "benched",
+      lastSpokeTurn: 3,
+    });
+    expect(benched.characters).toBe(characters);
+
+    const back = applyDeltas(
+      { ...game(), roster: benched.roster },
+      characters,
+      { party: [{ op: "update", name: "Navi", standing: "active" }] },
+    );
+    expect(getEntry(back.roster, "m-navi").standing).toBe("active");
+  });
+
+  it("still reads the pre-standing `status` on remove", () => {
+    // Reversal replays delta blocks recorded before the rename.
+    const characters = lib(member("m-navi", "Navi"));
+    const g = {
+      ...game(),
+      roster: [{ id: "m-navi", standing: "active" as const, lastSpokeTurn: 0 }],
+    };
+    const scene = applyDeltas(g, characters, {
+      party: [{ op: "remove", name: "Navi", status: "fallen" }],
+    });
+    expect(getEntry(scene.roster, "m-navi").standing).toBe("fallen");
+  });
+
+  it("never lets a remove leave someone in a party seat", () => {
+    const characters = lib(member("m-navi", "Navi"));
+    const g = {
+      ...game(),
+      roster: [{ id: "m-navi", standing: "active" as const, lastSpokeTurn: 0 }],
+    };
+    // A standing the model has no business asking for on a remove falls back to
+    // a plain departure rather than keeping them in the scene.
+    const scene = applyDeltas(g, characters, {
+      party: [{ op: "remove", name: "Navi", standing: "active" }],
+    });
+    expect(getEntry(scene.roster, "m-navi").standing).toBe("departed");
   });
 
   it("keeps a name-derived id unique so portraits never collide", () => {

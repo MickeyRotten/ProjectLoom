@@ -1,11 +1,17 @@
 import { describe, it, expect } from "vitest";
 import {
+  activeMembers,
   allMembers,
+  benchedMembers,
   clearOverrides,
   dropEntry,
   getEntry,
   hasOverrides,
+  isInParty,
   mergeOverrides,
+  normalizeEntry,
+  normalizeRoster,
+  npcMembers,
   partedMembers,
   partyCount,
   partyFull,
@@ -15,6 +21,8 @@ import {
   presentMembers,
   resolve,
   setEntry,
+  setStanding,
+  standingOf,
 } from "./roster";
 import { defaultPC } from "./defaults";
 import type { Character, RosterEntry } from "../types";
@@ -36,42 +44,36 @@ function member(id: string, name: string, patch: Partial<Character> = {}): Chara
 
 const entry = (id: string, patch: Partial<RosterEntry> = {}): RosterEntry => ({
   id,
-  inParty: false,
+  standing: "none",
   lastSpokeTurn: 0,
-  status: "active",
   ...patch,
 });
 
 describe("getEntry / resolve", () => {
   it("defaults a character the adventure has never touched", () => {
-    expect(getEntry([], "x")).toEqual({
-      id: "x",
-      inParty: false,
-      lastSpokeTurn: 0,
-      status: "active",
-    });
+    expect(getEntry([], "x")).toEqual({ id: "x", standing: "none", lastSpokeTurn: 0 });
   });
 
   it("folds overrides over the base character", () => {
     const base = member("a", "Ada");
-    const resolved = resolve(base, entry("a", { inParty: true, overrides: { description: "scarred" } }));
+    const resolved = resolve(base, entry("a", { standing: "active", overrides: { description: "scarred" } }));
     expect(resolved.description).toBe("scarred");
     // Untouched fields still come from the authored character.
     expect(resolved.personality).toBe("calm");
-    expect(resolved.inParty).toBe(true);
+    expect(resolved.standing).toBe("active");
   });
 
   it("resolves to defaults with no entry at all", () => {
     const resolved = resolve(member("a", "Ada"));
-    expect(resolved).toMatchObject({ inParty: false, lastSpokeTurn: 0, status: "active" });
+    expect(resolved).toMatchObject({ standing: "none", lastSpokeTurn: 0 });
   });
 });
 
-describe("partyMembers", () => {
+describe("partyMembers / activeMembers / benchedMembers / npcMembers", () => {
   const chars = [defaultPC(), member("a", "Ada"), member("b", "Bel")];
 
   it("returns only in-party members, in roster order", () => {
-    const roster = [entry("b", { inParty: true }), entry("a", { inParty: true })];
+    const roster = [entry("b", { standing: "active" }), entry("a", { standing: "active" })];
     expect(partyMembers(chars, roster).map((m) => m.name)).toEqual(["Bel", "Ada"]);
   });
 
@@ -79,34 +81,60 @@ describe("partyMembers", () => {
     expect(partyMembers(chars, [entry("a")])).toEqual([]);
   });
 
+  it("counts a benched member as party, but never as present", () => {
+    const roster = [entry("a", { standing: "active" }), entry("b", { standing: "benched" })];
+    expect(partyMembers(chars, roster).map((m) => m.name)).toEqual(["Ada", "Bel"]);
+    expect(activeMembers(chars, roster).map((m) => m.name)).toEqual(["Ada"]);
+    expect(benchedMembers(chars, roster).map((m) => m.name)).toEqual(["Bel"]);
+    expect(presentMembers(chars, roster).map((m) => m.name)).toEqual(["Hiro", "Ada"]);
+  });
+
+  it("keeps NPCs out of the party entirely", () => {
+    const roster = [entry("a", { standing: "npc" })];
+    expect(partyMembers(chars, roster)).toEqual([]);
+    expect(partedMembers(chars, roster)).toEqual([]);
+    expect(npcMembers(chars, roster).map((m) => m.name)).toEqual(["Ada"]);
+  });
+
   it("skips ids whose character was deleted from the library", () => {
     // A restored save slot can name someone the player has since deleted.
-    const roster = [entry("a", { inParty: true }), entry("gone", { inParty: true })];
+    const roster = [entry("a", { standing: "active" }), entry("gone", { standing: "active" })];
     expect(partyMembers(chars, roster).map((m) => m.id)).toEqual(["a"]);
   });
 
   it("never treats the PC as a party slot", () => {
-    expect(partyMembers(chars, [entry("pc", { inParty: true })])).toEqual([]);
+    expect(partyMembers(chars, [entry("pc", { standing: "active" })])).toEqual([]);
   });
 
   it("counts only in-party members", () => {
-    expect(partyCount(chars, [entry("a", { inParty: true }), entry("b")])).toBe(1);
+    expect(partyCount(chars, [entry("a", { standing: "active" }), entry("b")])).toBe(1);
+  });
+
+  it("counts the scene, not the bench — the bench is uncapped", () => {
+    const roster = [
+      entry("a", { standing: "active" }),
+      entry("b", { standing: "benched" }),
+      entry("x", { standing: "benched" }),
+      entry("y", { standing: "benched" }),
+    ];
+    expect(partyCount(chars, roster)).toBe(1);
+    expect(partyFull(chars, roster)).toBe(false);
   });
 
   it("never counts an entry the library can no longer resolve", () => {
     // Undo restores a pre-turn roster snapshot taken before the player deleted
     // someone; the leftover entry must not hold a slot nothing can fill.
-    const roster = [entry("a", { inParty: true }), entry("gone", { inParty: true })];
+    const roster = [entry("a", { standing: "active" }), entry("gone", { standing: "active" })];
     expect(partyCount(chars, roster)).toBe(1);
     expect(partyCount(chars, roster)).toBe(partyMembers(chars, roster).length);
   });
 
   it("never counts the PC as a party slot", () => {
-    expect(partyCount(chars, [entry("pc", { inParty: true })])).toBe(0);
+    expect(partyCount(chars, [entry("pc", { standing: "active" })])).toBe(0);
   });
 
   it("is full only at PARTY_LIMIT resolvable members", () => {
-    const ghosts = ["x", "y", "z"].map((id) => entry(id, { inParty: true }));
+    const ghosts = ["x", "y", "z"].map((id) => entry(id, { standing: "active" }));
     expect(partyFull(chars, ghosts)).toBe(false);
   });
 });
@@ -116,18 +144,20 @@ describe("partedMembers", () => {
 
   it("returns non-active members who are no longer travelling, in roster order", () => {
     const roster = [
-      entry("b", { status: "fallen" }),
-      entry("a", { status: "departed" }),
+      entry("b", { standing: "fallen" }),
+      entry("a", { standing: "departed" }),
     ];
-    expect(partedMembers(chars, roster).map((m) => [m.name, m.status])).toEqual([
+    expect(partedMembers(chars, roster).map((m) => [m.name, m.standing])).toEqual([
       ["Bel", "fallen"],
       ["Ada", "departed"],
     ]);
   });
 
-  it("excludes anyone still in the party, whatever their status", () => {
-    // A rejoined member is active again; nothing 'lost' about them.
-    expect(partedMembers(chars, [entry("a", { inParty: true, status: "departed" })])).toEqual([]);
+  it("excludes anyone still in the party — active or benched", () => {
+    // A rejoined member is with you again; nothing 'lost' about them, and a
+    // benched member is still one of yours.
+    expect(partedMembers(chars, [entry("a", { standing: "active" })])).toEqual([]);
+    expect(partedMembers(chars, [entry("a", { standing: "benched" })])).toEqual([]);
   });
 
   it("excludes characters the adventure simply never recruited", () => {
@@ -135,7 +165,7 @@ describe("partedMembers", () => {
   });
 
   it("skips ids whose character was deleted from the library", () => {
-    expect(partedMembers(chars, [entry("gone", { status: "departed" })])).toEqual([]);
+    expect(partedMembers(chars, [entry("gone", { standing: "departed" })])).toEqual([]);
   });
 });
 
@@ -143,12 +173,12 @@ describe("pruneRoster", () => {
   const chars = [defaultPC(), member("a", "Ada")];
 
   it("drops entries whose character the library no longer has", () => {
-    const roster = [entry("a", { inParty: true }), entry("gone", { inParty: true })];
+    const roster = [entry("a", { standing: "active" }), entry("gone", { standing: "active" })];
     expect(pruneRoster(chars, roster).map((e) => e.id)).toEqual(["a"]);
   });
 
   it("returns the same reference when every entry still resolves", () => {
-    const roster = [entry("a", { inParty: true }), entry("pc")];
+    const roster = [entry("a", { standing: "active" }), entry("pc")];
     expect(pruneRoster(chars, roster)).toBe(roster);
   });
 });
@@ -162,7 +192,7 @@ describe("playerCharacter / presentMembers / allMembers", () => {
   });
 
   it("presentMembers is the PC plus the party", () => {
-    const names = presentMembers(chars, [entry("b", { inParty: true })]).map((c) => c.name);
+    const names = presentMembers(chars, [entry("b", { standing: "active" })]).map((c) => c.name);
     expect(names).toEqual(["Hiro", "Bel"]);
   });
 
@@ -171,10 +201,73 @@ describe("playerCharacter / presentMembers / allMembers", () => {
   });
 });
 
+describe("normalizeEntry / normalizeRoster", () => {
+  it("reads the pre-ladder inParty + status pair", () => {
+    expect(normalizeEntry({ id: "a", inParty: true, lastSpokeTurn: 3, status: "active" })).toEqual({
+      id: "a",
+      standing: "active",
+      lastSpokeTurn: 3,
+    });
+  });
+
+  it("keeps how someone left when they were out of the party", () => {
+    expect(normalizeEntry({ id: "a", inParty: false, status: "fallen" }).standing).toBe("fallen");
+    expect(normalizeEntry({ id: "a", inParty: false, status: "departed" }).standing).toBe(
+      "departed",
+    );
+  });
+
+  it("maps the old nowhere-state — out of the party, still 'active' — to none", () => {
+    // What an over-cap join used to write: in no prompt block and no screen.
+    expect(normalizeEntry({ id: "a", inParty: false, status: "active" }).standing).toBe("none");
+  });
+
+  it("carries overrides through untouched", () => {
+    const overrides = { description: "muddy" };
+    expect(normalizeEntry({ id: "a", inParty: true, overrides }).overrides).toBe(overrides);
+  });
+
+  it("returns the SAME array when every entry is already current", () => {
+    // Loading a modern save must not look like a change to captureReversal.
+    const roster = [entry("a", { standing: "active" }), entry("b")];
+    expect(normalizeRoster(roster)).toBe(roster);
+  });
+
+  it("rewrites a roster carrying legacy entries", () => {
+    const roster = normalizeRoster([{ id: "a", inParty: true, lastSpokeTurn: 2, status: "active" }]);
+    expect(roster).toEqual([{ id: "a", standing: "active", lastSpokeTurn: 2 }]);
+  });
+});
+
+describe("standings", () => {
+  it("counts active and benched as in the party, nothing else", () => {
+    expect(isInParty("active")).toBe(true);
+    expect(isInParty("benched")).toBe(true);
+    for (const s of ["none", "npc", "departed", "fallen"] as const) {
+      expect(isInParty(s)).toBe(false);
+    }
+  });
+
+  it("reads a standing straight off the roster, defaulting to none", () => {
+    const roster = [entry("a", { standing: "benched" })];
+    expect(standingOf(roster, "a")).toBe("benched");
+    expect(standingOf(roster, "nobody")).toBe("none");
+  });
+
+  it("setStanding moves a member without touching anything else", () => {
+    const roster = [entry("a", { standing: "active", lastSpokeTurn: 4 })];
+    expect(setStanding(roster, "a", "benched")[0]).toEqual({
+      id: "a",
+      standing: "benched",
+      lastSpokeTurn: 4,
+    });
+  });
+});
+
 describe("setEntry", () => {
   it("appends an entry for a character with none", () => {
-    const next = setEntry([], "a", { inParty: true });
-    expect(next).toEqual([{ id: "a", inParty: true, lastSpokeTurn: 0, status: "active" }]);
+    const next = setEntry([], "a", { standing: "active" });
+    expect(next).toEqual([{ id: "a", standing: "active", lastSpokeTurn: 0 }]);
   });
 
   it("patches an existing entry", () => {
@@ -184,8 +277,8 @@ describe("setEntry", () => {
 
   it("returns the SAME array when nothing changed", () => {
     // captureReversal reference-diffs the roster, so a no-op must not allocate.
-    const roster = [entry("a", { inParty: true })];
-    expect(setEntry(roster, "a", { inParty: true })).toBe(roster);
+    const roster = [entry("a", { standing: "active" })];
+    expect(setEntry(roster, "a", { standing: "active" })).toBe(roster);
   });
 });
 

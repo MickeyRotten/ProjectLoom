@@ -6,11 +6,37 @@ import { TextField, AreaField, ReadBlock, EditToolbar, btn, btnSmall } from "./f
 import { AutoUpdateModal } from "./AutoUpdateModal";
 import { useEditBuffer } from "./useEditBuffer";
 import { portraitKey } from "../lib/images";
-import { getEntry, hasOverrides, partyFull as isPartyFull, resolve } from "../lib/roster";
-import type { Character, CharacterStatus, Equipment } from "../types";
+import {
+  getEntry,
+  hasOverrides,
+  isInParty,
+  partyFull as isPartyFull,
+  resolve,
+} from "../lib/roster";
+import type { Character, Equipment, Standing } from "../types";
 
-/** Player-settable standings, in the order they appear on the sheet. */
-const STATUSES: CharacterStatus[] = ["active", "departed", "fallen"];
+/**
+ * Player-settable standings, in the order they appear on the sheet. "none" is
+ * not here — it is what Kick does, and a radio labelled "none" reads like a
+ * state rather than the act of dropping someone.
+ */
+const STANDINGS: { value: Standing; label: string }[] = [
+  { value: "active", label: "Active" },
+  { value: "benched", label: "Benched" },
+  { value: "npc", label: "NPC" },
+  { value: "departed", label: "Departed" },
+  { value: "fallen", label: "Fallen" },
+];
+
+/** What each standing means for the story, said plainly under the control. */
+const STANDING_HINT: Record<Standing, string> = {
+  active: "Travelling with you and in the scene. Can speak this turn.",
+  benched: "One of yours, waiting elsewhere. Never voiced while benched.",
+  npc: "Known to this world but not a companion. Appears where the scene reaches them.",
+  departed: "Left the story. The narrator is told not to write them in.",
+  fallen: "Dead. The narrator will never bring them back.",
+  none: "Not part of this adventure. Still in Characters, and in every other save.",
+};
 
 /** The character fields that are player-editable on this sheet. */
 type MemberDraft = Pick<
@@ -42,8 +68,7 @@ export function MemberSheet() {
   const roster = useStore((s) => s.game.roster);
   const update = useStore((s) => s.updateCharacter);
   const removeCharacter = useStore((s) => s.removeCharacter);
-  const setInParty = useStore((s) => s.setInParty);
-  const setStatus = useStore((s) => s.setStatus);
+  const setStanding = useStore((s) => s.setStanding);
   const revertOverrides = useStore((s) => s.revertOverrides);
   const partyFull = isPartyFull(characters, roster);
   const ensurePortrait = useStore((s) => s.ensurePortrait);
@@ -393,38 +418,52 @@ export function MemberSheet() {
               <legend className="text-sm uppercase tracking-widest opacity-70">
                 Standing this adventure
               </legend>
-              <div className="flex gap-2">
-                {STATUSES.map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    aria-pressed={member.status === s}
-                    onClick={() => setStatus(member.id, s)}
-                    className={`flex-1 border-2 border-ink px-2 py-1 text-xs uppercase tracking-widest ${
-                      member.status === s ? "bg-ink text-paper" : "active:bg-ink active:text-paper"
-                    }`}
-                  >
-                    {s}
-                  </button>
-                ))}
+              <div className="grid grid-cols-3 gap-2">
+                {STANDINGS.map(({ value, label }) => {
+                  const current = member.standing === value;
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      aria-pressed={current}
+                      // Only the scene is capped — every other standing is
+                      // always reachable, including stepping out of the party.
+                      disabled={!current && value === "active" && partyFull}
+                      onClick={() => setStanding(member.id, value)}
+                      className={`border-2 border-ink px-2 py-1 text-xs uppercase tracking-widest disabled:opacity-40 ${
+                        current ? "bg-ink text-paper" : "active:bg-ink active:text-paper"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
               </div>
+              <p className="text-xs opacity-60">{STANDING_HINT[member.standing]}</p>
             </fieldset>
 
             <div className="flex flex-wrap gap-2">
-              {/* Kicking ends party membership only — they stay in Characters,
-                  with their portrait and sheet, and can be added back later. */}
-              <button
-                type="button"
-                disabled={!member.inParty && partyFull}
-                onClick={() => setInParty(member.id, !member.inParty)}
-                className="border-2 border-ink px-3 py-2 text-sm uppercase tracking-widest disabled:opacity-40 active:bg-ink active:text-paper"
-              >
-                {member.inParty
-                  ? "Kick from Party"
-                  : partyFull
-                    ? "Party Full"
-                    : "Add to Party"}
-              </button>
+              {/* Kicking drops them out of the party and nothing more — they
+                  stay in Characters with their portrait and sheet, the story is
+                  told nothing about it, and they can be added back later. */}
+              {isInParty(member.standing) ? (
+                <button
+                  type="button"
+                  onClick={() => setStanding(member.id, "none")}
+                  className="border-2 border-ink px-3 py-2 text-sm uppercase tracking-widest active:bg-ink active:text-paper"
+                >
+                  Kick from Party
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={partyFull}
+                  onClick={() => setStanding(member.id, "active")}
+                  className="border-2 border-ink px-3 py-2 text-sm uppercase tracking-widest disabled:opacity-40 active:bg-ink active:text-paper"
+                >
+                  {partyFull ? "Party Full" : "Add to Party"}
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => {

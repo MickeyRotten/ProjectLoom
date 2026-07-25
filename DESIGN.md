@@ -69,7 +69,7 @@ loop. The model returns **narration prose followed by one machine-read JSON bloc
 - Client **parses tolerantly** (brace-matched salvage, always strip the block from displayed prose even if JSON is malformed — port `parse_action_block`'s tolerance from `narrator_actions.py`).
 - `options` are the **AI-generated action buttons** — inline in the same call, so no extra request per turn (Wayward's `inline` action-suggestions mode).
 - State changes (`location`/`day`/`weather`/`party`/`inventory`/`quests`) are applied to the active save (op-based add/update/remove; inventory carries `quantity`, quests carry `reward`). `spoke` is a hint, but **`lastSpokeTurn` is updated deterministically** from the prose via the ported `detectSpeakers` (never trust the model alone).
-- `party` ops match **by name across the whole character library**, so a companion from an earlier adventure is re-used, not duplicated. An `add` for a known character writes `overrides`; only a genuinely new name creates a `Character`. A `remove` may carry `"status": "departed" | "fallen"` and never deletes anyone — see *Characters ⟂ Party*.
+- `party` ops match **by name across the whole character library**, so a companion from an earlier adventure is re-used, not duplicated. An `add` for a known character writes `overrides`; only a genuinely new name creates a `Character`. An `add`/`update` may carry `"standing": "active" | "benched" | "npc"`, and a `remove` `"standing": "departed" | "fallen"` — nothing the model emits ever deletes anyone. See *Characters ⟂ Party*.
 - **Reversal** (swipe/regenerate): record the applied deltas on the message, unwind on redo — same shape as Wayward's `_reverse_message_effects`, minus item instances.
 
 ---
@@ -90,13 +90,14 @@ One isolated function returning the OpenRouter `messages[]`, in order:
 1. **Core narrator instructions** (Loom role: short punchy second-person shonen adventure, uncensored, sandbox) + player **custom instructions** appended.
 2. **Scenario / premise** (the editable pre-made scenario).
 3. **PC summary** + equipment text fields.
-4. **Party roster** — description, personality, drive, Strengths, equipment (port `_format_equipment`, simplified to `{label, description}` — no catalog lookup).
+4. **Party roster** — the `active` members only: description, personality, drive, Strengths, equipment (port `_format_equipment`, simplified to `{label, description}` — no catalog lookup). Benched members get no sheet; they are not in the scene.
 5. **Inventory** (compact `label ×qty — description` list).
 6. **Active quests** (compact `label — description (reward: …)` list; done quests omitted).
 7. **World Notes** matched by keyword (single-category, simplified `match_entries`; titles are implicit keywords; scan the new message + last few turns). Notes flagged **permanent** skip matching and inject every turn.
-8. **Spotlight block** (from `spotlight.ts`).
+7b. **Known characters** (`cast.ts`) — the sheets of `npc`-standing allies the scene just named, matched with the same `keywordHits` as the notes and capped at `NPC_LIMIT`. Gated, not always-on: an adventure can know fifty people without any of them costing a turn they're absent from.
+8. **Spotlight block** (from `spotlight.ts`) — over the `active` members only.
 9. **Chat history** window (trim to a token budget; prepend the opening narration as the first assistant turn — port `_trim_to_budget`). *History summarization is deferred* — messages stay short, so a rolling window suffices for MVP.
-10. **Active-party roll call** (`formatPartyComposition`) — the *authoritative* composition, re-read from the roster **every turn** and placed **after** the history on purpose: history outlives membership, so the last thing the model reads before the action is who is actually here. Names the in-party members `n/PARTY_LIMIT`, plus the most recent departures with their `status` (`partedMembers`) so the narrator stops writing them in — and never resurrects a `fallen` one. **Always emitted, even for an empty party** ("the player is ALONE") — the empty case is exactly where the history drifts.
+10. **Active-party roll call** (`formatPartyComposition`) — the *authoritative* composition, re-read from the roster **every turn** and placed **after** the history on purpose: history outlives membership, so the last thing the model reads before the action is who is actually here. Names the `active` members `n/PARTY_LIMIT`, the `benched` ones under an explicit "NOT in this scene", the most recent departures with their `standing` (`partedMembers`) so the narrator stops writing them in — and never resurrects a `fallen` one — and every `npc` by name, so an ally is never forgotten between the turns that reach them. **Always emitted, even for an empty party** ("the player is ALONE") — the empty case is exactly where the history drifts.
 11. **Output-protocol instruction** — how to emit prose + the `<<<LOOM>>>` block, and the `option` instruction (player-editable).
 12. **Player's new message.**
 
@@ -150,8 +151,13 @@ GameState {                   // the active adventure (autosaved) + what each sa
 
 RosterEntry {
   id,                                   // Character.id
-  inParty, lastSpokeTurn,
-  status: 'active' | 'departed' | 'fallen',
+  lastSpokeTurn,
+  standing: 'none'      // known character, not part of this adventure
+          | 'npc'       // important ally / contact — NOT a companion
+          | 'active'    // travelling with the player, in the scene
+          | 'benched'   // in the party, waiting elsewhere
+          | 'departed'  // left the story
+          | 'fallen',   // dead
   overrides?: { species?, description?, personality?, drive?, strengths? }
 }
 ```
@@ -160,19 +166,47 @@ RosterEntry {
 
 **Characters is the cast; Party is who's walking with you.** They're separate on
 purpose, and `roster.ts` is the only place they join (`resolve(base, entry)` →
-`PartyMember`; `partyMembers`, `presentMembers`, `setEntry`, `mergeOverrides`).
-Everything downstream — prompt, spotlight, images, UI — consumes resolved
-`PartyMember`s, never the raw halves.
+`PartyMember`; `activeMembers`, `partyMembers`, `presentMembers`, `setEntry`,
+`mergeOverrides`). Everything downstream — prompt, spotlight, images, UI —
+consumes resolved `PartyMember`s, never the raw halves.
+
+- **One `standing` ladder, per adventure**, not two orthogonal flags. A
+  character is `none` (this adventure hasn't involved them), an `npc` (an
+  important ally / contact / rival the world knows, holding no party slot),
+  `active` (travelling with you, in the scene), `benched` (one of yours,
+  waiting elsewhere), or `departed` / `fallen`. The old `inParty` + `status`
+  pair could spell states nothing rendered — an over-cap joiner landed
+  `inParty: false, status: "active"` and appeared in no prompt block and no
+  screen. `normalizeEntry` folds any stored shape onto the ladder, forever:
+  reversal snapshots live inside saved messages, so the old pair keeps arriving.
+- **Only the scene is capped.** `partyCount` / `partyFull` count `active`
+  members, so `PARTY_LIMIT` is the marching order; the **bench is unlimited**
+  and holds the stable. A narrator `add` past the cap lands the character
+  BENCHED — visible in the Party screen, named in the roll call.
+- **Benched members are the party's, but not the scene's.** They get no sheet
+  in the prompt (#4), no spotlight signals, no gear scan, and no `lastSpokeTurn`
+  bump — a sheet is an invitation to write someone in. The roll call names them
+  under an explicit "NOT in this scene".
+- **NPCs are keyword-gated** (#7b, `cast.ts` reusing `worldNotes.ts`'s
+  `keywordHits`): their sheet rides along only when the new message or the last
+  few beats name them, capped at `NPC_LIMIT`. The roll call still lists every
+  NPC by name every turn, so an adventure can know fifty people at the cost of
+  one line. NPCs carry over into a **New Adventure** — an ally is a fact about
+  the setting, not about one run.
+- **Kick ≠ leaving the story.** Kick sets `none`: out of the party, still in
+  Characters with portrait and sheet, and the narrator is told nothing about it.
+  `departed` / `fallen` are story outcomes the player or the narrator sets, and
+  only those reach the "no longer travelling" line.
 
 - **Characters are global.** The model creates a character there first, and the
   player adds them to the Party from there. **"New Adventure" preserves the whole
-  cast and empties the Party** (`roster: []`); a companion written in one
+  cast and empties the Party** (only `npc` standings carry over); a companion written in one
   adventure can be recruited into the next with their portrait and sheet intact.
   Save slots snapshot the *adventure*, never the cast, so restoring an old slot
   can't delete a character authored since. A slot naming a since-deleted
   character degrades to a smaller party rather than breaking.
 - **The party cap is measured on resolved members, never raw entries.**
-  `partyCount`/`partyFull` go through `partyMembers`, so an entry nothing can
+  `partyCount`/`partyFull` go through `activeMembers`, so an entry nothing can
   resolve — a save slot or an **undo** restoring a snapshot taken before the
   player deleted that character — can't hold a slot that shows nobody
   ("Party Full" over an empty seat). Undo also `pruneRoster`s the restored
@@ -182,11 +216,11 @@ Everything downstream — prompt, spotlight, images, UI — consumes resolved
   touched (editing adopts the story's change). Narrator `party` deltas and
   Auto-Update write adventure-local `overrides`, so a companion wounded in one
   save is fine in another. **Revert Story Changes** drops them.
-- **Nothing the model emits destroys a character.** Narrator `remove` and the
-  sheet's **Kick from Party** both only un-party; `status` records why
-  (`departed` / `fallen`, player-editable). A `fallen` character is never
-  re-recruited by the narrator — only the player can bring them back, which
-  clears the flag. Deleting is a player-only act, from the member sheet.
+- **Nothing the model emits destroys a character.** Narrator `remove` only
+  moves them along the ladder, and `standing` records why (`departed` /
+  `fallen`, player-editable). A `fallen` character is never re-recruited by the
+  narrator — only the player can bring them back, which clears the flag.
+  Deleting is a player-only act, from the member sheet.
 - **One portrait per character**, keyed `portrait:<characterId>` and shared
   across adventures, generated from how they look *in the current adventure*.
 - **No world/adventure split beyond this.** Editing anything in Settings/panels
@@ -236,8 +270,8 @@ Parsing is tolerant like the `<<<LOOM>>>` block (fences/preamble/trailing commas
 All secondary screens — **member sheet, Party, Inventory, Quests, and every Settings sub-screen** — are **full-screen overlays with a Back button** in a top header (the mobile pattern; no split panes). They open over the chat and return to it on Back. Same store/components regardless.
 
 - **Menu (gear)** → full-screen screens: **Quests**, **Scenario** editor, **Characters** (the whole cast), **World Notes**, **Model & Key**, **Advanced instructions**, **Saves**.
-- **Characters screen** lists the global cast — PC, then *In Party n/3*, then *Everyone Else* — each row opening the sheet and carrying a one-tap **Add to Party** / **Kick from Party**. **+ New Character** creates someone in the library only. A filter box appears once the cast grows past 8.
-- **Party screen** lists only the current company, with **Kick from Party** per row and a route to Characters when empty. The member sheet carries the same Kick/Add control, the adventure **standing** (active / departed / fallen), **Revert Story Changes** when the story has diverged, and **Delete Character** (library-wide, player-only).
+- **Characters screen** lists the global cast grouped by this adventure's standing — PC, then *In Party n/3*, *Benched*, *NPCs & Allies*, *Gone*, and *Everyone Else* — each row opening the sheet and carrying one-tap moves (**Add to Party** / **Bench** / **Kick** / **Make NPC**). **+ New Character** creates someone in the library only. A filter box appears once the cast grows past 8.
+- **Party screen** lists the company in two halves — *In the scene n/3* (**Bench** / **Kick**) and *Benched* (**Activate** / **Kick**) — with a route to Characters when both are empty. The member sheet carries the same Kick/Add control, the adventure **standing** (active / benched / npc / departed / fallen) with a one-line explanation of what the current one means, **Revert Story Changes** when the story has diverged, and **Delete Character** (library-wide, player-only).
 - **Style:** pure black/white, monospace, square borders, no rounded corners, no color. Small token set in `theme.css` (`--ink #000`, `--paper #fff`) so it stays one system.
 
 ---

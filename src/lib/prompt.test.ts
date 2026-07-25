@@ -7,6 +7,7 @@ import {
   formatPartyComposition,
 } from "./prompt";
 import { defaultPC, newGame, defaultSettings } from "./defaults";
+import { PARTY_LIMIT } from "./roster";
 import type { Character, GameState, Message, RosterEntry, Settings } from "../types";
 
 const settings = defaultSettings();
@@ -33,9 +34,8 @@ function build(opts: {
 function withParty(game: GameState, ...ids: string[]): GameState {
   const roster: RosterEntry[] = ids.map((id) => ({
     id,
-    inParty: true,
+    standing: "active",
     lastSpokeTurn: 0,
-    status: "active",
   }));
   return { ...game, roster };
 }
@@ -146,9 +146,8 @@ describe("party roster + spotlight", () => {
       roster: [
         {
           id: "m-navi",
-          inParty: true,
+          standing: "active",
           lastSpokeTurn: 0,
-          status: "active",
           overrides: { description: "singed and limping" },
         },
       ],
@@ -201,7 +200,9 @@ describe("active party roll call", () => {
     const g = withParty(newGame(), "m-navi", "m-bram");
     const after: GameState = {
       ...g,
-      roster: g.roster.map((e) => (e.id === "m-bram" ? { ...e, inParty: false } : e)),
+      roster: g.roster.map((e) =>
+        e.id === "m-bram" ? { ...e, standing: "none" as const } : e,
+      ),
     };
     const block = rollCall(build({ settings, game: after, characters: cast, playerMessage: "go" }));
     expect(block?.content).toContain("Navi");
@@ -212,8 +213,8 @@ describe("active party roll call", () => {
     const g: GameState = {
       ...newGame(),
       roster: [
-        { id: "m-navi", inParty: true, lastSpokeTurn: 0, status: "active" },
-        { id: "m-bram", inParty: false, lastSpokeTurn: 2, status: "fallen" },
+        { id: "m-navi", standing: "active", lastSpokeTurn: 0 },
+        { id: "m-bram", standing: "fallen", lastSpokeTurn: 2 },
       ],
     };
     const block = rollCall(build({ settings, game: g, characters: cast, playerMessage: "go" }));
@@ -224,7 +225,7 @@ describe("active party roll call", () => {
   it("keeps a departed member out of the travelling line but names the departure", () => {
     const g: GameState = {
       ...newGame(),
-      roster: [{ id: "m-navi", inParty: false, lastSpokeTurn: 1, status: "departed" }],
+      roster: [{ id: "m-navi", standing: "departed", lastSpokeTurn: 1 }],
     };
     const block = rollCall(build({ settings, game: g, characters: cast, playerMessage: "go" }));
     expect(block?.content).toContain("nobody — the player is ALONE this turn.");
@@ -241,9 +242,8 @@ describe("active party roll call", () => {
       ...newGame(),
       roster: gone.map((c) => ({
         id: c.id,
-        inParty: false,
+        standing: "departed" as const,
         lastSpokeTurn: 0,
-        status: "departed" as const,
       })),
     };
     const block = rollCall(
@@ -256,6 +256,123 @@ describe("active party roll call", () => {
   it("formats a bare composition without a departure line", () => {
     const solo = formatPartyComposition([]);
     expect(solo).not.toContain("No longer travelling");
+  });
+
+  it("names benched members apart from the travelling line", () => {
+    const g: GameState = {
+      ...newGame(),
+      roster: [
+        { id: "m-navi", standing: "active", lastSpokeTurn: 0 },
+        { id: "m-bram", standing: "benched", lastSpokeTurn: 0 },
+      ],
+    };
+    const block = rollCall(build({ settings, game: g, characters: cast, playerMessage: "go" }));
+    expect(block?.content).toContain("Travelling with the player (1/3): Navi");
+    expect(block?.content).toContain("With the party but NOT in this scene: Bram");
+    // Benched is not gone — it must never read as a departure.
+    expect(block?.content).not.toContain("No longer travelling");
+  });
+
+  it("names the world's NPCs every turn, without calling them companions", () => {
+    const g: GameState = {
+      ...newGame(),
+      roster: [{ id: "m-bram", standing: "npc", lastSpokeTurn: 0 }],
+    };
+    const block = rollCall(build({ settings, game: g, characters: cast, playerMessage: "go" }));
+    expect(block?.content).toContain("Known in this world, NOT companions: Bram");
+    expect(block?.content).toContain("nobody — the player is ALONE this turn.");
+  });
+});
+
+describe("benched members are not in the scene", () => {
+  const navi = member({
+    id: "m-navi",
+    name: "Navi",
+    species: "sprite",
+    strengths: { name: "Lockpicking", description: "opens any lock" },
+    equipment: [{ label: "Bent Pick", description: "worn thin" }],
+  });
+  const cast = [defaultPC(), navi];
+  const benched: GameState = {
+    ...newGame(),
+    roster: [{ id: "m-navi", standing: "benched", lastSpokeTurn: 0 }],
+  };
+
+  it("keeps them out of the roster block, the spotlight and their gear", () => {
+    const msgs = build({
+      settings,
+      game: benched,
+      characters: cast,
+      playerMessage: "navi, pick the lock",
+    });
+    expect(msgs[0].content).not.toContain("PARTY — in your company");
+    expect(msgs.some((m) => m.content.includes("PARTY SPOTLIGHT"))).toBe(false);
+    expect(msgs.some((m) => m.content.includes("RELEVANT GEAR"))).toBe(false);
+  });
+});
+
+describe("known characters block", () => {
+  const mira = member({
+    id: "m-mira",
+    name: "Mira Aldgate",
+    species: "human",
+    description: "soot-streaked and broad-shouldered",
+    personality: "Blunt.",
+  });
+  const bram = member({ id: "m-bram", name: "Bram", species: "human" });
+  const cast = [defaultPC(), mira, bram];
+  const withNpcs: GameState = {
+    ...newGame(),
+    roster: [
+      { id: "m-mira", standing: "npc", lastSpokeTurn: 0 },
+      { id: "m-bram", standing: "npc", lastSpokeTurn: 0 },
+    ],
+  };
+
+  function known(msgs: { content: string }[]) {
+    return msgs.find((m) => m.content.includes("KNOWN CHARACTERS"));
+  }
+
+  it("injects the sheet of an NPC the scene names", () => {
+    const msgs = build({
+      settings,
+      game: withNpcs,
+      characters: cast,
+      playerMessage: "ask Mira about the blade",
+    });
+    const block = known(msgs);
+    expect(block?.content).toContain("Mira Aldgate (human)");
+    expect(block?.content).toContain("soot-streaked and broad-shouldered");
+    expect(block?.content).toContain("Personality: Blunt.");
+    expect(block?.content).toContain("NOT in the party");
+    // Only the one who was named.
+    expect(block?.content).not.toContain("Bram");
+  });
+
+  it("stays silent when the scene names nobody", () => {
+    const msgs = build({
+      settings,
+      game: withNpcs,
+      characters: cast,
+      playerMessage: "walk on",
+    });
+    expect(known(msgs)).toBeUndefined();
+  });
+
+  it("matches on a recent beat, not just the new message", () => {
+    const g = { ...withNpcs, messages: [narr(1, "Bram waves from the gate.")] };
+    const msgs = build({ settings, game: g, characters: cast, playerMessage: "keep going" });
+    expect(known(msgs)?.content).toContain("Bram");
+  });
+
+  it("never treats a party member as an NPC", () => {
+    const g: GameState = {
+      ...newGame(),
+      roster: [{ id: "m-mira", standing: "active", lastSpokeTurn: 0 }],
+    };
+    const msgs = build({ settings, game: g, characters: cast, playerMessage: "ask Mira" });
+    expect(known(msgs)).toBeUndefined();
+    expect(msgs[0].content).toContain("PARTY — in your company");
   });
 });
 
@@ -365,14 +482,26 @@ describe("relevant gear injection", () => {
   });
 });
 
-describe("output protocol — party status", () => {
-  it("teaches the model that remove can carry a departed/fallen status", () => {
-    const proto = build({ settings, game: newGame(), playerMessage: "go" }).find((m) =>
+describe("output protocol — party standing", () => {
+  const proto = () =>
+    build({ settings, game: newGame(), playerMessage: "go" }).find((m) =>
       m.content.includes("OUTPUT PROTOCOL"),
     )!;
-    expect(proto.content).toContain('"status": "departed"');
-    expect(proto.content).toContain('"status": "fallen"');
-    expect(proto.content).toContain("Removing never deletes anyone");
+
+  it("teaches the model that remove can carry a departed/fallen standing", () => {
+    expect(proto().content).toContain('"standing": "departed"');
+    expect(proto().content).toContain('"standing": "fallen"');
+    expect(proto().content).toContain("Removing never deletes anyone");
+  });
+
+  it("teaches the bench and the NPC tier, and states the party cap", () => {
+    const content = proto().content;
+    expect(content).toContain('"standing": "active"');
+    expect(content).toContain('"benched"');
+    expect(content).toContain('"npc"');
+    // The cap used to be enforced silently client-side; a model that doesn't
+    // know it keeps writing a fourth companion into the scene.
+    expect(content).toContain(`only ${PARTY_LIMIT} companions can be active at once`);
   });
 });
 

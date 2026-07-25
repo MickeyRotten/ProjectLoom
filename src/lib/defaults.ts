@@ -8,6 +8,7 @@ import type {
   Settings,
   Strengths,
 } from "../types";
+import { normalizeRoster } from "./roster";
 
 /**
  * Ship-time defaults. The pre-made scenario is intentionally minimal for
@@ -21,9 +22,6 @@ export const DEFAULT_TEXT_MODEL = "deepseek/deepseek-v4-pro";
  * "google/gemini-3.1-flash-image", then "google/gemini-3-pro-image-preview".
  */
 export const DEFAULT_IMAGE_MODEL = "google/gemini-3.1-flash-lite-image";
-
-/** Max party members alongside the PC (PC + 3). */
-export const PARTY_LIMIT = 3;
 
 /* ------------------------------------------------------------------ *
  * Gold — the permanent currency item. Every game carries exactly one Gold
@@ -276,14 +274,15 @@ export function splitLegacyGame(saved: unknown): LoadedGame | null {
   delete partial.characters;
   // Pre-split saves carried party state on the character; rebuild entries from
   // it so a migrated game opens with exactly the party it was saved with.
-  const roster: RosterEntry[] =
-    partial.roster ??
-    legacy.map((c) => ({
-      id: c.id,
-      inParty: c.role === "member" && !!c.inParty,
-      lastSpokeTurn: c.lastSpokeTurn ?? 0,
-      status: "active" as const,
-    }));
+  // Everything else goes through `normalizeRoster`, which folds the pre-ladder
+  // `inParty` + `status` pair into a single `standing`.
+  const roster: RosterEntry[] = partial.roster
+    ? normalizeRoster(partial.roster)
+    : legacy.map((c) => ({
+        id: c.id,
+        standing: c.role === "member" && c.inParty ? ("active" as const) : ("none" as const),
+        lastSpokeTurn: c.lastSpokeTurn ?? 0,
+      }));
 
   return {
     game: {
