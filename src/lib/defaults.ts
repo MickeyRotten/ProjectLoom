@@ -3,6 +3,7 @@ import type {
   GameState,
   Item,
   LegacyCharacter,
+  LegacyStrengths,
   RosterEntry,
   Scenario,
   Settings,
@@ -168,10 +169,7 @@ export function defaultPC(): Character {
     description: "A young and curious adventurer, standing six feet tall with a lean build. His dark hair is tousled, and his eyes gleam with determination and a hint of mischief. He wears a simple white tunic and black baggy trousers, with a worn leather satchel slung across his shoulder.",
     personality: "Optimistic, curious, adventurous, overconfident.",
     drive: "Become the greatest adventurer in the land.",
-    strengths: {
-      name: "Superhuman Strength",
-      description: "Can lift incredibly heavy objects with ease, punch through walls and brittle stone, and take hits that would kill a normal person.",
-    },
+    strengths: "Superhuman strength — can lift incredibly heavy objects with ease, punch through walls and brittle stone, and take hits that would kill a normal person.",
     equipment: [
       { label: "White Tunic", description: "Old, tattered, but still serviceable." },
       { label: "Black Trousers", description: "Simple, worn, baggy trousers." },
@@ -195,7 +193,7 @@ export function newCharacter(id: string): Character {
     description: "",
     personality: "",
     drive: "",
-    strengths: { name: "", description: "" },
+    strengths: "",
     equipment: [],
     useCustomPortraitPrompt: false,
     customPortraitPrompt: "",
@@ -224,15 +222,30 @@ export function newGame(scenario: Scenario = DEFAULT_SCENARIO): GameState {
 }
 
 /**
- * Carry a stored character onto the current shape. Two historical renames:
- * `fieldSkill` → `strengths` (likes/dislikes dropped), and the Characters/Party
- * split, which moved `lastSpokeTurn` / `inParty` off the character and onto the
- * adventure's roster. `portraitKey` was always dead — the blob key is derived
- * from the id — so it is dropped here too.
+ * Coerce any stored (or model-emitted) Strengths onto the current flat string.
+ * The old `{ name, description }` pair folds into one line rather than dropping
+ * the name — a save's authored text is never thrown away on load.
+ */
+export function normalizeStrengths(value: unknown): Strengths {
+  if (typeof value === "string") return value;
+  if (value && typeof value === "object") {
+    const { name, description } = value as LegacyStrengths;
+    return [name?.trim(), description?.trim()].filter(Boolean).join(" — ");
+  }
+  return "";
+}
+
+/**
+ * Carry a stored character onto the current shape. Three historical renames:
+ * `fieldSkill` → `strengths` (likes/dislikes dropped), Strengths collapsing from
+ * `{ name, description }` to one string, and the Characters/Party split, which
+ * moved `lastSpokeTurn` / `inParty` off the character and onto the adventure's
+ * roster. `portraitKey` was always dead — the blob key is derived from the id —
+ * so it is dropped here too.
  */
 function migrateCharacter(saved: LegacyCharacter): Character {
   const legacy = saved as LegacyCharacter & {
-    fieldSkill?: Strengths;
+    fieldSkill?: Strengths | LegacyStrengths;
     likes?: string;
     dislikes?: string;
   };
@@ -245,7 +258,7 @@ function migrateCharacter(saved: LegacyCharacter): Character {
   delete rest.portraitKey;
   return {
     ...rest,
-    strengths: saved.strengths ?? legacy.fieldSkill ?? { name: "", description: "" },
+    strengths: normalizeStrengths(saved.strengths ?? legacy.fieldSkill),
   };
 }
 

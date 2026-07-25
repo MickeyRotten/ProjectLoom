@@ -22,7 +22,7 @@ function member(id: string, name: string, patch: Partial<Character> = {}): Chara
     description: "",
     personality: "",
     drive: "",
-    strengths: { name: "", description: "" },
+    strengths: "",
     equipment: [],
     ...patch,
   };
@@ -125,7 +125,7 @@ describe("applyDeltas — party ops", () => {
           description: "a darting spark",
           personality: "Impatient, chirpy.",
           drive: "See every locked room in the world.",
-          strengths: { name: "Lockpicking", description: "opens anything" },
+          strengths: "Lockpicking — opens anything",
         },
       ],
     });
@@ -138,10 +138,27 @@ describe("applyDeltas — party ops", () => {
       species: "sprite",
       personality: "Impatient, chirpy.",
       drive: "See every locked room in the world.",
-      strengths: { name: "Lockpicking", description: "opens anything" },
+      strengths: "Lockpicking — opens anything",
     });
     expect(getEntry(scene.roster, "m-navi").inParty).toBe(true);
     expect(getEntry(scene.roster, "m-navi").overrides).toBeUndefined();
+  });
+
+  it("folds a legacy { name, description } strengths emit into one line", () => {
+    const scene = applyDeltas(game(), lib(), {
+      party: [
+        {
+          op: "add",
+          name: "Navi",
+          // A model still writing the pre-collapse pair must not land an
+          // object in the sheet.
+          strengths: { name: "Lockpicking", description: "opens anything" } as never,
+        },
+      ],
+    });
+    expect(scene.characters.find((c) => c.name === "Navi")?.strengths).toBe(
+      "Lockpicking — opens anything",
+    );
   });
 
   it("re-uses a character from an earlier adventure instead of duplicating", () => {

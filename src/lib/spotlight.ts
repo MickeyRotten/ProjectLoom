@@ -46,7 +46,7 @@ export interface SpotlightSignal {
   name: string;
   /** Player addressed this member by name, or addressed the whole group. */
   directlyAddressed: boolean;
-  /** Strengths keywords overlap the message + recent scene context. */
+  /** Strengths text keywords overlap the message + recent scene context. */
   strengthsRelevant: boolean;
   /** currentTurn − lastSpokeTurn. Large ⇒ overdue. */
   turnsSinceLastSpoke: number;
@@ -73,8 +73,8 @@ export function namePattern(name: string): string {
 
 /**
  * Keywords for relevance matching: lowercase tokens of length ≥ 4, minus
- * stopwords. Strengths NAME tokens are always kept (they carry the signal
- * even when short, e.g. "lock", "map").
+ * stopwords. `keepShort` tokens are always kept (they carry the signal even
+ * when short, e.g. an equipment label "rope", "map").
  */
 export function extractKeywords(text: string, keepShort: Iterable<string> = []): Set<string> {
   const keep = new Set(Array.from(keepShort, (w) => w.toLowerCase()));
@@ -121,11 +121,7 @@ export function computeSpotlightSignals(
   const contextKeywords = extractKeywords(`${playerMsg}\n${recentContext}`);
 
   return party.map((m) => {
-    const nameTokens = labelTokens(m.strengths?.name ?? "");
-    const strengthsKeywords = extractKeywords(
-      `${m.strengths?.name ?? ""} ${m.strengths?.description ?? ""}`,
-      nameTokens,
-    );
+    const strengthsKeywords = extractKeywords(m.strengths ?? "");
     const strengthsRelevant = intersects(contextKeywords, strengthsKeywords);
 
     return {
@@ -180,8 +176,8 @@ export interface GearSignal {
 
 /**
  * Equipped items whose keywords overlap the message + recent context.
- * Label tokens always count (they carry the signal even when short, like
- * Strengths name tokens — "rope", "map").
+ * Label tokens always count (they carry the signal even when short —
+ * "rope", "map").
  */
 export function computeRelevantGear(
   playerMsg: string,

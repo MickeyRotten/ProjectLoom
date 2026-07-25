@@ -166,7 +166,7 @@ export function formatSheet(c: Character): string {
     `Appearance: ${c.description || "(blank)"}`,
     `Personality: ${c.personality || "(blank)"}`,
     `Drive: ${c.drive || "(blank)"}`,
-    `Strengths — ${c.strengths.name || "(blank)"}: ${c.strengths.description || "(blank)"}`,
+    `Strengths: ${c.strengths || "(blank)"}`,
     `EQUIPMENT — what this character is currently wearing and carrying:`,
     equipment,
   ].join("\n");

@@ -46,7 +46,7 @@ export function PartyScreen() {
             key={m.id}
             name={m.name || "(unnamed)"}
             sub={m.species}
-            detail={m.strengths.name ? `Strengths — ${m.strengths.name}` : undefined}
+            detail={m.strengths ? `Strengths — ${m.strengths}` : undefined}
             onOpen={() => openMember(m.id)}
             action={{ label: "Kick from Party", onClick: () => setInParty(m.id, false) }}
           />

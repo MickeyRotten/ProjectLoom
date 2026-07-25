@@ -14,7 +14,7 @@ Spotlight stays deterministic + single-call. NO per-member classifier LLM call. 
 
 Per in-party member:
 - **directlyAddressed** — player message contains member name (full OR first token, word-boundary, case-insensitive) OR a group address (`we`, `everyone`, `you all`, `you guys`, `party`, `team`, `group`, `everybody`). HARD override.
-- **strengthsRelevant** — keyword overlap between (message + recent scene context) and the member's Strengths name+description. Soft bias. Extract keywords: lowercase words len≥4, minus stopwords; Strengths NAME tokens count.
+- **strengthsRelevant** — keyword overlap between (message + recent scene context) and the member's Strengths text (one free-text line). Soft bias. Extract keywords: lowercase words len≥4, minus stopwords.
 - **turnsSinceLastSpoke** = currentTurn − lastSpokeTurn. Soft bias.
 
 ## Prompt block

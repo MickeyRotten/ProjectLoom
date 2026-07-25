@@ -107,9 +107,7 @@ function buildSystemContext(
       pc.description,
       pc.personality ? `Personality: ${pc.personality}` : "",
       pc.drive ? `Drive: ${pc.drive}` : "",
-      pc.strengths.name
-        ? `Strengths — ${pc.strengths.name}: ${pc.strengths.description}`
-        : "",
+      pc.strengths ? `Strengths: ${pc.strengths}` : "",
       formatEquipment(pc.equipment),
     ].filter(Boolean);
     parts.push(lines.join("\n"));
@@ -159,9 +157,7 @@ export function formatPartyRoster(members: PartyMember[]): string {
       `- ${m.name} (${m.species})${m.description ? ` — ${m.description}` : ""}`,
       m.personality ? `  Personality: ${m.personality}` : "",
       m.drive ? `  Drive: ${m.drive}` : "",
-      m.strengths.name
-        ? `  Strengths — ${m.strengths.name}: ${m.strengths.description}`
-        : "",
+      m.strengths ? `  Strengths: ${m.strengths}` : "",
       m.equipment.length ? indent(formatEquipment(m.equipment)) : "",
     ].filter(Boolean);
     return lines.join("\n");
@@ -298,9 +294,9 @@ function buildOutputProtocol(settings: Settings): string {
     "JSON fields (include only what changed this turn):",
     '- "location", "weather", "day": the current scene (strings / number).',
     optionsLine,
-    `- "party": array of { "op": "add|update|remove", "name", "species", "description", "personality", "drive", "strengths": { "name", "description" } }. ${appearanceRule} Add a member only when they join; remove when they leave.`,
+    `- "party": array of { "op": "add|update|remove", "name", "species", "description", "personality", "drive", "strengths" }. ${appearanceRule} Add a member only when they join; remove when they leave.`,
     '- On a party "remove", you may add "status": "departed" (they walked away — they can rejoin later) or "status": "fallen" (they died — never write them back into the party). Removing never deletes anyone; they simply stop travelling with the player.',
-    '- On every party "add", ALWAYS write "personality", "drive" and "strengths" — never omit them and never leave them blank. "personality" is temperament and speech habits in a phrase or two; "drive" is the one thing they want; "strengths" is their standout capability as a short name plus one sentence of what it lets them do.',
+    '- On every party "add", ALWAYS write "personality", "drive" and "strengths" — never omit them and never leave them blank. "personality" is temperament and speech habits in a phrase or two; "drive" is the one thing they want; "strengths" is one sentence naming their standout capability and what it lets them do.',
     '- "inventory": array of { "op": "add|update|remove", "label", "description", "quantity" }.',
     '- Gold is the permanent currency item in "inventory" — never remove it. When the player gains or spends money, emit { "op": "update", "label": "Gold", "quantity": <new total> }.',
     '- "quests": array of { "op": "add|update|remove", "label", "description", "reward", "status": "active"|"done" }. Update a quest with status "done" when the player completes it.',

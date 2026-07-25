@@ -17,7 +17,7 @@ export function CharacterRow({
   sub: string;
   /** Standing in this adventure; "active" renders no chip. */
   status?: CharacterStatus;
-  /** Optional second line (e.g. Strengths). */
+  /** Optional second line (e.g. Strengths); clamped to two lines. */
   detail?: string;
   action?: { label: string; disabled?: boolean; onClick: () => void };
   onOpen: () => void;
@@ -36,7 +36,7 @@ export function CharacterRow({
         {status && status !== "active" && (
           <p className="mt-1 text-xs uppercase tracking-widest opacity-60">{status}</p>
         )}
-        {detail && <p className="mt-1 text-sm opacity-80">{detail}</p>}
+        {detail && <p className="mt-1 line-clamp-2 text-sm opacity-80">{detail}</p>}
       </button>
       {action && (
         <button

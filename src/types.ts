@@ -6,9 +6,16 @@
 
 export type Op = "add" | "update" | "remove";
 
-export interface Strengths {
-  name: string;
-  description: string;
+/**
+ * A character's standout capability — one free-text description. Saves written
+ * before this collapsed from `{ name, description }` migrate in `defaults.ts`.
+ */
+export type Strengths = string;
+
+/** The pre-collapse shape, kept only so migration can read old saves. */
+export interface LegacyStrengths {
+  name?: string;
+  description?: string;
 }
 
 export interface Equipment {
@@ -142,8 +149,10 @@ export interface Reversal {
 /**
  * A character record as written before the Characters/Party split, when party
  * state lived on the character itself. Only migration + legacy reversal read it.
+ * `strengths` may still be the pre-collapse `{ name, description }` object.
  */
-export type LegacyCharacter = Character & {
+export type LegacyCharacter = Omit<Character, "strengths"> & {
+  strengths?: Strengths | LegacyStrengths;
   lastSpokeTurn?: number;
   inParty?: boolean;
   portraitKey?: string;

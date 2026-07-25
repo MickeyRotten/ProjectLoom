@@ -25,7 +25,7 @@ function member(id: string, name: string, patch: Partial<Character> = {}): Chara
     description: "plain",
     personality: "calm",
     drive: "wander",
-    strengths: { name: "Tracking", description: "reads a trail" },
+    strengths: "Tracking — reads a trail",
     equipment: [],
     ...patch,
   };

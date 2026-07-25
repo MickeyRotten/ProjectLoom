@@ -20,7 +20,7 @@ function member(patch: Partial<PartyMember> & { id: string; name: string }): Par
     description: "",
     personality: "",
     drive: "",
-    strengths: { name: "", description: "" },
+    strengths: "",
     equipment: [],
     lastSpokeTurn: 0,
     inParty: true,
@@ -32,7 +32,7 @@ function member(patch: Partial<PartyMember> & { id: string; name: string }): Par
 const navi = member({
   id: "m-navi",
   name: "Navi",
-  strengths: { name: "Lockpicking", description: "Opens any lock, door, or mechanism." },
+  strengths: "Lockpicking — opens any lock, door, or mechanism.",
 });
 const riley = member({ id: "m-riley", name: "Riley Vance" });
 

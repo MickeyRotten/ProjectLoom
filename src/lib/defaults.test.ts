@@ -119,7 +119,7 @@ describe("splitLegacyGame", () => {
       ],
     };
     const c = splitLegacyGame(legacy)!.characters[0];
-    expect(c.strengths).toEqual({ name: "Superhuman Strength", description: "lifts anything" });
+    expect(c.strengths).toBe("Superhuman Strength — lifts anything");
     expect(c).not.toHaveProperty("fieldSkill");
     expect(c).not.toHaveProperty("likes");
     expect(c).not.toHaveProperty("dislikes");
@@ -127,7 +127,21 @@ describe("splitLegacyGame", () => {
 
   it("gives a character with neither field a blank strengths", () => {
     const legacy = { characters: [{ ...defaultPC(), strengths: undefined }] };
-    expect(splitLegacyGame(legacy)!.characters[0].strengths).toEqual({ name: "", description: "" });
+    expect(splitLegacyGame(legacy)!.characters[0].strengths).toBe("");
+  });
+
+  it("folds a legacy { name, description } strengths pair into one line", () => {
+    const legacy = {
+      characters: [
+        { ...defaultPC(), strengths: { name: "Tracking", description: "reads a trail" } },
+      ],
+    };
+    expect(splitLegacyGame(legacy)!.characters[0].strengths).toBe("Tracking — reads a trail");
+  });
+
+  it("keeps a legacy strengths that only had a name", () => {
+    const legacy = { characters: [{ ...defaultPC(), strengths: { name: "Tracking" } }] };
+    expect(splitLegacyGame(legacy)!.characters[0].strengths).toBe("Tracking");
   });
 
   it("keeps an existing Gold row (and its quantity) on migrate", () => {

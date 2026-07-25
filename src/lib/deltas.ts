@@ -8,7 +8,7 @@ import type {
   Quest,
   RosterEntry,
 } from "../types";
-import { isGold } from "./defaults";
+import { isGold, normalizeStrengths } from "./defaults";
 import { getEntry, mergeOverrides, partyFull, setEntry } from "./roster";
 
 /**
@@ -140,7 +140,9 @@ function overridesOf(d: PartyDelta): CharacterOverride {
   if (d.description !== undefined) o.description = d.description;
   if (d.personality !== undefined) o.personality = d.personality;
   if (d.drive !== undefined) o.drive = d.drive;
-  if (d.strengths !== undefined) o.strengths = d.strengths;
+  // Tolerant: a model still emitting the old `{ name, description }` pair is
+  // folded into one line rather than writing an object into the sheet.
+  if (d.strengths !== undefined) o.strengths = normalizeStrengths(d.strengths);
   return o;
 }
 
@@ -171,7 +173,7 @@ function makeCharacter(d: PartyDelta, id: string): Character {
     description: d.description ?? "",
     personality: d.personality ?? "",
     drive: d.drive ?? "",
-    strengths: d.strengths ?? { name: "", description: "" },
+    strengths: normalizeStrengths(d.strengths),
     equipment: [],
   };
 }

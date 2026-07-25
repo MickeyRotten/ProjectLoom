@@ -57,7 +57,7 @@ loop. The model returns **narration prose followed by one machine-read JSON bloc
   "weather": "windy",
   "day": 37,
   "options": ["Approach the ruins", "Signal the party to hold", "Scan the treeline"],
-  "party": [ { "op":"add", "name":"Riley", "species":"human", "description":"...", "personality":"...", "drive":"...", "strengths": {"name":"...","description":"..."} } ],
+  "party": [ { "op":"add", "name":"Riley", "species":"human", "description":"...", "personality":"...", "drive":"...", "strengths":"..." } ],
   "inventory": [ { "op":"add", "label":"Cracked Compass", "description":"...", "quantity":1 } ],
   "quests": [ { "op":"add", "label":"Reach the Old Settlement", "description":"...", "reward":"..." } ],
   "spoke": ["Navi"]
@@ -129,7 +129,7 @@ Settings {                    // global, edited in Settings
 Character[]                   // GLOBAL cast library — outlives every adventure
 Character {
   id, role, name, species, description, personality, drive,
-  strengths: { name, description },
+  strengths,                    // one free-text line
   equipment: { label, description }[],   // simple text fields, no catalog
   useCustomPortraitPrompt?, customPortraitPrompt?
 }
@@ -182,7 +182,7 @@ Everything downstream — prompt, spotlight, images, UI — consumes resolved
 - **No world/adventure split beyond this.** Editing anything in Settings/panels
   edits the active game (matches "edit everything, no Edit mode"); "Save"/"Load"
   snapshot/restore slots.
-- **Strengths** carries Wayward's writing guidance as a placeholder in the editor (teaches the format).
+- **Strengths** is a single free-text line (capability + what it lets them do); the editor carries writing guidance as a placeholder.
 
 ---
 

@@ -44,7 +44,7 @@ function play(turn: number, content: string): Message {
 function member(patch: Partial<Character> & { id: string; name: string }): Character {
   return {
     role: "member", species: "human", description: "", personality: "", drive: "",
-    strengths: { name: "", description: "" }, equipment: [],
+    strengths: "", equipment: [],
     ...patch,
   };
 }
@@ -113,7 +113,7 @@ describe("buildMessages — ordering", () => {
 describe("party roster + spotlight", () => {
   const navi = member({
     id: "m-navi", name: "Navi", species: "sprite", description: "a darting spark",
-    strengths: { name: "Lockpicking", description: "opens any lock" },
+    strengths: "Lockpicking — opens any lock",
   });
 
   const cast = [defaultPC(), navi];
@@ -123,7 +123,7 @@ describe("party roster + spotlight", () => {
     const msgs = build({ settings, game: g, characters: cast, playerMessage: "go" });
     expect(msgs[0].content).toContain("PARTY — in your company");
     expect(msgs[0].content).toContain("Navi (sprite)");
-    expect(msgs[0].content).toContain("Strengths — Lockpicking");
+    expect(msgs[0].content).toContain("Strengths: Lockpicking — opens any lock");
   });
 
   it("injects a spotlight block after the system context, before history", () => {

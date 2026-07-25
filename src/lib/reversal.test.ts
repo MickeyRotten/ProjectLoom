@@ -130,7 +130,7 @@ describe("applyReversal round-trips", () => {
         description: "a darting spark",
         personality: "",
         drive: "",
-        strengths: { name: "", description: "" },
+        strengths: "",
         equipment: [],
       },
     ];
@@ -175,7 +175,7 @@ describe("applyReversal round-trips", () => {
           description: "",
           personality: "",
           drive: "",
-          strengths: { name: "", description: "" },
+          strengths: "",
           equipment: [],
           inParty: true,
           lastSpokeTurn: 5,
