@@ -14,7 +14,7 @@ export const btn =
   "border-2 border-ink px-3 py-2 uppercase tracking-widest active:bg-ink active:text-paper disabled:opacity-40";
 
 export const btnSmall =
-  "border-2 border-ink px-2 py-1 text-xs uppercase tracking-widest active:bg-ink active:text-paper";
+  "border-2 border-ink px-2 py-1 text-xs uppercase tracking-widest active:bg-ink active:text-paper disabled:opacity-40";
 
 export function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (

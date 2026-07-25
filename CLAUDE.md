@@ -86,6 +86,9 @@ whole-stream restart; mobile polish — overscroll lock; signed-release APK CI a
 `android.yml`)
 done. **MVP complete.** Post-MVP: character-sheet **Auto-Update** (`autoUpdate.ts` + `AutoUpdateModal`
 — appearance re-dressed from Equipment, personality/drive re-read from name-mentioning beats).
+Post-MVP also: custom character art (`download.ts` — member-sheet **Upload Image**
+replaces a portrait with a device file through the same 1-bit pass; **Download Image**
+saves it out via Web Share → `<a download>` fallback).
 Deferred (post-MVP): history summarization, NPC/item art, TTS,
 weather animation, multi-world. Track scope in `DESIGN.md → Build Phases`.
 

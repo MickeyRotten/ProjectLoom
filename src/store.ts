@@ -37,10 +37,12 @@ import {
   generateImage,
   PORTRAIT_PIXEL_WIDTH,
   portraitKey,
+  prepareUploadedImage,
   refImageToDataUrl,
   toOneBitBlob,
   type GenerateImageOptions,
 } from "./lib/images";
+import { imageFileName, saveBlobAsFile } from "./lib/download";
 
 /** Full-screen overlay currently shown over the chat. */
 export type Screen =
@@ -159,6 +161,10 @@ export interface LoomStore {
   /** Edit the cached image with a text instruction (image + text → image). */
   editBanner: (instruction: string) => void;
   editPortrait: (memberId: string, instruction: string) => void;
+  /** Replace a member's portrait with a user-supplied image file. */
+  uploadPortrait: (memberId: string, file: Blob) => Promise<void>;
+  /** Save a member's portrait to the device (share sheet / download). */
+  downloadPortrait: (memberId: string) => Promise<void>;
 }
 
 /** Latest narrator prose (for banner scene flavour), else the opening beat. */
@@ -178,6 +184,24 @@ export const useStore = create<LoomStore>((set, get) => {
   /** Stored pixel width for a cache key — banners are wider than portraits. */
   const pixelWidth = (key: string) =>
     key.startsWith("banner:") ? BANNER_PIXEL_WIDTH : PORTRAIT_PIXEL_WIDTH;
+
+  /**
+   * Expose a blob under `key` as an object URL in `images`, revoking whatever
+   * URL it replaces — every image path (generate / edit / upload) ends here.
+   */
+  function publishImage(key: string, blob: Blob) {
+    const url = URL.createObjectURL(blob);
+    const prev = get().images[key];
+    if (prev) URL.revokeObjectURL(prev);
+    set({ images: { ...get().images, [key]: url } });
+  }
+
+  /** Drop `key` out of the in-flight set. */
+  function clearPending(key: string) {
+    const imgPending = { ...get().imgPending };
+    delete imgPending[key];
+    set({ imgPending });
+  }
 
   /**
    * Cache-then-generate an image blob under `key`, exposing it as an object URL
@@ -202,16 +226,11 @@ export const useStore = create<LoomStore>((set, get) => {
         blob = await toOneBitBlob(blob, pixelWidth(key), get().settings.ditherMode);
         await saveImage(key, blob);
       }
-      const url = URL.createObjectURL(blob);
-      const prev = get().images[key];
-      if (prev) URL.revokeObjectURL(prev);
-      set({ images: { ...get().images, [key]: url } });
+      publishImage(key, blob);
     } catch {
       // Non-fatal — a failed image never blocks the turn (DESIGN.md).
     } finally {
-      const imgPending = { ...get().imgPending };
-      delete imgPending[key];
-      set({ imgPending });
+      clearPending(key);
     }
   }
 
@@ -240,18 +259,13 @@ export const useStore = create<LoomStore>((set, get) => {
       });
       blob = await toOneBitBlob(blob, pixelWidth(key), get().settings.ditherMode);
       await saveImage(key, blob);
-      const url = URL.createObjectURL(blob);
-      const prev = get().images[key];
-      if (prev) URL.revokeObjectURL(prev);
-      set({ images: { ...get().images, [key]: url } });
+      publishImage(key, blob);
     } catch {
       // Non-fatal for the turn, but a swallowed edit looks like nothing
-      // happened — flag it so the UI can show a small "edit failed" indicator.
+      // happened — flag it so the UI can show a small "image failed" indicator.
       set({ imgError: { ...get().imgError, [key]: true } });
     } finally {
-      const imgPending = { ...get().imgPending };
-      delete imgPending[key];
-      set({ imgPending });
+      clearPending(key);
     }
   }
 
@@ -868,6 +882,44 @@ export const useStore = create<LoomStore>((set, get) => {
 
   editPortrait(memberId, instruction) {
     void editImage(portraitKey(memberId), instruction);
+  },
+
+  async uploadPortrait(memberId, file) {
+    const key = portraitKey(memberId);
+    if (get().imgPending[key]) return;
+    set({
+      imgPending: { ...get().imgPending, [key]: true },
+      imgError: { ...get().imgError, [key]: false },
+    });
+    try {
+      // Same downscale/quantize pass a generated portrait gets, so an upload
+      // sits in the 1-bit look (and stays small in IndexedDB).
+      const blob = await prepareUploadedImage(
+        file,
+        PORTRAIT_PIXEL_WIDTH,
+        get().settings.ditherMode,
+      );
+      await saveImage(key, blob);
+      publishImage(key, blob);
+    } catch {
+      // An unreadable file just doesn't replace the portrait — flagged so the
+      // sheet can say something happened.
+      set({ imgError: { ...get().imgError, [key]: true } });
+    } finally {
+      clearPending(key);
+    }
+  },
+
+  async downloadPortrait(memberId) {
+    const key = portraitKey(memberId);
+    const blob = await loadImage(key);
+    if (!blob) return;
+    const name = get().game.characters.find((c) => c.id === memberId)?.name ?? "";
+    try {
+      await saveBlobAsFile(blob, imageFileName(name));
+    } catch {
+      set({ imgError: { ...get().imgError, [key]: true } });
+    }
   },
   };
 });
