@@ -90,12 +90,34 @@ export function presentMembers(
   return pc ? [pc, ...party] : party;
 }
 
-export function partyCount(roster: RosterEntry[]): number {
-  return roster.reduce((n, e) => n + (e.inParty ? 1 : 0), 0);
+/**
+ * How many party slots are taken. Counted through `partyMembers` on purpose, so
+ * the count is the same predicate as the list — an entry the library can no
+ * longer resolve (a reversal snapshot or a restored save can name a character
+ * deleted since) must not hold a slot that shows nobody.
+ */
+export function partyCount(characters: Character[], roster: RosterEntry[]): number {
+  return partyMembers(characters, roster).length;
 }
 
-export function partyFull(roster: RosterEntry[]): boolean {
-  return partyCount(roster) >= PARTY_LIMIT;
+export function partyFull(characters: Character[], roster: RosterEntry[]): boolean {
+  return partyCount(characters, roster) >= PARTY_LIMIT;
+}
+
+/**
+ * Drop entries whose character the library no longer has. Reversal snapshots
+ * predate a deletion, so undoing a turn taken before one resurrects that
+ * character's entry; nothing can resolve it, so it is dead weight in the
+ * adventure — and in every reversal captured after it.
+ *
+ * Returns the SAME array reference when nothing changed (see `setEntry`).
+ */
+export function pruneRoster(
+  characters: Character[],
+  roster: RosterEntry[],
+): RosterEntry[] {
+  const out = roster.filter((e) => characters.some((c) => c.id === e.id));
+  return out.length === roster.length ? roster : out;
 }
 
 /**

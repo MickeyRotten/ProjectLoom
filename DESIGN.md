@@ -170,6 +170,12 @@ Everything downstream — prompt, spotlight, images, UI — consumes resolved
   Save slots snapshot the *adventure*, never the cast, so restoring an old slot
   can't delete a character authored since. A slot naming a since-deleted
   character degrades to a smaller party rather than breaking.
+- **The party cap is measured on resolved members, never raw entries.**
+  `partyCount`/`partyFull` go through `partyMembers`, so an entry nothing can
+  resolve — a save slot or an **undo** restoring a snapshot taken before the
+  player deleted that character — can't hold a slot that shows nobody
+  ("Party Full" over an empty seat). Undo also `pruneRoster`s the restored
+  roster so the dead entry doesn't persist.
 - **Player edits the base; the story writes overrides.** A sheet edit the player
   saves writes the global character and retires the override on the fields they
   touched (editing adopts the story's change). Narrator `party` deltas and
@@ -196,9 +202,8 @@ Layout top-to-bottom (the reference screenshot is a **style guide, not literal t
 ```
 ┌──────────────────────────────────────┐
 │ THE DUSTY PATH               Day 37   │  header: location · day
-│ ┌──────────────────────────────────┐ │
-│ │        location banner (1-bit)    │ │  generated banner
-│ └──────────────────────────────────┘ │
+│         location banner (1-bit)       │  generated banner — full-bleed,
+│──────────────────────────────────────│  flush under the header
 │  narration prose (short, scrolls)     │  message log
 │  ...                                  │
 │  1. Approach the ruins                │  AI options — in the chat view, under

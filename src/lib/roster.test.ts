@@ -7,7 +7,9 @@ import {
   hasOverrides,
   mergeOverrides,
   partyCount,
+  partyFull,
   partyMembers,
+  pruneRoster,
   playerCharacter,
   presentMembers,
   resolve,
@@ -86,8 +88,39 @@ describe("partyMembers", () => {
     expect(partyMembers(chars, [entry("pc", { inParty: true })])).toEqual([]);
   });
 
-  it("counts the party without resolving it", () => {
-    expect(partyCount([entry("a", { inParty: true }), entry("b")])).toBe(1);
+  it("counts only in-party members", () => {
+    expect(partyCount(chars, [entry("a", { inParty: true }), entry("b")])).toBe(1);
+  });
+
+  it("never counts an entry the library can no longer resolve", () => {
+    // Undo restores a pre-turn roster snapshot taken before the player deleted
+    // someone; the leftover entry must not hold a slot nothing can fill.
+    const roster = [entry("a", { inParty: true }), entry("gone", { inParty: true })];
+    expect(partyCount(chars, roster)).toBe(1);
+    expect(partyCount(chars, roster)).toBe(partyMembers(chars, roster).length);
+  });
+
+  it("never counts the PC as a party slot", () => {
+    expect(partyCount(chars, [entry("pc", { inParty: true })])).toBe(0);
+  });
+
+  it("is full only at PARTY_LIMIT resolvable members", () => {
+    const ghosts = ["x", "y", "z"].map((id) => entry(id, { inParty: true }));
+    expect(partyFull(chars, ghosts)).toBe(false);
+  });
+});
+
+describe("pruneRoster", () => {
+  const chars = [defaultPC(), member("a", "Ada")];
+
+  it("drops entries whose character the library no longer has", () => {
+    const roster = [entry("a", { inParty: true }), entry("gone", { inParty: true })];
+    expect(pruneRoster(chars, roster).map((e) => e.id)).toEqual(["a"]);
+  });
+
+  it("returns the same reference when every entry still resolves", () => {
+    const roster = [entry("a", { inParty: true }), entry("pc")];
+    expect(pruneRoster(chars, roster)).toBe(roster);
   });
 });
 

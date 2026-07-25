@@ -37,14 +37,15 @@ type MemberDraft = Pick<
  */
 export function MemberSheet() {
   const id = useStore((s) => s.memberId);
-  const base = useStore((s) => s.characters.find((c) => c.id === id));
+  const characters = useStore((s) => s.characters);
+  const base = characters.find((c) => c.id === id);
   const roster = useStore((s) => s.game.roster);
   const update = useStore((s) => s.updateCharacter);
   const removeCharacter = useStore((s) => s.removeCharacter);
   const setInParty = useStore((s) => s.setInParty);
   const setStatus = useStore((s) => s.setStatus);
   const revertOverrides = useStore((s) => s.revertOverrides);
-  const partyFull = isPartyFull(roster);
+  const partyFull = isPartyFull(characters, roster);
   const ensurePortrait = useStore((s) => s.ensurePortrait);
   const regeneratePortrait = useStore((s) => s.regeneratePortrait);
   const editPortrait = useStore((s) => s.editPortrait);

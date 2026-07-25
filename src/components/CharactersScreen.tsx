@@ -27,7 +27,7 @@ export function CharactersScreen() {
   const [filter, setFilter] = useState("");
 
   const resolved = useMemo(() => allMembers(characters, roster), [characters, roster]);
-  const inParty = partyCount(roster);
+  const inParty = partyCount(characters, roster);
   const full = inParty >= PARTY_LIMIT;
 
   const q = filter.trim().toLowerCase();

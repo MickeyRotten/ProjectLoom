@@ -243,6 +243,23 @@ describe("applyDeltas — party ops", () => {
     expect(getEntry(scene.roster, "m-dee").inParty).toBe(false);
   });
 
+  it("does not let an unresolvable entry hold a party slot", () => {
+    // An entry restored by undo for a character deleted since counts for
+    // nothing — the cap is measured against who actually travels with you.
+    const g = {
+      ...game(),
+      roster: [{ id: "gone", inParty: true, lastSpokeTurn: 0, status: "active" as const }],
+    };
+    const scene = applyDeltas(g, lib(), {
+      party: [
+        { op: "add", name: "Ada" },
+        { op: "add", name: "Bel" },
+        { op: "add", name: "Cid" },
+      ],
+    });
+    expect(partyMembers(scene.characters, scene.roster)).toHaveLength(3);
+  });
+
   it("does not add a waiting character when the party is full", () => {
     const first = applyDeltas(game(), lib(), {
       party: [
