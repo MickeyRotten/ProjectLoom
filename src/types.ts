@@ -60,6 +60,12 @@ export interface Note {
   title: string;
   keywords: string[];
   content: string;
+  /**
+   * Always inject this note, regardless of keyword matches — for setting-wide
+   * lore the narrator should never lose. Optional: saves written before the
+   * flag existed load as keyword-matched notes.
+   */
+  permanent?: boolean;
 }
 
 export type MessageRole = "player" | "narrator";

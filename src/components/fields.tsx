@@ -92,6 +92,40 @@ export function AreaField({
 }
 
 /**
+ * Labelled checkbox — a boolean field in the same 1-bit system. Read-only mode
+ * renders the state as text so it reads like the other blocks.
+ */
+export function ToggleField({
+  label,
+  value,
+  onChange,
+  hint,
+  editing = true,
+}: {
+  label: string;
+  value: boolean;
+  onChange: (v: boolean) => void;
+  hint?: string;
+  editing?: boolean;
+}) {
+  if (!editing) return <ReadBlock label={label} value={value ? "Yes" : "No"} />;
+  return (
+    <label className="flex items-start gap-2">
+      <input
+        type="checkbox"
+        checked={value}
+        onChange={(e) => onChange(e.target.checked)}
+        className="mt-0.5 h-4 w-4 shrink-0 accent-ink"
+      />
+      <span className="block">
+        <span className="block uppercase tracking-widest text-sm">{label}</span>
+        {hint && <span className="block text-xs uppercase tracking-widest opacity-60">{hint}</span>}
+      </span>
+    </label>
+  );
+}
+
+/**
  * Edit-mode toolbar: an "Edit" toggle when read-only, and "Save Changes" /
  * "Discard Changes" while editing. Rendered by the gated screens (Quests,
  * Inventory, Character sheet).

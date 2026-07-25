@@ -1,11 +1,12 @@
 import { useStore } from "../store";
 import { OverlayHeader } from "./OverlayHeader";
-import { TextField, AreaField, btn, btnSmall } from "./fields";
+import { TextField, AreaField, ToggleField, btn, btnSmall } from "./fields";
 
 /**
  * World Notes (DESIGN.md → Menu): the single-category lorebook. Each note's
  * title + comma-separated keywords are matched against recent turns; matches
- * inject into the prompt (see lib/worldNotes.ts). Fully editable in place.
+ * inject into the prompt (see lib/worldNotes.ts). A note marked Permanent
+ * skips matching and injects on every turn. Fully editable in place.
  */
 export function WorldNotesScreen() {
   const notes = useStore((s) => s.game.worldNotes);
@@ -30,19 +31,29 @@ export function WorldNotesScreen() {
               placeholder="The Old Well"
               onChange={(v) => updateNote(n.id, { title: v })}
             />
-            <TextField
-              label="Extra Keywords (comma-separated)"
-              value={n.keywords.join(", ")}
-              placeholder="well, water, aquifer"
-              onChange={(v) =>
-                updateNote(n.id, {
-                  keywords: v
-                    .split(",")
-                    .map((k) => k.trim())
-                    .filter(Boolean),
-                })
-              }
+            <ToggleField
+              label="Permanent"
+              hint="Always injected — no keyword needed"
+              value={Boolean(n.permanent)}
+              onChange={(v) => updateNote(n.id, { permanent: v })}
             />
+            {/* Keywords only matter for matched notes — a permanent note is
+                injected every turn regardless (they stay stored either way). */}
+            {!n.permanent && (
+              <TextField
+                label="Extra Keywords (comma-separated)"
+                value={n.keywords.join(", ")}
+                placeholder="well, water, aquifer"
+                onChange={(v) =>
+                  updateNote(n.id, {
+                    keywords: v
+                      .split(",")
+                      .map((k) => k.trim())
+                      .filter(Boolean),
+                  })
+                }
+              />
+            )}
             <AreaField
               label="Content"
               value={n.content}

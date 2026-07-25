@@ -6,6 +6,9 @@ import type { Note } from "../types";
  * its keywords — or its title, an implicit keyword — appears in the scan text
  * (the new player message + the last few beats).
  *
+ * A note flagged `permanent` skips matching entirely and is always injected —
+ * the standing lore the narrator must never lose.
+ *
  * Pure + tested: this is the drift guard for lore injection.
  */
 
@@ -29,13 +32,19 @@ function keywordHits(keyword: string, text: string): boolean {
 }
 
 /**
- * Notes whose title or keywords appear in `scanText`, in original order,
- * de-duplicated. A note with no usable keywords never matches.
+ * Permanent notes plus the notes whose title or keywords appear in `scanText`,
+ * in original order, de-duplicated. A non-permanent note with no usable
+ * keywords never matches; a permanent note needs no keywords at all.
  */
 export function matchWorldNotes(notes: Note[], scanText: string): Note[] {
-  if (!scanText.trim()) return [];
+  const scannable = scanText.trim().length > 0;
   const matched: Note[] = [];
   for (const note of notes) {
+    if (note.permanent) {
+      matched.push(note);
+      continue;
+    }
+    if (!scannable) continue;
     const keys = noteKeywords(note);
     if (!keys.length) continue;
     if (keys.some((k) => keywordHits(k, scanText))) matched.push(note);

@@ -52,6 +52,22 @@ describe("matchWorldNotes", () => {
   it("returns nothing for empty scan text", () => {
     expect(matchWorldNotes([well], "   ")).toEqual([]);
   });
+
+  it("always includes a permanent note, even with no keyword hit", () => {
+    const law = note({ id: "n4", title: "The Ash Law", permanent: true, content: "no fires" });
+    expect(matchWorldNotes([law, cult], "I climb the ridge")).toEqual([law]);
+  });
+
+  it("includes a permanent note with no keywords at all, and for empty scan text", () => {
+    const law = note({ id: "n4", title: "   ", permanent: true, content: "no fires" });
+    expect(matchWorldNotes([law], "   ")).toEqual([law]);
+  });
+
+  it("lists permanent and matched notes together in note order, without duplicates", () => {
+    const law = note({ id: "n4", title: "The Ash Law", permanent: true, keywords: ["law"] });
+    // "law" would also match by keyword — the permanent branch must not double it.
+    expect(matchWorldNotes([well, law, cult], "the law of the well")).toEqual([well, law]);
+  });
 });
 
 describe("formatWorldNotesBlock", () => {

@@ -406,7 +406,7 @@ export const useStore = create<LoomStore>((set, get) => {
 
   addNote() {
     const g = get().game;
-    const note: Note = { id: uid(), title: "", keywords: [], content: "" };
+    const note: Note = { id: uid(), title: "", keywords: [], content: "", permanent: false };
     const game = { ...g, worldNotes: [...g.worldNotes, note] };
     set({ game });
     void saveActiveGame(game);
