@@ -114,14 +114,14 @@ const CHARACTER_FIELDS: InstrSpec[] = [
     label: "Character Creation",
     def: DEFAULT_CHARACTER_CREATION_INSTRUCTIONS,
     rows: 4,
-    hint: "What the narrator must fill in when it introduces someone. This is its only chance — sheets freeze afterwards.",
+    hint: "What the narrator must fill in when it introduces someone — sheet fields and their starting gear. This is its only chance; sheets freeze afterwards.",
   },
   {
     key: "characterUpdateInstructions",
     label: "Sheet Updates",
     def: DEFAULT_CHARACTER_UPDATE_INSTRUCTIONS,
     rows: 4,
-    hint: "The freeze rule. Appearance, personality, drive and strengths are ignored after creation whatever this says — this just stops the narrator trying.",
+    hint: "The freeze rule. Appearance, personality, drive, strengths, flaws and equipment are ignored after creation whatever this says — this just stops the narrator trying.",
   },
   {
     key: "standingInstructions",
@@ -242,7 +242,7 @@ function CharactersSection() {
       <p className="border-2 border-ink p-3 text-sm">
         A character's sheet is written once, when the story first introduces them, and
         is frozen after that: the narrator can move them between standings, but their
-        appearance, personality, drive and strengths stay yours. Use the member sheet's
+        appearance, personality, drive, strengths, flaws and equipment stay yours. Use the member sheet's
         Auto-Update to re-read a sheet from the story on purpose.
       </p>
       {CHARACTER_FIELDS.map((f) => (

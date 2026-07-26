@@ -10,6 +10,7 @@ import {
   isInParty,
   mergeOverrides,
   normalizeEntry,
+  strengthsText,
   normalizeRoster,
   npcMembers,
   partedMembers,
@@ -36,7 +37,8 @@ function member(id: string, name: string, patch: Partial<Character> = {}): Chara
     description: "plain",
     personality: "calm",
     drive: "wander",
-    strengths: { name: "Tracking", description: "reads a trail" },
+    strengths: "Tracking — reads a trail",
+    flaws: "Trusts nobody",
     equipment: [],
     ...patch,
   };
@@ -227,6 +229,16 @@ describe("normalizeEntry / normalizeRoster", () => {
     expect(normalizeEntry({ id: "a", inParty: true, overrides }).overrides).toBe(overrides);
   });
 
+  it("folds a legacy labelled strengths override into one line", () => {
+    const overrides = { strengths: { name: "Tracking", description: "reads a trail" } };
+    const entry = normalizeEntry({
+      id: "a",
+      standing: "active",
+      overrides: overrides as never,
+    });
+    expect(entry.overrides).toEqual({ strengths: "Tracking — reads a trail" });
+  });
+
   it("returns the SAME array when every entry is already current", () => {
     // Loading a modern save must not look like a change to captureReversal.
     const roster = [entry("a", { standing: "active" }), entry("b")];
@@ -328,5 +340,28 @@ describe("dropEntry", () => {
   it("returns the same array when the id is unknown", () => {
     const roster = [entry("a")];
     expect(dropEntry(roster, "zzz")).toBe(roster);
+  });
+});
+
+describe("strengthsText", () => {
+  it("passes a string through unchanged", () => {
+    expect(strengthsText("Lockpicking — opens anything")).toBe("Lockpicking — opens anything");
+  });
+
+  it("joins a legacy { name, description } pair with a dash", () => {
+    expect(strengthsText({ name: "Tracking", description: "reads a trail" })).toBe(
+      "Tracking — reads a trail",
+    );
+  });
+
+  it("uses whichever half of a legacy pair is filled in", () => {
+    expect(strengthsText({ name: "Tracking", description: "" })).toBe("Tracking");
+    expect(strengthsText({ name: "", description: "reads a trail" })).toBe("reads a trail");
+  });
+
+  it("reads anything else as blank", () => {
+    expect(strengthsText(undefined)).toBe("");
+    expect(strengthsText(null)).toBe("");
+    expect(strengthsText(7)).toBe("");
   });
 });

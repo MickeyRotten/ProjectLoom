@@ -12,7 +12,7 @@ import { extractFirstJsonObject, parseJsonTolerant } from "./loomBlock";
  *     what the character wears/carries is rewritten to match their Equipment.
  *   - personality → from the latest beats that mention the character by name.
  *   - drive       → same context, same rule.
- * Strengths and Equipment are deliberately never touched — the player owns them
+ * Strengths, Flaws and Equipment are deliberately never touched — the player owns them
  * (equipment is what appearance reads *from*, so letting the model rewrite both
  * would close a feedback loop on itself).
  *
@@ -166,7 +166,8 @@ export function formatSheet(c: Character): string {
     `Appearance: ${c.description || "(blank)"}`,
     `Personality: ${c.personality || "(blank)"}`,
     `Drive: ${c.drive || "(blank)"}`,
-    `Strengths — ${c.strengths.name || "(blank)"}: ${c.strengths.description || "(blank)"}`,
+    `Strengths: ${c.strengths || "(blank)"}`,
+    `Flaws: ${c.flaws || "(blank)"}`,
     `EQUIPMENT — what this character is currently wearing and carrying:`,
     equipment,
   ].join("\n");

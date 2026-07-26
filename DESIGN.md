@@ -57,7 +57,7 @@ loop. The model returns **narration prose followed by one machine-read JSON bloc
   "weather": "windy",
   "day": 37,
   "options": ["Approach the ruins", "Signal the party to hold", "Scan the treeline"],
-  "party": [ { "op":"add", "name":"Riley", "species":"human", "description":"...", "personality":"...", "drive":"...", "strengths": {"name":"...","description":"..."} } ],
+  "party": [ { "op":"add", "name":"Riley", "species":"human", "description":"...", "personality":"...", "drive":"...", "strengths":"...", "flaws":"...", "equipment":[{"label":"...","description":"..."}] } ],
   "inventory": [ { "op":"add", "label":"Cracked Compass", "description":"...", "quantity":1 } ],
   "quests": [ { "op":"add", "label":"Reach the Old Settlement", "description":"...", "reward":"..." } ],
   "spoke": ["Navi"]
@@ -69,7 +69,7 @@ loop. The model returns **narration prose followed by one machine-read JSON bloc
 - Client **parses tolerantly** (brace-matched salvage, always strip the block from displayed prose even if JSON is malformed — port `parse_action_block`'s tolerance from `narrator_actions.py`).
 - `options` are the **AI-generated action buttons** — inline in the same call, so no extra request per turn (Wayward's `inline` action-suggestions mode).
 - State changes (`location`/`day`/`weather`/`party`/`inventory`/`quests`) are applied to the active save (op-based add/update/remove; inventory carries `quantity`, quests carry `reward`). `spoke` is a hint, but **`lastSpokeTurn` is updated deterministically** from the prose via the ported `detectSpeakers` (never trust the model alone).
-- `party` ops match **by name across the whole character library**, so a companion from an earlier adventure is re-used, not duplicated. **A sheet is authored once, at creation, and frozen after**: only an `add` naming someone genuinely new writes `species`/`description`/`personality`/`drive`/`strengths` (straight onto the new `Character`). Every later op — `add` or `update` — carries `standing` and nothing else; sheet fields on a character who already exists are dropped. An `add`/`update` may carry `"standing": "active" | "benched" | "npc"`, and a `remove` `"standing": "departed" | "fallen"` — nothing the model emits ever deletes anyone. See *Characters ⟂ Party*.
+- `party` ops match **by name across the whole character library**, so a companion from an earlier adventure is re-used, not duplicated. **A sheet is authored once, at creation, and frozen after**: only an `add` naming someone genuinely new writes `species`/`description`/`personality`/`drive`/`strengths`/`flaws` **and their starting `equipment`** (straight onto the new `Character`) — the narrator kits a companion out from the appearance it just wrote, and the gear is the player's from then on. Every later op — `add` or `update` — carries `standing` and nothing else; sheet fields on a character who already exists are dropped. An `add`/`update` may carry `"standing": "active" | "benched" | "npc"`, and a `remove` `"standing": "departed" | "fallen"` — nothing the model emits ever deletes anyone. See *Characters ⟂ Party*.
 - **Reversal** (swipe/regenerate): record the applied deltas on the message, unwind on redo — same shape as Wayward's `_reverse_message_effects`, minus item instances.
 
 ---
@@ -90,7 +90,7 @@ One isolated function returning the OpenRouter `messages[]`, in order:
 1. **Core narrator instructions** (Loom role: short punchy second-person shonen adventure, uncensored, sandbox) + player **custom instructions** appended.
 2. **Scenario / premise** (the editable pre-made scenario).
 3. **PC summary** + equipment text fields.
-4. **Party roster** — the `active` members only: description, personality, drive, Strengths, equipment (port `_format_equipment`, simplified to `{label, description}` — no catalog lookup). Benched members get no sheet; they are not in the scene.
+4. **Party roster** — the `active` members only: description, personality, drive, Strengths, Flaws, equipment (port `_format_equipment`, simplified to `{label, description}` — no catalog lookup). Benched members get no sheet; they are not in the scene.
 5. **Inventory** (compact `label ×qty — description` list).
 6. **Active quests** (compact `label — description (reward: …)` list; done quests omitted).
 7. **World Notes** matched by keyword (single-category, simplified `match_entries`; titles are implicit keywords; scan the new message + last few turns). Notes flagged **permanent** skip matching and inject every turn.
@@ -141,8 +141,9 @@ Settings {                    // global, edited in Settings
 Character[]                   // GLOBAL cast library — outlives every adventure
 Character {
   id, role, name, species, description, personality, drive,
-  strengths: { name, description },
+  strengths, flaws,                      // free text, one field each
   equipment: { label, description }[],   // simple text fields, no catalog
+                                         // written once by the creating `add`, player's after that
   useCustomPortraitPrompt?, customPortraitPrompt?
 }
 
@@ -166,7 +167,7 @@ RosterEntry {
           | 'benched'   // in the party, waiting elsewhere
           | 'departed'  // left the story
           | 'fallen',   // dead
-  overrides?: { species?, description?, personality?, drive?, strengths? }
+  overrides?: { species?, description?, personality?, drive?, strengths?, flaws? }
 }
 ```
 
@@ -220,7 +221,7 @@ consumes resolved `PartyMember`s, never the raw halves.
   ("Party Full" over an empty seat). Undo also `pruneRoster`s the restored
   roster so the dead entry doesn't persist.
 - **A character's sheet is written once, then frozen.** The narrator authors
-  appearance/personality/drive/strengths on the `add` that *creates* someone,
+  appearance/personality/drive/strengths/flaws — and their starting equipment — on the `add` that *creates* someone,
   and never again — later deltas move `standing` only. Sheet drift was the
   story quietly rewriting an authored cast a turn at a time; character change
   belongs in the narration, and a deliberate re-read is what the member sheet's
@@ -240,7 +241,7 @@ consumes resolved `PartyMember`s, never the raw halves.
 - **No world/adventure split beyond this.** Editing anything in Settings/panels
   edits the active game (matches "edit everything, no Edit mode"); "Save"/"Load"
   snapshot/restore slots.
-- **Strengths** carries Wayward's writing guidance as a placeholder in the editor (teaches the format).
+- **Strengths** and **Flaws** are one free-text field each (no label/name), edited as plain text areas on the member sheet.
 
 ---
 
@@ -276,7 +277,7 @@ The member sheet's **Auto-Update** button opens a modal to check which fields th
 
 - **Appearance** (`description`) — physical characteristics are **preserved verbatim**; only what the character wears/carries is rewritten, read off their **Equipment** labels + descriptions. Since `description` is the portrait Subject, the sheet's ⟳ picks up the new outfit.
 - **Personality** / **Drive** — re-read from the latest `MENTION_SCAN_LIMIT` beats whose text **mentions the character by name** (word-boundary match, same machinery as World Notes).
-- **Strengths** and **Equipment** are never touched — the player owns them, and equipment is what Appearance reads *from*.
+- **Strengths**, **Flaws** and **Equipment** are never touched — the player owns them, and equipment is what Appearance reads *from*.
 
 Parsing is tolerant like the `<<<LOOM>>>` block (fences/preamble/trailing commas survive) but strict about content: unrequested keys, non-strings, and blanks are dropped, so a bad reply narrows to "fewer fields updated" and never blanks a sheet. Gated behind read mode (an open edit draft would clobber the result) and blocked mid-turn.
 

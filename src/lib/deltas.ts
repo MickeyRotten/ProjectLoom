@@ -1,5 +1,6 @@
 import type {
   Character,
+  Equipment,
   GameState,
   Item,
   LoomBlock,
@@ -9,7 +10,7 @@ import type {
   Standing,
 } from "../types";
 import { isGold } from "./defaults";
-import { partyFull, setStanding, standingOf } from "./roster";
+import { partyFull, setStanding, standingOf, strengthsText } from "./roster";
 
 /**
  * Apply a parsed <<<LOOM>>> block to the active game (loom-turn-protocol):
@@ -24,7 +25,7 @@ import { partyFull, setStanding, standingOf } from "./roster";
  *  - membership / standing / last-spoke → this adventure's roster;
  *  - a brand-new character's sheet → the library, written ONCE at creation.
  * A character who already exists is FROZEN: their species, appearance,
- * personality, drive and strengths are the player's, and no later delta —
+ * personality, drive, strengths, flaws and equipment are the player's, and no later delta —
  * `add` or `update` — touches them. Sheet drift was the story quietly
  * rewriting a cast the player had authored, one turn at a time; the narration
  * is where a character changes now. `remove` only changes standing (and
@@ -77,8 +78,8 @@ export function applyDeltas(
  * by a party delta.
  *  - add: bring a known character into the adventure, or CREATE one in the
  *    library from the delta's fields. Creation is the only path that writes a
- *    sheet; seating a character who already exists ignores every field but
- *    `standing`. `standing` says how they join — `active` (default),
+ *    sheet — including their starting `equipment`; seating a character who
+ *    already exists ignores every field but `standing`. `standing` says how they join — `active` (default),
  *    `benched`, or `npc` for an ally who is not a companion. An `active` join
  *    respects PARTY_LIMIT: past the cap they land BENCHED rather than in a
  *    state nothing renders. A `fallen` character is never re-recruited by the
@@ -184,6 +185,12 @@ function uniqueId(characters: Character[], base: string): string {
  * A character the narrator just introduced. The id stays name-derived so a
  * portrait generated for "Riley" survives into any later adventure that
  * recruits Riley again.
+ *
+ * This is also the ONE moment gear is written from the story: the creating
+ * `add` carries the equipment implied by the appearance it just wrote, so a
+ * new companion arrives dressed instead of empty-handed. Every later op drops
+ * `equipment` on the floor with the rest of the sheet — the kit is the
+ * player's to curate from then on.
  */
 function makeCharacter(d: PartyDelta, id: string): Character {
   return {
@@ -194,9 +201,25 @@ function makeCharacter(d: PartyDelta, id: string): Character {
     description: d.description ?? "",
     personality: d.personality ?? "",
     drive: d.drive ?? "",
-    strengths: d.strengths ?? { name: "", description: "" },
-    equipment: [],
+    strengths: strengthsText(d.strengths),
+    flaws: d.flaws ?? "",
+    equipment: startingEquipment(d.equipment),
   };
+}
+
+/**
+ * The delta's equipment, sanitized: labelless rows are dropped (nothing can
+ * render or keyword-match them) and a missing description is blank, not
+ * undefined. A non-array — the model wrote a string, or nothing — is no gear.
+ */
+function startingEquipment(equipment: PartyDelta["equipment"]): Equipment[] {
+  if (!Array.isArray(equipment)) return [];
+  return equipment
+    .filter((e): e is Equipment => !!e && typeof e.label === "string" && !!e.label.trim())
+    .map((e) => ({
+      label: e.label,
+      description: typeof e.description === "string" ? e.description : "",
+    }));
 }
 
 function applyInventory(current: Item[], block: LoomBlock): Item[] {

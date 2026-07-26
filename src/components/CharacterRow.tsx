@@ -44,7 +44,9 @@ export function CharacterRow({
         {standing && standing !== "active" && standing !== "none" && (
           <p className="mt-1 text-xs uppercase tracking-widest opacity-60">{standing}</p>
         )}
-        {detail && <p className="mt-1 text-sm opacity-80">{detail}</p>}
+        {/* Clamped: Strengths is a free-text paragraph now, and a list row is
+            a glance, not the sheet. */}
+        {detail && <p className="mt-1 line-clamp-2 text-sm opacity-80">{detail}</p>}
       </button>
       {shown.length > 0 && (
         <div className="flex border-t-2 border-ink">

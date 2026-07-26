@@ -73,8 +73,8 @@ export function namePattern(name: string): string {
 
 /**
  * Keywords for relevance matching: lowercase tokens of length ≥ 4, minus
- * stopwords. Strengths NAME tokens are always kept (they carry the signal
- * even when short, e.g. "lock", "map").
+ * stopwords. A Strengths LEAD-CLAUSE token is always kept (it carries the
+ * signal even when short, e.g. "lock", "map").
  */
 export function extractKeywords(text: string, keepShort: Iterable<string> = []): Set<string> {
   const keep = new Set(Array.from(keepShort, (w) => w.toLowerCase()));
@@ -95,6 +95,16 @@ function labelTokens(label: string): string[] {
   return (label.toLowerCase().match(/[a-z0-9']+/g) ?? []).filter(
     (w) => w.length >= 3 && !STOPWORDS.has(w),
   );
+}
+
+/**
+ * The lead clause of a Strengths line — everything before the first dash,
+ * colon, period, or line break. Strengths used to carry an explicit short NAME
+ * whose tokens always counted as keywords; now that it is one free-text field,
+ * the opening clause plays that part ("Lockpicking — opens any lock").
+ */
+function leadClause(text: string): string {
+  return text.split(/[—–:.\n]|\s-\s/)[0] ?? "";
 }
 
 /**
@@ -121,11 +131,8 @@ export function computeSpotlightSignals(
   const contextKeywords = extractKeywords(`${playerMsg}\n${recentContext}`);
 
   return party.map((m) => {
-    const nameTokens = labelTokens(m.strengths?.name ?? "");
-    const strengthsKeywords = extractKeywords(
-      `${m.strengths?.name ?? ""} ${m.strengths?.description ?? ""}`,
-      nameTokens,
-    );
+    const strengths = m.strengths ?? "";
+    const strengthsKeywords = extractKeywords(strengths, labelTokens(leadClause(strengths)));
     const strengthsRelevant = intersects(contextKeywords, strengthsKeywords);
 
     return {
@@ -181,7 +188,7 @@ export interface GearSignal {
 /**
  * Equipped items whose keywords overlap the message + recent context.
  * Label tokens always count (they carry the signal even when short, like
- * Strengths name tokens — "rope", "map").
+ * Strengths lead-clause tokens — "rope", "map").
  */
 export function computeRelevantGear(
   playerMsg: string,

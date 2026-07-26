@@ -47,6 +47,7 @@ type MemberDraft = Pick<
   | "personality"
   | "drive"
   | "strengths"
+  | "flaws"
   | "equipment"
   | "useCustomPortraitPrompt"
   | "customPortraitPrompt"
@@ -104,7 +105,8 @@ export function MemberSheet() {
       description: member?.description ?? "",
       personality: member?.personality ?? "",
       drive: member?.drive ?? "",
-      strengths: member?.strengths ?? { name: "", description: "" },
+      strengths: member?.strengths ?? "",
+      flaws: member?.flaws ?? "",
       equipment: member?.equipment ?? [],
       useCustomPortraitPrompt: member?.useCustomPortraitPrompt ?? false,
       customPortraitPrompt: member?.customPortraitPrompt ?? "",
@@ -352,22 +354,20 @@ export function MemberSheet() {
         />
         <TextField label="Drive" value={v.drive} editing={editing} onChange={(x) => setField("drive", x)} />
 
-        <fieldset className="space-y-3 border-2 border-ink p-3">
-          <legend className="px-1 uppercase tracking-widest text-sm">Strengths</legend>
-          <TextField
-            label="Name"
-            value={v.strengths.name}
-            editing={editing}
-            onChange={(x) => setField("strengths", { ...v.strengths, name: x })}
-          />
-          <AreaField
-            label="Description"
-            value={v.strengths.description}
-            editing={editing}
-            rows={2}
-            onChange={(x) => setField("strengths", { ...v.strengths, description: x })}
-          />
-        </fieldset>
+        <AreaField
+          label="Strengths"
+          value={v.strengths}
+          editing={editing}
+          rows={2}
+          onChange={(x) => setField("strengths", x)}
+        />
+        <AreaField
+          label="Flaws"
+          value={v.flaws}
+          editing={editing}
+          rows={2}
+          onChange={(x) => setField("flaws", x)}
+        />
 
         <fieldset className="space-y-3 border-2 border-ink p-3">
           <legend className="px-1 uppercase tracking-widest text-sm">Equipment</legend>

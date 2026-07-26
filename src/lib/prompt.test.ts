@@ -50,7 +50,7 @@ function play(turn: number, content: string): Message {
 function member(patch: Partial<Character> & { id: string; name: string }): Character {
   return {
     role: "member", species: "human", description: "", personality: "", drive: "",
-    strengths: { name: "", description: "" }, equipment: [],
+    strengths: "", flaws: "", equipment: [],
     ...patch,
   };
 }
@@ -87,12 +87,14 @@ describe("buildMessages — ordering", () => {
     expect(protocol2.content).toContain('"description" is physical appearance only');
   });
 
-  it("demands personality, drive and strengths on every party add", () => {
+  it("demands personality, drive, strengths, flaws and equipment on every party add", () => {
     const msgs = build({ settings, game: newGame(), playerMessage: "go" });
     const protocol = msgs.find((m) => m.content.includes("<<<LOOM>>>"))!;
     expect(protocol.content).toContain('"personality"');
     expect(protocol.content).toContain('"drive"');
     expect(protocol.content).toContain('"strengths"');
+    expect(protocol.content).toContain('"flaws"');
+    expect(protocol.content).toContain('"equipment"');
     expect(protocol.content).toContain('On every party "add", ALWAYS write');
   });
 
@@ -119,7 +121,8 @@ describe("buildMessages — ordering", () => {
 describe("party roster + spotlight", () => {
   const navi = member({
     id: "m-navi", name: "Navi", species: "sprite", description: "a darting spark",
-    strengths: { name: "Lockpicking", description: "opens any lock" },
+    strengths: "Lockpicking — opens any lock",
+    flaws: "Panics in the dark.",
   });
 
   const cast = [defaultPC(), navi];
@@ -129,7 +132,8 @@ describe("party roster + spotlight", () => {
     const msgs = build({ settings, game: g, characters: cast, playerMessage: "go" });
     expect(msgs[0].content).toContain("PARTY — in your company");
     expect(msgs[0].content).toContain("Navi (sprite)");
-    expect(msgs[0].content).toContain("Strengths — Lockpicking");
+    expect(msgs[0].content).toContain("Strengths: Lockpicking — opens any lock");
+    expect(msgs[0].content).toContain("Flaws: Panics in the dark.");
   });
 
   it("injects a spotlight block after the system context, before history", () => {
@@ -289,7 +293,7 @@ describe("benched members are not in the scene", () => {
     id: "m-navi",
     name: "Navi",
     species: "sprite",
-    strengths: { name: "Lockpicking", description: "opens any lock" },
+    strengths: "Lockpicking — opens any lock",
     equipment: [{ label: "Bent Pick", description: "worn thin" }],
   });
   const cast = [defaultPC(), navi];

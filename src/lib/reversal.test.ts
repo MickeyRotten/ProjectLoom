@@ -15,7 +15,8 @@ function navi(): Character {
     description: "a darting spark",
     personality: "",
     drive: "",
-    strengths: { name: "", description: "" },
+    strengths: "",
+    flaws: "",
     equipment: [],
   };
 }
@@ -209,7 +210,8 @@ describe("applyReversal round-trips", () => {
           description: "",
           personality: "",
           drive: "",
-          strengths: { name: "", description: "" },
+          strengths: "",
+          flaws: "",
           equipment: [],
           inParty: true,
           lastSpokeTurn: 5,

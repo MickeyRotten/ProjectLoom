@@ -63,7 +63,8 @@ export function formatNpcBlock(npcs: PartyMember[]): string {
       `- ${n.name} (${n.species})${n.description ? ` — ${n.description}` : ""}`,
       n.personality ? `  Personality: ${n.personality}` : "",
       n.drive ? `  Drive: ${n.drive}` : "",
-      n.strengths.name ? `  Strengths — ${n.strengths.name}: ${n.strengths.description}` : "",
+      n.strengths ? `  Strengths: ${n.strengths}` : "",
+      n.flaws ? `  Flaws: ${n.flaws}` : "",
     ].filter(Boolean);
     return lines.join("\n");
   });

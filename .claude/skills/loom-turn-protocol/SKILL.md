@@ -21,7 +21,7 @@ One player action = one OpenRouter chat completion (streamed). No on-device tool
   "weather": "windy",
   "day": 37,
   "options": ["Approach the ruins", "Signal the party to hold", "Scan the treeline"],
-  "party":     [ { "op": "add", "name": "Riley", "species": "human", "description": "...", "personality": "...", "drive": "...", "strengths": { "name": "...", "description": "..." } } ],
+  "party":     [ { "op": "add", "name": "Riley", "species": "human", "description": "...", "personality": "...", "drive": "...", "strengths": "...", "flaws": "...", "equipment": [ { "label": "...", "description": "..." } ] } ],
   "inventory": [ { "op": "add", "label": "Cracked Compass", "description": "...", "quantity": 1 } ],
   "quests":    [ { "op": "add", "label": "Reach the Old Settlement", "description": "...", "reward": "..." } ],
   "spoke": ["Navi"]
@@ -30,7 +30,7 @@ One player action = one OpenRouter chat completion (streamed). No on-device tool
 ```
 
 All block fields optional except when state changed. `op`: `add` | `update` | `remove`.
-A party `add` for a NEW name MUST carry `personality`, `drive` and `strengths` — the output protocol demands them so a new member never lands blank. That `add` is the ONLY op that writes a sheet: once a character exists, `species`/`description`/`personality`/`drive`/`strengths` are frozen and dropped from every later op.
+A party `add` for a NEW name MUST carry `personality`, `drive`, `strengths`, `flaws` and `equipment` (the gear implied by the appearance it just wrote) — the output protocol demands them so a new member never lands blank or empty-handed. That `add` is the ONLY op that writes a sheet: once a character exists, `species`/`description`/`personality`/`drive`/`strengths`/`flaws`/`equipment` are frozen and dropped from every later op — gear is the player's to curate.
 A party `add`/`update` MAY carry `"standing": "active" | "benched" | "npc"` (default `active` on add); a `remove` MAY carry `"standing": "departed" | "fallen"` (default `departed`). Pre-rename blocks spell that last one `"status"` — still read, because reversal replays old blocks.
 
 ## Party ops span two stores

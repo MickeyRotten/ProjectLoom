@@ -22,7 +22,8 @@ function member(id: string, name: string, patch: Partial<Character> = {}): Chara
     description: "",
     personality: "",
     drive: "",
-    strengths: { name: "", description: "" },
+    strengths: "",
+    flaws: "",
     equipment: [],
     ...patch,
   };
@@ -125,7 +126,9 @@ describe("applyDeltas — party ops", () => {
           description: "a darting spark",
           personality: "Impatient, chirpy.",
           drive: "See every locked room in the world.",
-          strengths: { name: "Lockpicking", description: "opens anything" },
+          strengths: "Lockpicking — opens anything",
+          flaws: "Cannot sit still.",
+          equipment: [{ label: "Lockpicks", description: "a bent set, well used" }],
         },
       ],
     });
@@ -138,7 +141,9 @@ describe("applyDeltas — party ops", () => {
       species: "sprite",
       personality: "Impatient, chirpy.",
       drive: "See every locked room in the world.",
-      strengths: { name: "Lockpicking", description: "opens anything" },
+      strengths: "Lockpicking — opens anything",
+      flaws: "Cannot sit still.",
+      equipment: [{ label: "Lockpicks", description: "a bent set, well used" }],
     });
     expect(getEntry(scene.roster, "m-navi").standing).toBe("active");
     expect(getEntry(scene.roster, "m-navi").overrides).toBeUndefined();
@@ -170,7 +175,7 @@ describe("applyDeltas — party ops", () => {
           description: "gone grey",
           species: "wraith",
           drive: "Rest.",
-          strengths: { name: "Wailing", description: "chills a room" },
+          strengths: "Wailing — chills a room",
         },
       ],
     });
@@ -194,10 +199,57 @@ describe("applyDeltas — party ops", () => {
     expect(scene.characters.find((c) => c.id === "m-navi")?.personality).toBe("Chirpy.");
   });
 
+  it("drops equipment rows with no label, and non-array equipment", () => {
+    const scene = applyDeltas(game(), lib(), {
+      party: [
+        {
+          op: "add",
+          name: "Navi",
+          equipment: [
+            { label: "Cloak", description: "moth-eaten" },
+            { label: "  ", description: "nothing" },
+            // A description the model forgot is blank, never undefined.
+            { label: "Belt" } as never,
+          ],
+        },
+        { op: "add", name: "Bram", equipment: "a sword" as never },
+      ],
+    });
+    expect(scene.characters.find((c) => c.name === "Navi")?.equipment).toEqual([
+      { label: "Cloak", description: "moth-eaten" },
+      { label: "Belt", description: "" },
+    ]);
+    expect(scene.characters.find((c) => c.name === "Bram")?.equipment).toEqual([]);
+  });
+
+  it("folds a legacy { name, description } strengths object into one line", () => {
+    const scene = applyDeltas(game(), lib(), {
+      party: [
+        {
+          op: "add",
+          name: "Navi",
+          strengths: { name: "Lockpicking", description: "opens anything" },
+        },
+      ],
+    });
+    expect(scene.characters.find((c) => c.name === "Navi")?.strengths).toBe(
+      "Lockpicking — opens anything",
+    );
+  });
+
   it("ignores sheet fields when re-adding a character who already exists", () => {
     const characters = lib(member("m-navi", "Navi", { description: "a darting spark" }));
     const scene = applyDeltas(game(), characters, {
-      party: [{ op: "add", name: "navi", description: "now nine feet tall", drive: "Conquest." }],
+      party: [
+        {
+          op: "add",
+          name: "navi",
+          description: "now nine feet tall",
+          drive: "Conquest.",
+          // Gear is the player's after creation — a re-add never re-kits them.
+          equipment: [{ label: "Crown", description: "stolen" }],
+        },
+      ],
     });
     // Re-used, not re-authored: the library record is the same object.
     expect(scene.characters).toBe(characters);
