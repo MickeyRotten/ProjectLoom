@@ -287,6 +287,29 @@ export type TextScale = "s" | "m" | "l" | "xl";
  */
 export type BannerSize = "full" | "compact";
 
+/**
+ * How hard the text model is asked to think before it writes (OpenRouter's
+ * unified `reasoning` parameter). `auto` sends no reasoning field at all, so the
+ * model does whatever it does by default — the shipped value, and the only one
+ * that behaves identically on a model with no reasoning support. `off` asks for
+ * reasoning to be DISABLED, which matters on models that think by default and
+ * bill for it; the rest map to an effort level.
+ */
+export type ReasoningLevel = "auto" | "off" | "minimal" | "low" | "medium" | "high";
+
+/** The levels, in the order the picker shows them. */
+export const REASONING_LEVELS = [
+  "auto",
+  "off",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+] as const;
+
+/** The levels that map to an OpenRouter `reasoning.effort` value. */
+export type ReasoningEffort = Exclude<ReasoningLevel, "auto" | "off">;
+
 export interface Settings {
   openRouterKey: string;
   /**
@@ -303,6 +326,12 @@ export interface Settings {
   textModelId: string;
   imageModelId: string;
   temperature: number;
+  /**
+   * Thinking effort for the text model — narration and side calls alike. See
+   * `ReasoningLevel`; `settings.ts → reasoningParam` turns it into the request
+   * field (or omits it).
+   */
+  reasoningLevel: ReasoningLevel;
   /** When false, the narrator is not asked for action options and none render. */
   showActionOptions: boolean;
   /** Flip ink/paper — the "black paper" reading of the 1-bit theme. */

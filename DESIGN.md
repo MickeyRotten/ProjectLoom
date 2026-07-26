@@ -182,6 +182,7 @@ One **active game state**, autosaved continuously; **named save slots** are full
 ```ts
 Settings {                    // global, edited in Settings
   openRouterKey, textModelId, imageModelId (default: nano-banana-2-lite), temperature
+  reasoningLevel: auto | off | minimal | low | medium | high                // Model & Key
   // Advanced (grouped into sub-menus: Narrator · Characters · Images · Portraits):
   customInstructions, optionInstructions                                // Narrator
   appearanceInstructions, characterCreationInstructions,                // Characters
@@ -476,6 +477,27 @@ none of them a hidden summarizer:
   large-context model can now be given far more.
 - **`Settings.maxTokens`** — no `max_tokens` was ever sent, so "short and punchy"
   was a sentence in the prompt and nothing else. 0 restores no cap.
+
+### Reasoning level (Model & Key)
+
+`Settings.reasoningLevel` drives OpenRouter's unified `reasoning` field
+(`settings.ts → reasoningParam`/`reasoningBody`), on the narration stream and the
+non-streamed side calls alike — one text model, one thinking behaviour.
+
+- **`auto` ships**, and is the only value that changes nothing: no `reasoning`
+  field is sent at all, so a non-reasoning model sees the request it always saw.
+  An unrecognised stored level falls into the same branch, because a value out of
+  another build's localStorage must not reach the API and 400 every turn.
+- **`off` is `{ enabled: false }`**, not `{ exclude: true }` — the point is a
+  model that thinks (and bills) by default doing neither, and `exclude` only hides
+  reasoning that still happened.
+- **The effort levels carry `exclude: true`.** Nothing renders reasoning — the
+  stream reads `delta.content` only — so returning the thinking text would be
+  bandwidth spent on something dropped on arrival. It is not a discount: those
+  tokens are still generated and still billed.
+- Reasoning tokens count against `maxTokens`, so a tight beat cap plus a high
+  level truncates the beat (and with it the `<<<LOOM>>>` block). The picker says
+  so under the buttons rather than trying to reconcile the two numbers.
 
 *Still deferred:* rolling LLM summarization. The narrator's own notes cover the
 same ground while staying inspectable; revisit only if they prove insufficient.
