@@ -132,6 +132,12 @@ export interface LoomStore {
   history: Screen[];
   /** The member whose full-screen sheet is open (screen === "member"). */
   memberId: string | null;
+  /**
+   * A screen's claim on Back, for screens with internal depth. Returning true
+   * means "handled, don't leave the screen". Registered here rather than passed
+   * to the header so the hardware back button obeys it too.
+   */
+  backHandler: (() => boolean) | null;
 
   // Generated images (Phase 3): cache key → object URL, plus in-flight keys.
   images: Record<string, string>;
@@ -156,6 +162,8 @@ export interface LoomStore {
   setScreen: (screen: Screen) => void;
   /** Return to the previous screen (pops the navigation history). */
   goBack: () => void;
+  /** Claim Back for a screen with internal depth; pass null to release it. */
+  setBackHandler: (handler: (() => boolean) | null) => void;
   openMember: (id: string) => void;
   updateSettings: (patch: Partial<Settings>) => void;
 
@@ -533,6 +541,7 @@ export const useStore = create<LoomStore>((set, get) => {
   screen: null,
   history: [],
   memberId: null,
+  backHandler: null,
 
   images: {},
   imgPending: {},
@@ -585,9 +594,18 @@ export const useStore = create<LoomStore>((set, get) => {
   },
 
   goBack() {
+    // A screen with its own internal depth (Advanced's sub-menus) gets first
+    // refusal. Routing it through here rather than through the header's `onBack`
+    // prop is what makes the ANDROID back button behave like the on-screen one —
+    // the hardware button has no way to know about a component's local state.
+    if (get().backHandler?.()) return;
     const hist = get().history;
     const prev = hist.length ? hist[hist.length - 1] : null;
     set({ screen: prev, history: hist.slice(0, -1) });
+  },
+
+  setBackHandler(handler) {
+    set({ backHandler: handler });
   },
 
   openMember(id) {

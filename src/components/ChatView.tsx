@@ -178,7 +178,7 @@ export function ChatView() {
                 <button
                   type="button"
                   onClick={() => setEditing({ id: m.id, role: "player", draft: m.content })}
-                  className="w-full border-2 border-ink py-1 text-xs uppercase tracking-widest opacity-70 active:bg-ink active:text-paper active:opacity-100"
+                  className="min-h-11 w-full border-2 border-ink text-xs uppercase tracking-widest opacity-70 active:bg-ink active:text-paper active:opacity-100"
                 >
                   ✎ Edit
                 </button>
@@ -189,14 +189,30 @@ export function ChatView() {
 
         {streaming && <Beat role="narrator" text={streamText || "…"} party={party} pending />}
 
-        {/* Narrator beat controls — revealed by tapping the latest narrator beat. */}
-        {!streaming && active === lastNarratorId && editing?.id !== lastNarratorId && (
-          <TurnControls
-            onEdit={() => {
-              const m = messages.find((x) => x.id === lastNarratorId);
-              if (m) setEditing({ id: m.id, role: "narrator", draft: m.content });
-            }}
-          />
+        {/*
+          Narrator beat controls. Tapping the beat still reveals them, but that
+          was the ONLY way in — an unhinted tap on a plain <div>, which meant
+          Regen / Edit / Undo were invisible to a new player and unreachable
+          entirely by keyboard or screen reader. This button is the discoverable,
+          focusable path to the same thing.
+        */}
+        {!streaming && lastNarratorId && editing?.id !== lastNarratorId && (
+          active === lastNarratorId ? (
+            <TurnControls
+              onEdit={() => {
+                const m = messages.find((x) => x.id === lastNarratorId);
+                if (m) setEditing({ id: m.id, role: "narrator", draft: m.content });
+              }}
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={() => setActive(lastNarratorId)}
+              className="min-h-11 w-full border-2 border-dashed border-ink text-xs uppercase tracking-widest opacity-50 active:bg-ink active:text-paper active:opacity-100"
+            >
+              ⋯ Turn options
+            </button>
+          )
         )}
 
         {!streaming && <Options />}
@@ -211,7 +227,7 @@ export function ChatView() {
               <button
                 type="button"
                 onClick={retryTurn}
-                className="w-full border-2 border-ink py-1 uppercase tracking-widest active:bg-ink active:text-paper"
+                className="min-h-11 w-full border-2 border-ink uppercase tracking-widest active:bg-ink active:text-paper"
               >
                 ↻ Retry
               </button>
@@ -220,7 +236,7 @@ export function ChatView() {
               <button
                 type="button"
                 onClick={() => setScreen("modelkey")}
-                className="w-full border-2 border-ink py-1 uppercase tracking-widest active:bg-ink active:text-paper"
+                className="min-h-11 w-full border-2 border-ink uppercase tracking-widest active:bg-ink active:text-paper"
               >
                 ☰ Model &amp; Key
               </button>
@@ -330,14 +346,14 @@ function Editor({
         <button
           type="button"
           onClick={onSave}
-          className="flex-1 border-2 border-ink py-1 active:bg-ink active:text-paper"
+          className="min-h-11 flex-1 border-2 border-ink active:bg-ink active:text-paper"
         >
           Save
         </button>
         <button
           type="button"
           onClick={onCancel}
-          className="flex-1 border-2 border-ink py-1 opacity-70 active:bg-ink active:text-paper active:opacity-100"
+          className="min-h-11 flex-1 border-2 border-ink opacity-70 active:bg-ink active:text-paper active:opacity-100"
         >
           Cancel
         </button>

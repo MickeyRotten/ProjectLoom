@@ -57,7 +57,7 @@ export function Banner() {
           type="button"
           aria-label="Expand location image"
           onClick={() => updateSettings({ bannerSize: "full" })}
-          className="border-l-2 border-ink px-3 active:bg-ink active:text-paper"
+          className="min-h-11 min-w-11 border-l-2 border-ink px-3 active:bg-ink active:text-paper"
         >
           ▼
         </button>
@@ -106,7 +106,7 @@ export function Banner() {
         type="button"
         aria-label="Collapse location image"
         onClick={() => updateSettings({ bannerSize: "compact" })}
-        className="absolute left-1 top-1 border-2 border-ink bg-paper px-2 py-1 leading-none active:bg-ink active:text-paper"
+        className="absolute left-1 top-1 min-h-11 min-w-11 border-2 border-ink bg-paper px-2 leading-none active:bg-ink active:text-paper"
       >
         ▲
       </button>
@@ -115,7 +115,7 @@ export function Banner() {
         aria-label="Regenerate banner"
         disabled={pending}
         onClick={regenerate}
-        className="absolute right-1 top-1 border-2 border-ink bg-paper px-2 py-1 leading-none disabled:opacity-40 active:bg-ink active:text-paper"
+        className="absolute right-1 top-1 min-h-11 min-w-11 border-2 border-ink bg-paper px-2 leading-none disabled:opacity-40 active:bg-ink active:text-paper"
       >
         ⟳
       </button>
@@ -124,7 +124,7 @@ export function Banner() {
           label="Edit banner"
           disabled={pending}
           onSubmit={edit}
-          className="absolute right-11 top-1 border-2 border-ink bg-paper px-2 py-1 leading-none disabled:opacity-40 active:bg-ink active:text-paper"
+          className="absolute right-14 top-1 min-h-11 min-w-11 border-2 border-ink bg-paper px-2 leading-none disabled:opacity-40 active:bg-ink active:text-paper"
         />
       )}
       {imageError && !pending && (

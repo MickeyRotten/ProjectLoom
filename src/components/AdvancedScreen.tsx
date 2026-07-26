@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useStore } from "../store";
 import { OverlayHeader } from "./OverlayHeader";
 import { Field, btnSmall } from "./fields";
@@ -500,15 +500,26 @@ const SECTION_BODY: Record<SectionId, () => React.ReactElement> = {
 
 export function AdvancedScreen() {
   const [section, setSection] = useState<SectionId | null>(null);
+  const setBackHandler = useStore((s) => s.setBackHandler);
   const open = SECTIONS.find((s) => s.id === section);
+
+  // Claim Back while a sub-menu is open, so it pops to this index rather than
+  // out of Advanced. Registered in the store, not passed to the header, so the
+  // ANDROID back button does the same thing as the on-screen one.
+  useEffect(() => {
+    if (!section) return;
+    setBackHandler(() => {
+      setSection(null);
+      return true;
+    });
+    return () => setBackHandler(null);
+  }, [section, setBackHandler]);
 
   if (open) {
     const Body = SECTION_BODY[open.id];
     return (
       <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
-        {/* Back pops the sub-menu first, so it returns to this index, not out
-            of Advanced entirely. */}
-        <OverlayHeader title={open.label} onBack={() => setSection(null)} />
+        <OverlayHeader title={open.label} />
         <div className="flex-1 space-y-5 overflow-y-auto p-3">
           <Body />
         </div>

@@ -333,6 +333,39 @@ The member sheet's **Auto-Update** button opens a modal to check which fields th
 
 Parsing is tolerant like the `<<<LOOM>>>` block (fences/preamble/trailing commas survive) but strict about content: unrequested keys, non-strings, and blanks are dropped, so a bad reply narrows to "fewer fields updated" and never blanks a sheet. Gated behind read mode (an open edit draft would clobber the result) and blocked mid-turn.
 
+### Shell + reachability
+
+- **Hardware / browser Back closes the overlay**, instead of quitting the app
+  from any screen — nothing listened for either before. The mechanism is one
+  spare history entry, kept alive for as long as any overlay is open: back pops
+  it, the app closes one level, and re-pushes a spare if a screen is still
+  open. At the play screen there is no spare, so back leaves — correctly.
+  Screens with internal depth register `setBackHandler` on the store (Advanced's
+  sub-menus) rather than taking an `onBack` prop, because a prop can never reach
+  the hardware button. The popstate handler re-arms the spare **itself** — a
+  handled back may not change `screen` at all, so an effect keyed on `screen`
+  would miss it and the next back would exit.
+- **Soft keyboard**: `#root` is `100dvh` (with `height: 100%` as the fallback)
+  plus `interactive-widget=resizes-content`, so the keyboard shrinks the shell
+  instead of pushing the composer off-screen.
+- **Touch targets** are `min-h-11` (44px) on `btn`/`btnSmall`, the turn
+  controls, the header gear and the banner icons. `btnSmall` — used for Restore
+  / Delete / Remove / Reset, i.e. exactly the mis-taps worth avoiding — was
+  ~26px. It still *looks* small; only the hit area grew.
+- **Turn options are visible.** Regen / Edit / Undo were revealed only by an
+  unhinted tap on a plain `<div>`, so they were invisible to a new player and
+  unreachable by keyboard or screen reader. A `⋯ Turn options` button under the
+  latest beat is the discoverable, focusable path; the tap still works.
+- **One navigation model.** Party / Inventory / Quests / World Notes are in the
+  gear menu as well as the ⋯ shortcut. They used to live *only* behind ⋯, so the
+  one thing that looks like navigation pointed at half the app.
+- **`useConfirm`** replaces six native `confirm()` calls. On the Android WebView
+  those render as system-styled alerts — rounded, platform-blue, another
+  typeface — in the middle of a hand-built monochrome app, and they cannot be
+  focus-managed or given a destructive-action label. The replacement restores
+  focus to where it came from and closes on Escape.
+- **`prefers-reduced-motion`** is honoured for the one pulsing cursor.
+
 ### First run — `SetupScreen`
 A fresh install used to open on a running game that could not run: the quick
 actions greyed out at `opacity-30` with no explanation, the freeform input

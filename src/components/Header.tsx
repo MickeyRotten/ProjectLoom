@@ -16,7 +16,7 @@ export function Header() {
           aria-label="Settings"
           disabled={streaming}
           onClick={() => setScreen("menu")}
-          className="border-2 border-paper px-2 leading-none disabled:opacity-40 active:bg-paper active:text-ink"
+          className="min-h-11 min-w-11 border-2 border-paper px-3 leading-none disabled:opacity-40 active:bg-paper active:text-ink"
         >
           =
         </button>

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useStore } from "../store";
 import { OverlayHeader } from "./OverlayHeader";
 import { btn, btnSmall } from "./fields";
+import { useConfirm } from "./useConfirm";
 
 /**
  * Saves (DESIGN.md → Menu): named snapshot slots of the whole active game.
@@ -15,9 +16,13 @@ export function SavesScreen() {
   const restoreSlot = useStore((s) => s.restoreSlot);
   const dropSlot = useStore((s) => s.dropSlot);
   const [name, setName] = useState("");
+  // Slots start empty and fill in after `refreshSlots` resolves, so the
+  // "no saves" line used to flash on every open.
+  const [loaded, setLoaded] = useState(false);
+  const { ask, dialog } = useConfirm();
 
   useEffect(() => {
-    void refreshSlots();
+    void refreshSlots().finally(() => setLoaded(true));
   }, [refreshSlots]);
 
   const doSave = () => {
@@ -43,7 +48,7 @@ export function SavesScreen() {
           </button>
         </div>
 
-        {slots.length === 0 && (
+        {loaded && slots.length === 0 && (
           <p className="uppercase tracking-widest opacity-60">No saved slots.</p>
         )}
 
@@ -59,20 +64,28 @@ export function SavesScreen() {
             <div className="flex gap-2">
               <button
                 type="button"
-                onClick={() => {
-                  if (confirm(`Restore "${s.name}"? The current game is replaced.`)) {
-                    void restoreSlot(s.id);
-                  }
-                }}
+                onClick={() =>
+                  ask(
+                    {
+                      title: `Restore "${s.name}"?`,
+                      body: "The game you are playing now is replaced. Snapshot it first if you want to keep it.",
+                      confirmLabel: "Restore",
+                    },
+                    () => void restoreSlot(s.id),
+                  )
+                }
                 className={btnSmall}
               >
                 Restore
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  if (confirm(`Delete "${s.name}"?`)) void dropSlot(s.id);
-                }}
+                onClick={() =>
+                  ask(
+                    { title: `Delete "${s.name}"?`, confirmLabel: "Delete" },
+                    () => void dropSlot(s.id),
+                  )
+                }
                 className={`ml-auto ${btnSmall}`}
               >
                 Delete
@@ -81,6 +94,7 @@ export function SavesScreen() {
           </div>
         ))}
       </div>
+      {dialog}
     </main>
   );
 }

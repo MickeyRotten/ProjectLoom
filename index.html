@@ -8,9 +8,14 @@
       1.4.4 failure in a text-first app. Settings → Text Size covers the common
       case; zoom is the escape hatch that must still exist.
     -->
+    <!--
+      `interactive-widget=resizes-content` makes the soft keyboard shrink the
+      viewport (and so `100dvh`) instead of scrolling the page under it, which
+      is what used to push the composer off-screen with no way back.
+    -->
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
     />
     <meta name="color-scheme" content="light dark" />
     <meta name="theme-color" content="#000000" />

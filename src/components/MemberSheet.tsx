@@ -5,6 +5,7 @@ import { EditImageButton } from "./EditImageButton";
 import { TextField, AreaField, ReadBlock, EditToolbar, btn, btnSmall } from "./fields";
 import { AutoUpdateModal } from "./AutoUpdateModal";
 import { useEditBuffer } from "./useEditBuffer";
+import { useConfirm } from "./useConfirm";
 import { portraitKey } from "../lib/images";
 import {
   getEntry,
@@ -90,6 +91,7 @@ export function MemberSheet() {
   // note a fresh object, so a second save restarts the timer.
   const [saveNote, setSaveNote] = useState<{ text: string; at: number } | null>(null);
   const [saving, setSaving] = useState(false);
+  const { ask, dialog } = useConfirm();
 
   // The sheet shows the character AS THEY ARE THIS ADVENTURE — the authored
   // character with any story-written override folded on top.
@@ -253,15 +255,16 @@ export function MemberSheet() {
         <button
           type="button"
           disabled={!portraitUrl || portraitPending}
-          onClick={() => {
-            if (
-              confirm(
-                `Remove ${member.name || "this character"}'s image? The picture is deleted and none is drawn automatically until you regenerate or upload one.`,
-              )
-            ) {
-              removePortrait(member.id);
-            }
-          }}
+          onClick={() =>
+            ask(
+              {
+                title: `Remove ${member.name || "this character"}'s image?`,
+                body: "The picture is deleted and none is drawn automatically until you regenerate or upload one.",
+                confirmLabel: "Remove image",
+              },
+              () => removePortrait(member.id),
+            )
+          }
           className={`w-full ${btnSmall}`}
         >
           Remove Image
@@ -490,15 +493,16 @@ export function MemberSheet() {
               )}
               <button
                 type="button"
-                onClick={() => {
-                  if (
-                    confirm(
-                      `Delete ${member.name || "this character"} from Characters? They are removed from every adventure, along with their portrait. This can't be undone.`,
-                    )
-                  ) {
-                    removeCharacter(member.id);
-                  }
-                }}
+                onClick={() =>
+                  ask(
+                    {
+                      title: `Delete ${member.name || "this character"}?`,
+                      body: "They are removed from Characters and from every adventure, along with their portrait. This can't be undone.",
+                      confirmLabel: "Delete character",
+                    },
+                    () => removeCharacter(member.id),
+                  )
+                }
                 className="border-2 border-ink px-3 py-2 text-sm uppercase tracking-widest active:bg-ink active:text-paper"
               >
                 Delete Character
@@ -530,6 +534,7 @@ export function MemberSheet() {
           />
         </button>
       )}
+      {dialog}
     </main>
   );
 }
