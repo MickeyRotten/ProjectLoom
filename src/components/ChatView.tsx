@@ -5,7 +5,7 @@ import { TurnControls } from "./TurnControls";
 import { segmentDialogue } from "../lib/spotlight";
 import { parseInline } from "../lib/markdown";
 import { deriveToasts } from "../lib/toasts";
-import type { Character, Message } from "../types";
+import type { Character, Message, TurnOutcome } from "../types";
 
 /** Which message (id) is being edited, and the working draft. */
 type Editing = { id: string; role: "player" | "narrator"; draft: string };
@@ -214,12 +214,28 @@ export function ChatView() {
   );
 }
 
-/** Chip row of state-change announcements for one narrator beat. */
+/** How an outcome band reads as a chip. */
+const OUTCOME_LABEL: Record<TurnOutcome, string> = {
+  strong: "Strong result",
+  mixed: "Mixed result",
+  cost: "It cost you",
+};
+
+/**
+ * Chip row for one narrator beat: the rolled outcome (when stakes decided this
+ * turn) followed by the state changes it applied. The outcome leads because it
+ * is why the beat went the way it did — the rest is bookkeeping.
+ */
 function Toasts({ msg }: { msg: Message }) {
   const toasts = deriveToasts(msg);
-  if (!toasts.length) return null;
+  if (!toasts.length && !msg.outcome) return null;
   return (
     <div className="flex flex-wrap gap-1">
+      {msg.outcome && (
+        <span className="border-2 border-ink bg-ink px-2 py-0.5 text-xs uppercase tracking-widest text-paper">
+          ◆ {OUTCOME_LABEL[msg.outcome]}
+        </span>
+      )}
       {toasts.map((t, i) => (
         <span
           key={i}

@@ -473,3 +473,56 @@ describe("applyDeltas — quest ops", () => {
     expect(scene.quests).toHaveLength(1);
   });
 });
+
+describe("applyDeltas — conditions", () => {
+  it("marks the PC, who no party op can touch", () => {
+    const scene = applyDeltas(game(), lib(), {
+      conditions: [{ name: "Hiro", condition: "Left arm in a sling" }],
+    });
+    expect(getEntry(scene.roster, "pc").condition).toBe("Left arm in a sling");
+  });
+
+  it("matches by slugged name, like every other op", () => {
+    const navi = member("m-navi", "Navi");
+    const scene = applyDeltas(game(), lib(navi), {
+      conditions: [{ name: "  navi  ", condition: "Winded" }],
+    });
+    expect(getEntry(scene.roster, "m-navi").condition).toBe("Winded");
+  });
+
+  it("clears a mark on a blank condition, leaving no stored key", () => {
+    let scene = applyDeltas(game(), lib(), {
+      conditions: [{ name: "Hiro", condition: "Bleeding" }],
+    });
+    const g = { ...game(), roster: scene.roster };
+    scene = applyDeltas(g, lib(), { conditions: [{ name: "Hiro", condition: "" }] });
+    expect(getEntry(scene.roster, "pc").condition).toBeUndefined();
+  });
+
+  it("ignores a name nothing resolves — conditions never create anyone", () => {
+    const scene = applyDeltas(game(), lib(), {
+      conditions: [{ name: "Nobody", condition: "Cursed" }],
+    });
+    expect(scene.roster).toHaveLength(0);
+    expect(scene.characters).toHaveLength(1);
+  });
+
+  it("can mark a companion the same block just created", () => {
+    const scene = applyDeltas(game(), lib(), {
+      party: [{ op: "add", name: "Riley" }],
+      conditions: [{ name: "Riley", condition: "Twisted ankle" }],
+    });
+    const riley = activeMembers(scene.characters, scene.roster)[0];
+    expect(riley.name).toBe("Riley");
+    expect(riley.condition).toBe("Twisted ankle");
+  });
+
+  it("returns the same roster reference when nothing changed", () => {
+    const g = game();
+    const scene = applyDeltas(g, lib(), {
+      conditions: [{ name: "Hiro", condition: "" }],
+    });
+    // Reversal reference-diffs the roster: a no-op must not look like a change.
+    expect(scene.roster).toBe(g.roster);
+  });
+});

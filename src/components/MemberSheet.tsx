@@ -70,6 +70,7 @@ export function MemberSheet() {
   const update = useStore((s) => s.updateCharacter);
   const removeCharacter = useStore((s) => s.removeCharacter);
   const setStanding = useStore((s) => s.setStanding);
+  const setCondition = useStore((s) => s.setCondition);
   const revertOverrides = useStore((s) => s.revertOverrides);
   const partyFull = isPartyFull(characters, roster);
   const ensurePortrait = useStore((s) => s.ensurePortrait);
@@ -411,6 +412,29 @@ export function MemberSheet() {
             </button>
           )}
         </fieldset>
+
+        {/* Condition — this adventure's mark, not part of the frozen sheet, so
+            it sits outside the Edit gate and outside the member-only block: a
+            costly outcome lands on the player more often than on anyone else. */}
+        <div className="space-y-2 border-t-2 border-ink pt-4">
+          <label className="block space-y-1">
+            <span className="block text-sm uppercase tracking-widest opacity-70">
+              Condition this adventure
+            </span>
+            <textarea
+              value={member.condition}
+              rows={2}
+              placeholder="unhurt"
+              onChange={(e) => setCondition(member.id, e.target.value)}
+              className="w-full resize-y border-2 border-ink bg-paper p-2 focus:outline-none"
+            />
+          </label>
+          <p className="text-xs opacity-60">
+            What the story has done to them — a wound, a debt, someone hunting them.
+            The narrator reads it every turn and clears it when it's resolved. Blank
+            means unmarked, and it never touches their sheet.
+          </p>
+        </div>
 
         {member.role === "member" && (
           <div className="space-y-4 border-t-2 border-ink pt-4">

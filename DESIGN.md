@@ -71,6 +71,58 @@ loop. The model returns **narration prose followed by one machine-read JSON bloc
 - State changes (`location`/`day`/`weather`/`party`/`inventory`/`quests`) are applied to the active save (op-based add/update/remove; inventory carries `quantity`, quests carry `reward`). `spoke` is a hint, but **`lastSpokeTurn` is updated deterministically** from the prose via the ported `detectSpeakers` (never trust the model alone).
 - `party` ops match **by name across the whole character library**, so a companion from an earlier adventure is re-used, not duplicated. **A sheet is authored once, at creation, and frozen after**: only an `add` naming someone genuinely new writes `species`/`description`/`personality`/`drive`/`strengths`/`flaws` **and their starting `equipment`** (straight onto the new `Character`) — the narrator kits a companion out from the appearance it just wrote, and the gear is the player's from then on. Every later op — `add` or `update` — carries `standing` and nothing else; sheet fields on a character who already exists are dropped. An `add`/`update` may carry `"standing": "active" | "benched" | "npc"`, and a `remove` `"standing": "departed" | "fallen"` — nothing the model emits ever deletes anyone. See *Characters ⟂ Party*.
 - **Reversal** (swipe/regenerate): record the applied deltas on the message, unwind on redo — same shape as Wayward's `_reverse_message_effects`, minus item instances.
+- **Stakes** (`Settings.stakesEnabled`, on by default): before the call, `stakes.ts` decides on-device whether the action is a gamble and, if so, hands the narrator an outcome band it must honour. See *Stakes* below.
+
+---
+
+## Stakes — `src/lib/stakes.ts`
+
+The sibling of the spotlight, and built the same way: **deterministic signals
+computed on-device, one prompt block, no extra LLM call, and the model never
+gets to pick the answer.** Without it every action succeeded exactly as much as
+the narrator felt like, and `Character.flaws` had no mechanical consumer
+anywhere — it was printed into the prompt and read by nothing.
+
+- **Risk gate.** `isRisky` word-boundary-matches `RISK_KEYWORDS` (via
+  `worldNotes.ts → keywordHits`, so "mentioned" means one thing across lore,
+  cast, and risk). Deliberately about *attempts*, not violence — a haggle and a
+  lie are gambles, "I look around" is not. A non-risky turn injects **no block
+  at all**: no tokens, no melodrama, and the three quick actions never roll.
+- **The roll.** `rollFor(turn, action)` is FNV-1a over `turn|action`, mod 6 + 1
+  — **pure in (turn, action text)**. `regenerateLastTurn` re-sends the same
+  input on the same turn, so a random roll would let the player re-roll until
+  the answer was "strong"; seeding means a regenerate re-*tells* the same
+  result, and editing the action — genuinely choosing something else — earns a
+  new roll.
+- **The modifier.** +1 when the action's keywords meet the actor's Strengths,
+  −1 when they meet their Flaws, using the same `extractKeywords`/`intersects`
+  pair as the spotlight's `strengthsRelevant`, so relevance can never mean two
+  different things. Both at once cancel to 0 — doing something you are good at
+  in a way that plays to your weakness is exactly an even-odds moment.
+- **The bands.** `total ≥ 5` STRONG · `3–4` MIXED · `≤ 2` COST. The block is
+  marked *authoritative* for the same reason the roll call is: read as advice,
+  the model narrates a triumph over a "cost". The roll and its reason are stated
+  in full ("Rolled 2 -1 (flaws in play) = 1 → COST") — the mechanic is visible,
+  not a hidden hand.
+- **`Settings.stakesRule`** (Advanced → Narrator) is the editable half: what
+  STRONG / MIXED / COST *mean* in this world. The roll is the mechanic and is
+  not editable; the consequence vocabulary is a scenario's business. The shipped
+  rule ends by forbidding PC death — a narrator handed a bare "COST" eventually
+  kills the player and strands the save.
+- **Conditions** (`RosterEntry.condition`, `LoomBlock.conditions`) are where a
+  COST lands: free text, per-adventure, matched by name across the **whole**
+  cast **including the PC** — unlike `PartyDelta`, because the player is who a
+  costly outcome marks most often. Its own op-less channel on purpose: party ops
+  carry the frozen-sheet rules, and a condition is the one piece of character
+  state the story is *supposed* to keep rewriting. Blank clears it, and
+  `setCondition` deletes the key rather than storing `""` so a cleared mark and
+  an unmarked character are the same stored shape (`captureReversal`
+  reference-diffs the roster). Reversal needs no new slice — conditions live in
+  the roster it already snapshots.
+- **Visible in play:** the band is recorded on the narrator `Message` and renders
+  as an inverted chip above that beat's state-change toasts; the mark itself is
+  an always-editable field on the member sheet (outside the Edit gate and
+  outside the member-only block, since the PC has one too).
 
 ---
 

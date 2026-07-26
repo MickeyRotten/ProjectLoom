@@ -25,6 +25,7 @@ function member(patch: Partial<PartyMember> & { id: string; name: string }): Par
     equipment: [],
     lastSpokeTurn: 0,
     standing: "active",
+    condition: "",
     ...patch,
   };
 }

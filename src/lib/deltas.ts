@@ -10,7 +10,7 @@ import type {
   Standing,
 } from "../types";
 import { isGold } from "./defaults";
-import { partyFull, setStanding, standingOf, strengthsText } from "./roster";
+import { partyFull, setCondition, setStanding, standingOf, strengthsText } from "./roster";
 
 /**
  * Apply a parsed <<<LOOM>>> block to the active game (loom-turn-protocol):
@@ -60,13 +60,16 @@ export function applyDeltas(
   const location = block.location ?? game.location;
   const weather = block.weather ?? game.weather;
   const party = applyParty(characters, game.roster, block);
+  // Conditions run AFTER the party ops, so a companion introduced and wounded
+  // in the same block can be marked — they exist in `party.characters` by then.
+  const roster = applyConditions(party.characters, party.roster, block);
 
   return {
     day,
     location,
     weather,
     characters: party.characters,
-    roster: party.roster,
+    roster,
     inventory: applyInventory(game.inventory, block),
     quests: applyQuests(game.quests, block),
   };
@@ -142,6 +145,35 @@ function applyParty(
   }
 
   return { characters: nextChars, roster: nextRoster };
+}
+
+/**
+ * Conditions — the marks the story leaves on people (`stakes.ts`). Unlike party
+ * ops these match the WHOLE library including the PC, because a COST outcome
+ * lands on the player more often than on anyone else, and unlike sheet fields
+ * they are not frozen: rewriting them every turn is the entire point.
+ *
+ * A blank condition clears the mark (`setCondition` deletes the key), and a
+ * name nothing resolves is ignored rather than creating anybody — creation is
+ * `applyParty`'s job alone.
+ */
+function applyConditions(
+  characters: Character[],
+  roster: RosterEntry[],
+  block: LoomBlock,
+): RosterEntry[] {
+  if (!block.conditions?.length) return roster;
+  let next = roster;
+
+  for (const d of block.conditions) {
+    if (!d?.name || typeof d.condition !== "string") continue;
+    const key = slug(d.name);
+    const found = characters.find((c) => slug(c.name) === key);
+    if (!found) continue;
+    next = setCondition(next, found.id, d.condition);
+  }
+
+  return next;
 }
 
 /** Standings a `remove` may leave someone in — never a party seat. */

@@ -54,6 +54,7 @@ export function normalizeEntry(entry: LegacyRosterEntry): RosterEntry {
     lastSpokeTurn: entry.lastSpokeTurn ?? 0,
   };
   if (entry.overrides) out.overrides = normalizeOverrides(entry.overrides);
+  if (entry.condition) out.condition = entry.condition;
   return out;
 }
 
@@ -104,6 +105,7 @@ export function normalizeRoster(roster: LegacyRosterEntry[]): RosterEntry[] {
       e.standing !== next.standing ||
       e.lastSpokeTurn !== next.lastSpokeTurn ||
       e.overrides !== next.overrides ||
+      e.condition !== next.condition ||
       "inParty" in e ||
       "status" in e
     ) {
@@ -138,6 +140,7 @@ export function resolve(base: Character, entry?: RosterEntry): PartyMember {
     ...(e.overrides ?? {}),
     lastSpokeTurn: e.lastSpokeTurn,
     standing: e.standing,
+    condition: e.condition ?? "",
   };
 }
 
@@ -302,7 +305,8 @@ export function setEntry(
   if (
     next.standing === cur.standing &&
     next.lastSpokeTurn === cur.lastSpokeTurn &&
-    next.overrides === cur.overrides
+    next.overrides === cur.overrides &&
+    next.condition === cur.condition
   ) {
     return roster;
   }
@@ -318,6 +322,37 @@ export function setStanding(
   standing: Standing,
 ): RosterEntry[] {
   return setEntry(roster, id, { standing });
+}
+
+/**
+ * Set — or clear — this adventure's mark on a character (`stakes.ts` COST
+ * outcomes, and the player, write here).
+ *
+ * A blank condition DELETES the key rather than storing `""`, so "cleared" and
+ * "never marked" are the same stored shape. `normalizeEntry` drops blanks on
+ * load for the same reason: `captureReversal` reference-diffs the roster, and a
+ * save round-trip that resurrects a `condition: ""` would read as a change the
+ * turn made.
+ */
+export function setCondition(
+  roster: RosterEntry[],
+  id: string,
+  condition: string,
+): RosterEntry[] {
+  const text = condition.trim();
+  const i = roster.findIndex((e) => e.id === id);
+  if (i === -1) {
+    if (!text) return roster;
+    return [...roster, { id, ...DEFAULT_ENTRY, condition: text }];
+  }
+  if ((roster[i].condition ?? "") === text) return roster;
+
+  const next = { ...roster[i] };
+  if (text) next.condition = text;
+  else delete next.condition;
+  const out = roster.slice();
+  out[i] = next;
+  return out;
 }
 
 /** Merge story-written field changes onto an entry's overrides. */

@@ -138,3 +138,30 @@ describe("deriveToasts", () => {
     ]);
   });
 });
+
+describe("deriveToasts — conditions", () => {
+  it("reports a new mark", () => {
+    expect(
+      deriveToasts(narr({ conditions: [{ name: "Navi", condition: "Winded" }] })),
+    ).toEqual(["Navi: Winded"]);
+  });
+
+  it("reports a cleared mark as recovery, not as a blank chip", () => {
+    expect(
+      deriveToasts(narr({ conditions: [{ name: "Navi", condition: "  " }] })),
+    ).toEqual(["Navi recovered"]);
+  });
+
+  it("skips malformed rows", () => {
+    expect(
+      deriveToasts(
+        narr({
+          conditions: [
+            { name: "", condition: "x" },
+            { name: "Navi" } as never,
+          ],
+        }),
+      ),
+    ).toEqual([]);
+  });
+});

@@ -16,6 +16,7 @@ import {
 } from "./roster";
 import { formatNpcBlock, matchNpcs } from "./cast";
 import { matchWorldNotes, formatWorldNotesBlock } from "./worldNotes";
+import { formatConditionsBlock, formatStakesBlock, type StakeSignals } from "./stakes";
 
 /**
  * Prompt assembly (DESIGN.md → Prompt assembly, trimmed port of
@@ -41,6 +42,12 @@ export interface BuildOptions {
   historyBudgetTokens?: number;
   /** Turn about to run; defaults to game.turnNumber + 1 (spotlight timing). */
   currentTurn?: number;
+  /**
+   * This turn's resolved stakes (`stakes.ts`). Rolled by the CALLER, not here,
+   * because the store also records the band on the narrator message — one roll,
+   * two consumers. Omitted (or `outcome: null`) injects no outcome block.
+   */
+  stakes?: StakeSignals;
 }
 
 const DEFAULT_HISTORY_BUDGET = 3000;
@@ -88,6 +95,12 @@ export function buildMessages(opts: BuildOptions): ChatMessage[] {
   const gear = buildGearBlock(game, characters, playerMessage);
   if (gear) messages.push({ role: "system", content: gear });
 
+  // 8c. Conditions — the marks this adventure has left on people. Placed with
+  //     the other per-turn signals, not in the roster block, because a mark is
+  //     adventure state the sheet never carries.
+  const conditions = formatConditionsBlock(presentMembers(characters, game.roster));
+  if (conditions) messages.push({ role: "system", content: conditions });
+
   // 9. History window: opening narration as the first assistant turn, then a
   //    budget-trimmed tail of recent turns.
   messages.push(...buildHistory(game, budget));
@@ -98,6 +111,15 @@ export function buildMessages(opts: BuildOptions): ChatMessage[] {
   //     the action must be who is actually here. Always emitted, even for an
   //     empty party — "you travel alone" is exactly the case history drifts on.
   messages.push({ role: "system", content: buildPartyCompositionBlock(game, characters) });
+
+  // 9c. This turn's outcome band, if the action was a gamble. Sits beside the
+  //     roll call for the same reason: it is a fact about THIS action, and the
+  //     history is full of turns that went differently. Gated on the setting so
+  //     switching stakes off restores the pure-sandbox behaviour exactly.
+  if (settings.stakesEnabled && opts.stakes) {
+    const stakes = formatStakesBlock(opts.stakes, settings.stakesRule);
+    if (stakes) messages.push({ role: "system", content: stakes });
+  }
 
   // 10. Output-protocol instruction (how to emit prose + the <<<LOOM>>> block).
   messages.push({ role: "system", content: buildOutputProtocol(settings) });
@@ -132,6 +154,7 @@ function buildSystemContext(
       pc.drive ? `Drive: ${pc.drive}` : "",
       pc.strengths ? `Strengths: ${pc.strengths}` : "",
       pc.flaws ? `Flaws: ${pc.flaws}` : "",
+      pc.condition ? `Condition: ${pc.condition}` : "",
       formatEquipment(pc.equipment),
     ].filter(Boolean);
     parts.push(lines.join("\n"));
@@ -185,6 +208,7 @@ export function formatPartyRoster(members: PartyMember[]): string {
       m.drive ? `  Drive: ${m.drive}` : "",
       m.strengths ? `  Strengths: ${m.strengths}` : "",
       m.flaws ? `  Flaws: ${m.flaws}` : "",
+      m.condition ? `  Condition: ${m.condition}` : "",
       m.equipment.length ? indent(formatEquipment(m.equipment)) : "",
     ].filter(Boolean);
     return lines.join("\n");
@@ -397,6 +421,18 @@ export function buildHistory(game: GameState, budgetTokens: number): ChatMessage
   return [opening, ...kept];
 }
 
+/**
+ * The `conditions` field, documented only when stakes are on. With stakes off
+ * nothing in the game produces a mark, so the line would be ~60 tokens a turn
+ * teaching the model a channel it has no reason to use.
+ */
+function conditionLines(settings: Settings): string[] {
+  if (!settings.stakesEnabled) return [];
+  return [
+    '- "conditions": array of { "name", "condition" } — a lasting mark the story just left on someone ("left arm in a sling", "hunted by the Watch"). Matches ANYONE by name, the player included. Send "condition": "" to clear one. Marks are not sheet fields; write them freely, and clear them when the story resolves them.',
+  ];
+}
+
 function buildOutputProtocol(settings: Settings): string {
   const optionRule =
     settings.optionInstructions.trim() ||
@@ -440,6 +476,7 @@ function buildOutputProtocol(settings: Settings): string {
     '- "party": array of character ops, each { "op": "add|update|remove", "name", "standing" }. Add a character when they enter the player\'s story; remove when they leave it.',
     `- A NEW character's "add" also carries "species", "description", "personality", "drive", "strengths", "flaws" (all strings) and "equipment": [ { "label", "description" } ] — this is the only op that writes them. ${appearanceRule}`,
     ...characterLines,
+    ...conditionLines(settings),
     '- "inventory": array of { "op": "add|update|remove", "label", "description", "quantity" }.',
     '- Gold is the permanent currency item in "inventory" — never remove it. When the player gains or spends money, emit { "op": "update", "label": "Gold", "quantity": <new total> }.',
     '- "quests": array of { "op": "add|update|remove", "label", "description", "reward", "status": "active"|"done" }. Update a quest with status "done" when the player completes it.',

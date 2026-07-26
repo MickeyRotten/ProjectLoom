@@ -613,3 +613,90 @@ describe("buildHistory", () => {
     expect(hist.some((m) => m.content.startsWith("OLD"))).toBe(false);
   });
 });
+
+describe("stakes + conditions blocks", () => {
+  const risky = { risky: true, strengthsInPlay: false, flawsInPlay: false, roll: 2, modifier: 0, total: 2, outcome: "cost" as const };
+
+  it("injects the outcome block when stakes are on", () => {
+    const msgs = buildMessages({
+      settings,
+      game: newGame(),
+      characters: [defaultPC()],
+      playerMessage: "I attack the bandit",
+      stakes: risky,
+    });
+    const block = msgs.find((m) => m.content.startsWith("OUTCOME — THIS TURN"));
+    expect(block).toBeDefined();
+    expect(block!.content).toContain("= 2 → COST.");
+  });
+
+  it("injects nothing when stakes are off", () => {
+    const msgs = buildMessages({
+      settings: { ...settings, stakesEnabled: false },
+      game: newGame(),
+      characters: [defaultPC()],
+      playerMessage: "I attack the bandit",
+      stakes: risky,
+    });
+    expect(msgs.some((m) => m.content.startsWith("OUTCOME — THIS TURN"))).toBe(false);
+  });
+
+  it("injects nothing for an action that rolled no outcome", () => {
+    const msgs = buildMessages({
+      settings,
+      game: newGame(),
+      characters: [defaultPC()],
+      playerMessage: "I look around.",
+      stakes: { ...risky, risky: false, outcome: null },
+    });
+    expect(msgs.some((m) => m.content.startsWith("OUTCOME — THIS TURN"))).toBe(false);
+  });
+
+  it("places the outcome after the history, with the roll call", () => {
+    const g = { ...newGame(), messages: [play(1, "hello"), narr(1, "hi")] };
+    const msgs = buildMessages({
+      settings,
+      game: g,
+      characters: [defaultPC()],
+      playerMessage: "I attack the bandit",
+      stakes: risky,
+    });
+    const lastHistory = msgs.findIndex((m) => m.content === "hi");
+    const outcome = msgs.findIndex((m) => m.content.startsWith("OUTCOME — THIS TURN"));
+    expect(outcome).toBeGreaterThan(lastHistory);
+    // …and still before the player's new message, which is always last.
+    expect(msgs[msgs.length - 1].role).toBe("user");
+  });
+
+  it("names marked characters, and puts the mark on their sheet", () => {
+    const navi = member({ id: "m-navi", name: "Navi" });
+    const g = withParty(newGame(), "m-navi");
+    g.roster = [{ id: "m-navi", standing: "active", lastSpokeTurn: 0, condition: "Winded" }];
+    const msgs = buildMessages({
+      settings,
+      game: g,
+      characters: [defaultPC(), navi],
+      playerMessage: "go on",
+    });
+    const conditions = msgs.find((m) => m.content.startsWith("CONDITIONS —"));
+    expect(conditions!.content).toContain("- Navi: Winded");
+    expect(msgs[0].content).toContain("Condition: Winded");
+  });
+
+  it("documents the conditions field only while stakes are on", () => {
+    const on = buildMessages({
+      settings,
+      game: newGame(),
+      characters: [defaultPC()],
+      playerMessage: "go",
+    });
+    const off = buildMessages({
+      settings: { ...settings, stakesEnabled: false },
+      game: newGame(),
+      characters: [defaultPC()],
+      playerMessage: "go",
+    });
+    expect(on.some((m) => m.content.includes('"conditions"'))).toBe(true);
+    expect(off.some((m) => m.content.includes('"conditions"'))).toBe(false);
+  });
+});

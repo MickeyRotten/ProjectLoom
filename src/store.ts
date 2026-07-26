@@ -36,12 +36,15 @@ import {
   mergeOverrides,
   partyFull,
   partyMembers,
+  playerCharacter,
   pruneRoster,
   resolve,
+  setCondition as setEntryCondition,
   setEntry,
   setStanding as setEntryStanding,
   standingOf,
 } from "./lib/roster";
+import { computeStakes } from "./lib/stakes";
 import { buildMessages } from "./lib/prompt";
 import { completeChat, streamChat, OpenRouterError } from "./lib/openrouter";
 import {
@@ -182,6 +185,8 @@ export interface LoomStore {
    * (`departed` / `fallen`). Never touches the global character.
    */
   setStanding: (id: string, standing: Standing) => void;
+  /** Set or clear this adventure's mark on a character (blank clears). */
+  setCondition: (id: string, condition: string) => void;
   /** Drop this adventure's story-written overrides, back to the authored sheet. */
   revertOverrides: (id: string) => void;
   addNote: () => void;
@@ -735,6 +740,17 @@ export const useStore = create<LoomStore>((set, get) => {
     if (isInParty(standing)) get().syncImages();
   },
 
+  setCondition(id, condition) {
+    const g = get().game;
+    // No role check: a condition is the one piece of character state that
+    // applies to the PC as much as to a companion.
+    const roster = setEntryCondition(g.roster, id, condition);
+    if (roster === g.roster) return;
+    const game = { ...g, roster };
+    set({ game });
+    void saveActiveGame(game);
+  },
+
   revertOverrides(id) {
     const g = get().game;
     const roster = clearRosterOverrides(g.roster, id);
@@ -923,6 +939,16 @@ export const useStore = create<LoomStore>((set, get) => {
 
     turnAbort = new AbortController();
 
+    // Roll this turn's stakes HERE rather than inside `buildMessages`: the band
+    // is both a prompt block and a fact recorded on the narrator message, and
+    // rolling it twice could disagree. Seeded on (turn, text), so a regenerate
+    // re-tells the same result instead of re-rolling for a better one.
+    const stakes = computeStakes(
+      trimmed,
+      playerCharacter(get().characters, base.roster),
+      turn,
+    );
+
     // Build from `base` (pre-turn history) so the new line isn't duplicated —
     // it rides as the final user message, not also inside the history window.
     const messages = buildMessages({
@@ -930,6 +956,7 @@ export const useStore = create<LoomStore>((set, get) => {
       game: base,
       characters: get().characters,
       playerMessage: trimmed,
+      stakes,
     });
 
     try {
@@ -976,6 +1003,8 @@ export const useStore = create<LoomStore>((set, get) => {
         role: "narrator",
         content: prose || raw.trim(),
         turn,
+        outcome:
+          get().settings.stakesEnabled && stakes.outcome ? stakes.outcome : undefined,
         appliedDeltas: block ?? undefined,
         reversal,
         day: scene?.day ?? g.day,

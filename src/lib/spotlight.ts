@@ -145,7 +145,9 @@ export function computeSpotlightSignals(
   });
 }
 
-function intersects(a: Set<string>, b: Set<string>): boolean {
+/** Do two keyword sets share a member? Exported for `stakes.ts`, which must
+ *  decide "relevant" exactly the way `strengthsRelevant` does above. */
+export function intersects(a: Set<string>, b: Set<string>): boolean {
   const [small, big] = a.size <= b.size ? [a, b] : [b, a];
   for (const x of small) if (big.has(x)) return true;
   return false;

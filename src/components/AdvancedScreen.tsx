@@ -17,6 +17,7 @@ import {
   DEFAULT_PORTRAIT_STYLE,
   DEFAULT_REFERENCE_INSTRUCTION,
   DEFAULT_SPOTLIGHT_RULE,
+  DEFAULT_STAKES_RULE,
   DEFAULT_STANDING_INSTRUCTIONS,
 } from "../lib/defaults";
 import {
@@ -48,6 +49,7 @@ type InstrKey = keyof Pick<
   | "customInstructions"
   | "optionInstructions"
   | "spotlightRule"
+  | "stakesRule"
   | "appearanceInstructions"
   | "characterCreationInstructions"
   | "characterUpdateInstructions"
@@ -94,6 +96,14 @@ const OPTION_FIELD: InstrSpec = {
   def: DEFAULT_OPTION_INSTRUCTIONS,
   rows: 3,
   hint: "How the suggested actions under each beat are written.",
+};
+
+const STAKES_FIELD: InstrSpec = {
+  key: "stakesRule",
+  label: "Outcome Rule",
+  def: DEFAULT_STAKES_RULE,
+  rows: 6,
+  hint: "What a strong, mixed, or costly result means in your world. The roll is the mechanic; this is what the narrator does with it.",
 };
 
 /**
@@ -220,6 +230,7 @@ function ToggleRow({
 
 function NarratorSection() {
   const showActionOptions = useStore((s) => s.settings.showActionOptions);
+  const stakesEnabled = useStore((s) => s.settings.stakesEnabled);
   const update = useStore((s) => s.updateSettings);
   return (
     <>
@@ -232,6 +243,30 @@ function NarratorSection() {
         onClick={() => update({ showActionOptions: !showActionOptions })}
       />
       {showActionOptions && <InstrField spec={OPTION_FIELD} />}
+
+      <ToggleRow
+        label="Stakes"
+        state={stakesEnabled ? "ON" : "OFF"}
+        onClick={() => update({ stakesEnabled: !stakesEnabled })}
+      />
+      {stakesEnabled ? (
+        <>
+          <p className="border-2 border-ink p-3 text-sm">
+            When you try something that can go wrong — a fight, a climb, a lie, a
+            haggle — the app rolls a d6 here on the device, adds +1 if the attempt
+            plays to your Strengths and −1 if it plays to your Flaws, and tells the
+            narrator which of the three results below it has to write. The narrator
+            never picks the outcome. The roll is fixed for that action on that turn,
+            so regenerating re-tells the same result rather than fishing for a
+            better one — change the action to change the odds.
+          </p>
+          <InstrField spec={STAKES_FIELD} />
+        </>
+      ) : (
+        <p className="border-2 border-ink p-3 text-sm opacity-70">
+          Off: nothing is rolled, and the narrator decides how every action goes.
+        </p>
+      )}
     </>
   );
 }

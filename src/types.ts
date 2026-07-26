@@ -111,6 +111,13 @@ export interface RosterEntry {
   standing: Standing;
   lastSpokeTurn: number;
   overrides?: CharacterOverride;
+  /**
+   * What this adventure has done to them — "left arm in a sling", "out of
+   * arrows", "hunted by the Watch". Free text, per-adventure, and the only
+   * character state a COST outcome can write (see `stakes.ts`). Absent or
+   * blank means unmarked; the sheet is never touched.
+   */
+  condition?: string;
 }
 
 /**
@@ -128,6 +135,8 @@ export type LegacyRosterEntry = Partial<RosterEntry> & {
 export interface PartyMember extends Character {
   lastSpokeTurn: number;
   standing: Standing;
+  /** This adventure's mark on them; "" when unmarked. */
+  condition: string;
 }
 
 export interface Item {
@@ -161,11 +170,20 @@ export interface Note {
 
 export type MessageRole = "player" | "narrator";
 
+/**
+ * The outcome band a risky action resolved to, decided ON-DEVICE before the
+ * call (see `stakes.ts`). Recorded on the narrator message so the transcript
+ * keeps showing the roll that produced the beat.
+ */
+export type TurnOutcome = "strong" | "mixed" | "cost";
+
 export interface Message {
   id: string;
   role: MessageRole;
   content: string;
   turn: number;
+  /** The outcome band handed to the narrator for this turn, if any was rolled. */
+  outcome?: TurnOutcome;
   /** The parsed delta block applied by this turn — recorded for reversal (Phase 5). */
   appliedDeltas?: LoomBlock;
   /** Pre-turn slices this turn overwrote — undo/regenerate restores them (Phase 5). */
@@ -310,6 +328,14 @@ export interface Settings {
   departureInstructions: string;
   optionInstructions: string;
   spotlightRule: string;
+  /**
+   * Whether risky actions are resolved on-device into an outcome band the
+   * narrator must honour (`stakes.ts`). Off restores the pure-sandbox
+   * behaviour: the narrator decides how everything goes.
+   */
+  stakesEnabled: boolean;
+  /** What the narrator does with the band it is handed — the editable half. */
+  stakesRule: string;
 }
 
 /* ------------------------------------------------------------------ *
@@ -355,6 +381,20 @@ export interface PartyDelta {
   status?: Exclude<CharacterStatus, "active">;
 }
 
+/**
+ * A mark the story leaves on someone. Matched by name across the WHOLE cast
+ * library — the PC included, unlike `PartyDelta`, because the player is who a
+ * COST outcome lands on most often. A blank `condition` clears the mark.
+ *
+ * Deliberately its own op-less channel rather than a `PartyDelta` field: party
+ * ops carry the frozen-sheet rules, and a condition is the one piece of
+ * character state the story is *supposed* to keep rewriting.
+ */
+export interface ConditionDelta {
+  name: string;
+  condition: string;
+}
+
 export interface InventoryDelta {
   op: Op;
   label: string;
@@ -376,6 +416,8 @@ export interface LoomBlock {
   day?: number;
   options?: string[];
   party?: PartyDelta[];
+  /** Marks the story left on people this turn — see `ConditionDelta`. */
+  conditions?: ConditionDelta[];
   inventory?: InventoryDelta[];
   quests?: QuestDelta[];
   spoke?: string[];
