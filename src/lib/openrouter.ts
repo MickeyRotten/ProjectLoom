@@ -1,6 +1,7 @@
 import type { Settings } from "../types";
 import type { ChatMessage } from "./prompt";
 import { MAX_ATTEMPTS, backoffMs, isRetryableStatus, sleep } from "./retry";
+import { reasoningBody } from "./settings";
 
 /**
  * OpenRouter streaming chat completion (OpenAI-compatible SSE). Direct fetch,
@@ -201,6 +202,9 @@ async function completeOnce(opts: CompleteOptions): Promise<string> {
       model: settings.textModelId,
       temperature: temperature ?? settings.temperature,
       stream: false,
+      // Side calls run on the text model, so they answer to the same thinking
+      // setting the narration does — one model, one behaviour.
+      ...reasoningBody(settings),
       messages,
     }),
     signal,
@@ -265,6 +269,9 @@ async function streamOnce(opts: StreamOptions): Promise<string> {
       // and a chatty one both bills more and pushes the <<<LOOM>>> block past
       // where the player is still reading. 0 restores "no cap".
       ...(settings.maxTokens > 0 ? { max_tokens: settings.maxTokens } : {}),
+      // Thinking effort (Model & Key → Reasoning). Absent on "auto", so a
+      // request looks exactly as it did before the setting existed.
+      ...reasoningBody(settings),
       messages,
     }),
     signal,

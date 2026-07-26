@@ -183,6 +183,13 @@ when it is switched back on. Alongside it, **one-name locations** —
 compound ("Boars Head Tavern - Damp Cellar" → "Damp Cellar") for the ` - `/` — `/
 ` / `/`: ` joiners only (never a comma or a bare hyphen), backed by an explicit
 `"location"` rule in the output protocol.
+Post-MVP also: **reasoning level** (`Settings.reasoningLevel`, Model & Key —
+`auto | off | minimal | low | medium | high`) — `settings.ts → reasoningParam`/
+`reasoningBody` maps it onto OpenRouter's unified `reasoning` field for the
+narration stream and the non-streamed side calls alike. `auto` (shipped, and the
+fallback for any unrecognised stored value) sends no field at all; `off` sends
+`{ enabled: false }` so a model that thinks by default stops billing for it; the
+effort levels send `{ effort, exclude: true }`, since nothing renders reasoning.
 Deferred (post-MVP): rolling LLM summarization, NPC/item art, TTS,
 weather animation, multi-world. Track scope in `DESIGN.md → Build Phases`.
 

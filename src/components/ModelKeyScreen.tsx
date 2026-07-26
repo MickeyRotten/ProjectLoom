@@ -4,6 +4,31 @@ import { Field } from "./fields";
 import { KeyField } from "./KeyField";
 import { ModelPicker } from "./ModelPicker";
 import { splitModels, useModelCatalog } from "./useModelCatalog";
+import { REASONING_LEVELS, type ReasoningLevel } from "../types";
+
+/**
+ * Labels for the reasoning picker. Short enough for three-across on a phone;
+ * "AUTO" is deliberately not called "default", because it means "send nothing
+ * and let the model decide", not "our recommended level".
+ */
+const REASONING_LABELS: Record<ReasoningLevel, string> = {
+  auto: "Auto",
+  off: "Off",
+  minimal: "Min",
+  low: "Low",
+  medium: "Med",
+  high: "High",
+};
+
+/** One line under the picker explaining the level that is actually selected. */
+const REASONING_NOTES: Record<ReasoningLevel, string> = {
+  auto: "Nothing is asked for — the model thinks however it normally would.",
+  off: "Thinking is switched off where the model allows it. Cheaper and faster; models that always think ignore this.",
+  minimal: "The shortest think the model offers before it writes.",
+  low: "A little thinking. Slower and dearer than off, steadier on tangled turns.",
+  medium: "A balanced think on every turn — noticeably slower and dearer.",
+  high: "The longest think the model offers. Slow, and the most expensive way to play.",
+};
 
 /**
  * Model & Key (DESIGN.md → Menu): the OpenRouter credentials and model choices
@@ -40,6 +65,35 @@ export function ModelKeyScreen() {
           loading={loading}
           error={error}
         />
+
+        <div className="space-y-2">
+          <span className="block text-sm uppercase tracking-widest">Reasoning</span>
+          <div className="grid grid-cols-3 gap-2">
+            {REASONING_LEVELS.map((level) => {
+              const current = settings.reasoningLevel === level;
+              return (
+                <button
+                  key={level}
+                  type="button"
+                  aria-pressed={current}
+                  onClick={() => update({ reasoningLevel: level })}
+                  className={`min-h-11 border-2 border-ink px-2 py-2 text-sm uppercase tracking-widest ${
+                    current ? "bg-ink text-paper" : "active:bg-ink active:text-paper"
+                  }`}
+                >
+                  {REASONING_LABELS[level]}
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-xs opacity-70">{REASONING_NOTES[settings.reasoningLevel]}</p>
+          <p className="text-xs opacity-70">
+            How hard the text model thinks before it writes. Only reasoning models do
+            anything with this. Thinking is billed like any other output and counts
+            against Advanced → Narrator → Beat Length Limit, so a tight cap plus a high
+            level can cut a beat off mid-write.
+          </p>
+        </div>
 
         <KeyField
           label="Image API Key"

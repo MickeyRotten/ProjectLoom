@@ -1,4 +1,4 @@
-import type { Settings } from "../types";
+import type { ReasoningEffort, ReasoningLevel, Settings } from "../types";
 import { defaultSettings } from "./defaults";
 
 /**
@@ -36,6 +36,51 @@ export const MAX_BEAT_TOKENS = 8000;
 export function clampMaxTokens(value: number): number {
   if (!Number.isFinite(value) || value <= 0) return 0;
   return Math.min(MAX_BEAT_TOKENS, Math.round(value));
+}
+
+/**
+ * OpenRouter's unified `reasoning` request field — one shape across providers,
+ * translated per-model on their side (an effort becomes a thinking budget for
+ * models that want tokens instead of a level).
+ */
+export interface ReasoningParam {
+  effort?: ReasoningEffort;
+  /** `false` asks the provider to turn thinking off on a model that does it by default. */
+  enabled?: boolean;
+  /** Keep reasoning out of the response body. */
+  exclude?: boolean;
+}
+
+/**
+ * The `reasoning` field for a level, or `null` when the request must carry none.
+ *
+ * `auto` and any unrecognised stored value both omit it: a level that came out
+ * of localStorage from a future (or corrupted) build must not be forwarded to
+ * the API, where it would 400 every turn.
+ *
+ * `exclude: true` rides along with every effort level because nothing in the app
+ * renders reasoning — the stream reads `delta.content` only — so shipping the
+ * thinking text back would be bandwidth spent on something dropped on arrival.
+ * It does not make the thinking free; reasoning tokens are still billed.
+ */
+export function reasoningParam(level: ReasoningLevel): ReasoningParam | null {
+  switch (level) {
+    case "off":
+      return { enabled: false };
+    case "minimal":
+    case "low":
+    case "medium":
+    case "high":
+      return { effort: level, exclude: true };
+    default:
+      return null;
+  }
+}
+
+/** Spreadable request-body fragment — `{}` when the field must be omitted. */
+export function reasoningBody(settings: Settings): { reasoning?: ReasoningParam } {
+  const reasoning = reasoningParam(settings.reasoningLevel);
+  return reasoning ? { reasoning } : {};
 }
 
 export function saveSettings(settings: Settings): void {

@@ -178,6 +178,13 @@ export const DEFAULT_HISTORY_BUDGET_SETTING = 3000;
  */
 export const DEFAULT_MAX_TOKENS = 700;
 
+/**
+ * Thinking effort for the text model. `auto` ships because it is the only value
+ * that changes nothing: no `reasoning` field is sent, so every model — reasoning
+ * or not — behaves exactly as it did before the setting existed.
+ */
+export const DEFAULT_REASONING_LEVEL = "auto" as const;
+
 export function defaultSettings(): Settings {
   return {
     openRouterKey: "",
@@ -186,6 +193,7 @@ export function defaultSettings(): Settings {
     textModelId: DEFAULT_TEXT_MODEL,
     imageModelId: DEFAULT_IMAGE_MODEL,
     temperature: 0.8,
+    reasoningLevel: DEFAULT_REASONING_LEVEL,
     showActionOptions: true,
     invert: false,
     textScale: "m",
