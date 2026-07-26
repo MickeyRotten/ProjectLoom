@@ -82,15 +82,18 @@ export default function App() {
     return () => window.removeEventListener("popstate", onPop);
   }, []);
 
-  // Invert Colors is our dark-mode toggle: the `.invert` class swaps the
+  // Invert Colors is our dark-mode toggle: `data-theme="dark"` swaps the
   // ink/paper tokens app-wide (theme.css), flipping every border, background,
   // and glyph — but NOT the generated banner/portrait bitmaps, which are real
-  // pixels the token swap never touches. Pinning `color-scheme` to the active
-  // theme tells the engine we own theming, so a dark-OS WebView won't apply its
-  // own force-dark pass (which would invert those images). Keep the browser
-  // chrome (theme-color) matched to the paper color too.
+  // pixels the token swap never touches. It is an attribute rather than a class
+  // on purpose: a class named `invert` collides with Tailwind's own `.invert`
+  // filter utility and inverted the whole page instead (see theme.css).
+  // Pinning `color-scheme` to the active theme tells the engine we own theming,
+  // so a dark-OS WebView won't apply its own force-dark pass (which would
+  // invert those images). Keep the browser chrome (theme-color) matched to the
+  // paper color too.
   useEffect(() => {
-    document.documentElement.classList.toggle("invert", invert);
+    document.documentElement.dataset.theme = invert ? "dark" : "light";
     document.documentElement.style.colorScheme = invert ? "dark" : "light";
     document
       .querySelector('meta[name="theme-color"]')

@@ -54,6 +54,13 @@ _All items below fixed on `claude/todo-review-1jt4uv`._
   `theme-color #000000`. Fix the class or remove it — and expose the invert
   toggle in the UI (cheap win). **Fixed:** dead class removed, `settings.invert`
   toggle in the menu drives `.invert` + matching `theme-color`.
+  **Fixed again:** `.invert` is *also* a Tailwind filter utility, emitted because
+  the word appears in scanned source, and the utilities layer lands after
+  `theme.css` — so the class put `filter: invert(100%)` on `<html>` on top of the
+  token swap. The two cancelled for every border/background/glyph while the
+  generated bitmaps (real pixels) were the only thing that flipped, making dark
+  mode look like an image-only inverter. Hook is now `[data-theme="dark"]`, and
+  `invert`/`!invert` are blocklisted so the utility is never generated.
 
 ## Heuristics / polish
 
