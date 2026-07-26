@@ -111,6 +111,13 @@ export interface RosterEntry {
   standing: Standing;
   lastSpokeTurn: number;
   overrides?: CharacterOverride;
+  /**
+   * What this adventure has done to them — "left arm in a sling", "out of
+   * arrows", "hunted by the Watch". Free text, per-adventure, and the only
+   * character state a COST outcome can write (see `stakes.ts`). Absent or
+   * blank means unmarked; the sheet is never touched.
+   */
+  condition?: string;
 }
 
 /**
@@ -128,6 +135,8 @@ export type LegacyRosterEntry = Partial<RosterEntry> & {
 export interface PartyMember extends Character {
   lastSpokeTurn: number;
   standing: Standing;
+  /** This adventure's mark on them; "" when unmarked. */
+  condition: string;
 }
 
 export interface Item {
@@ -161,11 +170,20 @@ export interface Note {
 
 export type MessageRole = "player" | "narrator";
 
+/**
+ * The outcome band a risky action resolved to, decided ON-DEVICE before the
+ * call (see `stakes.ts`). Recorded on the narrator message so the transcript
+ * keeps showing the roll that produced the beat.
+ */
+export type TurnOutcome = "strong" | "mixed" | "cost";
+
 export interface Message {
   id: string;
   role: MessageRole;
   content: string;
   turn: number;
+  /** The outcome band handed to the narrator for this turn, if any was rolled. */
+  outcome?: TurnOutcome;
   /** The parsed delta block applied by this turn — recorded for reversal (Phase 5). */
   appliedDeltas?: LoomBlock;
   /** Pre-turn slices this turn overwrote — undo/regenerate restores them (Phase 5). */
@@ -196,6 +214,7 @@ export interface Reversal {
   characters?: LegacyCharacter[];
   inventory?: Item[];
   quests?: Quest[];
+  worldNotes?: Note[];
 }
 
 /**
@@ -253,8 +272,29 @@ export interface RefImage {
   b64: string;
 }
 
+/**
+ * Reading size for the narration log. Only the prose scales — buttons, labels
+ * and every other control keep their size, so a large setting buys text and not
+ * a blown-up interface.
+ */
+export type TextScale = "s" | "m" | "l" | "xl";
+
+/**
+ * How much room the location banner takes. `compact` keeps the art reachable (a
+ * tap still opens it full-screen) while handing the reading area back ~90px on
+ * a phone — the banner, the party strip and the composer together were eating
+ * over half the viewport of a text-first app.
+ */
+export type BannerSize = "full" | "compact";
+
 export interface Settings {
   openRouterKey: string;
+  /**
+   * Whether the player has been through first-run setup. Gates `SetupScreen`.
+   * Deliberately its own flag rather than "is there a key": gating on the key
+   * would throw the player out of setup on the first character they typed.
+   */
+  setupDone: boolean;
   /**
    * Optional separate OpenRouter key for image generation — lets the player
    * track image spend against its own key. Blank falls back to openRouterKey.
@@ -267,6 +307,10 @@ export interface Settings {
   showActionOptions: boolean;
   /** Flip ink/paper — the "black paper" reading of the 1-bit theme. */
   invert: boolean;
+  /** Reading size for narration. Chrome (buttons, labels) never scales. */
+  textScale: TextScale;
+  /** Whether the location banner shows full height or as a thin strip. */
+  bannerSize: BannerSize;
   // Advanced (player-editable, Phase 4):
   customInstructions: string;
   bannerInstructions: string;
@@ -310,6 +354,22 @@ export interface Settings {
   departureInstructions: string;
   optionInstructions: string;
   spotlightRule: string;
+  /**
+   * Whether risky actions are resolved on-device into an outcome band the
+   * narrator must honour (`stakes.ts`). Off restores the pure-sandbox
+   * behaviour: the narrator decides how everything goes.
+   */
+  stakesEnabled: boolean;
+  /** What the narrator does with the band it is handed — the editable half. */
+  stakesRule: string;
+  /**
+   * Approximate token budget for the rolling history window. The only thing
+   * standing between a long game and amnesia, so it is the player's to raise on
+   * a large-context model.
+   */
+  historyBudget: number;
+  /** Cap on a beat's length, in tokens. 0 sends no cap at all. */
+  maxTokens: number;
 }
 
 /* ------------------------------------------------------------------ *
@@ -355,6 +415,20 @@ export interface PartyDelta {
   status?: Exclude<CharacterStatus, "active">;
 }
 
+/**
+ * A mark the story leaves on someone. Matched by name across the WHOLE cast
+ * library — the PC included, unlike `PartyDelta`, because the player is who a
+ * COST outcome lands on most often. A blank `condition` clears the mark.
+ *
+ * Deliberately its own op-less channel rather than a `PartyDelta` field: party
+ * ops carry the frozen-sheet rules, and a condition is the one piece of
+ * character state the story is *supposed* to keep rewriting.
+ */
+export interface ConditionDelta {
+  name: string;
+  condition: string;
+}
+
 export interface InventoryDelta {
   op: Op;
   label: string;
@@ -370,13 +444,31 @@ export interface QuestDelta {
   status?: QuestStatus;
 }
 
+/**
+ * A World Note the narrator wrote for itself. The rolling history window is the
+ * only memory a long game has, and everything that falls out of it is gone; a
+ * note is how a fact survives, keyword-gated back in by `worldNotes.ts` for the
+ * rest of the adventure. Player-visible and editable on the World Notes screen,
+ * which is the point — a hidden summary cannot be corrected.
+ */
+export interface NoteDelta {
+  op: Op;
+  title: string;
+  content?: string;
+  keywords?: string[];
+}
+
 export interface LoomBlock {
   location?: string;
   weather?: string;
   day?: number;
   options?: string[];
   party?: PartyDelta[];
+  /** Marks the story left on people this turn — see `ConditionDelta`. */
+  conditions?: ConditionDelta[];
   inventory?: InventoryDelta[];
   quests?: QuestDelta[];
+  /** Lore the narrator committed to memory this turn — see `NoteDelta`. */
+  notes?: NoteDelta[];
   spoke?: string[];
 }

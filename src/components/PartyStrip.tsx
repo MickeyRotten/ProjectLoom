@@ -19,6 +19,13 @@ const MEMBER_SLOTS = 3;
  * filled slot shows initials. Portraits are zoomed 50% and pinned to the top of
  * the slot (`origin-top scale-150 object-top`) so the face fills the frame
  * instead of sitting small in a tall crop.
+ *
+ * Two things here are about reclaiming the reading area, which the banner, this
+ * strip and the composer together had squeezed to under half the viewport of a
+ * text-first app: slots are 3:4 rather than 1:2 (the face crop above means the
+ * extra height was never showing more of anybody), and a party of NOBODY
+ * collapses the whole grid to one row instead of standing three full-height
+ * dashed boxes on screen.
  */
 export function PartyStrip() {
   const characters = useStore((s) => s.characters);
@@ -30,6 +37,46 @@ export function PartyStrip() {
 
   const pc = useMemo(() => playerCharacter(characters, roster), [characters, roster]);
   const members = useMemo(() => activeMembers(characters, roster), [characters, roster]);
+
+  // Travelling alone, the strip was three full-height dashed boxes and the PC —
+  // ~140px of a phone spent saying "nobody here". One row says it better.
+  if (!members.length) {
+    return (
+      <nav className="flex items-stretch gap-2 px-3 pt-3">
+        {pc && (
+          <button
+            type="button"
+            disabled={streaming}
+            onClick={() => openMember(pc.id)}
+            className="flex items-center gap-2 border-2 border-ink px-2 py-1 disabled:opacity-40 active:bg-ink active:text-paper"
+            aria-label={pc.name}
+          >
+            <span className="flex h-6 w-6 items-center justify-center overflow-hidden border-2 border-ink text-xs font-bold">
+              {images[portraitKey(pc.id)] ? (
+                <img
+                  src={images[portraitKey(pc.id)]}
+                  alt=""
+                  aria-hidden="true"
+                  className="h-full w-full origin-top scale-150 object-cover object-top [image-rendering:pixelated]"
+                />
+              ) : (
+                initials(pc)
+              )}
+            </span>
+            <span className="text-xs uppercase tracking-widest">{pc.name}</span>
+          </button>
+        )}
+        <button
+          type="button"
+          disabled={streaming}
+          onClick={() => setScreen("characters")}
+          className="flex-1 border-2 border-dashed border-ink px-2 py-1 text-xs uppercase tracking-widest opacity-60 disabled:opacity-30 active:bg-ink active:text-paper active:opacity-100"
+        >
+          + Add companions
+        </button>
+      </nav>
+    );
+  }
 
   const slots: (PartyMember | null)[] = [
     pc ?? null,
@@ -48,7 +95,7 @@ export function PartyStrip() {
             className="flex flex-col items-center disabled:opacity-40 active:opacity-60"
             aria-label={c.name}
           >
-            <span className="flex aspect-[1/2] w-full items-center justify-center overflow-hidden border-2 border-ink text-sm font-bold">
+            <span className="flex aspect-[3/4] w-full items-center justify-center overflow-hidden border-2 border-ink text-sm font-bold">
               {images[portraitKey(c.id)] ? (
                 <img
                   src={images[portraitKey(c.id)]}
@@ -72,7 +119,7 @@ export function PartyStrip() {
             className="flex flex-col items-center disabled:opacity-40 active:opacity-60"
             aria-label="Add party member"
           >
-            <span className="flex aspect-[1/2] w-full items-center justify-center border-2 border-dashed border-ink text-sm font-bold opacity-30" />
+            <span className="flex aspect-[3/4] w-full items-center justify-center border-2 border-dashed border-ink text-sm font-bold opacity-30" />
             <span className="w-full border-2 border-t-0 border-transparent px-1 py-1 text-center uppercase leading-tight opacity-0">
               —
             </span>

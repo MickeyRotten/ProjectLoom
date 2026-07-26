@@ -16,6 +16,7 @@ function npc(name: string, patch: Partial<PartyMember> = {}): PartyMember {
     equipment: [],
     lastSpokeTurn: 0,
     standing: "npc",
+    condition: "",
     ...patch,
   };
 }

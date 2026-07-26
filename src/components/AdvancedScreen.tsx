@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useStore } from "../store";
 import { OverlayHeader } from "./OverlayHeader";
 import { Field, btnSmall } from "./fields";
@@ -17,6 +17,7 @@ import {
   DEFAULT_PORTRAIT_STYLE,
   DEFAULT_REFERENCE_INSTRUCTION,
   DEFAULT_SPOTLIGHT_RULE,
+  DEFAULT_STAKES_RULE,
   DEFAULT_STANDING_INSTRUCTIONS,
 } from "../lib/defaults";
 import {
@@ -26,6 +27,12 @@ import {
   MAX_REF_IMAGES,
   refImageToDataUrl,
 } from "../lib/images";
+import {
+  clampHistoryBudget,
+  MAX_HISTORY_BUDGET,
+  MIN_HISTORY_BUDGET,
+} from "../lib/prompt";
+import { clampMaxTokens, MAX_BEAT_TOKENS } from "../lib/settings";
 
 /**
  * Advanced instructions (DESIGN.md → Menu): the player-editable prompt guidance
@@ -48,6 +55,7 @@ type InstrKey = keyof Pick<
   | "customInstructions"
   | "optionInstructions"
   | "spotlightRule"
+  | "stakesRule"
   | "appearanceInstructions"
   | "characterCreationInstructions"
   | "characterUpdateInstructions"
@@ -94,6 +102,14 @@ const OPTION_FIELD: InstrSpec = {
   def: DEFAULT_OPTION_INSTRUCTIONS,
   rows: 3,
   hint: "How the suggested actions under each beat are written.",
+};
+
+const STAKES_FIELD: InstrSpec = {
+  key: "stakesRule",
+  label: "Outcome Rule",
+  def: DEFAULT_STAKES_RULE,
+  rows: 6,
+  hint: "What a strong, mixed, or costly result means in your world. The roll is the mechanic; this is what the narrator does with it.",
 };
 
 /**
@@ -220,6 +236,9 @@ function ToggleRow({
 
 function NarratorSection() {
   const showActionOptions = useStore((s) => s.settings.showActionOptions);
+  const stakesEnabled = useStore((s) => s.settings.stakesEnabled);
+  const historyBudget = useStore((s) => s.settings.historyBudget);
+  const maxTokens = useStore((s) => s.settings.maxTokens);
   const update = useStore((s) => s.updateSettings);
   return (
     <>
@@ -232,6 +251,67 @@ function NarratorSection() {
         onClick={() => update({ showActionOptions: !showActionOptions })}
       />
       {showActionOptions && <InstrField spec={OPTION_FIELD} />}
+
+      <Field label="Memory — Turns Kept">
+        <input
+          type="number"
+          inputMode="numeric"
+          min={MIN_HISTORY_BUDGET}
+          max={MAX_HISTORY_BUDGET}
+          step={500}
+          value={historyBudget}
+          onChange={(e) => update({ historyBudget: clampHistoryBudget(e.target.valueAsNumber) })}
+          className="w-full border-2 border-ink bg-paper p-2 focus:outline-none"
+        />
+        <p className="text-xs opacity-70">
+          Roughly how many tokens of recent story the narrator is shown each turn.
+          Beyond this, older beats are dropped — what the narrator wrote into World
+          Notes is what survives. Raise it on a large-context model; every turn pays
+          for it.
+        </p>
+      </Field>
+
+      <Field label="Beat Length Limit">
+        <input
+          type="number"
+          inputMode="numeric"
+          min={0}
+          max={MAX_BEAT_TOKENS}
+          step={100}
+          value={maxTokens}
+          onChange={(e) => update({ maxTokens: clampMaxTokens(e.target.valueAsNumber) })}
+          className="w-full border-2 border-ink bg-paper p-2 focus:outline-none"
+        />
+        <p className="text-xs opacity-70">
+          Hard cap on one beat, in tokens. 0 removes the cap and lets the model run as
+          long as it likes. Too low and the machine block at the end of a beat gets
+          cut off mid-write.
+        </p>
+      </Field>
+
+      <ToggleRow
+        label="Stakes"
+        state={stakesEnabled ? "ON" : "OFF"}
+        onClick={() => update({ stakesEnabled: !stakesEnabled })}
+      />
+      {stakesEnabled ? (
+        <>
+          <p className="border-2 border-ink p-3 text-sm">
+            When you try something that can go wrong — a fight, a climb, a lie, a
+            haggle — the app rolls a d6 here on the device, adds +1 if the attempt
+            plays to your Strengths and −1 if it plays to your Flaws, and tells the
+            narrator which of the three results below it has to write. The narrator
+            never picks the outcome. The roll is fixed for that action on that turn,
+            so regenerating re-tells the same result rather than fishing for a
+            better one — change the action to change the odds.
+          </p>
+          <InstrField spec={STAKES_FIELD} />
+        </>
+      ) : (
+        <p className="border-2 border-ink p-3 text-sm opacity-70">
+          Off: nothing is rolled, and the narrator decides how every action goes.
+        </p>
+      )}
     </>
   );
 }
@@ -420,15 +500,26 @@ const SECTION_BODY: Record<SectionId, () => React.ReactElement> = {
 
 export function AdvancedScreen() {
   const [section, setSection] = useState<SectionId | null>(null);
+  const setBackHandler = useStore((s) => s.setBackHandler);
   const open = SECTIONS.find((s) => s.id === section);
+
+  // Claim Back while a sub-menu is open, so it pops to this index rather than
+  // out of Advanced. Registered in the store, not passed to the header, so the
+  // ANDROID back button does the same thing as the on-screen one.
+  useEffect(() => {
+    if (!section) return;
+    setBackHandler(() => {
+      setSection(null);
+      return true;
+    });
+    return () => setBackHandler(null);
+  }, [section, setBackHandler]);
 
   if (open) {
     const Body = SECTION_BODY[open.id];
     return (
       <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
-        {/* Back pops the sub-menu first, so it returns to this index, not out
-            of Advanced entirely. */}
-        <OverlayHeader title={open.label} onBack={() => setSection(null)} />
+        <OverlayHeader title={open.label} />
         <div className="flex-1 space-y-5 overflow-y-auto p-3">
           <Body />
         </div>

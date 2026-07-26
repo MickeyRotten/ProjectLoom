@@ -473,3 +473,107 @@ describe("applyDeltas — quest ops", () => {
     expect(scene.quests).toHaveLength(1);
   });
 });
+
+describe("applyDeltas — conditions", () => {
+  it("marks the PC, who no party op can touch", () => {
+    const scene = applyDeltas(game(), lib(), {
+      conditions: [{ name: "Hiro", condition: "Left arm in a sling" }],
+    });
+    expect(getEntry(scene.roster, "pc").condition).toBe("Left arm in a sling");
+  });
+
+  it("matches by slugged name, like every other op", () => {
+    const navi = member("m-navi", "Navi");
+    const scene = applyDeltas(game(), lib(navi), {
+      conditions: [{ name: "  navi  ", condition: "Winded" }],
+    });
+    expect(getEntry(scene.roster, "m-navi").condition).toBe("Winded");
+  });
+
+  it("clears a mark on a blank condition, leaving no stored key", () => {
+    let scene = applyDeltas(game(), lib(), {
+      conditions: [{ name: "Hiro", condition: "Bleeding" }],
+    });
+    const g = { ...game(), roster: scene.roster };
+    scene = applyDeltas(g, lib(), { conditions: [{ name: "Hiro", condition: "" }] });
+    expect(getEntry(scene.roster, "pc").condition).toBeUndefined();
+  });
+
+  it("ignores a name nothing resolves — conditions never create anyone", () => {
+    const scene = applyDeltas(game(), lib(), {
+      conditions: [{ name: "Nobody", condition: "Cursed" }],
+    });
+    expect(scene.roster).toHaveLength(0);
+    expect(scene.characters).toHaveLength(1);
+  });
+
+  it("can mark a companion the same block just created", () => {
+    const scene = applyDeltas(game(), lib(), {
+      party: [{ op: "add", name: "Riley" }],
+      conditions: [{ name: "Riley", condition: "Twisted ankle" }],
+    });
+    const riley = activeMembers(scene.characters, scene.roster)[0];
+    expect(riley.name).toBe("Riley");
+    expect(riley.condition).toBe("Twisted ankle");
+  });
+
+  it("returns the same roster reference when nothing changed", () => {
+    const g = game();
+    const scene = applyDeltas(g, lib(), {
+      conditions: [{ name: "Hiro", condition: "" }],
+    });
+    // Reversal reference-diffs the roster: a no-op must not look like a change.
+    expect(scene.roster).toBe(g.roster);
+  });
+});
+
+describe("applyDeltas — world notes", () => {
+  it("writes a new note with keywords", () => {
+    const scene = applyDeltas(game(), lib(), {
+      notes: [{ op: "add", title: "Rodstroke", content: "A farming village.", keywords: ["village"] }],
+    });
+    expect(scene.worldNotes).toHaveLength(1);
+    expect(scene.worldNotes[0].title).toBe("Rodstroke");
+    expect(scene.worldNotes[0].content).toBe("A farming village.");
+    expect(scene.worldNotes[0].keywords).toEqual(["village"]);
+  });
+
+  it("treats an add on a known title as an update — the world learns more", () => {
+    const g = game();
+    g.worldNotes = [{ id: "n1", title: "Rodstroke", keywords: ["village"], content: "A village." }];
+    const scene = applyDeltas(g, lib(), {
+      notes: [{ op: "add", title: "rodstroke", content: "A village under curfew." }],
+    });
+    expect(scene.worldNotes).toHaveLength(1);
+    expect(scene.worldNotes[0].content).toBe("A village under curfew.");
+  });
+
+  it("merges keywords instead of replacing the player's", () => {
+    const g = game();
+    g.worldNotes = [{ id: "n1", title: "Rodstroke", keywords: ["village", "Mira"], content: "" }];
+    const scene = applyDeltas(g, lib(), {
+      notes: [{ op: "update", title: "Rodstroke", keywords: ["MIRA", "curfew"] }],
+    });
+    expect(scene.worldNotes[0].keywords).toEqual(["village", "Mira", "curfew"]);
+  });
+
+  it("never sets permanent — an always-on note is the player's call", () => {
+    const scene = applyDeltas(game(), lib(), {
+      notes: [{ op: "add", title: "Rodstroke", content: "x", permanent: true } as never],
+    });
+    expect(scene.worldNotes[0].permanent).toBeUndefined();
+  });
+
+  it("removes a note by title", () => {
+    const g = game();
+    g.worldNotes = [{ id: "n1", title: "Rodstroke", keywords: [], content: "" }];
+    const scene = applyDeltas(g, lib(), { notes: [{ op: "remove", title: "Rodstroke" }] });
+    expect(scene.worldNotes).toHaveLength(0);
+  });
+
+  it("skips titleless rows and returns the same array when nothing applied", () => {
+    const g = game();
+    const scene = applyDeltas(g, lib(), { notes: [{ op: "add", title: "" }] });
+    expect(scene.worldNotes).toBe(g.worldNotes);
+  });
+});

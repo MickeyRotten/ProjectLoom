@@ -9,12 +9,19 @@
  * are always editable simply omit the prop (defaults to `true`).
  */
 
-/** Reusable button styling (square, invert on press). */
+/**
+ * Reusable button styling (square, invert on press).
+ *
+ * `min-h-11` is 44px — the minimum comfortable touch target. `btnSmall` used to
+ * come out around 26px tall and is used for Restore / Delete / Remove / Reset
+ * across five screens, i.e. exactly the actions worth not mis-tapping. It stays
+ * visually small (text-xs, tight padding); only the hit area grew.
+ */
 export const btn =
-  "border-2 border-ink px-3 py-2 uppercase tracking-widest active:bg-ink active:text-paper disabled:opacity-40";
+  "inline-flex min-h-11 items-center justify-center border-2 border-ink px-3 py-2 uppercase tracking-widest active:bg-ink active:text-paper disabled:opacity-40";
 
 export const btnSmall =
-  "border-2 border-ink px-2 py-1 text-xs uppercase tracking-widest active:bg-ink active:text-paper disabled:opacity-40";
+  "inline-flex min-h-11 items-center justify-center border-2 border-ink px-3 py-1 text-xs uppercase tracking-widest active:bg-ink active:text-paper disabled:opacity-40";
 
 /** A group heading inside a list — Characters and Party split by standing. */
 export function Section({ label }: { label: string }) {

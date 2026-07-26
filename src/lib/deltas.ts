@@ -4,13 +4,15 @@ import type {
   GameState,
   Item,
   LoomBlock,
+  Note,
+  NoteDelta,
   PartyDelta,
   Quest,
   RosterEntry,
   Standing,
 } from "../types";
 import { isGold } from "./defaults";
-import { partyFull, setStanding, standingOf, strengthsText } from "./roster";
+import { partyFull, setCondition, setStanding, standingOf, strengthsText } from "./roster";
 
 /**
  * Apply a parsed <<<LOOM>>> block to the active game (loom-turn-protocol):
@@ -42,6 +44,7 @@ export interface AppliedScene {
   roster: RosterEntry[];
   inventory: Item[];
   quests: Quest[];
+  worldNotes: Note[];
 }
 
 const slug = (s: string) =>
@@ -60,15 +63,19 @@ export function applyDeltas(
   const location = block.location ?? game.location;
   const weather = block.weather ?? game.weather;
   const party = applyParty(characters, game.roster, block);
+  // Conditions run AFTER the party ops, so a companion introduced and wounded
+  // in the same block can be marked — they exist in `party.characters` by then.
+  const roster = applyConditions(party.characters, party.roster, block);
 
   return {
     day,
     location,
     weather,
     characters: party.characters,
-    roster: party.roster,
+    roster,
     inventory: applyInventory(game.inventory, block),
     quests: applyQuests(game.quests, block),
+    worldNotes: applyNotes(game.worldNotes, block),
   };
 }
 
@@ -142,6 +149,35 @@ function applyParty(
   }
 
   return { characters: nextChars, roster: nextRoster };
+}
+
+/**
+ * Conditions — the marks the story leaves on people (`stakes.ts`). Unlike party
+ * ops these match the WHOLE library including the PC, because a COST outcome
+ * lands on the player more often than on anyone else, and unlike sheet fields
+ * they are not frozen: rewriting them every turn is the entire point.
+ *
+ * A blank condition clears the mark (`setCondition` deletes the key), and a
+ * name nothing resolves is ignored rather than creating anybody — creation is
+ * `applyParty`'s job alone.
+ */
+function applyConditions(
+  characters: Character[],
+  roster: RosterEntry[],
+  block: LoomBlock,
+): RosterEntry[] {
+  if (!block.conditions?.length) return roster;
+  let next = roster;
+
+  for (const d of block.conditions) {
+    if (!d?.name || typeof d.condition !== "string") continue;
+    const key = slug(d.name);
+    const found = characters.find((c) => slug(c.name) === key);
+    if (!found) continue;
+    next = setCondition(next, found.id, d.condition);
+  }
+
+  return next;
 }
 
 /** Standings a `remove` may leave someone in — never a party seat. */
@@ -269,6 +305,73 @@ function applyInventory(current: Item[], block: LoomBlock): Item[] {
   }
 
   return next;
+}
+
+/**
+ * World Notes the narrator wrote for itself, keyed by slugged title.
+ *
+ * This is the long-game memory: the history window is a fixed budget, so
+ * everything not captured as a note, quest, item, or character is gone once it
+ * scrolls out. A note survives, and `worldNotes.ts` gates it back in by keyword
+ * for the rest of the adventure.
+ *
+ * Unlike quests, an `add` on an existing title UPDATES it rather than being a
+ * no-op — the narrator learning more about a place it already noted is the
+ * common case, and making it a silent no-op would quietly cap what the world
+ * can remember about anything. `permanent` is deliberately not writable: an
+ * always-injected note is a standing tax on every turn's budget, and that is
+ * the player's call to make on the World Notes screen.
+ */
+function applyNotes(current: Note[], block: LoomBlock): Note[] {
+  if (!block.notes?.length) return current;
+  // Copy lazily: `captureReversal` reference-diffs this slice, so a block whose
+  // note rows all turn out to be no-ops must hand back the SAME array or every
+  // such turn records a pointless snapshot.
+  let next = current;
+  const own = () => (next === current ? (next = current.slice()) : next);
+
+  for (const d of block.notes) {
+    if (!d?.title) continue;
+    const key = slug(d.title);
+    const i = next.findIndex((n) => slug(n.title) === key);
+
+    if (d.op === "remove") {
+      if (i !== -1) own().splice(i, 1);
+      continue;
+    }
+
+    const keywords = noteKeywords(d.keywords);
+    if (i !== -1) {
+      const cur = next[i];
+      const content = d.content ?? cur.content;
+      const merged = keywords ? mergeKeywords(cur.keywords, keywords) : cur.keywords;
+      if (content === cur.content && merged === cur.keywords) continue;
+      own()[i] = { ...cur, content, keywords: merged };
+      continue;
+    }
+
+    own().push({
+      id: `n-${key}-${next.length}`,
+      title: d.title,
+      keywords: keywords ?? [],
+      content: d.content ?? "",
+    });
+  }
+
+  return next;
+}
+
+/** A delta's keywords, sanitized. Returns undefined when the field was absent. */
+function noteKeywords(keywords: NoteDelta["keywords"]): string[] | undefined {
+  if (!Array.isArray(keywords)) return undefined;
+  return keywords.filter((k): k is string => typeof k === "string" && !!k.trim());
+}
+
+/** Union of two keyword lists, case-insensitively de-duplicated, order kept. */
+function mergeKeywords(existing: string[], incoming: string[]): string[] {
+  const seen = new Set(existing.map((k) => k.toLowerCase()));
+  const added = incoming.filter((k) => !seen.has(k.toLowerCase()));
+  return added.length ? [...existing, ...added] : existing;
 }
 
 function applyQuests(current: Quest[], block: LoomBlock): Quest[] {

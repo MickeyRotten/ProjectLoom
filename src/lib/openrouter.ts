@@ -15,6 +15,49 @@ import { MAX_ATTEMPTS, backoffMs, isRetryableStatus, sleep } from "./retry";
 
 const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
 const MODELS_ENDPOINT = "https://openrouter.ai/api/v1/models";
+const KEY_ENDPOINT = "https://openrouter.ai/api/v1/key";
+
+/** Where a player goes to make a key — linked from Setup and Model & Key. */
+export const KEY_SIGNUP_URL = "https://openrouter.ai/keys";
+
+export interface KeyStatus {
+  /** The key's label, when OpenRouter reports one. */
+  label: string;
+  /** Remaining credit, when the key has a limit. `null` means no cap. */
+  remaining: number | null;
+}
+
+/**
+ * Check a key against OpenRouter's `/key` endpoint, which needs auth and so is
+ * the only cheap way to tell a good key from a typo. `fetchModels` deliberately
+ * cannot do this — the catalog is public, so it succeeds with any key at all,
+ * and a wrong key otherwise stays invisible until the first turn fails.
+ *
+ * Throws `OpenRouterError` with the status; 401 is the "this key is wrong" case.
+ */
+export async function verifyKey(key: string, signal?: AbortSignal): Promise<KeyStatus> {
+  const res = await fetch(KEY_ENDPOINT, {
+    headers: { Authorization: `Bearer ${key.trim()}` },
+    signal,
+  });
+  if (!res.ok) {
+    const detail = await safeErrorText(res);
+    throw new OpenRouterError(
+      res.status === 401
+        ? "That key was rejected by OpenRouter."
+        : `OpenRouter ${res.status} ${res.statusText}${detail ? ` — ${detail}` : ""}`,
+      { status: res.status },
+    );
+  }
+  const json: unknown = await res.json();
+  const data = (json as { data?: Record<string, unknown> } | null)?.data ?? {};
+  const limit = typeof data.limit === "number" ? data.limit : null;
+  const usage = typeof data.usage === "number" ? data.usage : 0;
+  return {
+    label: typeof data.label === "string" ? data.label : "",
+    remaining: limit === null ? null : Math.max(0, limit - usage),
+  };
+}
 
 export interface OpenRouterModel {
   id: string;
@@ -217,6 +260,11 @@ async function streamOnce(opts: StreamOptions): Promise<string> {
       model: settings.textModelId,
       temperature: settings.temperature,
       stream: true,
+      // Beats are meant to be short and punchy, but "short" was only ever a
+      // sentence in the prompt — with no cap the model's own default decided,
+      // and a chatty one both bills more and pushes the <<<LOOM>>> block past
+      // where the player is still reading. 0 restores "no cap".
+      ...(settings.maxTokens > 0 ? { max_tokens: settings.maxTokens } : {}),
       messages,
     }),
     signal,

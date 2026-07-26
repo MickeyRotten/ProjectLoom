@@ -71,6 +71,58 @@ loop. The model returns **narration prose followed by one machine-read JSON bloc
 - State changes (`location`/`day`/`weather`/`party`/`inventory`/`quests`) are applied to the active save (op-based add/update/remove; inventory carries `quantity`, quests carry `reward`). `spoke` is a hint, but **`lastSpokeTurn` is updated deterministically** from the prose via the ported `detectSpeakers` (never trust the model alone).
 - `party` ops match **by name across the whole character library**, so a companion from an earlier adventure is re-used, not duplicated. **A sheet is authored once, at creation, and frozen after**: only an `add` naming someone genuinely new writes `species`/`description`/`personality`/`drive`/`strengths`/`flaws` **and their starting `equipment`** (straight onto the new `Character`) — the narrator kits a companion out from the appearance it just wrote, and the gear is the player's from then on. Every later op — `add` or `update` — carries `standing` and nothing else; sheet fields on a character who already exists are dropped. An `add`/`update` may carry `"standing": "active" | "benched" | "npc"`, and a `remove` `"standing": "departed" | "fallen"` — nothing the model emits ever deletes anyone. See *Characters ⟂ Party*.
 - **Reversal** (swipe/regenerate): record the applied deltas on the message, unwind on redo — same shape as Wayward's `_reverse_message_effects`, minus item instances.
+- **Stakes** (`Settings.stakesEnabled`, on by default): before the call, `stakes.ts` decides on-device whether the action is a gamble and, if so, hands the narrator an outcome band it must honour. See *Stakes* below.
+
+---
+
+## Stakes — `src/lib/stakes.ts`
+
+The sibling of the spotlight, and built the same way: **deterministic signals
+computed on-device, one prompt block, no extra LLM call, and the model never
+gets to pick the answer.** Without it every action succeeded exactly as much as
+the narrator felt like, and `Character.flaws` had no mechanical consumer
+anywhere — it was printed into the prompt and read by nothing.
+
+- **Risk gate.** `isRisky` word-boundary-matches `RISK_KEYWORDS` (via
+  `worldNotes.ts → keywordHits`, so "mentioned" means one thing across lore,
+  cast, and risk). Deliberately about *attempts*, not violence — a haggle and a
+  lie are gambles, "I look around" is not. A non-risky turn injects **no block
+  at all**: no tokens, no melodrama, and the three quick actions never roll.
+- **The roll.** `rollFor(turn, action)` is FNV-1a over `turn|action`, mod 6 + 1
+  — **pure in (turn, action text)**. `regenerateLastTurn` re-sends the same
+  input on the same turn, so a random roll would let the player re-roll until
+  the answer was "strong"; seeding means a regenerate re-*tells* the same
+  result, and editing the action — genuinely choosing something else — earns a
+  new roll.
+- **The modifier.** +1 when the action's keywords meet the actor's Strengths,
+  −1 when they meet their Flaws, using the same `extractKeywords`/`intersects`
+  pair as the spotlight's `strengthsRelevant`, so relevance can never mean two
+  different things. Both at once cancel to 0 — doing something you are good at
+  in a way that plays to your weakness is exactly an even-odds moment.
+- **The bands.** `total ≥ 5` STRONG · `3–4` MIXED · `≤ 2` COST. The block is
+  marked *authoritative* for the same reason the roll call is: read as advice,
+  the model narrates a triumph over a "cost". The roll and its reason are stated
+  in full ("Rolled 2 -1 (flaws in play) = 1 → COST") — the mechanic is visible,
+  not a hidden hand.
+- **`Settings.stakesRule`** (Advanced → Narrator) is the editable half: what
+  STRONG / MIXED / COST *mean* in this world. The roll is the mechanic and is
+  not editable; the consequence vocabulary is a scenario's business. The shipped
+  rule ends by forbidding PC death — a narrator handed a bare "COST" eventually
+  kills the player and strands the save.
+- **Conditions** (`RosterEntry.condition`, `LoomBlock.conditions`) are where a
+  COST lands: free text, per-adventure, matched by name across the **whole**
+  cast **including the PC** — unlike `PartyDelta`, because the player is who a
+  costly outcome marks most often. Its own op-less channel on purpose: party ops
+  carry the frozen-sheet rules, and a condition is the one piece of character
+  state the story is *supposed* to keep rewriting. Blank clears it, and
+  `setCondition` deletes the key rather than storing `""` so a cleared mark and
+  an unmarked character are the same stored shape (`captureReversal`
+  reference-diffs the roster). Reversal needs no new slice — conditions live in
+  the roster it already snapshots.
+- **Visible in play:** the band is recorded on the narrator `Message` and renders
+  as an inverted chip above that beat's state-change toasts; the mark itself is
+  an always-editable field on the member sheet (outside the Edit gate and
+  outside the member-only block, since the PC has one too).
 
 ---
 
@@ -281,6 +333,62 @@ The member sheet's **Auto-Update** button opens a modal to check which fields th
 
 Parsing is tolerant like the `<<<LOOM>>>` block (fences/preamble/trailing commas survive) but strict about content: unrequested keys, non-strings, and blanks are dropped, so a bad reply narrows to "fewer fields updated" and never blanks a sheet. Gated behind read mode (an open edit draft would clobber the result) and blocked mid-turn.
 
+### Shell + reachability
+
+- **Hardware / browser Back closes the overlay**, instead of quitting the app
+  from any screen — nothing listened for either before. The mechanism is one
+  spare history entry, kept alive for as long as any overlay is open: back pops
+  it, the app closes one level, and re-pushes a spare if a screen is still
+  open. At the play screen there is no spare, so back leaves — correctly.
+  Screens with internal depth register `setBackHandler` on the store (Advanced's
+  sub-menus) rather than taking an `onBack` prop, because a prop can never reach
+  the hardware button. The popstate handler re-arms the spare **itself** — a
+  handled back may not change `screen` at all, so an effect keyed on `screen`
+  would miss it and the next back would exit.
+- **Soft keyboard**: `#root` is `100dvh` (with `height: 100%` as the fallback)
+  plus `interactive-widget=resizes-content`, so the keyboard shrinks the shell
+  instead of pushing the composer off-screen.
+- **Touch targets** are `min-h-11` (44px) on `btn`/`btnSmall`, the turn
+  controls, the header gear and the banner icons. `btnSmall` — used for Restore
+  / Delete / Remove / Reset, i.e. exactly the mis-taps worth avoiding — was
+  ~26px. It still *looks* small; only the hit area grew.
+- **Turn options are visible.** Regen / Edit / Undo were revealed only by an
+  unhinted tap on a plain `<div>`, so they were invisible to a new player and
+  unreachable by keyboard or screen reader. A `⋯ Turn options` button under the
+  latest beat is the discoverable, focusable path; the tap still works.
+- **One navigation model.** Party / Inventory / Quests / World Notes are in the
+  gear menu as well as the ⋯ shortcut. They used to live *only* behind ⋯, so the
+  one thing that looks like navigation pointed at half the app.
+- **`useConfirm`** replaces six native `confirm()` calls. On the Android WebView
+  those render as system-styled alerts — rounded, platform-blue, another
+  typeface — in the middle of a hand-built monochrome app, and they cannot be
+  focus-managed or given a destructive-action label. The replacement restores
+  focus to where it came from and closes on Escape.
+- **`prefers-reduced-motion`** is honoured for the one pulsing cursor.
+
+### First run — `SetupScreen`
+A fresh install used to open on a running game that could not run: the quick
+actions greyed out at `opacity-30` with no explanation, the freeform input
+stayed enabled, and the only route to the key screen was to type something,
+watch the turn fail, and read the error. Setup is now a gate — key, text model,
+optional image model — shown while `Settings.setupDone` is false.
+
+- **`setupDone` is its own flag, not "is there a key"** — gating on the key
+  would throw the player out of setup on the first character they typed.
+  `loadSettings` backfills it from the presence of a key, so an existing player
+  is never handed a setup screen for a game they have been playing.
+- **`verifyKey`** (`/api/v1/key`, authenticated) backs a **Test** button.
+  Nothing else in the app can tell a good key from a typo: the model catalog is
+  a *public* endpoint, so it loads happily with garbage in the field, and a
+  wrong key otherwise stays invisible until the first turn fails.
+- **`ModelPicker`** replaces the bare `<select>` over several hundred models
+  with a filter box. `KeyField` / `ModelPicker` / `useModelCatalog` are shared
+  with Model & Key so the two screens can't drift.
+- **Failed images say why.** `ensureImage` recorded `imgError` only on a forced
+  ⟳, so an automatic banner or portrait that failed left an eternal placeholder
+  and no reason — the cause (no credit, refused prompt, unreadable file) only
+  surfaced if the player happened to press ⟳. It now records on both paths.
+
 ### Secondary screens
 All secondary screens — **member sheet, Party, Inventory, Quests, and every Settings sub-screen** — are **full-screen overlays with a Back button** in a top header (the mobile pattern; no split panes). They open over the chat and return to it on Back. Same store/components regardless.
 
@@ -298,6 +406,38 @@ All secondary screens — **member sheet, Party, Inventory, Quests, and every Se
 - **Party screen** lists the company in two halves — *In the scene n/3* (**Bench** / **Kick**) and *Benched* (**Activate** / **Kick**) — with a route to Characters when both are empty. The member sheet carries the same Kick/Add control, the adventure **standing** (active / benched / npc / departed / fallen) with a one-line explanation of what the current one means, **Revert Story Changes** when the story has diverged, and **Delete Character** (library-wide, player-only).
 - **Style:** pure black/white, monospace, square borders, no rounded corners, no color. Small token set in `theme.css` (`--ink #000`, `--paper #fff`) so it stays one system.
 
+### Reading area
+
+This is a text game, and its chrome had grown to eat more than half a phone:
+header + 16:5 banner + a 1:2 party strip + composer left roughly 350px for
+prose, with the action options rendering *inside* that same scroll region so a
+fresh beat was often pushed above the fold by its own suggestions. The fixes are
+all about handing that space back:
+
+- **`Settings.bannerSize`** — `compact` swaps the 16:5 banner for a ~40px strip
+  (thumbnail + location, tapping still opens the art full-screen). Independently,
+  a `full` banner with **no art and none coming** renders at strip height too:
+  full height is for images, and an empty box was 122px repeating the header.
+- **Party strip** slots are **3:4**, not 1:2 — portraits are face-cropped
+  (`origin-top scale-150`), so the extra height never showed more of anyone. A
+  party of nobody collapses the four-slot grid to a single row rather than
+  standing three full-height dashed boxes on screen.
+- **Landing on the beat, not its end.** When a completed beat is taller than the
+  viewport, the log scrolls to its **first** line instead of pinning the bottom —
+  pinning the bottom drops the player at the last paragraph of prose they have
+  not read, with the options shoving the opening line off the top. Shorter beats
+  keep the old tail-follow.
+- **`Settings.textScale`** (S/M/L/XL, Menu) scales narration **only** — chrome
+  keeps its sizes, so a large setting buys text rather than a blown-up
+  interface. Prose leading went 1.3 → 1.6 (monospace at 1.3 is a wall), and
+  player lines are no longer uppercased; the `>` and the rule already mark them.
+- **Pinch-zoom is enabled again.** `maximum-scale=1.0, user-scalable=no` was a
+  WCAG 1.4.4 failure with no in-app substitute; Text Size is the common case and
+  zoom is the escape hatch.
+- **Scene marks.** Every message has carried `day`/`location` since Phase 5 and
+  nothing rendered them; the log now draws a rule naming the place and day
+  wherever they change, so scrollback has landmarks.
+
 ---
 
 ## Build Phases
@@ -309,7 +449,38 @@ All secondary screens — **member sheet, Party, Inventory, Quests, and every Se
 - **Phase 4 — Authoring + Saves.** Scenario editor, World Notes CRUD + keyword injection, Advanced instructions, save slots (snapshot/restore/new). The pre-made scenario ships as the default.
 - **Phase 5 — Polish + APK.** ✅ Reversal (`reversal.ts` pre-turn slice snapshot; `undoLastTurn`/`regenerateLastTurn`; `TurnControls`), error auto-retry (`retry.ts` policy + `streamChat` whole-stream restart, ported from Wayward), APK signing/CI (`android.yml`), mobile polish (overscroll lock, safe-area insets).
 
-*Deferred (not MVP):* history summarization, NPC/item art, TTS, weather animation, multi-world.
+---
+
+## Long-game memory
+
+The rolling history window is a fixed token budget, so anything older simply
+stops existing — which capped a campaign at roughly 15–25 turns. Three changes,
+none of them a hidden summarizer:
+
+- **The narrator writes its own World Notes.** `LoomBlock.notes`
+  (`{ op, title, content, keywords }`) applies through `deltas.ts → applyNotes`
+  and is gated back in by the existing `worldNotes.ts` keyword matcher — no new
+  injection path. Notes are **player-visible and editable**, which is the whole
+  argument for them over a rolling summary: a summary that quietly gets a fact
+  wrong is unfixable, a note is one screen away. An `add` on a title that
+  already exists **updates** it (the world learning more about a place it has
+  already noted is the common case), keywords **merge** so the player's own are
+  never dropped by an omission, and `permanent` is deliberately not writable —
+  an always-injected note taxes every turn, so that stays the player's call.
+  `applyNotes` copies lazily, because `captureReversal` reference-diffs the
+  slice.
+- **`Settings.historyBudget`** (Advanced → Narrator) — the 3000-token budget was
+  hardcoded and never passed by the store. It ships unchanged, but a
+  large-context model can now be given far more.
+- **`Settings.maxTokens`** — no `max_tokens` was ever sent, so "short and punchy"
+  was a sentence in the prompt and nothing else. 0 restores no cap.
+
+*Still deferred:* rolling LLM summarization. The narrator's own notes cover the
+same ground while staying inspectable; revisit only if they prove insufficient.
+
+---
+
+*Deferred (not MVP):* NPC/item art, TTS, weather animation, multi-world.
 
 ---
 

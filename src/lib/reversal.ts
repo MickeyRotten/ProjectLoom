@@ -27,6 +27,7 @@ export function captureReversal(pre: GameState, post: GameState): Reversal {
   if (pre.roster !== post.roster) rev.roster = pre.roster;
   if (pre.inventory !== post.inventory) rev.inventory = pre.inventory;
   if (pre.quests !== post.quests) rev.quests = pre.quests;
+  if (pre.worldNotes !== post.worldNotes) rev.worldNotes = pre.worldNotes;
   return rev;
 }
 
@@ -48,6 +49,7 @@ export function applyReversal(game: GameState, rev: Reversal): GameState {
     roster: roster ? normalizeRoster(roster) : game.roster,
     inventory: rev.inventory ?? game.inventory,
     quests: rev.quests ?? game.quests,
+    worldNotes: rev.worldNotes ?? game.worldNotes,
   };
 }
 

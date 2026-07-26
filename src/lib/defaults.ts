@@ -147,15 +147,49 @@ export const DEFAULT_DEPARTURE_INSTRUCTIONS = `On a party "remove", you may add 
 
 export const DEFAULT_SPOTLIGHT_RULE = `Give the spotlight to at most one party member per turn, and only when it earns a moment: they were directly addressed, their Strengths are relevant, or they have been silent for a while. Otherwise keep them quiet.`;
 
+/**
+ * What the narrator does with the outcome band `stakes.ts` hands it. The roll
+ * itself is not editable — that is the mechanic — but what STRONG / MIXED /
+ * COST *mean* in this world is exactly the kind of thing a scenario should get
+ * to redefine, so it lives here as one editable block.
+ *
+ * The last line is load-bearing: a shonen adventure ends with the hero bloodied
+ * and shouting, not dead, and a narrator handed a bare "COST" will otherwise
+ * eventually kill the player and strand the save.
+ */
+export const DEFAULT_STAKES_RULE = `STRONG — it works. Give the player a clean, satisfying win and let them feel it.
+MIXED — it works, but it costs: a complication lands, something breaks, a resource is spent, or the win draws attention. Never a flat success.
+COST — it goes wrong. The player pays something real — hurt, disarmed, separated, caught out, or robbed of the moment. Follow through; do not rescue them from it on the same beat.
+When a result marks someone lastingly, record it in "conditions". Never kill the player character: leave them alive with something to fix.`;
+
+/**
+ * Rolling-history budget, in approximate tokens. 3000 was hardcoded and never
+ * passed by the store, which capped a campaign at roughly 15–25 turns before
+ * the early game fell out of memory for good. It ships unchanged so existing
+ * saves behave identically, but it is a field now — the narrator's own World
+ * Notes carry the long tail, and a large-context model can afford far more.
+ */
+export const DEFAULT_HISTORY_BUDGET_SETTING = 3000;
+
+/**
+ * Cap on one beat's length. Beats are meant to be "short and punchy", which was
+ * only ever a sentence in the prompt — with no `max_tokens` the model's default
+ * decided. 0 sends no cap.
+ */
+export const DEFAULT_MAX_TOKENS = 700;
+
 export function defaultSettings(): Settings {
   return {
     openRouterKey: "",
+    setupDone: false,
     imageKey: "",
     textModelId: DEFAULT_TEXT_MODEL,
     imageModelId: DEFAULT_IMAGE_MODEL,
     temperature: 0.8,
     showActionOptions: true,
     invert: false,
+    textScale: "m",
+    bannerSize: "full",
     customInstructions: DEFAULT_CUSTOM_INSTRUCTIONS,
     bannerInstructions: DEFAULT_BANNER_INSTRUCTIONS,
     // Off by default: shipping a brake on a feature nobody asked to slow down
@@ -178,6 +212,10 @@ export function defaultSettings(): Settings {
     departureInstructions: DEFAULT_DEPARTURE_INSTRUCTIONS,
     optionInstructions: DEFAULT_OPTION_INSTRUCTIONS,
     spotlightRule: DEFAULT_SPOTLIGHT_RULE,
+    stakesEnabled: true,
+    stakesRule: DEFAULT_STAKES_RULE,
+    historyBudget: DEFAULT_HISTORY_BUDGET_SETTING,
+    maxTokens: DEFAULT_MAX_TOKENS,
   };
 }
 

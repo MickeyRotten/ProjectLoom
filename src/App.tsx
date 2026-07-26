@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useStore } from "./store";
 import { Header } from "./components/Header";
 import { Banner } from "./components/Banner";
@@ -6,6 +6,7 @@ import { ChatView } from "./components/ChatView";
 import { PartyStrip } from "./components/PartyStrip";
 import { Composer } from "./components/Composer";
 import { MenuScreen } from "./components/MenuScreen";
+import { SetupScreen } from "./components/SetupScreen";
 import { ModelKeyScreen } from "./components/ModelKeyScreen";
 import { ScenarioScreen } from "./components/ScenarioScreen";
 import { CharactersScreen } from "./components/CharactersScreen";
@@ -29,10 +30,57 @@ export default function App() {
   const hydrated = useStore((s) => s.hydrated);
   const screen = useStore((s) => s.screen);
   const invert = useStore((s) => s.settings.invert);
+  const setupDone = useStore((s) => s.settings.setupDone);
 
   useEffect(() => {
     void hydrate();
   }, [hydrate]);
+
+  // Android's back button and the browser's Back close the open overlay instead
+  // of leaving the app. Nothing listened for either before, so on the APK the
+  // system back button quit Loom from any screen.
+  //
+  // The trick is one spare history entry, kept alive for as long as ANY overlay
+  // is open: a hardware back pops it, we close one level, and if another screen
+  // is still open the effect pushes a fresh spare. At the play screen there is
+  // no spare, so back leaves the app — which is what it should do there.
+  const spare = useRef(false);
+  const ignorePop = useRef(false);
+
+  useEffect(() => {
+    if (screen !== null && !spare.current) {
+      spare.current = true;
+      history.pushState({ loom: true }, "");
+    } else if (screen === null && spare.current) {
+      // Closed from the UI: drop the spare without our own handler seeing it.
+      spare.current = false;
+      ignorePop.current = true;
+      history.back();
+    }
+  }, [screen]);
+
+  useEffect(() => {
+    const onPop = () => {
+      if (ignorePop.current) {
+        ignorePop.current = false;
+        return;
+      }
+      const s = useStore.getState();
+      if (s.screen === null) return; // at the play screen — let it leave.
+      spare.current = false; // the entry we pushed is the one just popped
+      s.goBack();
+      // Re-arm here rather than leaving it to the effect below: `goBack` may
+      // have been absorbed by a screen's own depth (an Advanced sub-menu) and
+      // left `screen` untouched, so the effect — which only runs when `screen`
+      // changes — would never fire and the next back would exit the app.
+      if (useStore.getState().screen !== null) {
+        spare.current = true;
+        history.pushState({ loom: true }, "");
+      }
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
 
   // Invert Colors is our dark-mode toggle: the `.invert` class swaps the
   // ink/paper tokens app-wide (theme.css), flipping every border, background,
@@ -56,6 +104,10 @@ export default function App() {
       </main>
     );
   }
+
+  // First run: the game cannot take a turn without a key, so ask for one
+  // instead of opening on a scenario that fails the moment it is touched.
+  if (!setupDone) return <SetupScreen />;
 
   if (screen === "menu") return <MenuScreen />;
   if (screen === "modelkey") return <ModelKeyScreen />;

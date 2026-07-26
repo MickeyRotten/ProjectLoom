@@ -39,6 +39,17 @@ export function Composer() {
 
   return (
     <footer className="space-y-3 p-3">
+      {/* Greyed-out buttons that never say why are their own bug report. */}
+      {!hasKey && (
+        <button
+          type="button"
+          onClick={() => setScreen("modelkey")}
+          className="w-full border-2 border-ink px-3 py-2 text-xs uppercase tracking-widest active:bg-ink active:text-paper"
+        >
+          No API key set — add one to play
+        </button>
+      )}
+
       <div className="flex gap-2 text-xs uppercase tracking-widest">
         {QUICK.map((q) => (
           <button
@@ -46,7 +57,7 @@ export function Composer() {
             type="button"
             disabled={streaming || !hasKey}
             onClick={() => void sendTurn(q.input)}
-            className="flex-1 border-2 border-ink py-1 opacity-70 disabled:opacity-30 active:bg-ink active:text-paper active:opacity-100"
+            className="flex-1 border-2 border-ink py-2 opacity-70 disabled:opacity-30 active:bg-ink active:text-paper active:opacity-100"
           >
             {q.label}
           </button>

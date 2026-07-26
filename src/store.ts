@@ -36,12 +36,15 @@ import {
   mergeOverrides,
   partyFull,
   partyMembers,
+  playerCharacter,
   pruneRoster,
   resolve,
+  setCondition as setEntryCondition,
   setEntry,
   setStanding as setEntryStanding,
   standingOf,
 } from "./lib/roster";
+import { computeStakes } from "./lib/stakes";
 import { buildMessages } from "./lib/prompt";
 import { completeChat, streamChat, OpenRouterError } from "./lib/openrouter";
 import {
@@ -129,6 +132,12 @@ export interface LoomStore {
   history: Screen[];
   /** The member whose full-screen sheet is open (screen === "member"). */
   memberId: string | null;
+  /**
+   * A screen's claim on Back, for screens with internal depth. Returning true
+   * means "handled, don't leave the screen". Registered here rather than passed
+   * to the header so the hardware back button obeys it too.
+   */
+  backHandler: (() => boolean) | null;
 
   // Generated images (Phase 3): cache key → object URL, plus in-flight keys.
   images: Record<string, string>;
@@ -153,6 +162,8 @@ export interface LoomStore {
   setScreen: (screen: Screen) => void;
   /** Return to the previous screen (pops the navigation history). */
   goBack: () => void;
+  /** Claim Back for a screen with internal depth; pass null to release it. */
+  setBackHandler: (handler: (() => boolean) | null) => void;
   openMember: (id: string) => void;
   updateSettings: (patch: Partial<Settings>) => void;
 
@@ -182,6 +193,8 @@ export interface LoomStore {
    * (`departed` / `fallen`). Never touches the global character.
    */
   setStanding: (id: string, standing: Standing) => void;
+  /** Set or clear this adventure's mark on a character (blank clears). */
+  setCondition: (id: string, condition: string) => void;
   /** Drop this adventure's story-written overrides, back to the authored sheet. */
   revertOverrides: (id: string) => void;
   addNote: () => void;
@@ -396,11 +409,13 @@ export const useStore = create<LoomStore>((set, get) => {
       publishImage(key, blob);
       opts.onGenerated?.();
     } catch (err) {
-      // Non-fatal — a failed image never blocks the turn (DESIGN.md). A forced
-      // regeneration is different: swallowing it silently leaves the OLD image
-      // on screen, which reads as "⟳ refused to replace my picture", so say so —
-      // with the reason, since "failed" alone leaves nothing to act on.
-      if (force) setImageError(key, imageFailure(err));
+      // Non-fatal — a failed image never blocks the turn (DESIGN.md) — but it
+      // is never SILENT either. Recording the reason on the automatic path too
+      // is what separates "no image model credit" from an eternal placeholder
+      // the player has no way to explain; before, the reason only appeared if
+      // they happened to press ⟳. The badge is small and dismissible; guessing
+      // is not.
+      setImageError(key, imageFailure(err));
     } finally {
       clearPending(key);
     }
@@ -526,6 +541,7 @@ export const useStore = create<LoomStore>((set, get) => {
   screen: null,
   history: [],
   memberId: null,
+  backHandler: null,
 
   images: {},
   imgPending: {},
@@ -578,9 +594,18 @@ export const useStore = create<LoomStore>((set, get) => {
   },
 
   goBack() {
+    // A screen with its own internal depth (Advanced's sub-menus) gets first
+    // refusal. Routing it through here rather than through the header's `onBack`
+    // prop is what makes the ANDROID back button behave like the on-screen one —
+    // the hardware button has no way to know about a component's local state.
+    if (get().backHandler?.()) return;
     const hist = get().history;
     const prev = hist.length ? hist[hist.length - 1] : null;
     set({ screen: prev, history: hist.slice(0, -1) });
+  },
+
+  setBackHandler(handler) {
+    set({ backHandler: handler });
   },
 
   openMember(id) {
@@ -733,6 +758,17 @@ export const useStore = create<LoomStore>((set, get) => {
     // Anyone the player can now see in the strip or the Party screen needs a
     // portrait.
     if (isInParty(standing)) get().syncImages();
+  },
+
+  setCondition(id, condition) {
+    const g = get().game;
+    // No role check: a condition is the one piece of character state that
+    // applies to the PC as much as to a companion.
+    const roster = setEntryCondition(g.roster, id, condition);
+    if (roster === g.roster) return;
+    const game = { ...g, roster };
+    set({ game });
+    void saveActiveGame(game);
   },
 
   revertOverrides(id) {
@@ -923,6 +959,16 @@ export const useStore = create<LoomStore>((set, get) => {
 
     turnAbort = new AbortController();
 
+    // Roll this turn's stakes HERE rather than inside `buildMessages`: the band
+    // is both a prompt block and a fact recorded on the narrator message, and
+    // rolling it twice could disagree. Seeded on (turn, text), so a regenerate
+    // re-tells the same result instead of re-rolling for a better one.
+    const stakes = computeStakes(
+      trimmed,
+      playerCharacter(get().characters, base.roster),
+      turn,
+    );
+
     // Build from `base` (pre-turn history) so the new line isn't duplicated —
     // it rides as the final user message, not also inside the history window.
     const messages = buildMessages({
@@ -930,6 +976,8 @@ export const useStore = create<LoomStore>((set, get) => {
       game: base,
       characters: get().characters,
       playerMessage: trimmed,
+      stakes,
+      historyBudgetTokens: get().settings.historyBudget,
     });
 
     try {
@@ -965,6 +1013,7 @@ export const useStore = create<LoomStore>((set, get) => {
         roster,
         inventory: scene?.inventory ?? g.inventory,
         quests: scene?.quests ?? g.quests,
+        worldNotes: scene?.worldNotes ?? g.worldNotes,
         day: scene?.day ?? g.day,
         location: scene?.location ?? g.location,
         weather: scene?.weather ?? g.weather,
@@ -976,6 +1025,8 @@ export const useStore = create<LoomStore>((set, get) => {
         role: "narrator",
         content: prose || raw.trim(),
         turn,
+        outcome:
+          get().settings.stakesEnabled && stakes.outcome ? stakes.outcome : undefined,
         appliedDeltas: block ?? undefined,
         reversal,
         day: scene?.day ?? g.day,
@@ -992,6 +1043,7 @@ export const useStore = create<LoomStore>((set, get) => {
         weather: scene?.weather ?? g.weather,
         inventory: scene?.inventory ?? g.inventory,
         quests: scene?.quests ?? g.quests,
+        worldNotes: scene?.worldNotes ?? g.worldNotes,
       };
 
       set({

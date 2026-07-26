@@ -40,6 +40,15 @@ export function deriveToasts(msg: Message): string[] {
     else if (d.op === "add") toasts.push(`${d.name} joined the party`);
   }
 
+  // Conditions — the marks a COST outcome leaves. Reported as a change, not as
+  // state: the chip is tethered to the beat that caused it, and the current
+  // mark is always readable on the member sheet.
+  for (const d of block.conditions ?? []) {
+    if (!d?.name || typeof d.condition !== "string") continue;
+    const mark = d.condition.trim();
+    toasts.push(mark ? `${d.name}: ${mark}` : `${d.name} recovered`);
+  }
+
   for (const d of block.inventory ?? []) {
     if (!d?.label) continue;
     if (isGold(d.label)) {
@@ -59,6 +68,16 @@ export function deriveToasts(msg: Message): string[] {
     } else if (d.op === "update" && d.quantity !== undefined) {
       toasts.push(`${d.label} ×${d.quantity}`);
     }
+  }
+
+  // Notes the narrator wrote for itself. Surfaced because they are the long
+  // game's memory and the player owns them — a note written wrong is only
+  // fixable if you know it happened.
+  for (const d of block.notes ?? []) {
+    if (!d?.title) continue;
+    if (d.op === "remove") toasts.push(`Note removed: ${d.title}`);
+    else if (d.op === "update") toasts.push(`Note updated: ${d.title}`);
+    else toasts.push(`Noted: ${d.title}`);
   }
 
   for (const d of block.quests ?? []) {
