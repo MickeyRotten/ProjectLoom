@@ -183,6 +183,18 @@ when it is switched back on. Alongside it, **one-name locations** —
 compound ("Boars Head Tavern - Damp Cellar" → "Damp Cellar") for the ` - `/` — `/
 ` / `/`: ` joiners only (never a comma or a bare hyphen), backed by an explicit
 `"location"` rule in the output protocol.
+Post-MVP also: **Appearance settings** (`Settings.font`, Menu → Appearance) —
+Text Size and Invert Colors moved off the bottom of the gear menu into a screen
+of their own, joined by a **font picker**: `system` (platform monospace) ·
+**VT323** · **Jersey 15**, both bundled as woff2 under `src/fonts/` (SIL OFL, so
+the offline APK never fetches a glyph) and swapped app-wide by repointing
+`--font-mono` through a `data-font` attribute on `<html>` — the same
+one-attribute mechanism as `invert`'s theme swap. `settings.ts → fontTheme`
+falls an unknown stored value back to `system`; `size-adjust` in each
+`@font-face` keeps a Text Size setting meaning the same thing across fonts.
+Alongside it the **party strip lost its name captions** — slots are 3:5 face,
+no label, so the freed caption height goes back into the portrait and the
+reading area is unchanged (`aria-label` still carries the name).
 Post-MVP also: **reasoning level** (`Settings.reasoningLevel`, Model & Key —
 `auto | off | minimal | low | medium | high`) — `settings.ts → reasoningParam`/
 `reasoningBody` maps it onto OpenRouter's unified `reasoning` field for the

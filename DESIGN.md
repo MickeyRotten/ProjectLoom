@@ -395,7 +395,19 @@ optional image model — shown while `Settings.setupDone` is false.
 ### Secondary screens
 All secondary screens — **member sheet, Party, Inventory, Quests, and every Settings sub-screen** — are **full-screen overlays with a Back button** in a top header (the mobile pattern; no split panes). They open over the chat and return to it on Back. Same store/components regardless.
 
-- **Menu (gear)** → full-screen screens: **Quests**, **Scenario** editor, **Characters** (the whole cast), **World Notes**, **Model & Key**, **Advanced instructions**, **Saves**.
+- **Menu (gear)** → full-screen screens: **Quests**, **Scenario** editor, **Characters** (the whole cast), **World Notes**, **Model & Key**, **Appearance**, **Advanced instructions**, **Saves**.
+- **Appearance screen** holds everything that changes how Loom *looks* and
+  nothing that changes how it plays: **Text Size**, **Font**, **Invert Colors**.
+  The first and last used to sit loose under the nine menu entries — controls
+  parked below a navigation list, reachable only by scrolling past it. **Font**
+  (`Settings.font`: `system` · `VT323` · `Jersey 15`) repoints the single
+  `--font-mono` token through a `data-font` attribute on `<html>`, the same
+  one-attribute mechanism as the theme swap, so no component knows about it.
+  Both display faces are **bundled** (`src/fonts/`, SIL OFL) rather than linked
+  from Google Fonts — the packaged APK plays offline, where a webfont over the
+  network simply never arrives — and each carries a `size-adjust` so a Text Size
+  setting means the same thing whichever font is picked. An unrecognised stored
+  value falls back to `system` (`settings.ts → fontTheme`).
 - **Advanced screen** is an **index of sub-menus**, not one scroll: **Narrator**
   (voice + suggested actions), **Characters** (appearance · creation · the freeze
   rule · standings · departures · spotlight), **Images** (1-bit shading · location
@@ -421,16 +433,21 @@ all about handing that space back:
   (thumbnail + location, tapping still opens the art full-screen). Independently,
   a `full` banner with **no art and none coming** renders at strip height too:
   full height is for images, and an empty box was 122px repeating the header.
-- **Party strip** slots are **3:4**, not 1:2 — portraits are face-cropped
+- **Party strip** slots are **3:5**, not 1:2 — portraits are face-cropped
   (`origin-top scale-150`), so the extra height never showed more of anyone. A
   party of nobody collapses the four-slot grid to a single row rather than
-  standing three full-height dashed boxes on screen.
+  standing three full-height dashed boxes on screen. There is **no name caption**
+  under a face: four portraits the player picked and generated are already four
+  recognisable faces, and the caption was a row of chrome repeating the picture.
+  Its height goes back into the portrait (3:4 + caption ≈ 3:5 of face), so the
+  reading area keeps what it had while the faces grow; the name still reaches
+  assistive tech via `aria-label`, and a tap opens the sheet that spells it out.
 - **Landing on the beat, not its end.** When a completed beat is taller than the
   viewport, the log scrolls to its **first** line instead of pinning the bottom —
   pinning the bottom drops the player at the last paragraph of prose they have
   not read, with the options shoving the opening line off the top. Shorter beats
   keep the old tail-follow.
-- **`Settings.textScale`** (S/M/L/XL, Menu) scales narration **only** — chrome
+- **`Settings.textScale`** (S/M/L/XL, Appearance) scales narration **only** — chrome
   keeps its sizes, so a large setting buys text rather than a blown-up
   interface. Prose leading went 1.3 → 1.6 (monospace at 1.3 is a wall), and
   player lines are no longer uppercased; the `>` and the rule already mark them.

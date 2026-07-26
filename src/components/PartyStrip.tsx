@@ -10,8 +10,8 @@ const MEMBER_SLOTS = 3;
 /**
  * The party portrait strip — always visible below the AI options, above the
  * fixed buttons (DESIGN.md → UI). A fixed row of four portrait faces (the PC
- * plus MEMBER_SLOTS party members) with a name label under each, spanning the
- * screen width with gutters between and at the sides. ACTIVE members only —
+ * plus MEMBER_SLOTS party members), spanning the screen width with gutters
+ * between and at the sides. ACTIVE members only —
  * the strip is who is in the scene, so a benched member leaves an empty slot
  * and is managed from the Party screen. Tap a filled slot to
  * open that character's full-screen sheet. Empty member slots always render so
@@ -22,10 +22,19 @@ const MEMBER_SLOTS = 3;
  *
  * Two things here are about reclaiming the reading area, which the banner, this
  * strip and the composer together had squeezed to under half the viewport of a
- * text-first app: slots are 3:4 rather than 1:2 (the face crop above means the
- * extra height was never showing more of anybody), and a party of NOBODY
- * collapses the whole grid to one row instead of standing three full-height
- * dashed boxes on screen.
+ * text-first app: slots are capped in height (the face crop above means extra
+ * height was never showing more of anybody), and a party of NOBODY collapses
+ * the whole grid to one row instead of standing three full-height dashed boxes
+ * on screen.
+ *
+ * No name label under the face: four portraits the player picked and generated
+ * are already four recognisable faces, and the caption was a second row of
+ * chrome saying what the picture said. The freed height goes back into the
+ * portrait rather than off the strip — 3:5 slots against the old 3:4 face plus
+ * caption — so the reading area keeps exactly what it had and the faces get
+ * bigger. Empty slots take the same ratio so the row keeps its shape. The name
+ * still reaches assistive tech through `aria-label`, and taps still open the
+ * sheet, which is where the name is spelled out.
  */
 export function PartyStrip() {
   const characters = useStore((s) => s.characters);
@@ -95,7 +104,7 @@ export function PartyStrip() {
             className="flex flex-col items-center disabled:opacity-40 active:opacity-60"
             aria-label={c.name}
           >
-            <span className="flex aspect-[3/4] w-full items-center justify-center overflow-hidden border-2 border-ink text-sm font-bold">
+            <span className="flex aspect-[3/5] w-full items-center justify-center overflow-hidden border-2 border-ink text-sm font-bold">
               {images[portraitKey(c.id)] ? (
                 <img
                   src={images[portraitKey(c.id)]}
@@ -105,9 +114,6 @@ export function PartyStrip() {
               ) : (
                 initials(c)
               )}
-            </span>
-            <span className="w-full break-words border-2 border-t-0 border-ink bg-ink px-1 py-1 text-center uppercase leading-tight text-paper">
-              {c.name}
             </span>
           </button>
         ) : (
@@ -119,10 +125,7 @@ export function PartyStrip() {
             className="flex flex-col items-center disabled:opacity-40 active:opacity-60"
             aria-label="Add party member"
           >
-            <span className="flex aspect-[3/4] w-full items-center justify-center border-2 border-dashed border-ink text-sm font-bold opacity-30" />
-            <span className="w-full border-2 border-t-0 border-transparent px-1 py-1 text-center uppercase leading-tight opacity-0">
-              —
-            </span>
+            <span className="flex aspect-[3/5] w-full items-center justify-center border-2 border-dashed border-ink text-sm font-bold opacity-30" />
           </button>
         ),
       )}

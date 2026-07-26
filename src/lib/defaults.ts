@@ -197,6 +197,7 @@ export function defaultSettings(): Settings {
     showActionOptions: true,
     invert: false,
     textScale: "m",
+    font: "system",
     // Off by default (Advanced → Images): the story reads fine without a
     // banner, and every new location would otherwise bill an image generation
     // before the player has decided they want any.

@@ -280,6 +280,17 @@ export interface RefImage {
 export type TextScale = "s" | "m" | "l" | "xl";
 
 /**
+ * The typeface the whole app renders in (Settings → Appearance). `system` is
+ * the platform monospace stack Loom shipped with; the other two are bitmap-era
+ * display faces bundled with the app (`src/fonts/`, SIL OFL) so the APK never
+ * reaches the network for a glyph.
+ */
+export type FontChoice = "system" | "vt323" | "jersey15";
+
+/** The fonts, in the order the picker shows them. */
+export const FONT_CHOICES = ["system", "vt323", "jersey15"] as const;
+
+/**
  * How much room the location banner takes. `compact` keeps the art reachable (a
  * tap still opens it full-screen) while handing the reading area back ~90px on
  * a phone — the banner, the party strip and the composer together were eating
@@ -338,6 +349,8 @@ export interface Settings {
   invert: boolean;
   /** Reading size for narration. Chrome (buttons, labels) never scales. */
   textScale: TextScale;
+  /** Typeface for the whole app — see `FontChoice`. */
+  font: FontChoice;
   /**
    * Whether location images exist at all. Off by default: a banner is an image
    * generation on every new location, which is the app's most expensive habit

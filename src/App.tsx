@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useStore } from "./store";
+import { fontTheme } from "./lib/settings";
 import { Header } from "./components/Header";
 import { Banner } from "./components/Banner";
 import { ChatView } from "./components/ChatView";
@@ -13,6 +14,7 @@ import { CharactersScreen } from "./components/CharactersScreen";
 import { WorldNotesScreen } from "./components/WorldNotesScreen";
 import { QuestsScreen } from "./components/QuestsScreen";
 import { AdvancedScreen } from "./components/AdvancedScreen";
+import { AppearanceScreen } from "./components/AppearanceScreen";
 import { SavesScreen } from "./components/SavesScreen";
 import { MemberSheet } from "./components/MemberSheet";
 import { PartyScreen } from "./components/PartyScreen";
@@ -30,6 +32,7 @@ export default function App() {
   const hydrated = useStore((s) => s.hydrated);
   const screen = useStore((s) => s.screen);
   const invert = useStore((s) => s.settings.invert);
+  const font = useStore((s) => s.settings.font);
   const setupDone = useStore((s) => s.settings.setupDone);
 
   useEffect(() => {
@@ -100,6 +103,14 @@ export default function App() {
       ?.setAttribute("content", invert ? "#000000" : "#ffffff");
   }, [invert]);
 
+  // Font choice rides the same one-attribute mechanism as the theme swap:
+  // `data-font` repoints `--font-mono` (theme.css) for the whole app. Routed
+  // through `fontTheme` so a stored value this build doesn't know about lands on
+  // the platform stack rather than an undefined family.
+  useEffect(() => {
+    document.documentElement.dataset.font = fontTheme(font);
+  }, [font]);
+
   if (!hydrated) {
     return (
       <main className="flex min-h-full items-center justify-center bg-paper text-ink font-mono uppercase tracking-widest">
@@ -119,6 +130,7 @@ export default function App() {
   if (screen === "worldnotes") return <WorldNotesScreen />;
   if (screen === "quests") return <QuestsScreen />;
   if (screen === "advanced") return <AdvancedScreen />;
+  if (screen === "appearance") return <AppearanceScreen />;
   if (screen === "saves") return <SavesScreen />;
   if (screen === "member") return <MemberSheet />;
   if (screen === "party") return <PartyScreen />;

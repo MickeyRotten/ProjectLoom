@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { ReasoningLevel, Settings } from "../types";
 import { defaultSettings } from "./defaults";
-import { clampMaxTokens, reasoningBody, reasoningParam } from "./settings";
+import { FONT_LABELS, clampMaxTokens, fontTheme, reasoningBody, reasoningParam } from "./settings";
+import { FONT_CHOICES } from "../types";
 
 function settingsWith(reasoningLevel: ReasoningLevel): Settings {
   return { ...defaultSettings(), reasoningLevel };
@@ -53,5 +54,30 @@ describe("clampMaxTokens", () => {
     expect(clampMaxTokens(NaN)).toBe(0);
     expect(clampMaxTokens(-5)).toBe(0);
     expect(clampMaxTokens(999_999)).toBe(8000);
+  });
+});
+
+describe("fontTheme", () => {
+  it("passes every shipped choice through unchanged", () => {
+    for (const font of FONT_CHOICES) expect(fontTheme(font)).toBe(font);
+  });
+
+  it("falls back to the platform stack for anything else", () => {
+    // A font out of localStorage from another build would otherwise leave
+    // --font-mono pointing at a family no @font-face defines.
+    expect(fontTheme("comic-sans")).toBe("system");
+    expect(fontTheme(undefined)).toBe("system");
+    expect(fontTheme("")).toBe("system");
+  });
+
+  it("ships the default on the shipped settings", () => {
+    expect(fontTheme(defaultSettings().font)).toBe("system");
+  });
+
+  it("has picker copy for every choice", () => {
+    for (const font of FONT_CHOICES) {
+      expect(FONT_LABELS[font].label).toBeTruthy();
+      expect(FONT_LABELS[font].note).toBeTruthy();
+    }
   });
 });

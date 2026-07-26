@@ -1,4 +1,5 @@
-import type { ReasoningEffort, ReasoningLevel, Settings } from "../types";
+import { FONT_CHOICES } from "../types";
+import type { FontChoice, ReasoningEffort, ReasoningLevel, Settings } from "../types";
 import { defaultSettings } from "./defaults";
 
 /**
@@ -24,6 +25,27 @@ export function loadSettings(): Settings {
   } catch {
     return defaultSettings();
   }
+}
+
+/** Picker copy for each font — label plus what it actually looks like. */
+export const FONT_LABELS: Record<FontChoice, { label: string; note: string }> = {
+  system: { label: "System Mono", note: "The device's monospace — widest glyph coverage." },
+  vt323: { label: "VT323", note: "Monospaced CRT terminal face." },
+  jersey15: { label: "Jersey 15", note: "Blocky pixel display face, not monospaced." },
+};
+
+/**
+ * The `data-font` value for a stored setting — the hook `theme.css` hangs the
+ * `--font-mono` override on.
+ *
+ * Anything unrecognised falls back to `system`, so a value written by a future
+ * (or corrupted) build degrades to the platform stack instead of leaving the app
+ * with a `--font-mono` no `@font-face` defines.
+ */
+export function fontTheme(font: FontChoice | string | undefined): FontChoice {
+  return (FONT_CHOICES as readonly string[]).includes(font ?? "")
+    ? (font as FontChoice)
+    : "system";
 }
 
 /**
