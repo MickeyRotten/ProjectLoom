@@ -1,6 +1,5 @@
 import { useStore, type Screen } from "../store";
 import { OverlayHeader } from "./OverlayHeader";
-import type { TextScale } from "../types";
 import { useConfirm } from "./useConfirm";
 
 /**
@@ -23,22 +22,14 @@ const ENTRIES: { screen: Screen; label: string; note: string }[] = [
   { screen: "characters", label: "Characters", note: "Full cast · add to party" },
   { screen: "scenario", label: "Scenario", note: "Title · premise · opening" },
   { screen: "modelkey", label: "Model & Key", note: "OpenRouter key · models" },
+  { screen: "appearance", label: "Appearance", note: "Text size · font · invert" },
   { screen: "advanced", label: "Advanced", note: "Narrator + image instructions" },
   { screen: "saves", label: "Saves", note: "Snapshot · restore slots" },
-];
-
-const TEXT_SIZES: { value: TextScale; label: string }[] = [
-  { value: "s", label: "S" },
-  { value: "m", label: "M" },
-  { value: "l", label: "L" },
-  { value: "xl", label: "XL" },
 ];
 
 export function MenuScreen() {
   const setScreen = useStore((s) => s.setScreen);
   const newAdventure = useStore((s) => s.newAdventure);
-  const invert = useStore((s) => s.settings.invert);
-  const textScale = useStore((s) => s.settings.textScale);
   const bannerSize = useStore((s) => s.settings.bannerSize);
   const locationImages = useStore((s) => s.settings.locationImages);
   const updateSettings = useStore((s) => s.updateSettings);
@@ -61,32 +52,6 @@ export function MenuScreen() {
           </button>
         ))}
 
-        <div className="mt-2 space-y-2 border-2 border-ink p-3">
-          <span className="block uppercase tracking-widest">Text Size</span>
-          <div className="grid grid-cols-4 gap-2">
-            {TEXT_SIZES.map(({ value, label }) => {
-              const current = textScale === value;
-              return (
-                <button
-                  key={value}
-                  type="button"
-                  aria-pressed={current}
-                  onClick={() => updateSettings({ textScale: value })}
-                  className={`border-2 border-ink px-2 py-2 text-sm uppercase tracking-widest ${
-                    current ? "bg-ink text-paper" : "active:bg-ink active:text-paper"
-                  }`}
-                >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
-          <p className="text-sm opacity-60">
-            Scales the story text only — buttons and labels keep their size. Pinch to
-            zoom still works too.
-          </p>
-        </div>
-
         {/* Sizing a banner that doesn't exist is noise — the feature toggle
             lives in Advanced → Images. */}
         {locationImages && (
@@ -102,16 +67,6 @@ export function MenuScreen() {
             <span className="opacity-70">{bannerSize === "compact" ? "On" : "Off"}</span>
           </button>
         )}
-
-        <button
-          type="button"
-          aria-pressed={invert}
-          onClick={() => updateSettings({ invert: !invert })}
-          className="flex w-full items-center justify-between border-2 border-ink p-3 text-left uppercase tracking-widest active:bg-ink active:text-paper"
-        >
-          <span>Invert Colors</span>
-          <span className="opacity-70">{invert ? "On" : "Off"}</span>
-        </button>
 
         <button
           type="button"

@@ -36,6 +36,84 @@
   --paper: #000000;
 }
 
+/*
+ * Bundled display faces (Settings → Appearance → Font). Both are SIL OFL 1.1
+ * and vendored under `src/fonts/` rather than linked from Google Fonts: the
+ * packaged APK plays offline, and a webfont fetched over the network would
+ * simply never arrive there.
+ *
+ * `size-adjust` normalises them against the platform monospace stack. Both are
+ * drawn small for their em box, so at the same `font-size` they read a size or
+ * two below `system` and every Text Size setting would mean something different
+ * per font. The descriptor scales the glyphs, not the layout box, so switching
+ * font never re-flows a screen.
+ *
+ * `latin-ext` is loaded alongside `latin` because character and location names
+ * are player-authored — accented Latin is ordinary input here, not an edge
+ * case. Anything outside both subsets falls through to the platform stack.
+ */
+@font-face {
+  font-family: "VT323";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  size-adjust: 115%;
+  src: url("./fonts/vt323-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "VT323";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  size-adjust: 115%;
+  src: url("./fonts/vt323-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: "Jersey 15";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  size-adjust: 110%;
+  src: url("./fonts/jersey15-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "Jersey 15";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  size-adjust: 110%;
+  src: url("./fonts/jersey15-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/*
+ * Font choice, same shape as the theme swap above: one attribute on <html>
+ * (`App.tsx`) repoints the single `--font-mono` token every component reads
+ * through Tailwind's `font-mono`. The platform stack stays as the tail of each
+ * list so a missing glyph still renders as a glyph.
+ */
+:root[data-font="vt323"] {
+  --font-mono: "VT323", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+
+:root[data-font="jersey15"] {
+  --font-mono: "Jersey 15", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+
 html,
 body,
 #root {

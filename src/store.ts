@@ -101,6 +101,7 @@ export type Screen =
   | "worldnotes"
   | "quests"
   | "advanced"
+  | "appearance"
   | "saves"
   | "party"
   | "inventory"
