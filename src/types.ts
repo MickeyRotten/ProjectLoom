@@ -214,6 +214,7 @@ export interface Reversal {
   characters?: LegacyCharacter[];
   inventory?: Item[];
   quests?: Quest[];
+  worldNotes?: Note[];
 }
 
 /**
@@ -336,6 +337,14 @@ export interface Settings {
   stakesEnabled: boolean;
   /** What the narrator does with the band it is handed — the editable half. */
   stakesRule: string;
+  /**
+   * Approximate token budget for the rolling history window. The only thing
+   * standing between a long game and amnesia, so it is the player's to raise on
+   * a large-context model.
+   */
+  historyBudget: number;
+  /** Cap on a beat's length, in tokens. 0 sends no cap at all. */
+  maxTokens: number;
 }
 
 /* ------------------------------------------------------------------ *
@@ -410,6 +419,20 @@ export interface QuestDelta {
   status?: QuestStatus;
 }
 
+/**
+ * A World Note the narrator wrote for itself. The rolling history window is the
+ * only memory a long game has, and everything that falls out of it is gone; a
+ * note is how a fact survives, keyword-gated back in by `worldNotes.ts` for the
+ * rest of the adventure. Player-visible and editable on the World Notes screen,
+ * which is the point — a hidden summary cannot be corrected.
+ */
+export interface NoteDelta {
+  op: Op;
+  title: string;
+  content?: string;
+  keywords?: string[];
+}
+
 export interface LoomBlock {
   location?: string;
   weather?: string;
@@ -420,5 +443,7 @@ export interface LoomBlock {
   conditions?: ConditionDelta[];
   inventory?: InventoryDelta[];
   quests?: QuestDelta[];
+  /** Lore the narrator committed to memory this turn — see `NoteDelta`. */
+  notes?: NoteDelta[];
   spoke?: string[];
 }

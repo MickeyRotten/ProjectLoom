@@ -165,3 +165,23 @@ describe("deriveToasts — conditions", () => {
     ).toEqual([]);
   });
 });
+
+describe("deriveToasts — world notes", () => {
+  it("reports what the narrator wrote down", () => {
+    expect(
+      deriveToasts(
+        narr({
+          notes: [
+            { op: "add", title: "Rodstroke" },
+            { op: "update", title: "Murkwood" },
+            { op: "remove", title: "Old Rumour" },
+          ],
+        }),
+      ),
+    ).toEqual(["Noted: Rodstroke", "Note updated: Murkwood", "Note removed: Old Rumour"]);
+  });
+
+  it("skips titleless rows", () => {
+    expect(deriveToasts(narr({ notes: [{ op: "add", title: "" }] }))).toEqual([]);
+  });
+});

@@ -225,3 +225,37 @@ describe("applyReversal round-trips", () => {
     ]);
   });
 });
+
+describe("reversal — world notes", () => {
+  it("snapshots the notes slice only when a turn wrote one", () => {
+    const pre = seed();
+    const written = applyDeltas(pre, [defaultPC()], {
+      notes: [{ op: "add", title: "Rodstroke", content: "A village." }],
+    });
+    const post = { ...pre, worldNotes: written.worldNotes };
+    expect(captureReversal(pre, post).worldNotes).toBe(pre.worldNotes);
+
+    // A turn that wrote no note records no slice.
+    const quiet = applyDeltas(pre, [defaultPC()], { location: "Elsewhere" });
+    expect(
+      captureReversal(pre, { ...pre, worldNotes: quiet.worldNotes }).worldNotes,
+    ).toBeUndefined();
+  });
+
+  it("undo drops a note the narrator wrote", () => {
+    const pre = seed();
+    const written = applyDeltas(pre, [defaultPC()], {
+      notes: [{ op: "add", title: "Rodstroke", content: "A village." }],
+    });
+    const post = { ...pre, worldNotes: written.worldNotes };
+    const rev = captureReversal(pre, post);
+    expect(post.worldNotes).toHaveLength(1);
+    expect(applyReversal(post, rev).worldNotes).toEqual(pre.worldNotes);
+  });
+
+  it("leaves notes alone on a reversal recorded before they existed", () => {
+    const g = { ...seed(), worldNotes: [{ id: "n1", title: "Kept", keywords: [], content: "" }] };
+    const legacy: Reversal = { day: 1, location: "x", weather: "clear" };
+    expect(applyReversal(g, legacy).worldNotes).toBe(g.worldNotes);
+  });
+});

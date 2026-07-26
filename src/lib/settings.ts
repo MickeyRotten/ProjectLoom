@@ -18,6 +18,18 @@ export function loadSettings(): Settings {
   }
 }
 
+/**
+ * Ceiling for the per-beat token cap. Generous — the cap exists to stop a
+ * runaway beat, not to enforce a house style.
+ */
+export const MAX_BEAT_TOKENS = 8000;
+
+/** Clamp a player-entered beat cap. 0 is meaningful: it sends no cap at all. */
+export function clampMaxTokens(value: number): number {
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  return Math.min(MAX_BEAT_TOKENS, Math.round(value));
+}
+
 export function saveSettings(settings: Settings): void {
   try {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));

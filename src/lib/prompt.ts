@@ -50,7 +50,20 @@ export interface BuildOptions {
   stakes?: StakeSignals;
 }
 
+/**
+ * Fallback history budget. The store passes `Settings.historyBudget`, so this
+ * only covers callers that don't (tests, and any future side call).
+ */
 const DEFAULT_HISTORY_BUDGET = 3000;
+
+/** Bounds for the player-set history budget (Advanced → Narrator). */
+export const MIN_HISTORY_BUDGET = 500;
+export const MAX_HISTORY_BUDGET = 60000;
+
+export function clampHistoryBudget(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_HISTORY_BUDGET;
+  return Math.min(MAX_HISTORY_BUDGET, Math.max(MIN_HISTORY_BUDGET, Math.round(value)));
+}
 
 /** How many recent beats fold into the spotlight relevance/context scan. */
 const SPOTLIGHT_CONTEXT_TURNS = 4;
@@ -480,6 +493,7 @@ function buildOutputProtocol(settings: Settings): string {
     '- "inventory": array of { "op": "add|update|remove", "label", "description", "quantity" }.',
     '- Gold is the permanent currency item in "inventory" — never remove it. When the player gains or spends money, emit { "op": "update", "label": "Gold", "quantity": <new total> }.',
     '- "quests": array of { "op": "add|update|remove", "label", "description", "reward", "status": "active"|"done" }. Update a quest with status "done" when the player completes it.',
+    '- "notes": array of { "op": "add|update", "title", "content", "keywords": [ … ] } — YOUR OWN MEMORY. Only the last few turns are shown back to you; anything else is forgotten unless you write it down here. Note a place, person, faction, promise, or revelation the moment it matters, and add to a note when you learn more. "keywords" are the words that should bring it back — names and aliases; the title always counts. Keep each note to a couple of factual sentences.',
     '- "spoke": array of member names you gave a spoken line this turn (a hint only).',
     "",
     'Party dialogue uses the convention `Name: "…"` — the name must be an in-company member.',

@@ -70,6 +70,16 @@ export function deriveToasts(msg: Message): string[] {
     }
   }
 
+  // Notes the narrator wrote for itself. Surfaced because they are the long
+  // game's memory and the player owns them — a note written wrong is only
+  // fixable if you know it happened.
+  for (const d of block.notes ?? []) {
+    if (!d?.title) continue;
+    if (d.op === "remove") toasts.push(`Note removed: ${d.title}`);
+    else if (d.op === "update") toasts.push(`Note updated: ${d.title}`);
+    else toasts.push(`Noted: ${d.title}`);
+  }
+
   for (const d of block.quests ?? []) {
     if (!d?.label) continue;
     if (d.op === "add") toasts.push(`Quest started: ${d.label}`);

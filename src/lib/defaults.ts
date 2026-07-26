@@ -162,6 +162,22 @@ MIXED — it works, but it costs: a complication lands, something breaks, a reso
 COST — it goes wrong. The player pays something real — hurt, disarmed, separated, caught out, or robbed of the moment. Follow through; do not rescue them from it on the same beat.
 When a result marks someone lastingly, record it in "conditions". Never kill the player character: leave them alive with something to fix.`;
 
+/**
+ * Rolling-history budget, in approximate tokens. 3000 was hardcoded and never
+ * passed by the store, which capped a campaign at roughly 15–25 turns before
+ * the early game fell out of memory for good. It ships unchanged so existing
+ * saves behave identically, but it is a field now — the narrator's own World
+ * Notes carry the long tail, and a large-context model can afford far more.
+ */
+export const DEFAULT_HISTORY_BUDGET_SETTING = 3000;
+
+/**
+ * Cap on one beat's length. Beats are meant to be "short and punchy", which was
+ * only ever a sentence in the prompt — with no `max_tokens` the model's default
+ * decided. 0 sends no cap.
+ */
+export const DEFAULT_MAX_TOKENS = 700;
+
 export function defaultSettings(): Settings {
   return {
     openRouterKey: "",
@@ -195,6 +211,8 @@ export function defaultSettings(): Settings {
     spotlightRule: DEFAULT_SPOTLIGHT_RULE,
     stakesEnabled: true,
     stakesRule: DEFAULT_STAKES_RULE,
+    historyBudget: DEFAULT_HISTORY_BUDGET_SETTING,
+    maxTokens: DEFAULT_MAX_TOKENS,
   };
 }
 

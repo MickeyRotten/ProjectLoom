@@ -361,7 +361,38 @@ All secondary screens — **member sheet, Party, Inventory, Quests, and every Se
 - **Phase 4 — Authoring + Saves.** Scenario editor, World Notes CRUD + keyword injection, Advanced instructions, save slots (snapshot/restore/new). The pre-made scenario ships as the default.
 - **Phase 5 — Polish + APK.** ✅ Reversal (`reversal.ts` pre-turn slice snapshot; `undoLastTurn`/`regenerateLastTurn`; `TurnControls`), error auto-retry (`retry.ts` policy + `streamChat` whole-stream restart, ported from Wayward), APK signing/CI (`android.yml`), mobile polish (overscroll lock, safe-area insets).
 
-*Deferred (not MVP):* history summarization, NPC/item art, TTS, weather animation, multi-world.
+---
+
+## Long-game memory
+
+The rolling history window is a fixed token budget, so anything older simply
+stops existing — which capped a campaign at roughly 15–25 turns. Three changes,
+none of them a hidden summarizer:
+
+- **The narrator writes its own World Notes.** `LoomBlock.notes`
+  (`{ op, title, content, keywords }`) applies through `deltas.ts → applyNotes`
+  and is gated back in by the existing `worldNotes.ts` keyword matcher — no new
+  injection path. Notes are **player-visible and editable**, which is the whole
+  argument for them over a rolling summary: a summary that quietly gets a fact
+  wrong is unfixable, a note is one screen away. An `add` on a title that
+  already exists **updates** it (the world learning more about a place it has
+  already noted is the common case), keywords **merge** so the player's own are
+  never dropped by an omission, and `permanent` is deliberately not writable —
+  an always-injected note taxes every turn, so that stays the player's call.
+  `applyNotes` copies lazily, because `captureReversal` reference-diffs the
+  slice.
+- **`Settings.historyBudget`** (Advanced → Narrator) — the 3000-token budget was
+  hardcoded and never passed by the store. It ships unchanged, but a
+  large-context model can now be given far more.
+- **`Settings.maxTokens`** — no `max_tokens` was ever sent, so "short and punchy"
+  was a sentence in the prompt and nothing else. 0 restores no cap.
+
+*Still deferred:* rolling LLM summarization. The narrator's own notes cover the
+same ground while staying inspectable; revisit only if they prove insufficient.
+
+---
+
+*Deferred (not MVP):* NPC/item art, TTS, weather animation, multi-world.
 
 ---
 

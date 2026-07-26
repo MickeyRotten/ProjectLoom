@@ -957,6 +957,7 @@ export const useStore = create<LoomStore>((set, get) => {
       characters: get().characters,
       playerMessage: trimmed,
       stakes,
+      historyBudgetTokens: get().settings.historyBudget,
     });
 
     try {
@@ -992,6 +993,7 @@ export const useStore = create<LoomStore>((set, get) => {
         roster,
         inventory: scene?.inventory ?? g.inventory,
         quests: scene?.quests ?? g.quests,
+        worldNotes: scene?.worldNotes ?? g.worldNotes,
         day: scene?.day ?? g.day,
         location: scene?.location ?? g.location,
         weather: scene?.weather ?? g.weather,
@@ -1021,6 +1023,7 @@ export const useStore = create<LoomStore>((set, get) => {
         weather: scene?.weather ?? g.weather,
         inventory: scene?.inventory ?? g.inventory,
         quests: scene?.quests ?? g.quests,
+        worldNotes: scene?.worldNotes ?? g.worldNotes,
       };
 
       set({

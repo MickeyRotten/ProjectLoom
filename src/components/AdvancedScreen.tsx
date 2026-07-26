@@ -27,6 +27,12 @@ import {
   MAX_REF_IMAGES,
   refImageToDataUrl,
 } from "../lib/images";
+import {
+  clampHistoryBudget,
+  MAX_HISTORY_BUDGET,
+  MIN_HISTORY_BUDGET,
+} from "../lib/prompt";
+import { clampMaxTokens, MAX_BEAT_TOKENS } from "../lib/settings";
 
 /**
  * Advanced instructions (DESIGN.md → Menu): the player-editable prompt guidance
@@ -231,6 +237,8 @@ function ToggleRow({
 function NarratorSection() {
   const showActionOptions = useStore((s) => s.settings.showActionOptions);
   const stakesEnabled = useStore((s) => s.settings.stakesEnabled);
+  const historyBudget = useStore((s) => s.settings.historyBudget);
+  const maxTokens = useStore((s) => s.settings.maxTokens);
   const update = useStore((s) => s.updateSettings);
   return (
     <>
@@ -243,6 +251,43 @@ function NarratorSection() {
         onClick={() => update({ showActionOptions: !showActionOptions })}
       />
       {showActionOptions && <InstrField spec={OPTION_FIELD} />}
+
+      <Field label="Memory — Turns Kept">
+        <input
+          type="number"
+          inputMode="numeric"
+          min={MIN_HISTORY_BUDGET}
+          max={MAX_HISTORY_BUDGET}
+          step={500}
+          value={historyBudget}
+          onChange={(e) => update({ historyBudget: clampHistoryBudget(e.target.valueAsNumber) })}
+          className="w-full border-2 border-ink bg-paper p-2 focus:outline-none"
+        />
+        <p className="text-xs opacity-70">
+          Roughly how many tokens of recent story the narrator is shown each turn.
+          Beyond this, older beats are dropped — what the narrator wrote into World
+          Notes is what survives. Raise it on a large-context model; every turn pays
+          for it.
+        </p>
+      </Field>
+
+      <Field label="Beat Length Limit">
+        <input
+          type="number"
+          inputMode="numeric"
+          min={0}
+          max={MAX_BEAT_TOKENS}
+          step={100}
+          value={maxTokens}
+          onChange={(e) => update({ maxTokens: clampMaxTokens(e.target.valueAsNumber) })}
+          className="w-full border-2 border-ink bg-paper p-2 focus:outline-none"
+        />
+        <p className="text-xs opacity-70">
+          Hard cap on one beat, in tokens. 0 removes the cap and lets the model run as
+          long as it likes. Too low and the machine block at the end of a beat gets
+          cut off mid-write.
+        </p>
+      </Field>
 
       <ToggleRow
         label="Stakes"

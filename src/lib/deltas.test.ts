@@ -526,3 +526,54 @@ describe("applyDeltas — conditions", () => {
     expect(scene.roster).toBe(g.roster);
   });
 });
+
+describe("applyDeltas — world notes", () => {
+  it("writes a new note with keywords", () => {
+    const scene = applyDeltas(game(), lib(), {
+      notes: [{ op: "add", title: "Rodstroke", content: "A farming village.", keywords: ["village"] }],
+    });
+    expect(scene.worldNotes).toHaveLength(1);
+    expect(scene.worldNotes[0].title).toBe("Rodstroke");
+    expect(scene.worldNotes[0].content).toBe("A farming village.");
+    expect(scene.worldNotes[0].keywords).toEqual(["village"]);
+  });
+
+  it("treats an add on a known title as an update — the world learns more", () => {
+    const g = game();
+    g.worldNotes = [{ id: "n1", title: "Rodstroke", keywords: ["village"], content: "A village." }];
+    const scene = applyDeltas(g, lib(), {
+      notes: [{ op: "add", title: "rodstroke", content: "A village under curfew." }],
+    });
+    expect(scene.worldNotes).toHaveLength(1);
+    expect(scene.worldNotes[0].content).toBe("A village under curfew.");
+  });
+
+  it("merges keywords instead of replacing the player's", () => {
+    const g = game();
+    g.worldNotes = [{ id: "n1", title: "Rodstroke", keywords: ["village", "Mira"], content: "" }];
+    const scene = applyDeltas(g, lib(), {
+      notes: [{ op: "update", title: "Rodstroke", keywords: ["MIRA", "curfew"] }],
+    });
+    expect(scene.worldNotes[0].keywords).toEqual(["village", "Mira", "curfew"]);
+  });
+
+  it("never sets permanent — an always-on note is the player's call", () => {
+    const scene = applyDeltas(game(), lib(), {
+      notes: [{ op: "add", title: "Rodstroke", content: "x", permanent: true } as never],
+    });
+    expect(scene.worldNotes[0].permanent).toBeUndefined();
+  });
+
+  it("removes a note by title", () => {
+    const g = game();
+    g.worldNotes = [{ id: "n1", title: "Rodstroke", keywords: [], content: "" }];
+    const scene = applyDeltas(g, lib(), { notes: [{ op: "remove", title: "Rodstroke" }] });
+    expect(scene.worldNotes).toHaveLength(0);
+  });
+
+  it("skips titleless rows and returns the same array when nothing applied", () => {
+    const g = game();
+    const scene = applyDeltas(g, lib(), { notes: [{ op: "add", title: "" }] });
+    expect(scene.worldNotes).toBe(g.worldNotes);
+  });
+});

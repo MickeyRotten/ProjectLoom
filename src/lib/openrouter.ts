@@ -217,6 +217,11 @@ async function streamOnce(opts: StreamOptions): Promise<string> {
       model: settings.textModelId,
       temperature: settings.temperature,
       stream: true,
+      // Beats are meant to be short and punchy, but "short" was only ever a
+      // sentence in the prompt — with no cap the model's own default decided,
+      // and a chatty one both bills more and pushes the <<<LOOM>>> block past
+      // where the player is still reading. 0 restores "no cap".
+      ...(settings.maxTokens > 0 ? { max_tokens: settings.maxTokens } : {}),
       messages,
     }),
     signal,
