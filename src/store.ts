@@ -44,7 +44,7 @@ import {
   setStanding as setEntryStanding,
   standingOf,
 } from "./lib/roster";
-import { computeStakes } from "./lib/stakes";
+import { computeStakes, rollRecord } from "./lib/stakes";
 import { buildMessages } from "./lib/prompt";
 import { completeChat, streamChat, OpenRouterError } from "./lib/openrouter";
 import {
@@ -1028,6 +1028,10 @@ export const useStore = create<LoomStore>((set, get) => {
         turn,
         outcome:
           get().settings.stakesEnabled && stakes.outcome ? stakes.outcome : undefined,
+        // The arithmetic beside the verdict — see `TurnRoll`. Same gate, so a
+        // game with stakes off records neither.
+        roll:
+          get().settings.stakesEnabled ? (rollRecord(stakes) ?? undefined) : undefined,
         appliedDeltas: block ?? undefined,
         reversal,
         day: scene?.day ?? g.day,

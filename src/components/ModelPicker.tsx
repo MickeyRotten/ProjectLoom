@@ -2,18 +2,20 @@ import { useMemo, useState } from "react";
 import { Field, TextField } from "./fields";
 import type { OpenRouterModel } from "../lib/openrouter";
 
-/** Rows shown before the player narrows the list. */
-const VISIBLE_LIMIT = 60;
-
 /**
- * A model picker with a filter box.
+ * A model picker over the WHOLE catalog for its modality — every text-to-text
+ * model OpenRouter lists, not a shortlist.
  *
- * The catalog runs to several hundred entries, and a native `<select>` over all
- * of them is unusable on a phone — finding the shipped default meant scrolling
- * blind through an alphabetical wall. Typing narrows it; the current value is
- * always offered even when it isn't in the catalog, and while the catalog is
- * loading (or if it failed) this degrades to a free-text model id so a model can
- * still be entered.
+ * It used to cut the list off after the first 60 rows and tell the player to
+ * keep typing, which made an alphabetical accident ("ai21…", "amazon…") look
+ * like a curated selection and hid most of the catalog behind a search box that
+ * only helps if you already know the model's name. Everything is rendered now;
+ * the filter box narrows it, and a Free-only checkbox is there for playing on
+ * nothing.
+ *
+ * The current value is always offered even when it isn't in the catalog, and
+ * while the catalog is loading (or if it failed) this degrades to a free-text
+ * model id so a model can still be entered.
  */
 export function ModelPicker({
   label,
@@ -33,14 +35,16 @@ export function ModelPicker({
   hint?: string;
 }) {
   const [filter, setFilter] = useState("");
+  const [freeOnly, setFreeOnly] = useState(false);
 
   const matches = useMemo(() => {
     const q = filter.trim().toLowerCase();
-    if (!q) return models;
-    return models.filter(
-      (m) => m.id.toLowerCase().includes(q) || m.name.toLowerCase().includes(q),
-    );
-  }, [filter, models]);
+    return models.filter((m) => {
+      if (freeOnly && !m.free) return false;
+      if (!q) return true;
+      return m.id.toLowerCase().includes(q) || m.name.toLowerCase().includes(q);
+    });
+  }, [filter, freeOnly, models]);
 
   if (loading) {
     return (
@@ -59,12 +63,15 @@ export function ModelPicker({
     );
   }
 
-  const shown = matches.slice(0, VISIBLE_LIMIT);
-  const inList = shown.some((m) => m.id === value);
-  const hidden = matches.length - shown.length;
+  const inList = matches.some((m) => m.id === value);
+  const freeCount = models.filter((m) => m.free).length;
 
   return (
-    <Field label={label}>
+    <div className="space-y-1">
+      {/* Not a <Field>: the free checkbox is a second control, and nesting two
+          labels inside one is invalid HTML. */}
+      <span className="block text-sm uppercase tracking-widest">{label}</span>
+
       <input
         value={filter}
         onChange={(e) => setFilter(e.target.value)}
@@ -72,28 +79,48 @@ export function ModelPicker({
         aria-label={`Filter ${label} list`}
         className="mb-2 w-full border-2 border-ink bg-paper p-2 focus:outline-none"
       />
+
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
         size={1}
+        aria-label={label}
         className="w-full appearance-none border-2 border-ink bg-paper p-2 focus:outline-none"
       >
         {/* The current pick is always selectable, even when the filter or the
             catalog excludes it — otherwise typing a filter silently reassigns
             the model out from under the player. */}
         {!inList && value && <option value={value}>{value} (current)</option>}
-        {shown.map((m) => (
+        {matches.map((m) => (
           <option key={m.id} value={m.id}>
-            {m.name}
+            {m.free ? `${m.name} — free` : m.name}
           </option>
         ))}
       </select>
-      {hidden > 0 && (
-        <p className="mt-1 text-xs opacity-60">
-          {hidden} more — keep typing to narrow the list.
+
+      <label className="flex min-h-11 items-center gap-2">
+        <input
+          type="checkbox"
+          checked={freeOnly}
+          onChange={(e) => setFreeOnly(e.target.checked)}
+          className="h-4 w-4 shrink-0 accent-ink"
+        />
+        <span className="text-xs uppercase tracking-widest">
+          Free models only ({freeCount})
+        </span>
+      </label>
+
+      <p className="text-xs opacity-60">
+        {matches.length === models.length
+          ? `${models.length} models`
+          : `${matches.length} of ${models.length} models`}
+      </p>
+      {freeOnly && !matches.length && (
+        <p className="text-xs opacity-60">
+          No free model matches that filter — clear the filter or untick Free.
         </p>
       )}
-      {hint && <p className="mt-1 text-xs opacity-60">{hint}</p>}
-    </Field>
+      {hint && <p className="text-xs opacity-60">{hint}</p>}
+    </div>
   );
 }

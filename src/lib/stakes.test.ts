@@ -3,9 +3,12 @@ import {
   bandFor,
   computeStakes,
   formatConditionsBlock,
+  formatRoll,
   formatStakesBlock,
   isRisky,
+  modifierNote,
   rollFor,
+  rollRecord,
 } from "./stakes";
 import type { PartyMember } from "../types";
 
@@ -194,5 +197,49 @@ describe("formatConditionsBlock", () => {
     expect(block).toContain("- Kai: Hunted by the Watch");
     expect(block).not.toContain("Navi");
     expect(block).toContain('"condition": ""');
+  });
+});
+
+describe("rollRecord", () => {
+  it("is null when nothing was rolled", () => {
+    expect(rollRecord(computeStakes("I look around the room", pc(), 1))).toBeNull();
+  });
+
+  it("keeps the arithmetic the block showed the narrator", () => {
+    const action = "I attack the bandit";
+    const turn = turnWithRoll(action, 6);
+    const rec = rollRecord(computeStakes(action, pc(), turn));
+    expect(rec).toEqual({ roll: 6, modifier: 0, total: 6 });
+  });
+
+  it("flags the modifier's reason, and only when it applied", () => {
+    const action = "I smash the gate";
+    const turn = turnWithRoll(action, 3);
+    const rec = rollRecord(
+      computeStakes(action, pc({ flaws: "Weak — cannot smash anything" }), turn),
+    );
+    expect(rec).toEqual({ roll: 3, modifier: -1, total: 2, flaws: true });
+    expect(modifierNote(rec!)).toBe("flaws in play");
+  });
+});
+
+describe("formatRoll", () => {
+  it("spells out the arithmetic when something modified it", () => {
+    expect(formatRoll({ roll: 4, modifier: 1, total: 5 })).toBe("1d6 4 +1 = 5");
+    expect(formatRoll({ roll: 1, modifier: -1, total: 0 })).toBe("1d6 1 -1 = 0");
+  });
+
+  it("stays a bare roll when nothing did", () => {
+    expect(formatRoll({ roll: 4, modifier: 0, total: 4 })).toBe("1d6 4");
+  });
+});
+
+describe("modifierNote", () => {
+  it("names both when both applied", () => {
+    expect(modifierNote({ strengths: true, flaws: true })).toBe(
+      "strengths and flaws both in play",
+    );
+    expect(modifierNote({ strengths: true })).toBe("strengths in play");
+    expect(modifierNote({})).toBe("nothing in play");
   });
 });

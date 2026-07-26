@@ -5,6 +5,7 @@ import { TurnControls } from "./TurnControls";
 import { segmentDialogue } from "../lib/spotlight";
 import { parseInline } from "../lib/markdown";
 import { deriveToasts } from "../lib/toasts";
+import { BAND_SCALE, formatRoll, modifierNote } from "../lib/stakes";
 import type { Character, Message, TextScale, TurnOutcome } from "../types";
 
 /** Which message (id) is being edited, and the working draft. */
@@ -299,6 +300,11 @@ const OUTCOME_LABEL: Record<TurnOutcome, string> = {
  * Chip row for one narrator beat: the rolled outcome (when stakes decided this
  * turn) followed by the state changes it applied. The outcome leads because it
  * is why the beat went the way it did — the rest is bookkeeping.
+ *
+ * The chip shows the arithmetic, not just the verdict: a bare "It cost you"
+ * read as the app editorialising about the beat, where `1d6 1 -1 = 0` reads as
+ * a die that went badly — and shows Flaws doing something. Turns recorded
+ * before the roll was kept still show their band alone.
  */
 function Toasts({ msg }: { msg: Message }) {
   const toasts = deriveToasts(msg);
@@ -306,8 +312,16 @@ function Toasts({ msg }: { msg: Message }) {
   return (
     <div className="flex flex-wrap gap-1">
       {msg.outcome && (
-        <span className="border-2 border-ink bg-ink px-2 py-0.5 text-xs uppercase tracking-widest text-paper">
+        <span
+          className="border-2 border-ink bg-ink px-2 py-0.5 text-xs uppercase tracking-widest text-paper"
+          title={
+            msg.roll
+              ? `${modifierNote(msg.roll)} — ${BAND_SCALE}`
+              : BAND_SCALE
+          }
+        >
           ◆ {OUTCOME_LABEL[msg.outcome]}
+          {msg.roll && ` · ${formatRoll(msg.roll)}`}
         </span>
       )}
       {toasts.map((t, i) => (

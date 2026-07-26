@@ -65,10 +65,28 @@ export interface OpenRouterModel {
   name: string;
   /** Output modalities, e.g. ["text"] or ["image","text"]. Empty if unknown. */
   outputModalities: string[];
+  /**
+   * Nothing is billed for prompt OR completion tokens. Read off the catalog's
+   * own pricing rather than the `:free` id suffix, because the suffix is a
+   * naming convention some free models don't follow.
+   */
+  free: boolean;
 }
 
 function asStringArray(v: unknown): string[] {
   return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+}
+
+/**
+ * Catalog prices are per-token decimal STRINGS ("0", "0.0000006"). Anything
+ * unparseable is treated as priced — a model whose cost we can't read must not
+ * be advertised as free.
+ */
+function priced(v: unknown): boolean {
+  if (typeof v === "number") return v > 0;
+  if (typeof v !== "string") return true;
+  const n = Number(v);
+  return Number.isFinite(n) ? n > 0 : true;
 }
 
 /**
@@ -96,10 +114,12 @@ export async function fetchModels(signal?: AbortSignal): Promise<OpenRouterModel
     const id = typeof m.id === "string" ? m.id : "";
     if (!id) continue;
     const arch = (m.architecture as Record<string, unknown> | undefined) ?? undefined;
+    const pricing = (m.pricing as Record<string, unknown> | undefined) ?? undefined;
     models.push({
       id,
       name: typeof m.name === "string" ? m.name : id,
       outputModalities: asStringArray(arch?.output_modalities),
+      free: !!pricing && !priced(pricing.prompt) && !priced(pricing.completion),
     });
   }
   models.sort((a, b) => a.id.localeCompare(b.id));
