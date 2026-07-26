@@ -54,13 +54,46 @@ const slug = (s: string) =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 
+/**
+ * Separators a model uses to staple a parent place onto the actual one —
+ * "Boars Head Tavern - Damp Cellar", "Rodstroke: Market Square",
+ * "Murkwood / Old Well". All are surrounded by whitespace, or are a colon, so a
+ * hyphenated single name ("Half-Moon Inn") is never split.
+ *
+ * Commas are deliberately absent: "Rodstroke, Mesmeria" nests the other way
+ * round, and taking the last part there would name the country instead of the
+ * room.
+ */
+const LOCATION_JOINERS = /\s+[-–—>|/]\s+|\s*:\s+/;
+
+/**
+ * The one place the scene is in, out of whatever the narrator wrote. A location
+ * is a NAME — the most specific one — because it is a scene label in the header
+ * and the cache key behind its image; a compound like "Boars Head Tavern - Damp
+ * Cellar" is a different key from "Damp Cellar", so the same room is drawn
+ * twice and reads as a new place every time the model changes its mind about
+ * the prefix.
+ *
+ * Takes the LAST segment: with these joiners the tail is the narrower place.
+ * Returns "" for input that is only separators, so callers can keep the
+ * previous scene rather than blank it.
+ */
+export function simplifyLocation(location: string): string {
+  const parts = location
+    .split(LOCATION_JOINERS)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : "";
+}
+
 export function applyDeltas(
   game: GameState,
   characters: Character[],
   block: LoomBlock,
 ): AppliedScene {
   const day = block.day ?? game.day;
-  const location = block.location ?? game.location;
+  const location =
+    block.location === undefined ? game.location : simplifyLocation(block.location) || game.location;
   const weather = block.weather ?? game.weather;
   const party = applyParty(characters, game.roster, block);
   // Conditions run AFTER the party ops, so a companion introduced and wounded

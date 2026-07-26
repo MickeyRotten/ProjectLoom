@@ -1178,7 +1178,9 @@ export const useStore = create<LoomStore>((set, get) => {
   syncImages() {
     const g = get().game;
     const location = g.location.trim();
-    if (location) {
+    // Location images off (Advanced → Images): nothing is generated and nothing
+    // is loaded from cache, since no banner is rendered to put it in.
+    if (location && get().settings.locationImages) {
       const excerpt = lastNarration(g);
       // The cooldown gates GENERATION only: a location whose banner is already
       // cached still shows it immediately, however recently we drew something.
@@ -1212,7 +1214,7 @@ export const useStore = create<LoomStore>((set, get) => {
   regenerateBanner() {
     const g = get().game;
     const location = g.location.trim();
-    if (!location) return;
+    if (!location || !get().settings.locationImages) return;
     const excerpt = lastNarration(g);
     // ⟳ ignores the cooldown — but it IS a generation, so it restarts the clock.
     void ensureImage(
@@ -1231,7 +1233,7 @@ export const useStore = create<LoomStore>((set, get) => {
 
   editBanner(instruction) {
     const location = get().game.location.trim();
-    if (!location) return;
+    if (!location || !get().settings.locationImages) return;
     void editImage(bannerKey(location), instruction);
   },
 

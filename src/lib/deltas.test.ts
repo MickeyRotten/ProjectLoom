@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { applyDeltas } from "./deltas";
+import { applyDeltas, simplifyLocation } from "./deltas";
 import { defaultPC, newGame } from "./defaults";
 import { activeMembers, getEntry, partyMembers, resolve } from "./roster";
 import type { Character, GameState } from "../types";
@@ -50,6 +50,47 @@ describe("applyDeltas — scene", () => {
     expect(scene.location).toBe("Old Well");
     expect(scene.day).toBe(6);
     expect(scene.weather).toBe("clear");
+  });
+
+  it("keeps only the innermost place when the narrator staples two together", () => {
+    const scene = applyDeltas(game(), lib(), {
+      location: "Boars Head Tavern - Damp Cellar",
+    });
+    expect(scene.location).toBe("Damp Cellar");
+  });
+
+  it("keeps the prior scene when the location is nothing but separators", () => {
+    const g = game();
+    g.location = "Old Well";
+    expect(applyDeltas(g, lib(), { location: " - " }).location).toBe("Old Well");
+  });
+});
+
+describe("simplifyLocation", () => {
+  it("takes the last segment of every compound joiner", () => {
+    expect(simplifyLocation("Boars Head Tavern - Damp Cellar")).toBe("Damp Cellar");
+    expect(simplifyLocation("Rodstroke: Market Square")).toBe("Market Square");
+    expect(simplifyLocation("Murkwood / Old Well")).toBe("Old Well");
+    expect(simplifyLocation("Keep — Tower — Belfry")).toBe("Belfry");
+  });
+
+  it("leaves a plain name alone", () => {
+    expect(simplifyLocation("Damp Cellar")).toBe("Damp Cellar");
+    expect(simplifyLocation("  Murkwood Entrance  ")).toBe("Murkwood Entrance");
+  });
+
+  it("never splits a hyphenated or comma'd name", () => {
+    // No surrounding whitespace: part of the name, not a joiner.
+    expect(simplifyLocation("Half-Moon Inn")).toBe("Half-Moon Inn");
+    // Commas nest the other way round — the tail is the WIDER place.
+    expect(simplifyLocation("Rodstroke, Mesmeria")).toBe("Rodstroke, Mesmeria");
+    // A time of day, not a joiner: the colon rule needs whitespace after it.
+    expect(simplifyLocation("Clocktower 12:00")).toBe("Clocktower 12:00");
+  });
+
+  it("returns empty for input with no name in it", () => {
+    expect(simplifyLocation("")).toBe("");
+    expect(simplifyLocation(" — ")).toBe("");
   });
 });
 

@@ -309,6 +309,15 @@ export interface Settings {
   invert: boolean;
   /** Reading size for narration. Chrome (buttons, labels) never scales. */
   textScale: TextScale;
+  /**
+   * Whether location images exist at all. Off by default: a banner is an image
+   * generation on every new location, which is the app's most expensive habit
+   * and the one least tied to play. Off means no generation, no cached-image
+   * display, and none of the banner UI — the banner itself, its Menu size
+   * toggle, and the Advanced → Images banner settings all disappear rather than
+   * sitting there doing nothing.
+   */
+  locationImages: boolean;
   /** Whether the location banner shows full height or as a thin strip. */
   bannerSize: BannerSize;
   // Advanced (player-editable, Phase 4):

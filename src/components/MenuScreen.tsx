@@ -40,6 +40,7 @@ export function MenuScreen() {
   const invert = useStore((s) => s.settings.invert);
   const textScale = useStore((s) => s.settings.textScale);
   const bannerSize = useStore((s) => s.settings.bannerSize);
+  const locationImages = useStore((s) => s.settings.locationImages);
   const updateSettings = useStore((s) => s.updateSettings);
   const { ask, dialog } = useConfirm();
 
@@ -86,17 +87,21 @@ export function MenuScreen() {
           </p>
         </div>
 
-        <button
-          type="button"
-          aria-pressed={bannerSize === "compact"}
-          onClick={() =>
-            updateSettings({ bannerSize: bannerSize === "compact" ? "full" : "compact" })
-          }
-          className="flex w-full items-center justify-between border-2 border-ink p-3 text-left uppercase tracking-widest active:bg-ink active:text-paper"
-        >
-          <span>Compact Location Image</span>
-          <span className="opacity-70">{bannerSize === "compact" ? "On" : "Off"}</span>
-        </button>
+        {/* Sizing a banner that doesn't exist is noise — the feature toggle
+            lives in Advanced → Images. */}
+        {locationImages && (
+          <button
+            type="button"
+            aria-pressed={bannerSize === "compact"}
+            onClick={() =>
+              updateSettings({ bannerSize: bannerSize === "compact" ? "full" : "compact" })
+            }
+            className="flex w-full items-center justify-between border-2 border-ink p-3 text-left uppercase tracking-widest active:bg-ink active:text-paper"
+          >
+            <span>Compact Location Image</span>
+            <span className="opacity-70">{bannerSize === "compact" ? "On" : "Off"}</span>
+          </button>
+        )}
 
         <button
           type="button"
