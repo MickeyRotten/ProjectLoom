@@ -333,6 +333,29 @@ The member sheet's **Auto-Update** button opens a modal to check which fields th
 
 Parsing is tolerant like the `<<<LOOM>>>` block (fences/preamble/trailing commas survive) but strict about content: unrequested keys, non-strings, and blanks are dropped, so a bad reply narrows to "fewer fields updated" and never blanks a sheet. Gated behind read mode (an open edit draft would clobber the result) and blocked mid-turn.
 
+### First run — `SetupScreen`
+A fresh install used to open on a running game that could not run: the quick
+actions greyed out at `opacity-30` with no explanation, the freeform input
+stayed enabled, and the only route to the key screen was to type something,
+watch the turn fail, and read the error. Setup is now a gate — key, text model,
+optional image model — shown while `Settings.setupDone` is false.
+
+- **`setupDone` is its own flag, not "is there a key"** — gating on the key
+  would throw the player out of setup on the first character they typed.
+  `loadSettings` backfills it from the presence of a key, so an existing player
+  is never handed a setup screen for a game they have been playing.
+- **`verifyKey`** (`/api/v1/key`, authenticated) backs a **Test** button.
+  Nothing else in the app can tell a good key from a typo: the model catalog is
+  a *public* endpoint, so it loads happily with garbage in the field, and a
+  wrong key otherwise stays invisible until the first turn fails.
+- **`ModelPicker`** replaces the bare `<select>` over several hundred models
+  with a filter box. `KeyField` / `ModelPicker` / `useModelCatalog` are shared
+  with Model & Key so the two screens can't drift.
+- **Failed images say why.** `ensureImage` recorded `imgError` only on a forced
+  ⟳, so an automatic banner or portrait that failed left an eternal placeholder
+  and no reason — the cause (no credit, refused prompt, unreadable file) only
+  surfaced if the player happened to press ⟳. It now records on both paths.
+
 ### Secondary screens
 All secondary screens — **member sheet, Party, Inventory, Quests, and every Settings sub-screen** — are **full-screen overlays with a Back button** in a top header (the mobile pattern; no split panes). They open over the chat and return to it on Back. Same store/components regardless.
 

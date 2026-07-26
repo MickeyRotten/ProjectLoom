@@ -290,6 +290,12 @@ export type BannerSize = "full" | "compact";
 export interface Settings {
   openRouterKey: string;
   /**
+   * Whether the player has been through first-run setup. Gates `SetupScreen`.
+   * Deliberately its own flag rather than "is there a key": gating on the key
+   * would throw the player out of setup on the first character they typed.
+   */
+  setupDone: boolean;
+  /**
    * Optional separate OpenRouter key for image generation — lets the player
    * track image spend against its own key. Blank falls back to openRouterKey.
    */

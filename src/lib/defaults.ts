@@ -181,6 +181,7 @@ export const DEFAULT_MAX_TOKENS = 700;
 export function defaultSettings(): Settings {
   return {
     openRouterKey: "",
+    setupDone: false,
     imageKey: "",
     textModelId: DEFAULT_TEXT_MODEL,
     imageModelId: DEFAULT_IMAGE_MODEL,

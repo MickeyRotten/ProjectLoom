@@ -401,11 +401,13 @@ export const useStore = create<LoomStore>((set, get) => {
       publishImage(key, blob);
       opts.onGenerated?.();
     } catch (err) {
-      // Non-fatal — a failed image never blocks the turn (DESIGN.md). A forced
-      // regeneration is different: swallowing it silently leaves the OLD image
-      // on screen, which reads as "⟳ refused to replace my picture", so say so —
-      // with the reason, since "failed" alone leaves nothing to act on.
-      if (force) setImageError(key, imageFailure(err));
+      // Non-fatal — a failed image never blocks the turn (DESIGN.md) — but it
+      // is never SILENT either. Recording the reason on the automatic path too
+      // is what separates "no image model credit" from an eternal placeholder
+      // the player has no way to explain; before, the reason only appeared if
+      // they happened to press ⟳. The badge is small and dismissible; guessing
+      // is not.
+      setImageError(key, imageFailure(err));
     } finally {
       clearPending(key);
     }

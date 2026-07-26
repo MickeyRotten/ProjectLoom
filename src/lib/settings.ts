@@ -12,7 +12,15 @@ export function loadSettings(): Settings {
     const raw = localStorage.getItem(SETTINGS_KEY);
     if (!raw) return defaultSettings();
     // Merge over defaults so new fields added in later phases get sane values.
-    return { ...defaultSettings(), ...(JSON.parse(raw) as Partial<Settings>) };
+    const stored = JSON.parse(raw) as Partial<Settings>;
+    return {
+      ...defaultSettings(),
+      ...stored,
+      // `setupDone` arrived after first-run setup existed. Anyone already
+      // holding a key has plainly been through it, and must not be handed a
+      // setup screen for an app they have been playing.
+      setupDone: stored.setupDone ?? Boolean(stored.openRouterKey?.trim()),
+    };
   } catch {
     return defaultSettings();
   }

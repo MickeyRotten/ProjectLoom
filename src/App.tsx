@@ -6,6 +6,7 @@ import { ChatView } from "./components/ChatView";
 import { PartyStrip } from "./components/PartyStrip";
 import { Composer } from "./components/Composer";
 import { MenuScreen } from "./components/MenuScreen";
+import { SetupScreen } from "./components/SetupScreen";
 import { ModelKeyScreen } from "./components/ModelKeyScreen";
 import { ScenarioScreen } from "./components/ScenarioScreen";
 import { CharactersScreen } from "./components/CharactersScreen";
@@ -29,6 +30,7 @@ export default function App() {
   const hydrated = useStore((s) => s.hydrated);
   const screen = useStore((s) => s.screen);
   const invert = useStore((s) => s.settings.invert);
+  const setupDone = useStore((s) => s.settings.setupDone);
 
   useEffect(() => {
     void hydrate();
@@ -56,6 +58,10 @@ export default function App() {
       </main>
     );
   }
+
+  // First run: the game cannot take a turn without a key, so ask for one
+  // instead of opening on a scenario that fails the moment it is touched.
+  if (!setupDone) return <SetupScreen />;
 
   if (screen === "menu") return <MenuScreen />;
   if (screen === "modelkey") return <ModelKeyScreen />;
