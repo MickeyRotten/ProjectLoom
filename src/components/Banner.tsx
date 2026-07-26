@@ -9,8 +9,13 @@ import { EditImageButton } from "./EditImageButton";
  * only a bottom rule separating it from the log — so the image reads as part of
  * the top bar instead of a floating card. Generated on a scene change to an
  * uncached location; a placeholder shows while it renders. Tap ⟳ to regenerate.
+ *
+ * The whole feature is opt-in (Advanced → Images → Location Images, off by
+ * default): with it off this renders nothing at all — no strip, no placeholder,
+ * no regenerate button — and the store generates nothing.
  */
 export function Banner() {
+  const enabled = useStore((s) => s.settings.locationImages);
   const location = useStore((s) => s.game.location);
   const key = bannerKey(location);
   const url = useStore((s) => s.images[key]);
@@ -27,6 +32,10 @@ export function Banner() {
   const [showWhy, setShowWhy] = useState(false);
   const size = useStore((s) => s.settings.bannerSize);
   const updateSettings = useStore((s) => s.updateSettings);
+
+  // After the hooks — an early return above them would break hook order the
+  // moment the setting is toggled mid-session.
+  if (!enabled) return null;
 
   // Compact: a thin strip that keeps the location and the art one tap away
   // (tapping opens the same full-screen view) while handing ~90px of a phone

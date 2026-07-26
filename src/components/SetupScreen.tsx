@@ -62,7 +62,7 @@ export function SetupScreen() {
           models={image}
           loading={loading}
           error={error}
-          hint="Draws location banners and character portraits. Leave it be if you'd rather not spend on images — the game plays fine without them."
+          hint="Draws character portraits — and location images, once you switch those on in Advanced → Images. Leave it be if you'd rather not spend on images — the game plays fine without them."
         />
 
         {/* Dismissal is explicit. Gating the screen on "is there a key" instead

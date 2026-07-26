@@ -173,6 +173,16 @@ Post-MVP also: **first run** — `SetupScreen` gated on `Settings.setupDone` (no
 "is there a key", which would eject the player mid-keystroke), `verifyKey` behind a
 Test button (the model catalog is public, so it can't validate anything), a
 filterable `ModelPicker`, and `imgError` recorded on the automatic image path too.
+Post-MVP also: **location images opt-in** (`Settings.locationImages`, Advanced →
+Images, **off by default**) — a banner is a fresh generation on every new place,
+so the feature is off until asked for: `syncImages`/`regenerateBanner`/`editBanner`
+no-op, `<Banner>` renders nothing, and the Menu size toggle + Advanced cooldown /
+banner-style fields are hidden, not disabled. Cached banners survive and return
+when it is switched back on. Alongside it, **one-name locations** —
+`deltas.ts → simplifyLocation` keeps the last segment of a narrator-stapled
+compound ("Boars Head Tavern - Damp Cellar" → "Damp Cellar") for the ` - `/` — `/
+` / `/`: ` joiners only (never a comma or a bare hyphen), backed by an explicit
+`"location"` rule in the output protocol.
 Deferred (post-MVP): rolling LLM summarization, NPC/item art, TTS,
 weather animation, multi-world. Track scope in `DESIGN.md → Build Phases`.
 

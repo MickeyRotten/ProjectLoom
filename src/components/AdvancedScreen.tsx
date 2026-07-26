@@ -334,6 +334,7 @@ function CharactersSection() {
 
 function ImagesSection() {
   const ditherMode = useStore((s) => s.settings.ditherMode);
+  const locationImages = useStore((s) => s.settings.locationImages);
   const bannerCooldown = useStore((s) => s.settings.bannerCooldown);
   const update = useStore((s) => s.updateSettings);
   return (
@@ -351,26 +352,44 @@ function ImagesSection() {
         }
       />
 
-      <Field label="Location Image Cooldown">
-        <input
-          type="number"
-          inputMode="numeric"
-          min={0}
-          max={MAX_BANNER_COOLDOWN}
-          step={1}
-          value={bannerCooldown}
-          onChange={(e) => update({ bannerCooldown: clampBannerCooldown(e.target.valueAsNumber) })}
-          className="w-full border-2 border-ink bg-paper p-2 focus:outline-none"
-        />
-        <p className="text-xs opacity-70">
-          Turns to wait after a location image is generated before another one is
-          drawn — "3" skips the next 3 turns' worth of new locations. 0 turns it off.
-          Locations you've already seen still show their cached image instantly, and ⟳
-          always redraws.
-        </p>
-      </Field>
+      <ToggleRow
+        label="Location Images"
+        state={locationImages ? "ON" : "OFF"}
+        onClick={() => update({ locationImages: !locationImages })}
+      />
 
-      <InstrField spec={BANNER_FIELD} />
+      {locationImages ? (
+        <>
+          <Field label="Location Image Cooldown">
+            <input
+              type="number"
+              inputMode="numeric"
+              min={0}
+              max={MAX_BANNER_COOLDOWN}
+              step={1}
+              value={bannerCooldown}
+              onChange={(e) =>
+                update({ bannerCooldown: clampBannerCooldown(e.target.valueAsNumber) })
+              }
+              className="w-full border-2 border-ink bg-paper p-2 focus:outline-none"
+            />
+            <p className="text-xs opacity-70">
+              Turns to wait after a location image is generated before another one is
+              drawn — "3" skips the next 3 turns' worth of new locations. 0 turns it off.
+              Locations you've already seen still show their cached image instantly, and ⟳
+              always redraws.
+            </p>
+          </Field>
+
+          <InstrField spec={BANNER_FIELD} />
+        </>
+      ) : (
+        <p className="border-2 border-ink p-3 text-sm opacity-70">
+          Off: no image is drawn for a location and the banner is hidden. Character
+          portraits are unaffected. Images already generated are kept, and turning this
+          back on shows them again.
+        </p>
+      )}
     </>
   );
 }
