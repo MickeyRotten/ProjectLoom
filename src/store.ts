@@ -251,6 +251,7 @@ const OVERRIDABLE: (keyof CharacterOverride)[] = [
   "personality",
   "drive",
   "strengths",
+  "flaws",
 ];
 
 /** Latest narrator prose (for banner scene flavour), else the opening beat. */

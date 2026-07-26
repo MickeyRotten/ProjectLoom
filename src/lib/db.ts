@@ -1,6 +1,6 @@
 import { openDB, type IDBPDatabase } from "idb";
-import type { Character, GameState } from "../types";
-import { splitLegacyGame, type LoadedGame } from "./defaults";
+import type { Character, GameState, LegacyCharacter } from "../types";
+import { migrateCharacter, splitLegacyGame, type LoadedGame } from "./defaults";
 
 /**
  * IndexedDB handle for on-device persistence (DESIGN.md → Persistence).
@@ -68,11 +68,16 @@ export async function saveCharacters(characters: Character[]): Promise<void> {
   await db.put(SAVES_STORE, characters, CHARACTERS_KEY);
 }
 
-/** Load the global character library, or null before it has ever been written. */
+/**
+ * Load the global character library, or null before it has ever been written.
+ * Every record goes through `migrateCharacter` — this store outlives every
+ * field rename (Strengths losing its label, `flaws` arriving), and it is the
+ * authoritative copy of the cast, so a stale shape here reaches every screen.
+ */
 export async function loadCharacters(): Promise<Character[] | null> {
   const db = await getDB();
-  const stored = (await db.get(SAVES_STORE, CHARACTERS_KEY)) as Character[] | undefined;
-  return Array.isArray(stored) ? stored : null;
+  const stored = (await db.get(SAVES_STORE, CHARACTERS_KEY)) as LegacyCharacter[] | undefined;
+  return Array.isArray(stored) ? stored.map(migrateCharacter) : null;
 }
 
 /* ------------------------------------------------------------------ *

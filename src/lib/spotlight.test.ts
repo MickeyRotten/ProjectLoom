@@ -20,7 +20,8 @@ function member(patch: Partial<PartyMember> & { id: string; name: string }): Par
     description: "",
     personality: "",
     drive: "",
-    strengths: { name: "", description: "" },
+    strengths: "",
+    flaws: "",
     equipment: [],
     lastSpokeTurn: 0,
     standing: "active",
@@ -31,7 +32,7 @@ function member(patch: Partial<PartyMember> & { id: string; name: string }): Par
 const navi = member({
   id: "m-navi",
   name: "Navi",
-  strengths: { name: "Lockpicking", description: "Opens any lock, door, or mechanism." },
+  strengths: "Lockpicking — Opens any lock, door, or mechanism.",
 });
 const riley = member({ id: "m-riley", name: "Riley Vance" });
 
@@ -82,6 +83,16 @@ describe("computeSpotlightSignals", () => {
 
   it("relevance can come from recent context, not just the message", () => {
     const [s] = computeSpotlightSignals("hurry", "the mechanism clicks behind the door", [navi], 5);
+    expect(s.strengthsRelevant).toBe(true);
+  });
+
+  it("reads strengths written as one unlabelled paragraph", () => {
+    const scout = member({
+      id: "m-scout",
+      name: "Scout",
+      strengths: "Reads a trail nobody else can see, and never loses the way.",
+    });
+    const [s] = computeSpotlightSignals("follow the trail", "", [scout], 5);
     expect(s.strengthsRelevant).toBe(true);
   });
 

@@ -130,9 +130,8 @@ function buildSystemContext(
       pc.description,
       pc.personality ? `Personality: ${pc.personality}` : "",
       pc.drive ? `Drive: ${pc.drive}` : "",
-      pc.strengths.name
-        ? `Strengths — ${pc.strengths.name}: ${pc.strengths.description}`
-        : "",
+      pc.strengths ? `Strengths: ${pc.strengths}` : "",
+      pc.flaws ? `Flaws: ${pc.flaws}` : "",
       formatEquipment(pc.equipment),
     ].filter(Boolean);
     parts.push(lines.join("\n"));
@@ -174,7 +173,7 @@ function buildSystemContext(
 
 /**
  * Party roster block (#4). One entry per in-company member: identity,
- * personality, drive, Strengths, equipment. Compact but complete enough for
+ * personality, drive, Strengths, Flaws, equipment. Compact but complete enough for
  * the narrator to voice them in character.
  */
 export function formatPartyRoster(members: PartyMember[]): string {
@@ -184,9 +183,8 @@ export function formatPartyRoster(members: PartyMember[]): string {
       `- ${m.name} (${m.species})${m.description ? ` — ${m.description}` : ""}`,
       m.personality ? `  Personality: ${m.personality}` : "",
       m.drive ? `  Drive: ${m.drive}` : "",
-      m.strengths.name
-        ? `  Strengths — ${m.strengths.name}: ${m.strengths.description}`
-        : "",
+      m.strengths ? `  Strengths: ${m.strengths}` : "",
+      m.flaws ? `  Flaws: ${m.flaws}` : "",
       m.equipment.length ? indent(formatEquipment(m.equipment)) : "",
     ].filter(Boolean);
     return lines.join("\n");
@@ -440,7 +438,7 @@ function buildOutputProtocol(settings: Settings): string {
     '- "location", "weather", "day": the current scene (strings / number).',
     optionsLine,
     '- "party": array of character ops, each { "op": "add|update|remove", "name", "standing" }. Add a character when they enter the player\'s story; remove when they leave it.',
-    `- A NEW character's "add" also carries "species", "description", "personality", "drive" and "strengths": { "name", "description" } — this is the only op that writes them. ${appearanceRule}`,
+    `- A NEW character's "add" also carries "species", "description", "personality", "drive", "strengths", "flaws" (all strings) and "equipment": [ { "label", "description" } ] — this is the only op that writes them. ${appearanceRule}`,
     ...characterLines,
     '- "inventory": array of { "op": "add|update|remove", "label", "description", "quantity" }.',
     '- Gold is the permanent currency item in "inventory" — never remove it. When the player gains or spends money, emit { "op": "update", "label": "Gold", "quantity": <new total> }.',

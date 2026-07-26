@@ -17,7 +17,7 @@ of the player's, but they are elsewhere: no signals, no line, no `lastSpokeTurn`
 bump. NPCs (`standing: "npc"`) never enter the spotlight at all; they reach the
 prompt through the keyword-gated `KNOWN CHARACTERS` block (`cast.ts`).
 - **directlyAddressed** — player message contains member name (full OR first token, word-boundary, case-insensitive) OR a group address (`we`, `everyone`, `you all`, `you guys`, `party`, `team`, `group`, `everybody`). HARD override.
-- **strengthsRelevant** — keyword overlap between (message + recent scene context) and the member's Strengths name+description. Soft bias. Extract keywords: lowercase words len≥4, minus stopwords; Strengths NAME tokens count.
+- **strengthsRelevant** — keyword overlap between (message + recent scene context) and the member's Strengths text (one free-text field — no `name` label since the sheet split it out). Soft bias. Extract keywords: lowercase words len≥4, minus stopwords; tokens from the Strengths LEAD CLAUSE (everything before the first dash/colon/period) always count, however short — that clause is where the old NAME lived.
 - **turnsSinceLastSpoke** = currentTurn − lastSpokeTurn. Soft bias.
 
 ## Prompt block
@@ -31,7 +31,7 @@ directlyAddressed = hard "must respond"; the other two = soft nudges, never forc
 ## Relevant gear (same machinery, separate block)
 
 `computeRelevantGear` reuses the keyword extractor on equipped items (PC + active members):
-label tokens always count (like skill NAME tokens); a match against the message +
+label tokens always count (like Strengths lead-clause tokens); a match against the message +
 recent context injects a `RELEVANT GEAR — THIS TURN` block with the item's full
 name + description. Soft signal only — never forces anyone to speak, never an LLM call.
 

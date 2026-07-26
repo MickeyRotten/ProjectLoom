@@ -6,7 +6,13 @@
 
 export type Op = "add" | "update" | "remove";
 
-export interface Strengths {
+/**
+ * Pre-split Strengths: a short label plus a sentence. The label is gone —
+ * `Character.strengths` is ONE free-text field now, and so is `flaws`. Only
+ * migration (`strengthsText`) still reads this shape, out of saves, reversal
+ * snapshots and story overrides written before the change.
+ */
+export interface LegacyStrengths {
   name: string;
   description: string;
 }
@@ -31,7 +37,15 @@ export interface Character {
   description: string;
   personality: string;
   drive: string;
-  strengths: Strengths;
+  /** What they are good at, free text. */
+  strengths: string;
+  /** What they are bad at — the counterweight to strengths, free text. */
+  flaws: string;
+  /**
+   * Worn / carried gear. Authored once by the narrator on the `add` that
+   * creates the character (read off their appearance) and the player's from
+   * then on — no later delta touches it.
+   */
   equipment: Equipment[];
   /** When true, `customPortraitPrompt` replaces the auto-built portrait prompt. */
   useCustomPortraitPrompt?: boolean;
@@ -81,7 +95,10 @@ export type CharacterStatus = "active" | "departed" | "fallen";
  * character (and clear the matching overrides).
  */
 export type CharacterOverride = Partial<
-  Pick<Character, "species" | "description" | "personality" | "drive" | "strengths">
+  Pick<
+    Character,
+    "species" | "description" | "personality" | "drive" | "strengths" | "flaws"
+  >
 >;
 
 /**
@@ -312,7 +329,18 @@ export interface PartyDelta {
   description?: string;
   personality?: string;
   drive?: string;
-  strengths?: Strengths;
+  /**
+   * Free text. Blocks recorded before Strengths lost its label carry the old
+   * `{ name, description }` object; `strengthsText` folds either shape.
+   */
+  strengths?: string | LegacyStrengths;
+  flaws?: string;
+  /**
+   * The character's starting gear, written from their appearance on the
+   * creating `add`. Ignored on every other op — equipment is the player's
+   * after that.
+   */
+  equipment?: Equipment[];
   /**
    * Where this character stands after the op. On `add`/`update` the narrator
    * may say `active` (travelling), `benched` (with the party, out of the

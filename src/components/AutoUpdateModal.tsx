@@ -7,9 +7,9 @@ import { AUTO_FIELDS, type AutoField } from "../lib/autoUpdate";
  * Auto-Update modal (member sheet): pick which sheet fields the model may
  * rewrite, then run one side call. Appearance keeps the character's physical
  * traits and only re-dresses them from their Equipment; Personality and Drive
- * are re-read from the recent beats that mention them by name. Strengths and
- * Equipment are never touched — they are listed here so that's visible, not
- * guessed at.
+ * are re-read from the recent beats that mention them by name. Strengths,
+ * Flaws and Equipment are never touched — they are listed here so that's
+ * visible, not guessed at.
  */
 
 const HINTS: Record<AutoField, string> = {
@@ -85,7 +85,7 @@ export function AutoUpdateModal({
         </div>
 
         <p className="text-xs uppercase tracking-widest opacity-60">
-          Strengths and Equipment are never changed.
+          Strengths, Flaws and Equipment are never changed.
         </p>
         {selected.includes("appearance") && (
           <p className="text-xs uppercase tracking-widest opacity-60">

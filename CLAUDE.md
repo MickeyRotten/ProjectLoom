@@ -135,6 +135,14 @@ whole bullet that a blank field **removes**. **Advanced is now an index of
 sub-menus** — Narrator · Characters · Images · Portraits — with the depth held in
 `AdvancedScreen` local state and `OverlayHeader`'s new `onBack` popping the
 sub-menu before the screen.
+Post-MVP also: **narrator-kitted characters + free-text Strengths/Flaws** — the
+creating `add` now also carries `equipment` (read off the appearance it just wrote,
+sanitized in `deltas.ts → startingEquipment`), so a new companion arrives dressed;
+every later op still drops it, so gear stays the player's. `Character.strengths` lost
+its `name` label and is one free-text field (`roster.ts → strengthsText` folds the old
+`{name, description}` out of saves, overrides and replayed deltas), joined by a new
+`flaws` field — both plain text areas on the member sheet, both in `CharacterOverride`,
+neither touched by Auto-Update. `db.ts → loadCharacters` migrates the stored library.
 Deferred (post-MVP): history summarization, NPC/item art, TTS,
 weather animation, multi-world. Track scope in `DESIGN.md → Build Phases`.
 

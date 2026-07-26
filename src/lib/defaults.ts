@@ -3,12 +3,12 @@ import type {
   GameState,
   Item,
   LegacyCharacter,
+  LegacyStrengths,
   RosterEntry,
   Scenario,
   Settings,
-  Strengths,
 } from "../types";
-import { PARTY_LIMIT, normalizeRoster } from "./roster";
+import { PARTY_LIMIT, normalizeRoster, strengthsText } from "./roster";
 
 /**
  * Ship-time defaults. The pre-made scenario is intentionally minimal for
@@ -127,14 +127,14 @@ export const DEFAULT_APPEARANCE_INSTRUCTIONS = `"description" is physical appear
  * here is unrecoverable if skipped: an `add` is the only op that writes these
  * fields, so a blank drive is blank for the rest of the character's life.
  */
-export const DEFAULT_CHARACTER_CREATION_INSTRUCTIONS = `On every party "add", ALWAYS write "personality", "drive" and "strengths" — never omit them and never leave them blank. "personality" is temperament and speech habits in a phrase or two; "drive" is the one thing they want; "strengths" is their standout capability as a short name plus one sentence of what it lets them do.`;
+export const DEFAULT_CHARACTER_CREATION_INSTRUCTIONS = `On every party "add", ALWAYS write "personality", "drive", "strengths", "flaws" and "equipment" — never omit them and never leave them blank. "personality" is temperament and speech habits in a phrase or two; "drive" is the one thing they want; "strengths" is what they are good at in a sentence or two; "flaws" is what they are bad at, in the same breath. "equipment" is the gear they carry RIGHT NOW, read straight off the appearance you just wrote — every garment, weapon, and tool you described, each as { "label", "description" }. Never leave out something visible in the description, and never add gear nobody can see.`;
 
 /**
  * The freeze rule. `deltas.ts` drops post-creation sheet fields whatever the
  * model sends, so this exists to stop it wasting tokens writing them — and to
  * tell it where character change belongs instead (the prose).
  */
-export const DEFAULT_CHARACTER_UPDATE_INSTRUCTIONS = `A character's sheet is authored ONCE, on the "add" that introduces them, and is FROZEN afterwards. Never re-send "species", "description", "personality", "drive" or "strengths" for a character who already exists — those fields are ignored. Show how someone changes in the narration instead; their sheet stays as written.`;
+export const DEFAULT_CHARACTER_UPDATE_INSTRUCTIONS = `A character's sheet is authored ONCE, on the "add" that introduces them, and is FROZEN afterwards. Never re-send "species", "description", "personality", "drive", "strengths", "flaws" or "equipment" for a character who already exists — those fields are ignored, and their gear is the player's to change. Show how someone changes in the narration instead; their sheet stays as written.`;
 
 /**
  * The seating vocabulary. `PARTY_LIMIT` is baked into the shipped text rather
@@ -202,10 +202,10 @@ export function defaultPC(): Character {
     description: "A young and curious adventurer, standing six feet tall with a lean build. His dark hair is tousled, and his eyes gleam with determination and a hint of mischief. He wears a simple white tunic and black baggy trousers, with a worn leather satchel slung across his shoulder.",
     personality: "Optimistic, curious, adventurous, overconfident.",
     drive: "Become the greatest adventurer in the land.",
-    strengths: {
-      name: "Superhuman Strength",
-      description: "Can lift incredibly heavy objects with ease, punch through walls and brittle stone, and take hits that would kill a normal person.",
-    },
+    strengths:
+      "Superhuman strength — can lift incredibly heavy objects with ease, punch through walls and brittle stone, and take hits that would kill a normal person.",
+    flaws:
+      "Reckless and easily distracted — charges in without a plan, and hopeless at anything needing patience, subtlety, or a straight answer.",
     equipment: [
       { label: "White Tunic", description: "Old, tattered, but still serviceable." },
       { label: "Black Trousers", description: "Simple, worn, baggy trousers." },
@@ -229,7 +229,8 @@ export function newCharacter(id: string): Character {
     description: "",
     personality: "",
     drive: "",
-    strengths: { name: "", description: "" },
+    strengths: "",
+    flaws: "",
     equipment: [],
     useCustomPortraitPrompt: false,
     customPortraitPrompt: "",
@@ -258,15 +259,17 @@ export function newGame(scenario: Scenario = DEFAULT_SCENARIO): GameState {
 }
 
 /**
- * Carry a stored character onto the current shape. Two historical renames:
- * `fieldSkill` → `strengths` (likes/dislikes dropped), and the Characters/Party
- * split, which moved `lastSpokeTurn` / `inParty` off the character and onto the
- * adventure's roster. `portraitKey` was always dead — the blob key is derived
- * from the id — so it is dropped here too.
+ * Carry a stored character onto the current shape. Three historical renames:
+ * `fieldSkill` → `strengths` (likes/dislikes dropped), Strengths losing its
+ * `name` label to become one free-text field (`strengthsText`), and the
+ * Characters/Party split, which moved `lastSpokeTurn` / `inParty` off the
+ * character and onto the adventure's roster. `portraitKey` was always dead —
+ * the blob key is derived from the id — so it is dropped here too. `flaws`
+ * simply didn't exist before, and loads blank.
  */
-function migrateCharacter(saved: LegacyCharacter): Character {
+export function migrateCharacter(saved: LegacyCharacter): Character {
   const legacy = saved as LegacyCharacter & {
-    fieldSkill?: Strengths;
+    fieldSkill?: string | LegacyStrengths;
     likes?: string;
     dislikes?: string;
   };
@@ -279,7 +282,8 @@ function migrateCharacter(saved: LegacyCharacter): Character {
   delete rest.portraitKey;
   return {
     ...rest,
-    strengths: saved.strengths ?? legacy.fieldSkill ?? { name: "", description: "" },
+    strengths: strengthsText(saved.strengths ?? legacy.fieldSkill),
+    flaws: saved.flaws ?? "",
   };
 }
 

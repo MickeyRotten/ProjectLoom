@@ -53,8 +53,35 @@ export function normalizeEntry(entry: LegacyRosterEntry): RosterEntry {
     standing: entry.standing ?? legacyStanding(entry),
     lastSpokeTurn: entry.lastSpokeTurn ?? 0,
   };
-  if (entry.overrides) out.overrides = entry.overrides;
+  if (entry.overrides) out.overrides = normalizeOverrides(entry.overrides);
   return out;
+}
+
+/**
+ * Strengths as ONE free-text field. Sheets written before the label was
+ * dropped stored `{ name, description }`; a save, a reversal snapshot, a story
+ * override or a replayed delta can still carry that shape, so every path that
+ * reads strengths from storage folds it here. Anything else reads as blank.
+ */
+export function strengthsText(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value && typeof value === "object") {
+    const { name, description } = value as { name?: unknown; description?: unknown };
+    const label = typeof name === "string" ? name.trim() : "";
+    const body = typeof description === "string" ? description.trim() : "";
+    return label && body ? `${label} — ${body}` : label || body;
+  }
+  return "";
+}
+
+/**
+ * Fold a stored override onto the current field shapes. Returns the SAME
+ * object when nothing needed changing — `normalizeRoster` reference-diffs it.
+ */
+function normalizeOverrides(overrides: CharacterOverride): CharacterOverride {
+  const strengths = overrides.strengths;
+  if (strengths === undefined || typeof strengths === "string") return overrides;
+  return { ...overrides, strengths: strengthsText(strengths) };
 }
 
 /** `inParty` won; otherwise a non-active `status` is how they left. */

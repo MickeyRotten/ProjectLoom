@@ -11,7 +11,8 @@ function npc(name: string, patch: Partial<PartyMember> = {}): PartyMember {
     description: "weathered",
     personality: "Blunt.",
     drive: "Keep the forge lit.",
-    strengths: { name: "Smithing", description: "reforges anything" },
+    strengths: "Smithing — reforges anything",
+    flaws: "Short-tempered with fools.",
     equipment: [],
     lastSpokeTurn: 0,
     standing: "npc",
@@ -72,16 +73,18 @@ describe("formatNpcBlock", () => {
     expect(block).toContain("- Mira Aldgate (human) — weathered");
     expect(block).toContain("Personality: Blunt.");
     expect(block).toContain("Drive: Keep the forge lit.");
-    expect(block).toContain("Strengths — Smithing: reforges anything");
+    expect(block).toContain("Strengths: Smithing — reforges anything");
+    expect(block).toContain("Flaws: Short-tempered with fools.");
     expect(block).toContain("never write them as travelling with the player");
   });
 
   it("omits blank fields rather than printing empty labels", () => {
     const block = formatNpcBlock([
-      npc("Bram", { personality: "", drive: "", strengths: { name: "", description: "" } }),
+      npc("Bram", { personality: "", drive: "", strengths: "", flaws: "" }),
     ]);
     expect(block).not.toContain("Personality:");
     expect(block).not.toContain("Drive:");
     expect(block).not.toContain("Strengths");
+    expect(block).not.toContain("Flaws");
   });
 });
