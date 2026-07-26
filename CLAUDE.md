@@ -202,6 +202,13 @@ narration stream and the non-streamed side calls alike. `auto` (shipped, and the
 fallback for any unrecognised stored value) sends no field at all; `off` sends
 `{ enabled: false }` so a model that thinks by default stops billing for it; the
 effort levels send `{ effort, exclude: true }`, since nothing renders reasoning.
+Post-MVP also: **visible rolls + whole-catalog model picker** — a risky turn's
+arithmetic rides the narrator `Message` as `TurnRoll` (`stakes.ts → rollRecord`,
+`formatRoll`, exported `modifierNote`) and the outcome chip reads
+"Strong result · 1d6 4 +1 = 5" instead of a bare verdict; `ModelPicker` lists the
+whole catalog for its modality rather than the first 60 rows, with a **Free models
+only** checkbox backed by `OpenRouterModel.free` (read off catalog `pricing`, not
+the `:free` id suffix; unreadable pricing counts as priced).
 Deferred (post-MVP): rolling LLM summarization, NPC/item art, TTS,
 weather animation, multi-world. Track scope in `DESIGN.md → Build Phases`.
 

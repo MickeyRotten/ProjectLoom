@@ -1,4 +1,4 @@
-import type { PartyMember, TurnOutcome } from "../types";
+import type { PartyMember, TurnOutcome, TurnRoll } from "../types";
 import { extractKeywords, intersects } from "./spotlight";
 import { keywordHits } from "./worldNotes";
 
@@ -139,13 +139,51 @@ export function computeStakes(
   };
 }
 
-/** Human-readable reason for the modifier, for the prompt and the UI. */
-function modifierNote(s: StakeSignals): string {
-  if (s.strengthsInPlay && s.flawsInPlay) return "strengths and flaws both in play";
-  if (s.strengthsInPlay) return "strengths in play";
-  if (s.flawsInPlay) return "flaws in play";
+/**
+ * Human-readable reason for the modifier, for the prompt and the UI. Takes the
+ * two flags rather than the whole signal set so a `TurnRoll` replayed from a
+ * saved message and a freshly computed `StakeSignals` can never be worded
+ * differently.
+ */
+export function modifierNote(s: { strengths?: boolean; flaws?: boolean }): string {
+  if (s.strengths && s.flaws) return "strengths and flaws both in play";
+  if (s.strengths) return "strengths in play";
+  if (s.flaws) return "flaws in play";
   return "nothing in play";
 }
+
+/**
+ * The roll as it is kept on the narrator message. Null when the action carried
+ * no risk — nothing was rolled, so there is nothing to show.
+ */
+export function rollRecord(s: StakeSignals): TurnRoll | null {
+  if (!s.outcome) return null;
+  return {
+    roll: s.roll,
+    modifier: s.modifier,
+    total: s.total,
+    // Only written when true, so a plain roll stays two numbers in the save.
+    ...(s.strengthsInPlay ? { strengths: true } : {}),
+    ...(s.flawsInPlay ? { flaws: true } : {}),
+  };
+}
+
+/** Signed modifier, e.g. `+1` / `-1`. */
+export function signed(n: number): string {
+  return n >= 0 ? `+${n}` : `${n}`;
+}
+
+/**
+ * The roll as one short line: `1d6 4 +1 = 5`, or just `1d6 4` when nothing
+ * modified it — an unmodified roll needs no arithmetic spelled out.
+ */
+export function formatRoll(r: TurnRoll): string {
+  const base = `1d6 ${r.roll}`;
+  return r.modifier === 0 ? base : `${base} ${signed(r.modifier)} = ${r.total}`;
+}
+
+/** The bands, spelled out — the "what would this have needed" line. */
+export const BAND_SCALE = "5+ strong · 3–4 mixed · 2− cost";
 
 /**
  * The `OUTCOME — THIS TURN` block: the roll, the band, and the editable rule.
@@ -157,10 +195,14 @@ function modifierNote(s: StakeSignals): string {
  */
 export function formatStakesBlock(signals: StakeSignals, rule: string): string {
   if (!signals.outcome) return "";
-  const sign = signals.modifier >= 0 ? `+${signals.modifier}` : `${signals.modifier}`;
+  const sign = signed(signals.modifier);
+  const note = modifierNote({
+    strengths: signals.strengthsInPlay,
+    flaws: signals.flawsInPlay,
+  });
   return [
     "OUTCOME — THIS TURN (authoritative: narrate THIS result; never soften it, upgrade it, or talk the player out of it)",
-    `The action is a gamble. Rolled ${signals.roll} ${sign} (${modifierNote(signals)}) = ${signals.total} → ${signals.outcome.toUpperCase()}.`,
+    `The action is a gamble. Rolled ${signals.roll} ${sign} (${note}) = ${signals.total} → ${signals.outcome.toUpperCase()}.`,
     "",
     `RULE: ${rule.trim()}`,
   ].join("\n");

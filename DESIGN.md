@@ -120,10 +120,17 @@ anywhere — it was printed into the prompt and read by nothing.
   an unmarked character are the same stored shape (`captureReversal`
   reference-diffs the roster). Reversal needs no new slice — conditions live in
   the roster it already snapshots.
-- **Visible in play:** the band is recorded on the narrator `Message` and renders
-  as an inverted chip above that beat's state-change toasts; the mark itself is
-  an always-editable field on the member sheet (outside the Edit gate and
-  outside the member-only block, since the PC has one too).
+- **Visible in play:** the band **and the arithmetic behind it** are recorded on
+  the narrator `Message` (`outcome` + `TurnRoll`, written by `rollRecord`) and
+  render as one inverted chip above that beat's state-change toasts — *"Strong
+  result · 1d6 4 +1 = 5"*, with the modifier's reason and the band scale on the
+  chip's title. The verdict alone read as the app editorialising about the beat;
+  the numbers show it was a die, and show Strengths/Flaws doing something. The
+  wording of the reason lives once, in `modifierNote`, shared by the prompt block
+  and the chip, and the flags are stored rather than the prose so old saves can't
+  pin old phrasing. Turns recorded before the roll was kept still show their band
+  alone. The mark itself is an always-editable field on the member sheet (outside
+  the Edit gate and outside the member-only block, since the PC has one too).
 
 ---
 
@@ -387,6 +394,20 @@ optional image model — shown while `Settings.setupDone` is false.
 - **`ModelPicker`** replaces the bare `<select>` over several hundred models
   with a filter box. `KeyField` / `ModelPicker` / `useModelCatalog` are shared
   with Model & Key so the two screens can't drift.
+  - **The whole catalog, by default.** It used to render only the first 60 rows
+    and ask the player to keep typing, which made an alphabetical accident look
+    like a curated shortlist and hid most of the catalog behind a search that
+    only helps if you already know the model's name. Every model for that
+    modality is listed (`splitModels` still keeps image-output models out of the
+    text field and vice versa); the filter narrows, and a count line says how
+    much of the catalog is showing.
+  - **Free-only checkbox.** `OpenRouterModel.free` is read from the catalog's own
+    `pricing` — free when **neither** prompt nor completion bills — not from the
+    `:free` id suffix, which is a naming convention some free models don't
+    follow. Unreadable or missing pricing counts as priced: a model whose cost we
+    can't read must never be advertised as free. Free models are also labelled
+    in the list itself, and the current pick stays selectable even when the
+    checkbox or the filter would exclude it.
 - **Failed images say why.** `ensureImage` recorded `imgError` only on a forced
   ⟳, so an automatic banner or portrait that failed left an eternal placeholder
   and no reason — the cause (no credit, refused prompt, unreadable file) only

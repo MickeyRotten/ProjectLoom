@@ -177,6 +177,27 @@ export type MessageRole = "player" | "narrator";
  */
 export type TurnOutcome = "strong" | "mixed" | "cost";
 
+/**
+ * The arithmetic behind a `TurnOutcome`, recorded so the transcript can show the
+ * roll and not just the verdict. The band alone read as the app's opinion of the
+ * beat; the numbers show it was a die, and that Strengths/Flaws moved it.
+ *
+ * Kept as flags rather than a prose note so the wording stays in one place
+ * (`stakes.ts → modifierNote`) and old saves can't pin an old phrasing.
+ */
+export interface TurnRoll {
+  /** The raw d6, 1–6. */
+  roll: number;
+  /** −1, 0 or +1 from Strengths/Flaws. */
+  modifier: number;
+  /** `roll + modifier` — what the band was read off. */
+  total: number;
+  /** The action leant on the actor's Strengths. */
+  strengths?: boolean;
+  /** The action leant on the actor's Flaws. */
+  flaws?: boolean;
+}
+
 export interface Message {
   id: string;
   role: MessageRole;
@@ -184,6 +205,11 @@ export interface Message {
   turn: number;
   /** The outcome band handed to the narrator for this turn, if any was rolled. */
   outcome?: TurnOutcome;
+  /**
+   * The roll that produced `outcome`. Absent on turns recorded before it was
+   * kept (and on turns that rolled nothing) — those still show their band.
+   */
+  roll?: TurnRoll;
   /** The parsed delta block applied by this turn — recorded for reversal (Phase 5). */
   appliedDeltas?: LoomBlock;
   /** Pre-turn slices this turn overwrote — undo/regenerate restores them (Phase 5). */
