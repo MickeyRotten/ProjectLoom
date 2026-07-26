@@ -17,6 +17,7 @@ function member(patch: Partial<PartyMember> & { id: string; name: string }): Par
   return {
     role: "member",
     species: "human",
+    sex: "",
     description: "",
     personality: "",
     drive: "",

@@ -8,6 +8,7 @@ function npc(name: string, patch: Partial<PartyMember> = {}): PartyMember {
     role: "member",
     name,
     species: "human",
+    sex: "female",
     description: "weathered",
     personality: "Blunt.",
     drive: "Keep the forge lit.",
@@ -71,7 +72,7 @@ describe("formatNpcBlock", () => {
   it("carries the sheet and forbids walking them alongside the player", () => {
     const block = formatNpcBlock([npc("Mira Aldgate")]);
     expect(block).toContain("KNOWN CHARACTERS");
-    expect(block).toContain("- Mira Aldgate (human) — weathered");
+    expect(block).toContain("- Mira Aldgate (human, female) — weathered");
     expect(block).toContain("Personality: Blunt.");
     expect(block).toContain("Drive: Keep the forge lit.");
     expect(block).toContain("Strengths: Smithing — reforges anything");

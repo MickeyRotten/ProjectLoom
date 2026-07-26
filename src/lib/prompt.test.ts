@@ -49,7 +49,7 @@ function play(turn: number, content: string): Message {
 
 function member(patch: Partial<Character> & { id: string; name: string }): Character {
   return {
-    role: "member", species: "human", description: "", personality: "", drive: "",
+    role: "member", species: "human", sex: "", description: "", personality: "", drive: "",
     strengths: "", flaws: "", equipment: [],
     ...patch,
   };
@@ -95,6 +95,7 @@ describe("buildMessages — ordering", () => {
     expect(protocol.content).toContain('"strengths"');
     expect(protocol.content).toContain('"flaws"');
     expect(protocol.content).toContain('"equipment"');
+    expect(protocol.content).toContain('"sex"');
     expect(protocol.content).toContain('On every party "add", ALWAYS write');
   });
 
@@ -104,6 +105,17 @@ describe("buildMessages — ordering", () => {
     const msgs = build({ settings, game: g, playerMessage: "go" });
     expect(msgs[0].content).toContain("PLAYER CHARACTER");
     expect(msgs[0].content).toContain("Compass ×2");
+  });
+
+  it("names the PC's species and sex on the identity line", () => {
+    const msgs = build({ settings, game: newGame(), playerMessage: "go" });
+    expect(msgs[0].content).toContain("PLAYER CHARACTER — Hiro (Human, Male)");
+  });
+
+  it("drops a blank sex from the identity line", () => {
+    const pc = { ...defaultPC(), sex: "" };
+    const msgs = build({ settings, game: newGame(), characters: [pc], playerMessage: "go" });
+    expect(msgs[0].content).toContain("PLAYER CHARACTER — Hiro (Human)");
   });
 
   it("includes PC personality + drive in the system context", () => {
@@ -120,7 +132,8 @@ describe("buildMessages — ordering", () => {
 
 describe("party roster + spotlight", () => {
   const navi = member({
-    id: "m-navi", name: "Navi", species: "sprite", description: "a darting spark",
+    id: "m-navi", name: "Navi", species: "sprite", sex: "female",
+    description: "a darting spark",
     strengths: "Lockpicking — opens any lock",
     flaws: "Panics in the dark.",
   });
@@ -131,7 +144,7 @@ describe("party roster + spotlight", () => {
     const g = withParty(newGame(), "m-navi");
     const msgs = build({ settings, game: g, characters: cast, playerMessage: "go" });
     expect(msgs[0].content).toContain("PARTY — in your company");
-    expect(msgs[0].content).toContain("Navi (sprite)");
+    expect(msgs[0].content).toContain("Navi (sprite, female)");
     expect(msgs[0].content).toContain("Strengths: Lockpicking — opens any lock");
     expect(msgs[0].content).toContain("Flaws: Panics in the dark.");
   });

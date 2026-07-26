@@ -14,7 +14,7 @@ function msg(patch: Partial<Message> & { content: string; turn: number }): Messa
 }
 
 function member(patch: Partial<Character> = {}): Character {
-  return { ...newCharacter("m1"), name: "Elara", species: "elf", ...patch };
+  return { ...newCharacter("m1"), name: "Elara", species: "elf", sex: "female", ...patch };
 }
 
 function gameWith(messages: Message[]): GameState {
@@ -78,6 +78,12 @@ describe("buildAutoUpdateMessages", () => {
     expect(text).toContain("Ranger's Coat: Oiled leather, deep hood.");
     expect(text).toContain("Wry and watchful.");
     expect(text).toContain("Find her missing brother.");
+  });
+
+  it("carries species and sex on the sheet, and holds an appearance rewrite to them", () => {
+    const text = joined(["appearance"]);
+    expect(text).toContain("CURRENT SHEET — Elara (elf, female)");
+    expect(text).toContain("species, sex, build, height");
   });
 
   it("sends story context only when a story-driven field is selected", () => {

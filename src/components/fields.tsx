@@ -28,12 +28,42 @@ export function Section({ label }: { label: string }) {
   return <p className="pt-2 text-sm uppercase tracking-widest opacity-60">{label}</p>;
 }
 
-export function Field({ label, children }: { label: string; children: React.ReactNode }) {
+/**
+ * A labelled control. `action` puts a control of its own on the label row — the
+ * member sheet's ✦ generate buttons. It changes the markup rather than sliding
+ * into the existing `<label>`: a button nested inside a label that wraps a form
+ * control activates that control when tapped. With an action the caption becomes
+ * plain text in a flex row and the field keeps a visually-hidden label of its
+ * own, so the control is still named for a screen reader.
+ */
+export function Field({
+  label,
+  action,
+  children,
+}: {
+  label: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  if (!action) {
+    return (
+      <label className="block space-y-1">
+        <span className="block uppercase tracking-widest text-sm">{label}</span>
+        {children}
+      </label>
+    );
+  }
   return (
-    <label className="block space-y-1">
-      <span className="block uppercase tracking-widest text-sm">{label}</span>
-      {children}
-    </label>
+    <div className="space-y-1">
+      <div className="flex items-center justify-between gap-2">
+        <span className="uppercase tracking-widest text-sm">{label}</span>
+        {action}
+      </div>
+      <label className="block">
+        <span className="sr-only">{label}</span>
+        {children}
+      </label>
+    </div>
   );
 }
 
@@ -54,16 +84,19 @@ export function TextField({
   onChange,
   placeholder,
   editing = true,
+  action,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
   editing?: boolean;
+  /** Control for the label row (e.g. ✦ generate). Read mode ignores it. */
+  action?: React.ReactNode;
 }) {
   if (!editing) return <ReadBlock label={label} value={value} />;
   return (
-    <Field label={label}>
+    <Field label={label} action={action}>
       <input
         value={value}
         placeholder={placeholder}
@@ -81,6 +114,7 @@ export function AreaField({
   placeholder,
   rows = 3,
   editing = true,
+  action,
 }: {
   label: string;
   value: string;
@@ -88,10 +122,12 @@ export function AreaField({
   placeholder?: string;
   rows?: number;
   editing?: boolean;
+  /** Control for the label row (e.g. ✦ generate). Read mode ignores it. */
+  action?: React.ReactNode;
 }) {
   if (!editing) return <ReadBlock label={label} value={value} />;
   return (
-    <Field label={label}>
+    <Field label={label} action={action}>
       <textarea
         value={value}
         placeholder={placeholder}

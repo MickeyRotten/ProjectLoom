@@ -1,6 +1,7 @@
 import type { Character, GameState, Message } from "../types";
-import type { ChatMessage } from "./prompt";
+import { type ChatMessage, formatScenarioBlock } from "./prompt";
 import { extractFirstJsonObject, parseJsonTolerant } from "./loomBlock";
+import { formatIdentity } from "./roster";
 
 /**
  * Character-sheet auto-update — a side call (never part of a turn) that asks the
@@ -74,7 +75,7 @@ export function recentMentions(
  * model is never told about a field it must not write.
  */
 const FIELD_RULES: Record<AutoField, string> = {
-  appearance: `- "appearance" — PRESERVE the character's physical characteristics exactly as written: species, build, height, hair, eyes, skin, scars, and any distinguishing features carry over unchanged. Rewrite ONLY what they are wearing and carrying, so it matches the EQUIPMENT list below — read each item's label AND description. Never invent gear that is not in that list, and never drop gear that is. Physical appearance only, concrete and visual: no personality, no backstory.`,
+  appearance: `- "appearance" — PRESERVE the character's physical characteristics exactly as written: species, sex, build, height, hair, eyes, skin, scars, and any distinguishing features carry over unchanged. Rewrite ONLY what they are wearing and carrying, so it matches the EQUIPMENT list below — read each item's label AND description. Never invent gear that is not in that list, and never drop gear that is. Physical appearance only, concrete and visual: no personality, no backstory.`,
   personality: `- "personality" — update the character's temperament and speech habits from how they actually behave in the STORY CONTEXT below. Keep established traits that still hold; change or add only what the recent story has earned. A phrase or two, no backstory.`,
   drive: `- "drive" — update the one thing this character wants, from the STORY CONTEXT below. Keep the existing drive unless the story has genuinely moved it. One short sentence.`,
 };
@@ -125,13 +126,8 @@ export function buildAutoUpdateMessages(opts: AutoUpdateOptions): ChatMessage[] 
   });
 
   // The scenario, so an update stays inside the setting's idiom.
-  const s = game.scenario;
-  if (s.title.trim() || s.premise.trim()) {
-    messages.push({
-      role: "system",
-      content: `SCENARIO — ${s.title}\n${s.premise}`.trim(),
-    });
-  }
+  const scenario = formatScenarioBlock(game.scenario);
+  if (scenario) messages.push({ role: "system", content: scenario });
 
   messages.push({ role: "system", content: formatSheet(character) });
 
@@ -162,7 +158,7 @@ export function formatSheet(c: Character): string {
     ? c.equipment.map((e) => `  - ${e.label}${e.description ? `: ${e.description}` : ""}`).join("\n")
     : "  (none)";
   return [
-    `CURRENT SHEET — ${c.name || "(unnamed)"}${c.species ? ` (${c.species})` : ""}`,
+    `CURRENT SHEET — ${formatIdentity(c)}`,
     `Appearance: ${c.description || "(blank)"}`,
     `Personality: ${c.personality || "(blank)"}`,
     `Drive: ${c.drive || "(blank)"}`,

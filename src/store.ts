@@ -54,6 +54,12 @@ import {
   parseAutoUpdate,
   type AutoField,
 } from "./lib/autoUpdate";
+import {
+  GENERATE_FIELD_TEMPERATURE,
+  buildFieldMessages,
+  parseGeneratedField,
+  type GenField,
+} from "./lib/generateField";
 import { parseLoomResponse, truncateForDisplay } from "./lib/loomBlock";
 import { applyDeltas } from "./lib/deltas";
 import { captureReversal, applyReversal } from "./lib/reversal";
@@ -159,6 +165,11 @@ export interface LoomStore {
   /** Why the last auto-update failed, shown in the modal until dismissed. */
   autoUpdateError: string | null;
 
+  /** A per-field character generation is in flight (one at a time, app-wide). */
+  fieldGenPending: boolean;
+  /** Why the last field generation failed, shown in the modal until dismissed. */
+  fieldGenError: string | null;
+
   hydrate: () => Promise<void>;
   setScreen: (screen: Screen) => void;
   /** Return to the previous screen (pops the navigation history). */
@@ -185,6 +196,22 @@ export interface LoomStore {
   autoUpdateCharacter: (id: string, fields: AutoField[]) => Promise<boolean>;
   /** Clear a stale auto-update failure (modal close / new run). */
   clearAutoUpdateError: () => void;
+  /**
+   * Ask the text model to write ONE sheet field from scratch, for the ✦ button
+   * beside it. Resolves to the generated text, or null on failure (the reason
+   * lands in `fieldGenError`).
+   *
+   * Takes the character by VALUE, not by id: the sheet is in edit mode when this
+   * runs, so the version that matters is the on-screen draft. Writes nothing —
+   * the caller previews the text and puts it in the draft.
+   */
+  generateField: (
+    character: Character,
+    field: GenField,
+    hint: string,
+  ) => Promise<string | null>;
+  /** Clear a stale field-generation failure (modal close / new run). */
+  clearFieldGenError: () => void;
   /** Delete a character from the library entirely (and from every adventure). */
   removeCharacter: (id: string) => void;
   /**
@@ -261,6 +288,7 @@ export interface LoomStore {
 /** The sheet fields the story is allowed to diverge from the base character. */
 const OVERRIDABLE: (keyof CharacterOverride)[] = [
   "species",
+  "sex",
   "description",
   "personality",
   "drive",
@@ -553,6 +581,9 @@ export const useStore = create<LoomStore>((set, get) => {
   autoUpdating: false,
   autoUpdateError: null,
 
+  fieldGenPending: false,
+  fieldGenError: null,
+
   async hydrate() {
     const stored = await loadCharacters();
     const loaded = await loadActiveGame();
@@ -706,6 +737,44 @@ export const useStore = create<LoomStore>((set, get) => {
 
   clearAutoUpdateError() {
     set({ autoUpdateError: null });
+  },
+
+  async generateField(character, field, hint) {
+    // Single-flight only. Unlike `autoUpdateCharacter` there is no `streaming`
+    // guard and no "was it deleted?" re-check after the await: this writes no
+    // game state, so there is nothing a turn in flight could silently undo, and
+    // the text is handed back to a modal rather than to the store.
+    if (get().fieldGenPending) return null;
+
+    set({ fieldGenPending: true, fieldGenError: null });
+    try {
+      const raw = await completeChat({
+        settings: get().settings,
+        messages: buildFieldMessages({
+          game: get().game,
+          settings: get().settings,
+          character,
+          field,
+          hint,
+        }),
+        temperature: GENERATE_FIELD_TEMPERATURE,
+      });
+      const text = parseGeneratedField(raw, field);
+      if (!text) throw new Error("The model returned nothing usable. Try again.");
+      set({ fieldGenPending: false });
+      return text;
+    } catch (err) {
+      const message =
+        err instanceof OpenRouterError || err instanceof Error
+          ? err.message
+          : "Generation failed.";
+      set({ fieldGenPending: false, fieldGenError: message });
+      return null;
+    }
+  },
+
+  clearFieldGenError() {
+    set({ fieldGenError: null });
   },
 
   removeCharacter(id) {

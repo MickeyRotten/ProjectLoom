@@ -1,4 +1,4 @@
-import type { Character, GameState, PartyMember, Settings } from "../types";
+import type { Character, GameState, PartyMember, Scenario, Settings } from "../types";
 import {
   computeRelevantGear,
   computeSpotlightSignals,
@@ -9,6 +9,7 @@ import {
   PARTY_LIMIT,
   activeMembers,
   benchedMembers,
+  formatIdentity,
   npcMembers,
   partedMembers,
   playerCharacter,
@@ -74,6 +75,17 @@ const WORLD_NOTES_CONTEXT_TURNS = 3;
 /** Cheap token estimate (~4 chars/token), enough for windowing. */
 export function approxTokens(text: string): number {
   return Math.ceil(text.length / 4);
+}
+
+/**
+ * The SCENARIO block. Exported because every side call needs the setting's
+ * idiom too (`autoUpdate.ts`, `generateField.ts`) and three hand-rolled copies
+ * had already started to drift apart. Blank when there is nothing to say, so a
+ * caller can skip the message entirely.
+ */
+export function formatScenarioBlock(scenario: Scenario): string {
+  if (!scenario.title.trim() && !scenario.premise.trim()) return "";
+  return `SCENARIO — ${scenario.title}\n${scenario.premise}`.trim();
 }
 
 export function buildMessages(opts: BuildOptions): ChatMessage[] {
@@ -154,14 +166,14 @@ function buildSystemContext(
   if (settings.customInstructions.trim()) parts.push(settings.customInstructions.trim());
 
   // 2. Scenario / premise.
-  const s = game.scenario;
-  parts.push(`SCENARIO — ${s.title}\n${s.premise}`);
+  const scenario = formatScenarioBlock(game.scenario);
+  if (scenario) parts.push(scenario);
 
   // 3. PC summary + equipment.
   const pc = playerCharacter(characters, game.roster);
   if (pc) {
     const lines = [
-      `PLAYER CHARACTER — ${pc.name} (${pc.species})`,
+      `PLAYER CHARACTER — ${formatIdentity(pc)}`,
       pc.description,
       pc.personality ? `Personality: ${pc.personality}` : "",
       pc.drive ? `Drive: ${pc.drive}` : "",
@@ -216,7 +228,7 @@ export function formatPartyRoster(members: PartyMember[]): string {
   if (!members.length) return "";
   const entries = members.map((m) => {
     const lines = [
-      `- ${m.name} (${m.species})${m.description ? ` — ${m.description}` : ""}`,
+      `- ${formatIdentity(m)}${m.description ? ` — ${m.description}` : ""}`,
       m.personality ? `  Personality: ${m.personality}` : "",
       m.drive ? `  Drive: ${m.drive}` : "",
       m.strengths ? `  Strengths: ${m.strengths}` : "",
@@ -488,7 +500,7 @@ function buildOutputProtocol(settings: Settings): string {
     '- "location": the name of the place the scene is in, and NOTHING else — one name, the most specific one. Never join two place names: "Damp Cellar", not "Boars Head Tavern - Damp Cellar"; "Market Square", not "Rodstroke: Market Square". No dash, colon, slash or parent place, and no description.',
     optionsLine,
     '- "party": array of character ops, each { "op": "add|update|remove", "name", "standing" }. Add a character when they enter the player\'s story; remove when they leave it.',
-    `- A NEW character's "add" also carries "species", "description", "personality", "drive", "strengths", "flaws" (all strings) and "equipment": [ { "label", "description" } ] — this is the only op that writes them. ${appearanceRule}`,
+    `- A NEW character's "add" also carries "species", "sex", "description", "personality", "drive", "strengths", "flaws" (all strings) and "equipment": [ { "label", "description" } ] — this is the only op that writes them. ${appearanceRule}`,
     ...characterLines,
     ...conditionLines(settings),
     '- "inventory": array of { "op": "add|update|remove", "label", "description", "quantity" }.',
