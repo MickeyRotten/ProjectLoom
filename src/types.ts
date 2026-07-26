@@ -272,6 +272,21 @@ export interface RefImage {
   b64: string;
 }
 
+/**
+ * Reading size for the narration log. Only the prose scales — buttons, labels
+ * and every other control keep their size, so a large setting buys text and not
+ * a blown-up interface.
+ */
+export type TextScale = "s" | "m" | "l" | "xl";
+
+/**
+ * How much room the location banner takes. `compact` keeps the art reachable (a
+ * tap still opens it full-screen) while handing the reading area back ~90px on
+ * a phone — the banner, the party strip and the composer together were eating
+ * over half the viewport of a text-first app.
+ */
+export type BannerSize = "full" | "compact";
+
 export interface Settings {
   openRouterKey: string;
   /**
@@ -286,6 +301,10 @@ export interface Settings {
   showActionOptions: boolean;
   /** Flip ink/paper — the "black paper" reading of the 1-bit theme. */
   invert: boolean;
+  /** Reading size for narration. Chrome (buttons, labels) never scales. */
+  textScale: TextScale;
+  /** Whether the location banner shows full height or as a thin strip. */
+  bannerSize: BannerSize;
   // Advanced (player-editable, Phase 4):
   customInstructions: string;
   bannerInstructions: string;

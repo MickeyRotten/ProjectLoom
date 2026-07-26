@@ -5,7 +5,7 @@ import { TurnControls } from "./TurnControls";
 import { segmentDialogue } from "../lib/spotlight";
 import { parseInline } from "../lib/markdown";
 import { deriveToasts } from "../lib/toasts";
-import type { Character, Message, TurnOutcome } from "../types";
+import type { Character, Message, TextScale, TurnOutcome } from "../types";
 
 /** Which message (id) is being edited, and the working draft. */
 type Editing = { id: string; role: "player" | "narrator"; draft: string };
@@ -15,6 +15,17 @@ const NEAR_BOTTOM_PX = 120;
 
 const isNearBottom = (el: HTMLElement) =>
   el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
+
+/**
+ * Reading size for narration only. Chrome keeps its own sizes, so "L" buys
+ * bigger prose rather than a bigger interface.
+ */
+const SCALE_CLASS: Record<TextScale, string> = {
+  s: "text-sm",
+  m: "text-base",
+  l: "text-lg",
+  xl: "text-xl",
+};
 
 /**
  * The message log. Renders the opening narration, each turn, the live
@@ -42,6 +53,7 @@ export function ChatView() {
   const editUserTurn = useStore((s) => s.editUserTurn);
   const hasKey = useStore((s) => Boolean(s.settings.openRouterKey.trim()));
   const setScreen = useStore((s) => s.setScreen);
+  const textScale = useStore((s) => s.settings.textScale);
 
   // Which latest beat has its controls revealed (tap to toggle), and any
   // in-progress inline edit. Both reset when a turn streams or completes.
@@ -63,6 +75,9 @@ export function ChatView() {
 
   const scrollRef = useRef<HTMLElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  // The newest narrator beat, so a beat taller than the viewport can be landed
+  // on its FIRST line instead of its last (see the completion effect below).
+  const latestBeatRef = useRef<HTMLDivElement>(null);
   // Whether the reader is parked at the live edge. Drives the jump-to-latest
   // button (shown only while reading back through the history).
   const [atBottom, setAtBottom] = useState(true);
@@ -90,12 +105,24 @@ export function ChatView() {
   // Only follow the tail when the reader is already near the bottom — scrolling
   // up to reread must not get yanked back on every streaming delta. The bottom
   // marker sits below the quick actions, so following it keeps them in view.
+  //
+  // The exception is a COMPLETED beat that is taller than the viewport: pinning
+  // its end puts the player at the last paragraph of prose they have not read
+  // yet, with the options pushing the opening line off the top. There, land on
+  // the beat's first line instead and let them read down into the options.
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     const nearBottom = isNearBottom(el);
-    if (nearBottom) bottomRef.current?.scrollIntoView({ block: "end" });
-    setAtBottom(nearBottom);
+    if (nearBottom) {
+      const beat = latestBeatRef.current;
+      if (!streaming && beat && beat.getBoundingClientRect().height > el.clientHeight) {
+        beat.scrollIntoView({ block: "start" });
+      } else {
+        bottomRef.current?.scrollIntoView({ block: "end" });
+      }
+    }
+    setAtBottom(isNearBottom(el));
   }, [messages.length, streamText, error, streaming]);
 
   const toggle = (id: string) => {
@@ -107,15 +134,20 @@ export function ChatView() {
     <div className="relative mt-3 flex min-h-0 flex-1 flex-col">
       <section
         ref={scrollRef}
-        className="flex-1 space-y-3 overflow-y-auto px-3 pb-3 text-base"
+        className={`flex-1 space-y-4 overflow-y-auto px-3 pb-3 ${SCALE_CLASS[textScale]}`}
       >
         <Beat role="narrator" text={opening} party={party} />
 
-        {messages.map((m) => {
+        {messages.map((m, i) => {
           const tappable = m.id === lastNarratorId || m.id === lastPlayerId;
           const isEditing = editing?.id === m.id;
           return (
-            <div key={m.id} className="space-y-2">
+            <div
+              key={m.id}
+              ref={m.id === lastNarratorId ? latestBeatRef : undefined}
+              className="space-y-2"
+            >
+              <SceneMark msg={m} prev={messages[i - 1]} />
               {isEditing ? (
                 <Editor
                   draft={editing.draft}
@@ -214,6 +246,32 @@ export function ChatView() {
   );
 }
 
+/**
+ * A rule naming the place and day, drawn only where they CHANGE. Every message
+ * has carried `day`/`location` since Phase 5 and nothing ever rendered them, so
+ * scrolling back through a long game gave no clue where or when a beat
+ * happened. Messages written before that carry neither and simply get no mark.
+ */
+function SceneMark({ msg, prev }: { msg: Message; prev?: Message }) {
+  if (!msg.location && msg.day === undefined) return null;
+  // First marked message in the log always earns one; after that, only changes.
+  const movedTo = msg.location && msg.location !== prev?.location ? msg.location : "";
+  const newDay = msg.day !== undefined && msg.day !== prev?.day ? msg.day : undefined;
+  if (!movedTo && newDay === undefined) return null;
+
+  const label = [movedTo, newDay !== undefined ? `Day ${newDay}` : ""]
+    .filter(Boolean)
+    .join(" · ");
+
+  return (
+    <div className="flex items-center gap-2 pt-2 text-xs uppercase tracking-widest opacity-60">
+      <span className="h-0 flex-1 border-t-2 border-ink" />
+      <span>{label}</span>
+      <span className="h-0 flex-1 border-t-2 border-ink" />
+    </div>
+  );
+}
+
 /** How an outcome band reads as a chip. */
 const OUTCOME_LABEL: Record<TurnOutcome, string> = {
   strong: "Strong result",
@@ -300,17 +358,22 @@ function Beat({
   pending?: boolean;
 }) {
   if (role === "player") {
+    // Not uppercased: a player line can be a full sentence, and uppercase
+    // monospace is the hardest thing on the page to read. The `>` and the rule
+    // already mark it as the player's.
     return (
-      <p className="whitespace-pre-wrap border-l-2 border-ink pl-2 leading-[1.2] uppercase tracking-wide opacity-80">
+      <p className="whitespace-pre-wrap border-l-2 border-ink pl-2 leading-[1.4] tracking-wide opacity-80">
         &gt; {text}
       </p>
     );
   }
 
   // Segment narrator prose so party dialogue (`Name: "…"`) renders distinctly.
+  // Leading is deliberately loose for monospace: at 1.3 a beat is a solid block
+  // of glyphs, and this is a reading app before it is anything else.
   const segments = segmentDialogue(text, party);
   return (
-    <div className={`space-y-2 leading-[1.3] ${pending ? "opacity-70" : ""}`}>
+    <div className={`space-y-3 leading-[1.6] ${pending ? "opacity-70" : ""}`}>
       {segments.map((seg, i) =>
         seg.speaker ? (
           <p key={i} className="border-l-2 border-ink pl-2">

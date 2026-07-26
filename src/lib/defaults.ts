@@ -187,6 +187,8 @@ export function defaultSettings(): Settings {
     temperature: 0.8,
     showActionOptions: true,
     invert: false,
+    textScale: "m",
+    bannerSize: "full",
     customInstructions: DEFAULT_CUSTOM_INSTRUCTIONS,
     bannerInstructions: DEFAULT_BANNER_INSTRUCTIONS,
     // Off by default: shipping a brake on a feature nobody asked to slow down

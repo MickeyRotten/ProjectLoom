@@ -350,6 +350,38 @@ All secondary screens — **member sheet, Party, Inventory, Quests, and every Se
 - **Party screen** lists the company in two halves — *In the scene n/3* (**Bench** / **Kick**) and *Benched* (**Activate** / **Kick**) — with a route to Characters when both are empty. The member sheet carries the same Kick/Add control, the adventure **standing** (active / benched / npc / departed / fallen) with a one-line explanation of what the current one means, **Revert Story Changes** when the story has diverged, and **Delete Character** (library-wide, player-only).
 - **Style:** pure black/white, monospace, square borders, no rounded corners, no color. Small token set in `theme.css` (`--ink #000`, `--paper #fff`) so it stays one system.
 
+### Reading area
+
+This is a text game, and its chrome had grown to eat more than half a phone:
+header + 16:5 banner + a 1:2 party strip + composer left roughly 350px for
+prose, with the action options rendering *inside* that same scroll region so a
+fresh beat was often pushed above the fold by its own suggestions. The fixes are
+all about handing that space back:
+
+- **`Settings.bannerSize`** — `compact` swaps the 16:5 banner for a ~40px strip
+  (thumbnail + location, tapping still opens the art full-screen). Independently,
+  a `full` banner with **no art and none coming** renders at strip height too:
+  full height is for images, and an empty box was 122px repeating the header.
+- **Party strip** slots are **3:4**, not 1:2 — portraits are face-cropped
+  (`origin-top scale-150`), so the extra height never showed more of anyone. A
+  party of nobody collapses the four-slot grid to a single row rather than
+  standing three full-height dashed boxes on screen.
+- **Landing on the beat, not its end.** When a completed beat is taller than the
+  viewport, the log scrolls to its **first** line instead of pinning the bottom —
+  pinning the bottom drops the player at the last paragraph of prose they have
+  not read, with the options shoving the opening line off the top. Shorter beats
+  keep the old tail-follow.
+- **`Settings.textScale`** (S/M/L/XL, Menu) scales narration **only** — chrome
+  keeps its sizes, so a large setting buys text rather than a blown-up
+  interface. Prose leading went 1.3 → 1.6 (monospace at 1.3 is a wall), and
+  player lines are no longer uppercased; the `>` and the rule already mark them.
+- **Pinch-zoom is enabled again.** `maximum-scale=1.0, user-scalable=no` was a
+  WCAG 1.4.4 failure with no in-app substitute; Text Size is the common case and
+  zoom is the escape hatch.
+- **Scene marks.** Every message has carried `day`/`location` since Phase 5 and
+  nothing rendered them; the log now draws a rule naming the place and day
+  wherever they change, so scrollback has landmarks.
+
 ---
 
 ## Build Phases
