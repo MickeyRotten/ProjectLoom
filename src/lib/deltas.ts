@@ -26,7 +26,7 @@ import { partyFull, setCondition, setStanding, standingOf, strengthsText } from 
  * an op writes depends on which half owns it:
  *  - membership / standing / last-spoke → this adventure's roster;
  *  - a brand-new character's sheet → the library, written ONCE at creation.
- * A character who already exists is FROZEN: their species, appearance,
+ * A character who already exists is FROZEN: their species, sex, appearance,
  * personality, drive, strengths, flaws and equipment are the player's, and no later delta —
  * `add` or `update` — touches them. Sheet drift was the story quietly
  * rewriting a cast the player had authored, one turn at a time; the narration
@@ -267,6 +267,7 @@ function makeCharacter(d: PartyDelta, id: string): Character {
     role: "member",
     name: d.name,
     species: d.species ?? "",
+    sex: d.sex ?? "",
     description: d.description ?? "",
     personality: d.personality ?? "",
     drive: d.drive ?? "",

@@ -5,6 +5,7 @@ import {
   benchedMembers,
   clearOverrides,
   dropEntry,
+  formatIdentity,
   getEntry,
   hasOverrides,
   isInParty,
@@ -34,6 +35,7 @@ function member(id: string, name: string, patch: Partial<Character> = {}): Chara
     role: "member",
     name,
     species: "human",
+    sex: "",
     description: "plain",
     personality: "calm",
     drive: "wander",
@@ -340,6 +342,29 @@ describe("dropEntry", () => {
   it("returns the same array when the id is unknown", () => {
     const roster = [entry("a")];
     expect(dropEntry(roster, "zzz")).toBe(roster);
+  });
+});
+
+describe("formatIdentity", () => {
+  it("names species and sex together", () => {
+    expect(formatIdentity({ name: "Elara", species: "elf", sex: "female" })).toBe(
+      "Elara (elf, female)",
+    );
+  });
+
+  it("drops whichever trait is blank", () => {
+    expect(formatIdentity({ name: "Elara", species: "elf", sex: "  " })).toBe("Elara (elf)");
+    expect(formatIdentity({ name: "Elara", species: "", sex: "female" })).toBe("Elara (female)");
+    expect(formatIdentity({ name: "Elara", species: "", sex: "" })).toBe("Elara");
+  });
+
+  it("names an unnamed character rather than emitting an empty line", () => {
+    expect(formatIdentity({ name: "  ", species: "elf", sex: "" })).toBe("(unnamed) (elf)");
+  });
+
+  it("tolerates a stored character with no sex at all", () => {
+    const legacy = { name: "Elara", species: "elf" } as { name: string; species: string; sex: string };
+    expect(formatIdentity(legacy)).toBe("Elara (elf)");
   });
 });
 

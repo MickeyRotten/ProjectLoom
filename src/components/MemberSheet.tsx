@@ -4,6 +4,8 @@ import { OverlayHeader } from "./OverlayHeader";
 import { EditImageButton } from "./EditImageButton";
 import { TextField, AreaField, ReadBlock, EditToolbar, btn, btnSmall } from "./fields";
 import { AutoUpdateModal } from "./AutoUpdateModal";
+import { GenerateFieldModal } from "./GenerateFieldModal";
+import { GEN_FIELD_LABEL, type GenField } from "../lib/generateField";
 import { useEditBuffer } from "./useEditBuffer";
 import { useConfirm } from "./useConfirm";
 import { portraitKey } from "../lib/images";
@@ -44,6 +46,7 @@ type MemberDraft = Pick<
   Character,
   | "name"
   | "species"
+  | "sex"
   | "description"
   | "personality"
   | "drive"
@@ -85,6 +88,7 @@ export function MemberSheet() {
   const imageError = useStore((s) => (id ? s.imgError[portraitKey(id)] : undefined));
   const [zoom, setZoom] = useState(false);
   const [autoUpdate, setAutoUpdate] = useState(false);
+  const [genField, setGenField] = useState<GenField | null>(null);
   const portraitFile = useRef<HTMLInputElement>(null);
   // Saving hands off to the OS (share sheet / download) and leaves no trace in
   // the app, so the sheet says what happened for a few seconds. `at` makes each
@@ -105,6 +109,7 @@ export function MemberSheet() {
     () => ({
       name: member?.name ?? "",
       species: member?.species ?? "",
+      sex: member?.sex ?? "",
       description: member?.description ?? "",
       personality: member?.personality ?? "",
       drive: member?.drive ?? "",
@@ -157,6 +162,26 @@ export function MemberSheet() {
     setDraft((d) => ({ ...d, [k]: val }));
   }
   const setEquip = (next: Equipment[]) => setField("equipment", next);
+
+  // ✦ only while editing: an accepted generation lands in the DRAFT, which is
+  // what makes Discard Changes the undo. Offering it in read mode would mean
+  // writing the character behind the Edit gate's back — the same hazard the
+  // Auto-Update button above is gated for.
+  //
+  // ✦ and not ✨: the sparkle is an emoji and browsers paint it in colour, which
+  // is one more colour than this app has. Same reason ⟳ and ✎ are the glyphs on
+  // the portrait buttons.
+  const genButton = (field: GenField) =>
+    editing ? (
+      <button
+        type="button"
+        aria-label={`Generate ${GEN_FIELD_LABEL[field]}`}
+        onClick={() => setGenField(field)}
+        className="border-2 border-ink px-2 py-1 leading-none active:bg-ink active:text-paper"
+      >
+        ✦
+      </button>
+    ) : undefined;
 
   return (
     <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
@@ -311,6 +336,15 @@ export function MemberSheet() {
             editing={editing}
             onChange={(x) => setField("species", x)}
           />
+          {/* Free text, like Species — the setting owns the vocabulary. Read by
+              the narrator for pronouns and by the portrait prompt. */}
+          <TextField
+            label="Sex"
+            value={v.sex}
+            editing={editing}
+            placeholder="male / female / …"
+            onChange={(x) => setField("sex", x)}
+          />
         </div>
 
         <fieldset className="space-y-3 border-2 border-ink p-3">
@@ -347,6 +381,7 @@ export function MemberSheet() {
           value={v.description}
           editing={editing}
           rows={2}
+          action={genButton("description")}
           onChange={(x) => setField("description", x)}
         />
         <AreaField
@@ -354,15 +389,23 @@ export function MemberSheet() {
           value={v.personality}
           editing={editing}
           rows={2}
+          action={genButton("personality")}
           onChange={(x) => setField("personality", x)}
         />
-        <TextField label="Drive" value={v.drive} editing={editing} onChange={(x) => setField("drive", x)} />
+        <TextField
+          label="Drive"
+          value={v.drive}
+          editing={editing}
+          action={genButton("drive")}
+          onChange={(x) => setField("drive", x)}
+        />
 
         <AreaField
           label="Strengths"
           value={v.strengths}
           editing={editing}
           rows={2}
+          action={genButton("strengths")}
           onChange={(x) => setField("strengths", x)}
         />
         <AreaField
@@ -370,6 +413,7 @@ export function MemberSheet() {
           value={v.flaws}
           editing={editing}
           rows={2}
+          action={genButton("flaws")}
           onChange={(x) => setField("flaws", x)}
         />
 
@@ -517,6 +561,17 @@ export function MemberSheet() {
           memberId={member.id}
           memberName={member.name}
           onClose={() => setAutoUpdate(false)}
+        />
+      )}
+
+      {/* Fed the DRAFT, not the saved character: a Flaws generated right after
+          the player typed a Personality has to read that Personality. */}
+      {genField && (
+        <GenerateFieldModal
+          character={{ ...member, ...v }}
+          field={genField}
+          onAccept={(text) => setField(genField, text)}
+          onClose={() => setGenField(null)}
         />
       )}
 

@@ -148,6 +148,16 @@ describe("splitLegacyGame", () => {
     expect(splitLegacyGame(legacy)!.characters[0].strengths).toBe("");
   });
 
+  it("loads a character written before sex existed with a blank sex", () => {
+    const legacy = { characters: [{ ...defaultPC(), sex: undefined }] };
+    expect(splitLegacyGame(legacy)!.characters[0].sex).toBe("");
+  });
+
+  it("keeps a stored sex", () => {
+    const legacy = { characters: [{ ...defaultPC(), sex: "female" }] };
+    expect(splitLegacyGame(legacy)!.characters[0].sex).toBe("female");
+  });
+
   it("folds a labelled strengths object into one line and loads flaws blank", () => {
     const legacy = {
       characters: [

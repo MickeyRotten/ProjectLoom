@@ -34,6 +34,11 @@ export interface Character {
   role: CharacterRole;
   name: string;
   species: string;
+  /**
+   * Sex / gender, free text like `species` — the vocabulary is the setting's,
+   * not ours. Read by the narrator (pronouns) and by the portrait prompt.
+   */
+  sex: string;
   description: string;
   personality: string;
   drive: string;
@@ -97,7 +102,7 @@ export type CharacterStatus = "active" | "departed" | "fallen";
 export type CharacterOverride = Partial<
   Pick<
     Character,
-    "species" | "description" | "personality" | "drive" | "strengths" | "flaws"
+    "species" | "sex" | "description" | "personality" | "drive" | "strengths" | "flaws"
   >
 >;
 
@@ -247,7 +252,9 @@ export interface Reversal {
  * A character record as written before the Characters/Party split, when party
  * state lived on the character itself. Only migration + legacy reversal read it.
  */
-export type LegacyCharacter = Character & {
+export type LegacyCharacter = Omit<Character, "sex"> & {
+  /** Absent from every record written before the field existed. */
+  sex?: string;
   lastSpokeTurn?: number;
   inParty?: boolean;
   portraitKey?: string;
@@ -463,6 +470,7 @@ export interface PartyDelta {
   op: Op;
   name: string;
   species?: string;
+  sex?: string;
   description?: string;
   personality?: string;
   drive?: string;

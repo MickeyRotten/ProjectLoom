@@ -12,6 +12,7 @@ function navi(): Character {
     role: "member",
     name: "Navi",
     species: "sprite",
+    sex: "",
     description: "a darting spark",
     personality: "",
     drive: "",

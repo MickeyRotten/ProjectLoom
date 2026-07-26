@@ -76,6 +76,22 @@ export function strengthsText(value: unknown): string {
 }
 
 /**
+ * The identity line every character block leads with — `Name (species, sex)`,
+ * with blank parts dropping out. One helper, so the PC sheet, the party roster,
+ * the NPC block and the side-call sheet can never describe a character
+ * differently from each other. Lives here rather than in `prompt.ts` because
+ * `cast.ts` needs it too and `prompt.ts` already imports `cast.ts`.
+ */
+export function formatIdentity(c: Pick<Character, "name" | "species" | "sex">): string {
+  const traits = [c.species, c.sex]
+    .map((t) => (t ?? "").trim())
+    .filter(Boolean)
+    .join(", ");
+  const name = c.name.trim() || "(unnamed)";
+  return traits ? `${name} (${traits})` : name;
+}
+
+/**
  * Fold a stored override onto the current field shapes. Returns the SAME
  * object when nothing needed changing — `normalizeRoster` reference-diffs it.
  */

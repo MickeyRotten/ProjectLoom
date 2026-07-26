@@ -150,6 +150,7 @@ One isolated function returning the OpenRouter `messages[]`, in order:
 1. **Core narrator instructions** (Loom role: short punchy second-person shonen adventure, uncensored, sandbox) + player **custom instructions** appended.
 2. **Scenario / premise** (the editable pre-made scenario).
 3. **PC summary** + equipment text fields.
+   Every character block — PC, party roster, NPC sheet, and the side-call sheets — leads with the same identity line, `Name (species, sex)`, from `roster.ts → formatIdentity`; blank traits drop out.
 4. **Party roster** — the `active` members only: description, personality, drive, Strengths, Flaws, equipment (port `_format_equipment`, simplified to `{label, description}` — no catalog lookup). Benched members get no sheet; they are not in the scene.
 5. **Inventory** (compact `label ×qty — description` list).
 6. **Active quests** (compact `label — description (reward: …)` list; done quests omitted).
@@ -168,7 +169,7 @@ One isolated function returning the OpenRouter `messages[]`, in order:
 - **Access:** OpenRouter chat-completions with an image-output model (Nano Banana 2 Lite), reading the returned image (base64 data URL) from the response. *(Exact request/response shape for image output over OpenRouter must be verified against current OpenRouter docs at implementation time — flag, don't assume.)*
 - **Two kinds, deterministic triggers (not model-driven):**
   - **Location banner** — keyed by `banner:<location>`. On a scene change to an **uncached** location, generate from location name + a short narration excerpt + the **banner style instructions**. Gated by `Settings.locationImages`, see below.
-  - **Party portrait** — keyed by `portrait:<memberId>`. When a member has no portrait, generate from their description + the **portrait style instructions** — *unless* the player removed it (`Character.noPortrait`), see **Remove** below.
+  - **Party portrait** — keyed by `portrait:<memberId>`. When a member has no portrait, generate from their name/species/**sex**/description + the **portrait style instructions** — *unless* the player removed it (`Character.noPortrait`), see **Remove** below. Sex is in the Subject because an image model given only prose guesses, and guesses differently on every regenerate.
 - **Style baked in:** default banner/portrait instructions enforce **1-bit monochrome pixel/line art**. Player-editable under Advanced.
 - **Location images off by default (Advanced → Images → `Settings.locationImages`):** the whole banner feature is opt-in. Portraits are drawn once per character and then reused forever; a location banner is a fresh generation every time the story moves somewhere new, which makes it the app's most expensive habit and the one furthest from the text the player came for. Off means **no generation and no UI**: `syncImages` skips the banner entirely (cached or not), `regenerateBanner` / `editBanner` no-op, `<Banner>` renders `null`, and the Menu's *Compact Location Image* toggle and the Advanced cooldown + banner-style fields are hidden rather than left as dead controls. Nothing is deleted — already-generated banners are still in IndexedDB and reappear the moment it's switched back on. Portraits are unaffected.
 - **Location image cooldown (Advanced → `Settings.bannerCooldown`, 0 = off):** turns to skip automatic banner generation for after one is drawn — `3` means the next 3 turns draw no new location image, the 4th does (`bannerOnCooldown` / `bannerCooldownLeft`, counted from `GameState.lastBannerTurn`). A location-hopping stretch otherwise bills one generation per turn, which is the single easiest way to burn image credit without noticing. Three deliberate limits: the gate is on **generation only**, so an already-cached location still shows its banner instantly; the stamp is written on a real generation only, never a cache hit, so re-treading known ground doesn't stall the next new one; and **⟳ ignores the cooldown** (but restarts it — it *is* a generation). While suppressed the banner placeholder says how many turns are left, so it never reads as a broken image. `lastBannerTurn` is deliberately outside `Reversal` — an undo can't un-spend a generation.
@@ -202,8 +203,10 @@ Settings {                    // global, edited in Settings
 
 Character[]                   // GLOBAL cast library — outlives every adventure
 Character {
-  id, role, name, species, description, personality, drive,
+  id, role, name, species, sex, description, personality, drive,
   strengths, flaws,                      // free text, one field each
+                                         // sex is free text too — pronouns for the narrator,
+                                         // a Subject line for the portrait prompt
   equipment: { label, description }[],   // simple text fields, no catalog
                                          // written once by the creating `add`, player's after that
   useCustomPortraitPrompt?, customPortraitPrompt?
@@ -229,7 +232,7 @@ RosterEntry {
           | 'benched'   // in the party, waiting elsewhere
           | 'departed'  // left the story
           | 'fallen',   // dead
-  overrides?: { species?, description?, personality?, drive?, strengths?, flaws? }
+  overrides?: { species?, sex?, description?, personality?, drive?, strengths?, flaws? }
 }
 ```
 
@@ -343,6 +346,15 @@ The member sheet's **Auto-Update** button opens a modal to check which fields th
 
 Parsing is tolerant like the `<<<LOOM>>>` block (fences/preamble/trailing commas survive) but strict about content: unrequested keys, non-strings, and blanks are dropped, so a bad reply narrows to "fewer fields updated" and never blanks a sheet. Gated behind read mode (an open edit draft would clobber the result) and blocked mid-turn.
 
+### Per-field generation — `src/lib/generateField.ts`
+
+Auto-Update's sibling, and the difference is **where it reads from**. Auto-Update re-reads a character off the **story so far**, so it is a story change. This is **authoring**: a ✦ button beside **Appearance · Personality · Drive · Strengths · Flaws** opens a modal that writes that one field from the character's own sheet — **Species and Sex above all** — the scenario, and the World Notes those words trigger (`worldNotes.ts → matchWorldNotes`, the same keyword matcher, scanned over the sheet instead of the beats). It never reads the beats: a character who hasn't appeared yet is exactly who this is for.
+
+- **One field per call.** Only the requested field's rule is sent, so the model is never told about a field it must not write. Appearance's rule *is* `Settings.appearanceInstructions` — the same sentence the narrator gets — so "Appearance" means one thing app-wide.
+- **Preview, then accept.** The modal shows what came back with **Use This / Generate Again / Cancel**, at a looser temperature than a sheet update (authoring wants variety; a re-roll should differ). An optional guidance box rides last in the prompt, so it outranks the sheet it may deliberately contradict.
+- **✦ only in Edit mode.** An accepted generation lands in the sheet's **edit draft**, not the character — so **Discard Changes is the undo** and **Save Changes** is what commits it (through `updateCharacter`, which retires that field's story override). The generation reads the draft too, so a Flaws written right after the player typed a Personality reads that Personality.
+- The store action writes nothing and takes the character **by value**; it needs no `streaming` guard for that reason, only single-flight.
+
 ### Shell + reachability
 
 - **Hardware / browser Back closes the overlay**, instead of quitting the app
@@ -440,6 +452,7 @@ All secondary screens — **member sheet, Party, Inventory, Quests, and every Se
   state — Back pops to the index first, then out of Advanced.
 - **Characters screen** lists the global cast grouped by this adventure's standing — PC, then *In Party n/3*, *Benched*, *NPCs & Allies*, *Gone*, and *Everyone Else* — each row opening the sheet and carrying one-tap moves (**Add to Party** / **Bench** / **Kick** / **Make NPC**). **+ New Character** creates someone in the library only. A filter box appears once the cast grows past 8.
 - **Party screen** lists the company in two halves — *In the scene n/3* (**Bench** / **Kick**) and *Benched* (**Activate** / **Kick**) — with a route to Characters when both are empty. The member sheet carries the same Kick/Add control, the adventure **standing** (active / benched / npc / departed / fallen) with a one-line explanation of what the current one means, **Revert Story Changes** when the story has diverged, and **Delete Character** (library-wide, player-only).
+- **Member sheet fields:** Name · **Species** · **Sex** (both free text — the setting owns the vocabulary) · Portrait Prompt · Appearance · Personality · Drive · Strengths · Flaws · Equipment, then the per-adventure **Condition** and **Standing**. In Edit mode the five prose fields each carry a **✦ generate** button (see *Per-field generation*); ✦ rather than ✨ because the sparkle is an emoji and browsers paint it in colour, which is one colour more than this app has — the same reason the portrait controls are ⟳ and ✎.
 - **Style:** pure black/white, monospace, square borders, no rounded corners, no color. Small token set in `theme.css` (`--ink #000`, `--paper #fff`) so it stays one system.
 
 ### Reading area

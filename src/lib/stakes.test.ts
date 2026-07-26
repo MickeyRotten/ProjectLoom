@@ -18,6 +18,7 @@ function pc(patch: Partial<PartyMember> = {}): PartyMember {
     role: "pc",
     name: "Hiro",
     species: "human",
+    sex: "",
     description: "",
     personality: "",
     drive: "",

@@ -140,7 +140,7 @@ function formatPortraitInstructions(instructions: PortraitInstructions): string[
 
 /**
  * Portrait prompt: follows the Subject → Action → Location/context →
- * Composition → Style formula. The member's name/species/description
+ * Composition → Style formula. The member's name/species/sex/description
  * (Subject) leads; the (editable) Action/Context/Composition/Style clauses
  * trail, so framing and style stay consistent across every party member
  * regardless of what the Subject describes. Subject is never a settings field
@@ -151,7 +151,7 @@ function formatPortraitInstructions(instructions: PortraitInstructions): string[
  */
 export function buildPortraitPrompt(
   member: Pick<Character, "name" | "species" | "description"> &
-    Partial<Pick<Character, "useCustomPortraitPrompt" | "customPortraitPrompt">>,
+    Partial<Pick<Character, "sex" | "useCustomPortraitPrompt" | "customPortraitPrompt">>,
   instructions: PortraitInstructions,
   refInstruction?: string,
 ): string {
@@ -162,6 +162,7 @@ export function buildPortraitPrompt(
   const who = [
     member.name.trim() && `Name: ${member.name.trim()}.`,
     member.species.trim() && `Species: ${member.species.trim()}.`,
+    member.sex?.trim() && `Sex: ${member.sex.trim()}.`,
   ]
     .filter(Boolean)
     .join(" ");

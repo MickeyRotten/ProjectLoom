@@ -1,4 +1,5 @@
 import type { PartyMember } from "../types";
+import { formatIdentity } from "./roster";
 import { keywordHits } from "./worldNotes";
 
 /**
@@ -60,7 +61,7 @@ export function formatNpcBlock(npcs: PartyMember[]): string {
   if (!npcs.length) return "";
   const entries = npcs.map((n) => {
     const lines = [
-      `- ${n.name} (${n.species})${n.description ? ` — ${n.description}` : ""}`,
+      `- ${formatIdentity(n)}${n.description ? ` — ${n.description}` : ""}`,
       n.personality ? `  Personality: ${n.personality}` : "",
       n.drive ? `  Drive: ${n.drive}` : "",
       n.strengths ? `  Strengths: ${n.strengths}` : "",

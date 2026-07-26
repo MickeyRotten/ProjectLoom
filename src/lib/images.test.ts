@@ -131,6 +131,19 @@ describe("prompt builders", () => {
     expect([...order].sort((a, b) => a - b)).toEqual(order);
   });
 
+  it("portrait prompt carries Sex after Species, and omits it when blank", () => {
+    const withSex = buildPortraitPrompt(
+      { name: "Navi", species: "sprite", sex: "female", description: "A mote." },
+      instr({ style: "Ink." }),
+    );
+    expect(withSex).toContain("Species: sprite. Sex: female.");
+    const withoutSex = buildPortraitPrompt(
+      { name: "Navi", species: "sprite", sex: "  ", description: "A mote." },
+      instr({ style: "Ink." }),
+    );
+    expect(withoutSex).not.toContain("Sex:");
+  });
+
   it("portrait prompt tolerates blank identity fields", () => {
     const p = buildPortraitPrompt(
       { name: "", species: "", description: "" },

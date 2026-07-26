@@ -209,6 +209,23 @@ arithmetic rides the narrator `Message` as `TurnRoll` (`stakes.ts → rollRecord
 whole catalog for its modality rather than the first 60 rows, with a **Free models
 only** checkbox backed by `OpenRouterModel.free` (read off catalog `pricing`, not
 the `:free` id suffix; unreadable pricing counts as priced).
+Post-MVP also: **`Character.sex` + per-field generation** — `sex` is free text like
+`species` and follows it everywhere: the creating `add` writes it
+(`deltas.ts → makeCharacter`, frozen after), the output protocol and the
+`characterCreation`/`characterUpdate` instruction defaults name it, and it rides the
+portrait Subject (`buildPortraitPrompt`) so an image model stops re-guessing gender
+on every ⟳. `roster.ts → formatIdentity` is now the one `Name (species, sex)` line
+the PC block, party roster, NPC block and side-call sheet all lead with, and
+`prompt.ts → formatScenarioBlock` collapses the three hand-rolled SCENARIO copies.
+Alongside it, **`generateField.ts`** — Auto-Update's authoring sibling: a ✦ button
+beside Appearance/Personality/Drive/Strengths/Flaws asks for that ONE field from the
+sheet (Species + Sex first), the scenario and the World Notes the sheet's own words
+trigger, never the beats. `Settings.appearanceInstructions` *is* the Appearance rule,
+so the term means one thing app-wide. `GenerateFieldModal` previews with **Use This /
+Generate Again**, ✦ shows only in Edit mode and an accepted text lands in the edit
+draft — so Discard Changes is the undo and `updateCharacter` still commits. The store
+action writes nothing and takes the character by value, so it needs single-flight and
+no `streaming` guard. `fields.tsx → Field` gained an `action` slot for the label row.
 Deferred (post-MVP): rolling LLM summarization, NPC/item art, TTS,
 weather animation, multi-world. Track scope in `DESIGN.md → Build Phases`.
 

@@ -19,6 +19,7 @@ function member(id: string, name: string, patch: Partial<Character> = {}): Chara
     role: "member",
     name,
     species: "sprite",
+    sex: "",
     description: "",
     personality: "",
     drive: "",
@@ -164,6 +165,7 @@ describe("applyDeltas — party ops", () => {
           op: "add",
           name: "Navi",
           species: "sprite",
+          sex: "female",
           description: "a darting spark",
           personality: "Impatient, chirpy.",
           drive: "See every locked room in the world.",
@@ -180,6 +182,7 @@ describe("applyDeltas — party ops", () => {
       id: "m-navi",
       role: "member",
       species: "sprite",
+      sex: "female",
       personality: "Impatient, chirpy.",
       drive: "See every locked room in the world.",
       strengths: "Lockpicking — opens anything",
@@ -204,7 +207,11 @@ describe("applyDeltas — party ops", () => {
 
   it("ignores sheet fields on update — a created character is frozen", () => {
     const characters = lib(
-      member("m-navi", "Navi", { personality: "Chirpy.", description: "a darting spark" }),
+      member("m-navi", "Navi", {
+        personality: "Chirpy.",
+        description: "a darting spark",
+        sex: "female",
+      }),
     );
     const g = { ...game(), roster: [{ id: "m-navi", standing: "active" as const, lastSpokeTurn: 0 }] };
     const scene = applyDeltas(g, characters, {
@@ -215,6 +222,7 @@ describe("applyDeltas — party ops", () => {
           personality: "Subdued.",
           description: "gone grey",
           species: "wraith",
+          sex: "male",
           drive: "Rest.",
           strengths: "Wailing — chills a room",
         },
@@ -226,6 +234,7 @@ describe("applyDeltas — party ops", () => {
       personality: "Chirpy.",
       description: "a darting spark",
       species: "sprite",
+      sex: "female",
     });
     expect(getEntry(scene.roster, "m-navi").overrides).toBeUndefined();
   });
