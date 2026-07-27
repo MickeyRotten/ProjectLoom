@@ -90,6 +90,7 @@ function SystemPreview({ rules }: { rules: DiceRules }) {
 export function RpgSystemScreen() {
   const settings = useStore((s) => s.settings);
   const update = useStore((s) => s.updateSettings);
+  const testRoll = useStore((s) => s.testRoll);
   const { stakesEnabled, alwaysRoll, riskKeywords, stakesRule } = settings;
 
   // The widest a threshold can meaningfully sit: an unreachable STRONG makes
@@ -227,6 +228,15 @@ export function RpgSystemScreen() {
               {settings.diceAnimation
                 ? "The dice are thrown across the screen while the turn is being written — tap to skip. The result is the same either way; it is already decided before they land."
                 : "Off: no toss. The roll still happens, and still shows on the beat as a chip."}
+            </p>
+            <button type="button" onClick={testRoll} className={`w-full ${btnSmall}`}>
+              Test Roll
+            </button>
+            <p className="text-xs opacity-70">
+              Throws the dice above with nothing at stake — no turn, no story, nothing
+              recorded. Strengths and Flaws sit it out, so what you see is the system
+              itself. Plays even with the animation off, since watching it is how you
+              decide.
             </p>
 
             <Section label="Results" />

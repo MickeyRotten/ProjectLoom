@@ -240,10 +240,8 @@ the art uses literal `#000`/`#fff` — the bitmap does not invert with the theme
 Post-MVP also: **RPG System** (`Settings` ⊃ `DiceRules` — `diceCount`/`diceSides`/
 `strengthsBonus`/`flawsPenalty`/`strongThreshold`/`mixedThreshold`, plus
 `riskKeywords` + `alwaysRoll`; Menu → RPG System) — the one mechanic the player
-couldn't touch is now theirs: `stakes.ts` rolls `rollDice(turn, action, rules)`
-(first die keeps the original single-die seed, so old rolls replay; extra dice
-hash on `turn|action|i` for a real NdX distribution), modifies by the configured
-bonus/penalty, and bands on the configured thresholds. `normalizeDice` sanitizes
+couldn't touch is now theirs: `stakes.ts` rolls `rollDice(turn, action, rules)`,
+modifies by the configured bonus/penalty, and bands on the configured thresholds. `normalizeDice` sanitizes
 at READ time (dice 1–10 × d2–d100, modifiers 0–20, thresholds pinned inside the
 reachable range, MIXED never above STRONG), so the screen can edit one field
 without rewriting the next. `TurnRoll` records `count`/`sides`/`dice`, the chip
@@ -265,7 +263,20 @@ throughout; pips on a d6, numerals on anything else. `planToss` is pure in the
 regenerated turn re-throws the same arc; `prefers-reduced-motion` skips to the
 result. Presentational only — the roll exists before the animation does.
 `OUTCOME_LABEL` moved into `stakes.ts` so the toss and the beat's chip can't name
-a band differently.
+a band differently. **Test Roll** (RPG System → Presentation, beside the toggle)
+throws the configured dice with nothing at stake — `stakes.ts → previewRoll`, no
+actor, no modifier, recorded nowhere — and plays even with the animation off,
+since watching it is how the player decides.
+Post-MVP also: **fair dice** — pressing Test Roll exposed two seeding bugs in
+`rollDice`, both now regression-tested. FNV-1a's low bit is only the XOR of the
+input bytes' low bits, and `h % sides` shares its parity for even `sides`: a raw
+hash fed to the modulo made a die's parity a function of the seed's characters
+(a d6 that could roll only 1, 3, 5 when the turn's digits also appeared in the
+action text), and hashing `turn|action|i` for dice 2..n — seeds a suffix apart —
+locked them into opposite parities, so **2d6 could never roll 7**. Now one hash,
+`avalanche`d (murmur3 finalizer), with the extra dice counting off that base.
+Rolls no longer replay to pre-fix values; nothing recomputes a past roll but
+`regenerateLastTurn`.
 Deferred (post-MVP): rolling LLM summarization, NPC/item art, TTS,
 weather animation, multi-world. Track scope in `DESIGN.md → Build Phases`.
 

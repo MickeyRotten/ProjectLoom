@@ -98,15 +98,31 @@ always did.
   as `RISK_KEYWORDS`); `Settings.alwaysRoll` skips the gate entirely for a table
   where every turn is a check.
 - **The roll.** `rollDice(turn, action, rules)` hashes FNV-1a over
-  `turn|action` per die, mod `diceSides` + 1 — **pure in (turn, action text,
-  rules)**. `regenerateLastTurn` re-sends the same input on the same turn, so a
-  random roll would let the player re-roll until the answer was "strong";
-  seeding means a regenerate re-*tells* the same result, and editing the action
-  — genuinely choosing something else — earns a new roll. The **first die keeps
-  the original single-die seed**, so a roll made before the dice were
-  configurable still replays to the number it was recorded with. Each extra die
-  is hashed separately (`turn|action|i`) rather than sliced out of one hash, so
-  2d6 has a real 2d6 distribution.
+  `turn|action` **once**, runs it through a murmur3 finalizer (`avalanche`), and
+  takes `% diceSides + 1`; dice 2..n count off that same mixed base
+  (`avalanche(base + i × 0x9e3779b9)`). **Pure in (turn, action text, rules)**:
+  `regenerateLastTurn` re-sends the same input on the same turn, so a random roll
+  would let the player re-roll until the answer was "strong"; seeding means a
+  regenerate re-*tells* the same result, and editing the action — genuinely
+  choosing something else — earns a new roll.
+
+  Both mixing steps are there because the obvious version rolled **unfairly**,
+  and both are covered by regression tests:
+  - Feeding a raw FNV hash to `% diceSides` leaks its low bit — FNV's bit 0 is
+    just the XOR of the input bytes' low bits, and `h % sides` shares its parity
+    for even `sides`. A die's parity was therefore a predictable function of the
+    seed's characters, and on a seed family where the turn's digits also appear
+    in the action text they cancelled outright: a d6 that could only roll 1, 3
+    or 5.
+  - Hashing `turn|action|i` per die — seeds a suffix apart — leaked the same
+    relationship *between* dice and locked them into opposite parities: **2d6
+    could never roll 7**, only even sums. Each die looked perfectly uniform on
+    its own, which is how it survived; only the joint distribution was wrong.
+
+  The cost is that a roll is no longer the number the pre-`DiceRules` build
+  produced for the same (turn, action). Nothing recomputes a past roll except
+  `regenerateLastTurn` — saved beats display their recorded `TurnRoll` — and a
+  fair die is worth more than replaying an unfair one.
 - **The modifier.** `+strengthsBonus` when the action's keywords meet the
   actor's Strengths, `−flawsPenalty` when they meet their Flaws, using the same
   `extractKeywords`/`intersects` pair as the spotlight's `strengthsRelevant`, so

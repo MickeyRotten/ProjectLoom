@@ -206,20 +206,66 @@ export function seedHash(seed: string): number {
 }
 
 /**
+ * Murmur3's finalizer — the avalanche step FNV-1a doesn't have.
+ *
+ * Why it is needed: in FNV-1a the low bit of the output is nothing but the XOR
+ * of the low bits of the input bytes (the prime is odd, so multiplying never
+ * touches bit 0). Two seeds differing by a fixed suffix therefore have a FIXED
+ * relationship in their low bit — and since `h % sides` has the same parity as
+ * `h` for even `sides`, hashing `turn|action` and `turn|action|1` locked the two
+ * dice of a 2d6 into opposite parities: **every sum came out even, and a 7 was
+ * impossible.** The marginals looked perfect, which is why it survived — only
+ * the joint distribution was broken.
+ *
+ * The shifts here mix the high bits down, so the low bits of the result depend
+ * on the whole word and the lockstep disappears.
+ */
+function avalanche(h: number): number {
+  let x = h >>> 0;
+  x ^= x >>> 16;
+  x = Math.imul(x, 0x85ebca6b);
+  x ^= x >>> 13;
+  x = Math.imul(x, 0xc2b2ae35);
+  x ^= x >>> 16;
+  return x >>> 0;
+}
+
+/** Golden-ratio odd constant — the usual per-stream step for a counter mixer. */
+const GOLDEN = 0x9e3779b9;
+
+/**
  * The turn's dice — pure in (turn, action text, rules). See the seeding note
  * above.
  *
- * The FIRST die keeps the original one-die seed, so every roll made before the
- * dice were configurable still replays to the same number; extra dice hang off
- * their index. Each die is hashed separately rather than sliced out of one hash,
- * so 2d6 has a real 2d6 distribution.
+ * One hash of the seed, avalanched, then a counter for the extra dice. Both
+ * halves of that are load-bearing, and both replace something that looked
+ * reasonable and rolled unfairly:
+ *
+ * - **The avalanche on the base.** A raw FNV-1a hash was fed to `% diceSides`
+ *   directly. FNV's low bit is nothing but the XOR of the input bytes' low bits
+ *   — multiplying by an odd prime never touches bit 0 — and `h % sides` has the
+ *   same parity as `h` when `sides` is even. So a die's parity was a *predictable
+ *   function of the seed's characters*: on a seed family where the turn's digits
+ *   also appear in the action text the parities cancelled outright and a d6 could
+ *   only roll 1, 3 or 5.
+ * - **The counter for dice 2..n.** Those used to hash `turn|action|i` — a seed a
+ *   suffix away from the first die's. FNV leaks a fixed relationship between
+ *   seeds like that, which locked the dice into opposite parities: **2d6 could
+ *   never roll 7.** Counting off one already-mixed base has no near-identical
+ *   strings to leak between.
+ *
+ * The cost is that a roll is no longer the number the pre-`DiceRules` build would
+ * have produced for the same (turn, action) — nothing recomputes a past roll
+ * except `regenerateLastTurn`, and a fair die is worth more than replaying an
+ * unfair one.
  */
 export function rollDice(turn: number, action: string, rules: DiceRules = DEFAULT_DICE): number[] {
   const { diceCount, diceSides } = normalizeDice(rules);
-  const text = action.trim().toLowerCase();
+  const base = avalanche(seedHash(`${turn}|${action.trim().toLowerCase()}`));
   const dice: number[] = [];
   for (let i = 0; i < diceCount; i++) {
-    dice.push((seedHash(i === 0 ? `${turn}|${text}` : `${turn}|${text}|${i}`) % diceSides) + 1);
+    const h = i === 0 ? base : avalanche((base + Math.imul(i, GOLDEN)) >>> 0);
+    dice.push((h % diceSides) + 1);
   }
   return dice;
 }
@@ -287,6 +333,35 @@ export function computeStakes(
     modifier,
     total,
     outcome: risky ? bandFor(total, dice) : null,
+    rules: dice,
+  };
+}
+
+/**
+ * A throw with no turn behind it — what RPG System's **Test Roll** shows.
+ *
+ * Same dice, same banding, and the same `StakeSignals` shape as a real turn, so
+ * the preview cannot drift from what a turn will actually do. What it does NOT
+ * have is an actor or an action: no Strengths, no Flaws, no modifier — a test of
+ * the SYSTEM, not of a character's odds.
+ *
+ * The seed is a caller's argument rather than a `Math.random()` in here, so the
+ * function stays pure; the screen passes a fresh one per press, which is the one
+ * place in the app where a re-roll SHOULD give a different answer.
+ */
+export function previewRoll(rules: DiceRules, seed: string): StakeSignals {
+  const dice = normalizeDice(rules);
+  const rolled = rollDice(0, seed, dice);
+  const roll = rolled.reduce((sum, d) => sum + d, 0);
+  return {
+    risky: true,
+    strengthsInPlay: false,
+    flawsInPlay: false,
+    dice: rolled,
+    roll,
+    modifier: 0,
+    total: roll,
+    outcome: bandFor(roll, dice),
     rules: dice,
   };
 }

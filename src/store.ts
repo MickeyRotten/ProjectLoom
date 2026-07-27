@@ -45,7 +45,7 @@ import {
   setStanding as setEntryStanding,
   standingOf,
 } from "./lib/roster";
-import { computeStakes, rollRecord, stakeRules } from "./lib/stakes";
+import { computeStakes, previewRoll, rollRecord, stakeRules } from "./lib/stakes";
 import { buildMessages } from "./lib/prompt";
 import { completeChat, streamChat, OpenRouterError } from "./lib/openrouter";
 import {
@@ -264,6 +264,11 @@ export interface LoomStore {
    * that replaced it.
    */
   clearDice: (id: string) => void;
+  /**
+   * Throw the configured dice with nothing at stake (RPG System → Test Roll):
+   * a look at the system the player has just tuned, recorded nowhere.
+   */
+  testRoll: () => void;
 
   // Reversal (Phase 5) — unwind the latest turn's applied deltas.
   /** Drop the latest turn (player + narrator), restoring pre-turn scene state. */
@@ -1206,6 +1211,19 @@ export const useStore = create<LoomStore>((set, get) => {
 
   clearDice(id) {
     if (get().dice?.id === id) set({ dice: null });
+  },
+
+  testRoll() {
+    // A fresh seed per press — the one roll in the app that SHOULD come out
+    // differently each time, since the point is to watch the system, not to
+    // resolve anything. Nothing is recorded: no turn, no message, no history.
+    const stakes = previewRoll(get().settings, `test|${Math.random()}`);
+    const roll = rollRecord(stakes);
+    if (!roll || !stakes.outcome) return;
+    // Deliberately ignores `diceAnimation`: pressing Test Roll IS the request to
+    // see it, and a button that did nothing while the toggle was off would read
+    // as broken. It is also how the player decides whether to turn it on.
+    set({ dice: { id: uid(), roll, outcome: stakes.outcome } });
   },
 
   undoLastTurn() {
