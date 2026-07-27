@@ -5,8 +5,8 @@ import { TurnControls } from "./TurnControls";
 import { segmentDialogue } from "../lib/spotlight";
 import { parseInline } from "../lib/markdown";
 import { deriveToasts } from "../lib/toasts";
-import { bandScale, formatRoll, modifierNote } from "../lib/stakes";
-import type { Character, Message, TextScale, TurnOutcome } from "../types";
+import { OUTCOME_LABEL, bandScale, formatRoll, modifierNote } from "../lib/stakes";
+import type { Character, Message, TextScale } from "../types";
 
 /** Which message (id) is being edited, and the working draft. */
 type Editing = { id: string; role: "player" | "narrator"; draft: string };
@@ -288,13 +288,6 @@ function SceneMark({ msg, prev }: { msg: Message; prev?: Message }) {
     </div>
   );
 }
-
-/** How an outcome band reads as a chip. */
-const OUTCOME_LABEL: Record<TurnOutcome, string> = {
-  strong: "Strong result",
-  mixed: "Mixed result",
-  cost: "It cost you",
-};
 
 /**
  * Chip row for one narrator beat: the rolled outcome (when stakes decided this

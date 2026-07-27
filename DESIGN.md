@@ -98,15 +98,31 @@ always did.
   as `RISK_KEYWORDS`); `Settings.alwaysRoll` skips the gate entirely for a table
   where every turn is a check.
 - **The roll.** `rollDice(turn, action, rules)` hashes FNV-1a over
-  `turn|action` per die, mod `diceSides` + 1 — **pure in (turn, action text,
-  rules)**. `regenerateLastTurn` re-sends the same input on the same turn, so a
-  random roll would let the player re-roll until the answer was "strong";
-  seeding means a regenerate re-*tells* the same result, and editing the action
-  — genuinely choosing something else — earns a new roll. The **first die keeps
-  the original single-die seed**, so a roll made before the dice were
-  configurable still replays to the number it was recorded with. Each extra die
-  is hashed separately (`turn|action|i`) rather than sliced out of one hash, so
-  2d6 has a real 2d6 distribution.
+  `turn|action` **once**, runs it through a murmur3 finalizer (`avalanche`), and
+  takes `% diceSides + 1`; dice 2..n count off that same mixed base
+  (`avalanche(base + i × 0x9e3779b9)`). **Pure in (turn, action text, rules)**:
+  `regenerateLastTurn` re-sends the same input on the same turn, so a random roll
+  would let the player re-roll until the answer was "strong"; seeding means a
+  regenerate re-*tells* the same result, and editing the action — genuinely
+  choosing something else — earns a new roll.
+
+  Both mixing steps are there because the obvious version rolled **unfairly**,
+  and both are covered by regression tests:
+  - Feeding a raw FNV hash to `% diceSides` leaks its low bit — FNV's bit 0 is
+    just the XOR of the input bytes' low bits, and `h % sides` shares its parity
+    for even `sides`. A die's parity was therefore a predictable function of the
+    seed's characters, and on a seed family where the turn's digits also appear
+    in the action text they cancelled outright: a d6 that could only roll 1, 3
+    or 5.
+  - Hashing `turn|action|i` per die — seeds a suffix apart — leaked the same
+    relationship *between* dice and locked them into opposite parities: **2d6
+    could never roll 7**, only even sums. Each die looked perfectly uniform on
+    its own, which is how it survived; only the joint distribution was wrong.
+
+  The cost is that a roll is no longer the number the pre-`DiceRules` build
+  produced for the same (turn, action). Nothing recomputes a past roll except
+  `regenerateLastTurn` — saved beats display their recorded `TurnRoll` — and a
+  fair die is worth more than replaying an unfair one.
 - **The modifier.** `+strengthsBonus` when the action's keywords meet the
   actor's Strengths, `−flawsPenalty` when they meet their Flaws, using the same
   `extractKeywords`/`intersects` pair as the spotlight's `strengthsRelevant`, so
@@ -155,6 +171,27 @@ always did.
   pin old phrasing. Turns recorded before the roll was kept still show their band
   alone. The mark itself is an always-editable field on the member sheet (outside
   the Edit gate and outside the member-only block, since the PC has one too).
+- **The toss** (`lib/diceAnim.ts` + `components/DiceOverlay.tsx`,
+  `Settings.diceAnimation`, on by default): a rolled turn throws the dice across
+  a full-screen **60% ink scrim** — real CSS 3D cubes, tumbling, landing on the
+  faces the turn actually rolled — holds the result on a solid plate, and fades
+  out. The scrim (`--scrim`, its own per-theme token, so it flips with
+  ink/paper) is the one tone in the app that is neither ink nor paper: the beat
+  the player just sent stays legible underneath, so the dice land *in* the scene
+  rather than on a screen the game cut away to — which is also why the result
+  panel gets an opaque backing, since prose showing through the arithmetic is
+  the one thing the scrim costs. Staged in `sendTurn`
+  **before** the model is called, so the ~2.4s plays over the wait for the first
+  token rather than adding to the turn; tap anywhere to skip. No 3D library: six
+  `preserve-3d` faces and two keyframes, with **no lighting or shading** (a lit
+  die needs greys the 1-bit tokens don't have — depth reads from the silhouette
+  and the turning faces alone). Pips on a d6, the numeral on anything else. The
+  choreography is *pure in the `TurnRoll`* (`planToss`, seeded through the same
+  `seedHash` as the roll itself), so a regenerated turn re-throws the same arc —
+  nothing new happened, and nothing should look like it did. Presentational only:
+  the numbers exist before the animation does, and the beat's chip shows the same
+  result whether it ran, was skipped, or is switched off. `prefers-reduced-motion`
+  skips straight to the landed result.
 
 ---
 
@@ -224,7 +261,7 @@ Settings {                    // global, edited in Settings
   portraitAction/Context/Composition/Style, portraitRefImages,          // Portraits
     portraitRefInstruction
   // RPG System (its own screen — mechanics, not prompt text):
-  stakesEnabled, stakesRule, riskKeywords, alwaysRoll,
+  stakesEnabled, stakesRule, riskKeywords, alwaysRoll, diceAnimation,
   diceCount, diceSides, strengthsBonus, flawsPenalty,                   // DiceRules
     strongThreshold, mixedThreshold
 }
@@ -487,7 +524,7 @@ All secondary screens — **member sheet, Party, Inventory, Quests, and every Se
 - **RPG System screen** owns the dice and nothing else: **Stakes** on/off, the
   dice (`diceCount` × `diceSides`), what Strengths and Flaws are worth, where the
   STRONG/MIXED bands sit, **when to roll** (`alwaysRoll`, or the editable risk-word
-  list), and the **Outcome Rule** — with a live preview reading through
+  list), the **dice toss** on/off, and the **Outcome Rule** — with a live preview reading through
   `normalizeDice`, so what it shows is what will be rolled. Its own screen rather
   than a fifth Advanced sub-menu: Advanced is *prompt text handed to a model*,
   and this is mechanics the app resolves on-device before the model sees the turn.

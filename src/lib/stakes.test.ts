@@ -15,6 +15,7 @@ import {
   modifierNote,
   normalizeDice,
   parseKeywords,
+  previewRoll,
   rollDice,
   rollFor,
   rollRecord,
@@ -483,5 +484,118 @@ describe("modifierNote", () => {
     );
     expect(modifierNote({ strengths: true })).toBe("strengths in play");
     expect(modifierNote({})).toBe("nothing in play");
+  });
+});
+
+describe("previewRoll", () => {
+  it("rolls the configured dice and bands them the same way a turn does", () => {
+    const r = rules({ diceCount: 2, diceSides: 6, strongThreshold: 10, mixedThreshold: 7 });
+    const s = previewRoll(r, "test|abc");
+    expect(s.dice).toHaveLength(2);
+    expect(s.dice.every((d) => d >= 1 && d <= 6)).toBe(true);
+    expect(s.roll).toBe(s.dice.reduce((a, b) => a + b, 0));
+    expect(s.outcome).toBe(bandFor(s.total, r));
+  });
+
+  it("has no actor, so nothing modifies it", () => {
+    // A Test Roll shows the SYSTEM. Strengths and Flaws belong to a character
+    // taking an action, and there is neither here.
+    const s = previewRoll(DEFAULT_DICE, "test|xyz");
+    expect(s.modifier).toBe(0);
+    expect(s.total).toBe(s.roll);
+    expect(s.strengthsInPlay).toBe(false);
+    expect(s.flawsInPlay).toBe(false);
+    expect(rollRecord(s)).not.toBeNull();
+  });
+
+  it("always produces a result to show", () => {
+    // Unlike a turn, a press of the button is never "not risky" — it must always
+    // throw something, or the button looks broken.
+    for (const seed of ["a", "b", "c", "d"]) {
+      expect(previewRoll(DEFAULT_DICE, seed).outcome).not.toBeNull();
+    }
+  });
+
+  it("gives a different seed a different chance, and the same seed the same one", () => {
+    const r = rules({ diceCount: 3, diceSides: 20 });
+    expect(previewRoll(r, "same")).toEqual(previewRoll(r, "same"));
+    const rolls = new Set(
+      Array.from({ length: 20 }, (_, i) => previewRoll(r, `seed|${i}`).total),
+    );
+    expect(rolls.size).toBeGreaterThan(1);
+  });
+
+  it("sanitizes broken rules rather than rolling nothing", () => {
+    const s = previewRoll({ ...DEFAULT_DICE, diceCount: 0, diceSides: 1 }, "test");
+    expect(s.dice.length).toBeGreaterThanOrEqual(1);
+    expect(s.rules).toEqual(normalizeDice({ ...DEFAULT_DICE, diceCount: 0, diceSides: 1 }));
+  });
+});
+
+describe("fair dice", () => {
+  const twoD6: DiceRules = { ...DEFAULT_DICE, diceCount: 2 };
+
+  /** Face counts for die N over many turns of one seed family. */
+  function faceCounts(die: number, seed: (turn: number) => string, rules = DEFAULT_DICE) {
+    const counts = new Array(rules.diceSides).fill(0);
+    for (let turn = 0; turn < 3000; turn++) counts[rollDice(turn, seed(turn), rules)[die] - 1]++;
+    return counts;
+  }
+
+  it("rolls every face, whatever the seed looks like", () => {
+    // Regression: the raw FNV-1a hash went straight to `% diceSides`, and FNV's
+    // low bit is only the XOR of the input bytes' low bits — so the die's parity
+    // was a function of the seed's characters. On a seed family where the turn's
+    // digits also appear in the action text the parities cancelled and a d6
+    // could roll nothing but 1, 3, 5.
+    for (const seed of [
+      () => "I attack the bandit", // one action, many turns — ordinary play
+      (t: number) => `I attack ${t}`, // the turn number inside the action too
+      (t: number) => (t % 2 ? "go" : "wait"), // very short actions
+    ]) {
+      const counts = faceCounts(0, seed);
+      expect(counts.every((n) => n > 0)).toBe(true);
+      // Nothing like uniformity-testing rigour — just "no face is starved".
+      expect(Math.min(...counts)).toBeGreaterThan(3000 / 6 / 2);
+    }
+  });
+
+  it("can roll every sum on 2d6, 7 included", () => {
+    // Regression: dice 2..n hashed `turn|action|i`, a suffix away from die one's
+    // seed. FNV leaks a fixed relationship between seeds like that, which locked
+    // the two dice into opposite parities — every sum came out even.
+    const sums = new Set<number>();
+    for (let turn = 0; turn < 400; turn++) sums.add(rollFor(turn, `I attack ${turn}`, twoD6));
+    for (let sum = 2; sum <= 12; sum++) expect(sums.has(sum)).toBe(true);
+  });
+
+  it("peaks in the middle like real dice", () => {
+    // The triangular distribution is the whole reason to offer 2d6 over 1d12 —
+    // if the dice march in step it is neither shape.
+    const counts = new Array(13).fill(0);
+    for (let turn = 0; turn < 6000; turn++) counts[rollFor(turn, `act ${turn}`, twoD6)]++;
+    expect(counts[7]).toBeGreaterThan(counts[2] * 3);
+    expect(counts[7]).toBeGreaterThan(counts[12] * 3);
+  });
+
+  it("gives each die of a roll its own answer", () => {
+    const same = Array.from({ length: 200 }, (_, t) => {
+      const [a, b] = rollDice(t, "I climb the wall", twoD6);
+      return a === b;
+    }).filter(Boolean).length;
+    // ~1 in 6 should match by chance; locked dice would be 0 or 200.
+    expect(same).toBeGreaterThan(5);
+    expect(same).toBeLessThan(80);
+  });
+
+  it("is still a pure function of (turn, action, rules)", () => {
+    // The seeding contract itself is unchanged: a regenerate re-tells the same
+    // result rather than fishing for a better one.
+    expect(rollDice(4, "I lie to the guard", twoD6)).toEqual(
+      rollDice(4, "  I LIE TO THE GUARD  ", twoD6),
+    );
+    expect(rollDice(4, "I lie to the guard", twoD6)).not.toEqual(
+      rollDice(5, "I lie to the guard", twoD6),
+    );
   });
 });

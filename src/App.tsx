@@ -19,6 +19,7 @@ import { SavesScreen } from "./components/SavesScreen";
 import { MemberSheet } from "./components/MemberSheet";
 import { PartyScreen } from "./components/PartyScreen";
 import { InventoryScreen } from "./components/InventoryScreen";
+import { DiceOverlay } from "./components/DiceOverlay";
 
 /**
  * Phase 2 shell — the core loop plus party: header (the location banner, with
@@ -124,26 +125,38 @@ export default function App() {
   // instead of opening on a scenario that fails the moment it is touched.
   if (!setupDone) return <SetupScreen />;
 
-  if (screen === "menu") return <MenuScreen />;
-  if (screen === "modelkey") return <ModelKeyScreen />;
-  if (screen === "scenario") return <ScenarioScreen />;
-  if (screen === "characters") return <CharactersScreen />;
-  if (screen === "worldnotes") return <WorldNotesScreen />;
-  if (screen === "quests") return <QuestsScreen />;
-  if (screen === "advanced") return <AdvancedScreen />;
-  if (screen === "rpg") return <RpgSystemScreen />;
-  if (screen === "appearance") return <AppearanceScreen />;
-  if (screen === "saves") return <SavesScreen />;
-  if (screen === "member") return <MemberSheet />;
-  if (screen === "party") return <PartyScreen />;
-  if (screen === "inventory") return <InventoryScreen />;
+  const current = () => {
+    if (screen === "menu") return <MenuScreen />;
+    if (screen === "modelkey") return <ModelKeyScreen />;
+    if (screen === "scenario") return <ScenarioScreen />;
+    if (screen === "characters") return <CharactersScreen />;
+    if (screen === "worldnotes") return <WorldNotesScreen />;
+    if (screen === "quests") return <QuestsScreen />;
+    if (screen === "advanced") return <AdvancedScreen />;
+    if (screen === "rpg") return <RpgSystemScreen />;
+    if (screen === "appearance") return <AppearanceScreen />;
+    if (screen === "saves") return <SavesScreen />;
+    if (screen === "member") return <MemberSheet />;
+    if (screen === "party") return <PartyScreen />;
+    if (screen === "inventory") return <InventoryScreen />;
 
+    return (
+      <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
+        <Header />
+        <ChatView />
+        <PartyStrip />
+        <Composer />
+      </main>
+    );
+  };
+
+  // The dice toss sits OUTSIDE the screen switch: it is thrown the moment a turn
+  // rolls, and lasts a couple of seconds, so hanging it off the play screen
+  // would leave a cast stranded if anything changed screens underneath it.
   return (
-    <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
-      <Header />
-      <ChatView />
-      <PartyStrip />
-      <Composer />
-    </main>
+    <>
+      {current()}
+      <DiceOverlay />
+    </>
   );
 }

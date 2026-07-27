@@ -11,6 +11,15 @@
 :root {
   --ink: #000000;
   --paper: #ffffff;
+  /*
+   * The dice toss's backdrop (`DiceOverlay`) — ink at 60%, the only tone in the
+   * app that is neither ink nor paper. It is a scrim, not a curtain: the beat
+   * the player just sent stays readable behind the dice, so the roll reads as
+   * something happening *in* the scene rather than a screen the game cut to.
+   * Written as an explicit rgba per theme rather than an opacity utility so it
+   * flips with the ink/paper swap like everything else.
+   */
+  --scrim: rgb(0 0 0 / 0.6);
   --font-mono: ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas,
     "Liberation Mono", monospace;
 
@@ -34,6 +43,7 @@
 :root[data-theme="dark"] {
   --ink: #ffffff;
   --paper: #000000;
+  --scrim: rgb(255 255 255 / 0.6);
 }
 
 /*
@@ -132,8 +142,98 @@ body,
 }
 
 /*
+ * Dice toss (`DiceOverlay` + `lib/diceAnim.ts`) — a real cube, tumbling, in CSS.
+ *
+ * No 3D library: six absolutely-positioned faces inside a `preserve-3d` parent
+ * is the whole geometry, which costs nothing in the APK and composites on the
+ * GPU. There is deliberately NO lighting or shading — a lit die would introduce
+ * greys the 1-bit token system has no room for, so depth reads from the
+ * silhouette and the turning faces alone.
+ *
+ * Every value the animation varies per die (start pose, landing pose, throw-in
+ * offset, delay) arrives as a custom property from the planner, so the keyframes
+ * below are written once and never generated per roll.
+ */
+.loom-dice-scene {
+  perspective: 900px;
+}
+
+.loom-die {
+  width: var(--die);
+  height: var(--die);
+  /*
+   * Required, not decorative: this element carries the throw-in transform, and
+   * without `preserve-3d` it FLATTENS its subtree — the cube inside would still
+   * turn, but as a flat sprite with the scene's perspective thrown away. The
+   * whole chain from the perspective down to the faces has to preserve 3D.
+   */
+  transform-style: preserve-3d;
+  animation: loom-die-toss var(--toss) cubic-bezier(0.15, 0.75, 0.3, 1)
+    var(--delay) both;
+}
+
+.loom-die-cube {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  animation: loom-die-spin var(--toss) cubic-bezier(0.15, 0.75, 0.3, 1)
+    var(--delay) both;
+}
+
+.loom-die-face {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--ink);
+  background: var(--paper);
+  color: var(--ink);
+  /* Faces are opaque, so the ones turned away must not show through. */
+  backface-visibility: hidden;
+}
+
+/*
+ * The arc: in from off-screen, a slight overshoot past the resting place, then
+ * settle. The overshoot is what makes it read as thrown rather than moved.
+ */
+@keyframes loom-die-toss {
+  0% {
+    transform: translate3d(var(--dx), var(--dy), 0) scale(0.5);
+  }
+  70% {
+    transform: translate3d(0, 8%, 0) scale(1.08);
+  }
+  85% {
+    transform: translate3d(0, -5%, 0) scale(0.97);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+/*
+ * The tumble. Start and end differ by whole turns plus the landing pose, so the
+ * die always stops square to the camera showing the face it actually rolled.
+ */
+@keyframes loom-die-spin {
+  0% {
+    transform: rotateX(var(--rx0)) rotateY(var(--ry0));
+  }
+  100% {
+    transform: rotateX(var(--rx1)) rotateY(var(--ry1));
+  }
+}
+
+/*
  * One pulsing cursor is the app's only animation; honour a reader who has asked
  * the OS for less.
+ *
+ * The blanket duration override below also flattens the dice toss to its final
+ * frame — which is exactly right, and why the overlay checks the same query in
+ * JS: it skips straight to the landed result and holds it briefly, rather than
+ * timing a tumble nobody will see.
  */
 @media (prefers-reduced-motion: reduce) {
   *,
