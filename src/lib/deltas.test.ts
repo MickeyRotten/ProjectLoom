@@ -25,6 +25,7 @@ function member(id: string, name: string, patch: Partial<Character> = {}): Chara
     drive: "",
     strengths: "",
     flaws: "",
+    notes: "",
     equipment: [],
     ...patch,
   };
@@ -247,6 +248,24 @@ describe("applyDeltas — party ops", () => {
     });
     expect(getEntry(scene.roster, "m-navi").standing).toBe("benched");
     expect(scene.characters.find((c) => c.id === "m-navi")?.personality).toBe("Chirpy.");
+  });
+
+  it("never writes player notes — not on the creating add, not on an update", () => {
+    // `notes` is not on PartyDelta at all; the cast is `as never` because the
+    // only way this reaches `applyDeltas` is a model inventing the key.
+    const scene = applyDeltas(game(), lib(), {
+      party: [{ op: "add", name: "Navi", notes: "secretly the villain" } as never],
+    });
+    const navi = scene.characters.find((c) => c.name === "Navi");
+    expect(navi?.notes).toBe("");
+
+    const g = { ...game(), roster: [{ id: navi!.id, standing: "active" as const, lastSpokeTurn: 0 }] };
+    const later = applyDeltas(g, scene.characters, {
+      party: [{ op: "update", name: "navi", notes: "still the villain" } as never],
+    });
+    expect(later.characters.find((c) => c.id === navi!.id)?.notes).toBe("");
+    // And it is never smuggled in as a story override either.
+    expect(getEntry(later.roster, navi!.id).overrides).toBeUndefined();
   });
 
   it("drops equipment rows with no label, and non-array equipment", () => {

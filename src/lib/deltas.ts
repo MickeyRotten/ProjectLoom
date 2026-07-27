@@ -273,6 +273,10 @@ function makeCharacter(d: PartyDelta, id: string): Character {
     drive: d.drive ?? "",
     strengths: strengthsText(d.strengths),
     flaws: d.flaws ?? "",
+    // Player notes are not the narrator's to seed either — `PartyDelta` has no
+    // `notes` at all, so a character is born with an empty one and stays that
+    // way until the player writes in it.
+    notes: "",
     equipment: startingEquipment(d.equipment),
   };
 }

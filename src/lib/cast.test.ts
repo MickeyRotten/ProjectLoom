@@ -14,6 +14,7 @@ function npc(name: string, patch: Partial<PartyMember> = {}): PartyMember {
     drive: "Keep the forge lit.",
     strengths: "Smithing — reforges anything",
     flaws: "Short-tempered with fools.",
+    notes: "",
     equipment: [],
     lastSpokeTurn: 0,
     standing: "npc",
@@ -78,6 +79,11 @@ describe("formatNpcBlock", () => {
     expect(block).toContain("Strengths: Smithing — reforges anything");
     expect(block).toContain("Flaws: Short-tempered with fools.");
     expect(block).toContain("never write them as travelling with the player");
+  });
+
+  it("carries the player's Notes on an NPC sheet", () => {
+    const block = formatNpcBlock([npc("Mira Aldgate", { notes: "owes the player a favour" })]);
+    expect(block).toContain("Notes: owes the player a favour");
   });
 
   it("omits blank fields rather than printing empty labels", () => {

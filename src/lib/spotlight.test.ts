@@ -23,6 +23,7 @@ function member(patch: Partial<PartyMember> & { id: string; name: string }): Par
     drive: "",
     strengths: "",
     flaws: "",
+    notes: "",
     equipment: [],
     lastSpokeTurn: 0,
     standing: "active",

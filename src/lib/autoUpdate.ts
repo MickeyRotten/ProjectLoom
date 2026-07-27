@@ -164,6 +164,9 @@ export function formatSheet(c: Character): string {
     `Drive: ${c.drive || "(blank)"}`,
     `Strengths: ${c.strengths || "(blank)"}`,
     `Flaws: ${c.flaws || "(blank)"}`,
+    // The player's own notes. Read like every other field — they are context a
+    // side call must not contradict — but never a field a side call writes.
+    `Notes (the player's, never yours to write): ${c.notes || "(blank)"}`,
     `EQUIPMENT — what this character is currently wearing and carrying:`,
     equipment,
   ].join("\n");

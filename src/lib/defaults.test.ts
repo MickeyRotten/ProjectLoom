@@ -11,6 +11,7 @@ import {
   ensureGold,
   goldItem,
   isGold,
+  migrateCharacter,
   newCharacter,
   newGame,
   splitLegacyGame,
@@ -34,6 +35,17 @@ describe("newCharacter", () => {
     expect(c.role).toBe("member");
     expect(c).not.toHaveProperty("inParty");
     expect(c).not.toHaveProperty("lastSpokeTurn");
+  });
+});
+
+describe("migrateCharacter — player notes", () => {
+  it("loads a record written before Notes existed with a blank one", () => {
+    expect(migrateCharacter({ ...newCharacter("m-1"), notes: undefined }).notes).toBe("");
+  });
+
+  it("keeps what the player wrote", () => {
+    const stored = { ...newCharacter("m-1"), notes: "do not let him die" };
+    expect(migrateCharacter(stored).notes).toBe("do not let him die");
   });
 });
 

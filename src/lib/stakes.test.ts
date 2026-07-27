@@ -24,6 +24,7 @@ function pc(patch: Partial<PartyMember> = {}): PartyMember {
     drive: "",
     strengths: "",
     flaws: "",
+    notes: "",
     equipment: [],
     lastSpokeTurn: 0,
     standing: "none",

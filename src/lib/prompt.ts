@@ -179,6 +179,7 @@ function buildSystemContext(
       pc.drive ? `Drive: ${pc.drive}` : "",
       pc.strengths ? `Strengths: ${pc.strengths}` : "",
       pc.flaws ? `Flaws: ${pc.flaws}` : "",
+      pc.notes ? `Notes: ${pc.notes}` : "",
       pc.condition ? `Condition: ${pc.condition}` : "",
       formatEquipment(pc.equipment),
     ].filter(Boolean);
@@ -233,6 +234,7 @@ export function formatPartyRoster(members: PartyMember[]): string {
       m.drive ? `  Drive: ${m.drive}` : "",
       m.strengths ? `  Strengths: ${m.strengths}` : "",
       m.flaws ? `  Flaws: ${m.flaws}` : "",
+      m.notes ? `  Notes: ${m.notes}` : "",
       m.condition ? `  Condition: ${m.condition}` : "",
       m.equipment.length ? indent(formatEquipment(m.equipment)) : "",
     ].filter(Boolean);

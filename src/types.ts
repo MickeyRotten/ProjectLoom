@@ -47,6 +47,14 @@ export interface Character {
   /** What they are bad at — the counterweight to strengths, free text. */
   flaws: string;
   /**
+   * The PLAYER's own notes on this character — the one sheet field the model
+   * never writes. No `add` carries it, no `update` can touch it, Auto-Update
+   * skips it and there is no ✦ generate button beside it: it exists precisely
+   * so the player has somewhere to say what a character is that nothing can
+   * overwrite. The narrator READS it like any other sheet field.
+   */
+  notes: string;
+  /**
    * Worn / carried gear. Authored once by the narrator on the `add` that
    * creates the character (read off their appearance) and the player's from
    * then on — no later delta touches it.
@@ -252,9 +260,11 @@ export interface Reversal {
  * A character record as written before the Characters/Party split, when party
  * state lived on the character itself. Only migration + legacy reversal read it.
  */
-export type LegacyCharacter = Omit<Character, "sex"> & {
+export type LegacyCharacter = Omit<Character, "sex" | "notes"> & {
   /** Absent from every record written before the field existed. */
   sex?: string;
+  /** Likewise — player notes arrived after every one of these records. */
+  notes?: string;
   lastSpokeTurn?: number;
   inParty?: boolean;
   portraitKey?: string;

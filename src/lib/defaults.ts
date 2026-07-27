@@ -258,6 +258,7 @@ export function defaultPC(): Character {
       "Superhuman strength — can lift incredibly heavy objects with ease, punch through walls and brittle stone, and take hits that would kill a normal person.",
     flaws:
       "Reckless and easily distracted — charges in without a plan, and hopeless at anything needing patience, subtlety, or a straight answer.",
+    notes: "",
     equipment: [
       { label: "White Tunic", description: "Old, tattered, but still serviceable." },
       { label: "Black Trousers", description: "Simple, worn, baggy trousers." },
@@ -284,6 +285,7 @@ export function newCharacter(id: string): Character {
     drive: "",
     strengths: "",
     flaws: "",
+    notes: "",
     equipment: [],
     useCustomPortraitPrompt: false,
     customPortraitPrompt: "",
@@ -317,8 +319,8 @@ export function newGame(scenario: Scenario = DEFAULT_SCENARIO): GameState {
  * `name` label to become one free-text field (`strengthsText`), and the
  * Characters/Party split, which moved `lastSpokeTurn` / `inParty` off the
  * character and onto the adventure's roster. `portraitKey` was always dead —
- * the blob key is derived from the id — so it is dropped here too. `flaws` and
- * `sex` simply didn't exist before, and load blank.
+ * the blob key is derived from the id — so it is dropped here too. `flaws`,
+ * `sex` and `notes` simply didn't exist before, and load blank.
  */
 export function migrateCharacter(saved: LegacyCharacter): Character {
   const legacy = saved as LegacyCharacter & {
@@ -337,6 +339,7 @@ export function migrateCharacter(saved: LegacyCharacter): Character {
     ...rest,
     strengths: strengthsText(saved.strengths ?? legacy.fieldSkill),
     flaws: saved.flaws ?? "",
+    notes: saved.notes ?? "",
     sex: saved.sex ?? "",
   };
 }

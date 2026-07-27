@@ -66,6 +66,7 @@ export function formatNpcBlock(npcs: PartyMember[]): string {
       n.drive ? `  Drive: ${n.drive}` : "",
       n.strengths ? `  Strengths: ${n.strengths}` : "",
       n.flaws ? `  Flaws: ${n.flaws}` : "",
+      n.notes ? `  Notes: ${n.notes}` : "",
     ].filter(Boolean);
     return lines.join("\n");
   });
