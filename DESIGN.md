@@ -232,7 +232,7 @@ One isolated function returning the OpenRouter `messages[]`, in order:
   - **Location banner** — keyed by `banner:<location>`. On a scene change to an **uncached** location, generate from location name + a short narration excerpt + the **banner style instructions**. Gated by `Settings.locationImages`, see below.
   - **Party portrait** — keyed by `portrait:<memberId>`. When a member has no portrait, generate from their name/species/**sex**/description + the **portrait style instructions** — *unless* the player removed it (`Character.noPortrait`), see **Remove** below. Sex is in the Subject because an image model given only prose guesses, and guesses differently on every regenerate.
 - **Style baked in:** default banner/portrait instructions enforce **1-bit monochrome pixel/line art**. Player-editable under Advanced.
-- **Location images off by default (Advanced → Images → `Settings.locationImages`):** the whole banner feature is opt-in. Portraits are drawn once per character and then reused forever; a location banner is a fresh generation every time the story moves somewhere new, which makes it the app's most expensive habit and the one furthest from the text the player came for. Off means **no generation and no UI**: `syncImages` skips the banner entirely (cached or not), `regenerateBanner` / `editBanner` no-op, `<Header>` falls back to the plain single-height ink strip (no art, no image controls), and the Menu's *Compact Location Image* toggle and the Advanced cooldown + banner-style fields are hidden rather than left as dead controls. Nothing is deleted — already-generated banners are still in IndexedDB and reappear the moment it's switched back on. Portraits are unaffected.
+- **Location images off by default (Advanced → Images → `Settings.locationImages`):** the whole banner feature is opt-in. Portraits are drawn once per character and then reused forever; a location banner is a fresh generation every time the story moves somewhere new, which makes it the app's most expensive habit and the one furthest from the text the player came for. Off means **no generation and no UI**: `syncImages` skips the banner entirely (cached or not), `regenerateBanner` no-ops, `<Header>` falls back to the plain single-height ink strip (no art, no image controls), and the Menu's *Compact Location Image* toggle and the Advanced cooldown + banner-style fields are hidden rather than left as dead controls. Nothing is deleted — already-generated banners are still in IndexedDB and reappear the moment it's switched back on. Portraits are unaffected.
 - **Location image cooldown (Advanced → `Settings.bannerCooldown`, 0 = off):** turns to skip automatic banner generation for after one is drawn — `3` means the next 3 turns draw no new location image, the 4th does (`bannerOnCooldown` / `bannerCooldownLeft`, counted from `GameState.lastBannerTurn`). A location-hopping stretch otherwise bills one generation per turn, which is the single easiest way to burn image credit without noticing. Three deliberate limits: the gate is on **generation only**, so an already-cached location still shows its banner instantly; the stamp is written on a real generation only, never a cache hit, so re-treading known ground doesn't stall the next new one; and **`regenerateBanner` ignores the cooldown** (but restarts it — it *is* a generation; no longer reachable from the bar, see *Top bar*). While suppressed the banner placeholder says how many turns are left, so it never reads as a broken image. `lastBannerTurn` is deliberately outside `Reversal` — an undo can't un-spend a generation.
 - **Regenerate:** ⟳ on each member sheet (and `regenerateBanner` in the store) re-runs generation and **replaces the cached blob and its master** — generated, edited, or uploaded, whatever is there loses. A forced regeneration that fails flags `imgError` (an *image failed* badge) **with the reason** — "failed" alone is unactionable, and the causes are wildly different (no credit, a refused prompt, an unreadable file). ⟳ also clears `noPortrait`.
 - **Edit (✎):** instruction + the image back to the model; the result **becomes** the new image (display copy *and* master). The edit source is the master, never the display copy — handing a model a 192px 1-bit thumbnail comes back as mush or as a text-only reply that fails the edit outright.
@@ -408,14 +408,18 @@ Layout top-to-bottom (the reference screenshot is a **style guide, not literal t
 - **Top bar = the location banner** (when `Settings.locationImages` is on): one
   element, not a header plus a strip below it. The bar doubles to 120px, the
   generated 1-bit image is its background, and the location label, the day and
-  the menu button sit along the **bottom** over a black gradient that reaches
-  full alpha within ~16px — the text stays legible over any image without a
-  soft ramp greying out the whole picture. **✎ alone** sits top-right over the
-  art; tapping bare art opens it full-screen. Regenerate (⟳) and collapse (▲)
-  were removed from the bar — sizing lives in Menu → *Compact Location Image*,
-  and a redraw is a spend nobody was asking for from a button parked on top of
-  the picture; ✎ stays because it is the one control with no equivalent
-  elsewhere. (`regenerateBanner` is still in the store, just not surfaced.) Merging them was the point: the
+  the menu button sit along the **bottom** edge, drawn **directly on the art** —
+  no scrim, no gradient.
+  The gradient that used to back them was darkening the bottom third of every
+  banner to make room for two short words; an **outline** buys the same
+  legibility for none of the picture (`-webkit-text-stroke: 3px #000` with
+  `paint-order: stroke`, so black traces each glyph and the white fill paints on
+  top). Tapping bare art opens it full-screen. **No controls sit on the art at
+  all**: ✎ followed ⟳ and ▲ off the bar — a location banner is scenery the story
+  replaces every time the player moves, so retouching one does not earn a button
+  parked permanently on top of it, and each glyph cost the image the corner it
+  sat in. (`regenerateBanner` is still in the store, just not surfaced;
+  `editBanner` is gone.) Merging them was the point: the
   header and the banner were printing the same location name 60px apart, and
   the banner's height came straight out of the reading area. Everything drawn
   on the art uses literal `#000`/`#fff` rather than the ink/paper tokens — the
@@ -425,7 +429,7 @@ Layout top-to-bottom (the reference screenshot is a **style guide, not literal t
 - **AI options:** 3–4 contextual choices from the `<<<LOOM>>>` block, rendered **in the chat view, directly under the latest narration beat** and **above the party portrait strip**; number keys submit; each just sends its text as a normal turn. They scroll with the chat, tethered to the beat that produced them.
 - **Chat scrolling:** the log opens on the newest beat and follows the tail while the reader is parked there; scrolling up into the history stops the follow and shows a **↓ LATEST** button back to the live edge.
 - **Party strip** sits below the options, above the fixed buttons; always visible; tapping a portrait opens that member's **full-screen sheet** (info · edit fields · **regenerate portrait** · **auto-update**). Strip portraits are zoomed 50% and top-aligned so the face fills the tall slot; the sheet's portrait frame is **2:3**.
-- **Fixed buttons:** `LOOK` sends "I look around."; `PARTY` and `INVENTORY` open full-screen views. (LOOK is a narrative action; PARTY/INVENTORY are views.)
+- **Quick actions (`Settings.quickActions`)** are the three buttons above the input, shipped as LOOK · WAIT · INVESTIGATE and **editable in place**: a ✎ beside them opens a modal with a **label** and an **action** per row (the label is what the button says; the action is what gets sent as the turn, word for word), plus *Reset to Defaults*. What counts as "the thing I do every other turn" is a property of the table, not of the app — a dungeon crawl wants LISTEN, a courtly game wants BOW. **Clearing both halves drops that button**, so a player can run two shortcuts or none; the row is fixed at three because a fourth either shrinks them below a comfortable tap or wraps. `settings.ts → normalizeQuickActions` folds anything stored (a short array, a row with no `input`, junk) onto exactly three well-formed rows at READ time — but never fills a **blank** row back in, since blank is how a button is deleted. ✎ is never disabled: editing a button is not a turn, so it works mid-stream and without a key.
 - **Inventory view:** a list of `Label · Description · Quantity` rows, editable inline.
 - **Quests view:** a list of `Label · Description · Reward` rows (+ active/done status), editable inline; reached from the menu/header (kept off the 3-button row to preserve the screenshot's layout).
 
@@ -446,6 +450,15 @@ Auto-Update's sibling, and the difference is **where it reads from**. Auto-Updat
 - **Preview, then accept.** The modal shows what came back with **Use This / Generate Again / Cancel**, at a looser temperature than a sheet update (authoring wants variety; a re-roll should differ). An optional guidance box rides last in the prompt, so it outranks the sheet it may deliberately contradict.
 - **✦ only in Edit mode.** An accepted generation lands in the sheet's **edit draft**, not the character — so **Discard Changes is the undo** and **Save Changes** is what commits it (through `updateCharacter`, which retires that field's story override). The generation reads the draft too, so a Flaws written right after the player typed a Personality reads that Personality.
 - The store action writes nothing and takes the character **by value**; it needs no `streaming` guard for that reason, only single-flight.
+
+### Scenario fields — `src/lib/generateScenario.ts`
+
+The same ✦ one level up: **Premise** and **Opening Narration** on the Scenario screen each carry a generate button, running through the shared `GenerateModal` (guidance in, preview back, *Use This / Generate Again / Cancel*) and the same one-key JSON contract, parsed by `parseGeneratedField` — one tolerant parser rather than two that drift.
+
+- **Context is the scenario, never the beats.** The title, the starting location, the *other* field, the player character, and the World Notes those words trigger. This is the text a **new** adventure starts from, so reading the one being played would be backwards. The field being written is not sent as context either — it is a draft to replace.
+- **Premise** is asked for as the world (background the narrator re-reads every turn); **Opening Narration** as the first beat, second person, ending on the question — the same shape a turn is written in.
+- **No Edit gate here.** The Scenario screen writes as you type, so an accepted generation commits immediately; the modal says so before it lands, rather than implying a Discard Changes that this screen does not have.
+- Shares `fieldGenPending` / `fieldGenError` with the character generator — one generate modal is open at a time app-wide, which is the assumption the single-flight guards already make.
 
 ### Shell + reachability
 
@@ -470,9 +483,25 @@ Auto-Update's sibling, and the difference is **where it reads from**. Auto-Updat
   unhinted tap on a plain `<div>`, so they were invisible to a new player and
   unreachable by keyboard or screen reader. A `⋯ Turn options` button under the
   latest beat is the discoverable, focusable path; the tap still works.
-- **One navigation model.** Party / Inventory / Quests / World Notes are in the
-  gear menu as well as the ⋯ shortcut. They used to live *only* behind ⋯, so the
-  one thing that looks like navigation pointed at half the app.
+- **One navigation model.** Party / Inventory / Quests / World Notes / **Saves**
+  are in the gear menu as well as the ⋯ shortcut. Most of them used to live
+  *only* behind ⋯, so the one thing that looks like navigation pointed at half
+  the app; Saves had the opposite problem — it sat last in the gear menu, five
+  taps from a player about to do something they might want to undo. Snapshotting
+  is a mid-play act, so it is now in **both** lists, and grouped with play in the
+  menu rather than filed under settings.
+- **Regenerate takes a note.** ↻ Regen opens a box for one line of direction —
+  "shorter", "let her refuse", "less combat" — before it re-runs the turn. A bare
+  re-roll only ever gave the model another go at the identical prompt, so a beat
+  that went wrong in a *specific* way could only be fixed by rolling until it
+  happened not to. Blank is the default and is byte-for-byte the old behaviour
+  (`prompt.ts → formatRegenerateNote` emits nothing). The note rides as its own
+  system block **beside** the roll call and the outcome, never folded into the
+  player's message: the message is the transcript, the history window, and — the
+  load-bearing one — the **seed the stakes roll is drawn from**, so folding a
+  note in would let a player re-roll a bad outcome by retyping their complaint.
+  The block also tells the narrator the note is direction, not something the
+  character said, so nobody in the scene reacts to "make it shorter".
 - **`useConfirm`** replaces six native `confirm()` calls. On the Android WebView
   those render as system-styled alerts — rounded, platform-blue, another
   typeface — in the middle of a hand-built monochrome app, and they cannot be
@@ -520,7 +549,7 @@ optional image model — shown while `Settings.setupDone` is false.
 ### Secondary screens
 All secondary screens — **member sheet, Party, Inventory, Quests, and every Settings sub-screen** — are **full-screen overlays with a Back button** in a top header (the mobile pattern; no split panes). They open over the chat and return to it on Back. Same store/components regardless.
 
-- **Menu (gear)** → full-screen screens: **Quests**, **Scenario** editor, **Characters** (the whole cast), **World Notes**, **Model & Key**, **Appearance**, **RPG System**, **Advanced instructions**, **Saves**.
+- **Menu (gear)** → full-screen screens, play-facing first: **Party**, **Inventory**, **Quests**, **World Notes**, **Saves**, then **Characters** (the whole cast), the **Scenario** editor, **Model & Key**, **Appearance**, **RPG System**, **Advanced instructions**. The first five are also on the ⋯ shortcut beside GO.
 - **RPG System screen** owns the dice and nothing else: **Stakes** on/off, the
   dice (`diceCount` × `diceSides`), what Strengths and Flaws are worth, where the
   STRONG/MIXED bands sit, **when to roll** (`alwaysRoll`, or the editable risk-word
@@ -551,7 +580,8 @@ All secondary screens — **member sheet, Party, Inventory, Quests, and every Se
   state — Back pops to the index first, then out of Advanced.
 - **Characters screen** lists the global cast grouped by this adventure's standing — PC, then *In Party n/3*, *Benched*, *NPCs & Allies*, *Gone*, and *Everyone Else* — each row opening the sheet and carrying one-tap moves (**Add to Party** / **Bench** / **Kick** / **Make NPC**). **+ New Character** creates someone in the library only. A filter box appears once the cast grows past 8.
 - **Party screen** lists the company in two halves — *In the scene n/3* (**Bench** / **Kick**) and *Benched* (**Activate** / **Kick**) — with a route to Characters when both are empty. The member sheet carries the same Kick/Add control, the adventure **standing** (active / benched / npc / departed / fallen) with a one-line explanation of what the current one means, **Revert Story Changes** when the story has diverged, and **Delete Character** (library-wide, player-only).
-- **Member sheet fields:** Name · **Species** · **Sex** (both free text — the setting owns the vocabulary) · Portrait Prompt · Appearance · Personality · Drive · Strengths · Flaws · **Notes** · Equipment, then the per-adventure **Condition** and **Standing**. **Notes** is the player's own field — no ✦, and no model writes it. In Edit mode the five *other* prose fields each carry a **✦ generate** button (see *Per-field generation*); ✦ rather than ✨ because the sparkle is an emoji and browsers paint it in colour, which is one colour more than this app has — the same reason the portrait controls are ⟳ and ✎.
+- **Member sheet order:** portrait → **Image Options** (a closed disclosure: upload · download · remove · the custom portrait prompt) → **Edit** → the sheet → **Story** (Auto-Update, and Revert Story Changes when the story has diverged) → **Condition** → **Standing** → leave/delete. Who the character *is* comes first and everything you can *do* to them follows: the sheet used to open with six buttons and an image-prompt fieldset, so a screen whose entire purpose is the prose underneath them made the player scroll past all of it to reach a name. Nothing was removed — the once-a-character controls fold away, the rest moved below the text they act on.
+- **Member sheet fields:** Name · **Species** · **Sex** (both free text — the setting owns the vocabulary) · Appearance · Personality · Drive · Strengths · Flaws · **Notes** · Equipment, then the per-adventure **Condition** and **Standing**. **Notes** is the player's own field — no ✦, and no model writes it. In Edit mode the five *other* prose fields each carry a **✦ generate** button (see *Per-field generation*); ✦ rather than ✨ because the sparkle is an emoji and browsers paint it in colour, which is one colour more than this app has — the same reason the portrait controls are ⟳ and ✎.
 - **Style:** pure black/white, monospace, square borders, no rounded corners, no color. Small token set in `theme.css` (`--ink #000`, `--paper #fff`) so it stays one system.
 
 ### Reading area

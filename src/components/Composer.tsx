@@ -1,34 +1,41 @@
 import { useState } from "react";
 import { useStore, type Screen } from "../store";
+import { usableQuickActions } from "../lib/settings";
+import { QuickActionsModal } from "./QuickActionsModal";
 
-/** Context-menu destinations tucked behind the ⋯ button beside GO. */
+/**
+ * Context-menu destinations tucked behind the ⋯ button beside GO — the fast
+ * route to the screens play actually reaches for. **Saves** is one of them:
+ * snapshotting before something risky is a mid-turn act, and living only at the
+ * bottom of the gear menu put five taps between the player and the reason they
+ * would ever want it.
+ */
 const MENU: { screen: Screen; label: string }[] = [
   { screen: "party", label: "Party" },
   { screen: "inventory", label: "Inventory" },
   { screen: "quests", label: "Quests" },
   { screen: "worldnotes", label: "World Notes" },
-];
-
-/** Always-visible quick actions, sized like the turn controls. */
-const QUICK = [
-  { label: "Look", input: "I look around." },
-  { label: "Wait", input: "I wait to see what happens." },
-  { label: "Investigate", input: "I investigate my immediate surroundings carefully." },
+  { screen: "saves", label: "Saves" },
 ];
 
 /**
- * Quick actions (LOOK · WAIT · INVESTIGATE) above a freeform input plus GO. The
- * ⋯ button beside GO opens a context menu routing to Party · Inventory ·
- * Quests · World Notes.
+ * Quick actions (LOOK · WAIT · INVESTIGATE by default, `Settings.quickActions`
+ * once the player edits them) above a freeform input plus GO. ✎ beside the
+ * shortcuts opens the editor; the ⋯ button beside GO opens a context menu
+ * routing to Party · Inventory · Quests · World Notes · Saves.
  */
 export function Composer() {
   const [text, setText] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [editQuick, setEditQuick] = useState(false);
   const sendTurn = useStore((s) => s.sendTurn);
   const stopTurn = useStore((s) => s.stopTurn);
   const streaming = useStore((s) => s.streaming);
   const setScreen = useStore((s) => s.setScreen);
   const hasKey = useStore((s) => Boolean(s.settings.openRouterKey.trim()));
+  // Only the rows with both halves written — a blank one is a button the player
+  // deliberately removed.
+  const quick = usableQuickActions(useStore((s) => s.settings.quickActions));
 
   const submit = () => {
     const t = text.trim();
@@ -51,17 +58,33 @@ export function Composer() {
       )}
 
       <div className="flex gap-2 text-xs uppercase tracking-widest">
-        {QUICK.map((q) => (
+        {quick.map((q, i) => (
           <button
-            key={q.label}
+            key={`${i}-${q.label}`}
             type="button"
             disabled={streaming || !hasKey}
             onClick={() => void sendTurn(q.input)}
-            className="flex-1 border-2 border-ink py-2 opacity-70 disabled:opacity-30 active:bg-ink active:text-paper active:opacity-100"
+            // Tighter than the row's `text-xs tracking-widest`: the ✎ takes a
+            // button's width out of the row, and a default label ("Investigate")
+            // no longer fits at the old spacing. Truncation is still there as
+            // the backstop for whatever the player types in.
+            className="min-h-11 flex-1 truncate border-2 border-ink px-1 py-2 text-[0.7rem] tracking-wide opacity-70 disabled:opacity-30 active:bg-ink active:text-paper active:opacity-100"
           >
             {q.label}
           </button>
         ))}
+        {/* ✎ sits with them rather than in the gear menu: the moment you want
+            a different shortcut is the moment you are looking at the one that
+            isn't it. Never disabled — editing a button is not a turn, so it
+            stays reachable mid-stream and without a key. */}
+        <button
+          type="button"
+          aria-label="Edit quick actions"
+          onClick={() => setEditQuick(true)}
+          className="min-h-11 w-11 shrink-0 border-2 border-ink leading-none opacity-70 active:bg-ink active:text-paper active:opacity-100"
+        >
+          ✎
+        </button>
       </div>
 
       <form
@@ -140,6 +163,8 @@ export function Composer() {
           </>
         )}
       </form>
+
+      {editQuick && <QuickActionsModal onClose={() => setEditQuick(false)} />}
     </footer>
   );
 }

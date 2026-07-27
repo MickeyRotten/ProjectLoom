@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useStore } from "../store";
 import { bannerCooldownLeft, bannerKey } from "../lib/images";
-import { EditImageButton } from "./EditImageButton";
 
 /**
  * The top bar — location · day · menu — and, when Location Images are on, the
@@ -10,9 +9,10 @@ import { EditImageButton } from "./EditImageButton";
  * The banner used to be its own strip below the header, which meant the
  * location name was printed twice within 60px of itself and the art cost the
  * reading area its full height. Merged, the bar doubles in height and the image
- * becomes its background: the label, the day and the menu button sit along the
- * bottom over a black gradient that reaches full alpha quickly, so the text
- * stays legible over whatever the image happens to be doing there.
+ * becomes its background: the label, the day and the menu button sit along its
+ * bottom edge directly on the art, with nothing painted behind them — the
+ * gradient scrim that used to back them was darkening the bottom third of every
+ * picture to make room for two short words.
  *
  * Literal `#000`/`#fff`, not the ink/paper tokens, for everything that sits on
  * the art — the ONE place in the app that opts out of the token system, and it
@@ -38,7 +38,6 @@ export function Header() {
   const url = useStore((s) => s.images[key]);
   const pending = useStore((s) => s.imgPending[key]);
   const imageError = useStore((s) => s.imgError[key]);
-  const edit = useStore((s) => s.editBanner);
   // Turns left on the generation cooldown (Advanced). Without this an empty bar
   // is indistinguishable from a silently broken one.
   const waiting = useStore((s) =>
@@ -88,25 +87,15 @@ export function Header() {
         />
       )}
 
-      {/* ✎ only. Regenerate (⟳) and collapse (▲) are gone from the bar: sizing
-          lives in Menu → Compact Location Image, and a redraw is a spend the
-          player was never asking for from a button sitting on top of the art.
-          Edit stays because it is the one control with no equivalent elsewhere.
-          Tall bar only — the compact one is a single row with no free space. */}
-      {full && url && (
-        <div className="absolute right-1 top-1 flex gap-1">
-          <EditImageButton
-            label="Edit banner"
-            disabled={pending}
-            onSubmit={edit}
-            className="min-h-11 min-w-11 border-2 border-[#fff] bg-[#000]/70 px-2 leading-none text-[#fff] disabled:opacity-40 active:bg-[#fff] active:text-[#000]"
-          />
-        </div>
-      )}
+      {/* No controls on the art at all now — ✎ followed ⟳ and ▲ off the bar.
+          A location banner is scenery the story replaces on its own every time
+          the player moves; retouching one is not something worth a button
+          parked permanently on top of the picture, and every glyph up there was
+          costing the image the corner it sat in. */}
 
       {/* Nothing drawn yet: say which of the two reasons it is. */}
       {full && !url && (
-        <div className="absolute inset-x-0 top-0 flex h-[3.75rem] flex-col items-center justify-center gap-1 px-14 text-center text-sm uppercase tracking-widest opacity-60">
+        <div className="absolute inset-x-0 top-0 flex h-[3.75rem] flex-col items-center justify-center gap-1 px-3 text-center text-sm uppercase tracking-widest opacity-60">
           {pending && <span className="truncate">rendering banner…</span>}
           {!pending && waiting > 0 && (
             <span className="text-[0.6rem]">
@@ -127,21 +116,21 @@ export function Header() {
         </button>
       )}
 
-      {/* The scrim the bottom row reads against, painted separately so the row
-          keeps its 44px touch targets without the darkening growing with it.
-          Tall bar: opaque exactly as high as the row, then a 16px fade to
-          nothing — a long soft ramp would grey out the whole picture, and the
-          point of the merge was to show the picture. Compact bar: the row IS
-          the bar, so a flat scrim keeps the art visible underneath instead. */}
+      {/* The bottom row sits DIRECTLY on the art — no scrim, no gradient. What
+          was there before darkened the bottom of every banner (a flat black
+          wash on the compact bar, a fast gradient on the tall one) to back two
+          short words, which is a lot of picture spent on legibility.
+          An OUTLINE buys the same legibility for none of it: `text-stroke` with
+          `paint-order: stroke` traces black around each glyph and paints the
+          white fill on top, so the label survives a white patch of banner
+          without hiding what is under it. Still strictly two tones, and still
+          the literal `#000`/`#fff` everything on the art uses — the bitmap does
+          not flip with the invert theme. */}
       <div
-        aria-hidden="true"
-        className={`pointer-events-none absolute inset-x-0 bottom-0 ${
-          full
-            ? "h-[4.5rem] bg-[linear-gradient(to_top,#000_0%,#000_78%,transparent_100%)]"
-            : "top-0 bg-[#000]/75"
+        className={`absolute inset-x-0 bottom-0 flex items-center justify-between gap-3 px-3 py-1.5 ${
+          url ? "[paint-order:stroke] [-webkit-text-stroke:3px_#000]" : ""
         }`}
-      />
-      <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-3 px-3 py-1.5">
+      >
         <button
           type="button"
           disabled={!url}

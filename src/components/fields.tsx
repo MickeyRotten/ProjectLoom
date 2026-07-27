@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 /**
  * Shared 1-bit form controls for the Phase 4 authoring screens (scenario,
  * characters, world notes, quests, advanced instructions). Square borders,
@@ -22,6 +24,43 @@ export const btn =
 
 export const btnSmall =
   "inline-flex min-h-11 items-center justify-center border-2 border-ink px-3 py-1 text-xs uppercase tracking-widest active:bg-ink active:text-paper disabled:opacity-40";
+
+/**
+ * A section that starts closed — a header row that toggles its body open.
+ *
+ * For the controls a screen needs to OFFER but not to show: the member sheet's
+ * portrait tools and prompt override were six buttons and a fieldset standing
+ * between the player and the character's name, on a sheet whose whole purpose is
+ * the text underneath them. Closed by default, one tap from open, and the tap
+ * target is the whole row.
+ */
+export function Collapsible({
+  label,
+  defaultOpen = false,
+  children,
+}: {
+  label: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="border-2 border-ink">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+        className="flex min-h-11 w-full items-center justify-between px-3 py-2 text-left uppercase tracking-widest active:bg-ink active:text-paper"
+      >
+        <span>{label}</span>
+        <span aria-hidden="true" className="opacity-70">
+          {open ? "▲" : "▼"}
+        </span>
+      </button>
+      {open && <div className="space-y-3 border-t-2 border-ink p-3">{children}</div>}
+    </div>
+  );
+}
 
 /** A group heading inside a list — Characters and Party split by standing. */
 export function Section({ label }: { label: string }) {

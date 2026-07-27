@@ -5,6 +5,7 @@ import {
   approxTokens,
   formatPartyRoster,
   formatPartyComposition,
+  formatRegenerateNote,
 } from "./prompt";
 import { defaultPC, newGame, defaultSettings } from "./defaults";
 import { PARTY_LIMIT } from "./roster";
@@ -744,5 +745,57 @@ describe("stakes + conditions blocks", () => {
     });
     expect(on.some((m) => m.content.includes('"conditions"'))).toBe(true);
     expect(off.some((m) => m.content.includes('"conditions"'))).toBe(false);
+  });
+});
+
+describe("formatRegenerateNote", () => {
+  it("is empty for a note that isn't one", () => {
+    // A plain ↻ Regen must reach the model with the prompt it had before the
+    // note box existed — same input, same seed, a different roll.
+    expect(formatRegenerateNote("")).toBe("");
+    expect(formatRegenerateNote("   \n ")).toBe("");
+  });
+
+  it("carries the note and says it is direction, not dialogue", () => {
+    const block = formatRegenerateNote("  shorter, and let her refuse  ");
+    expect(block).toContain("shorter, and let her refuse");
+    expect(block).toContain("RETELL THIS BEAT");
+    expect(block.toLowerCase()).toContain("never quote it");
+  });
+});
+
+describe("buildMessages — regeneration note", () => {
+  const game = newGame();
+
+  it("adds nothing when there is no note", () => {
+    const plain = build({ game, playerMessage: "I open the door." });
+    const noted = buildMessages({
+      settings,
+      game,
+      characters: [defaultPC()],
+      playerMessage: "I open the door.",
+      regenerateNote: "  ",
+    });
+    expect(noted.length).toBe(plain.length);
+    expect(noted.map((m) => m.content).join("\n")).not.toContain("RETELL THIS BEAT");
+  });
+
+  it("injects the note before the output protocol, and never as the player's line", () => {
+    const messages = buildMessages({
+      settings,
+      game,
+      characters: [defaultPC()],
+      playerMessage: "I open the door.",
+      regenerateNote: "keep it to three sentences",
+    });
+    const idx = messages.findIndex((m) => m.content.includes("keep it to three sentences"));
+    expect(idx).toBeGreaterThan(-1);
+    expect(messages[idx].role).toBe("system");
+    // Still the last word, and still just the action: the note is direction to
+    // the narrator, not something the character said.
+    const last = messages[messages.length - 1];
+    expect(last.role).toBe("user");
+    expect(last.content).toBe("I open the door.");
+    expect(idx).toBeLessThan(messages.length - 2);
   });
 });
