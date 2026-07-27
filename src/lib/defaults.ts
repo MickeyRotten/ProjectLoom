@@ -9,6 +9,7 @@ import type {
   Settings,
 } from "../types";
 import { PARTY_LIMIT, normalizeRoster, strengthsText } from "./roster";
+import { DEFAULT_DICE, RISK_KEYWORDS } from "./stakes";
 
 /**
  * Ship-time defaults. The pre-made scenario is intentionally minimal for
@@ -163,6 +164,14 @@ COST — it goes wrong. The player pays something real — hurt, disarmed, separ
 When a result marks someone lastingly, record it in "conditions". Never kill the player character: leave them alive with something to fix.`;
 
 /**
+ * The risk-word list as an editable field (RPG System → Risky Actions). Written
+ * out of `RISK_KEYWORDS` so the shipped list and the default text can never
+ * drift apart; the player edits a comma-separated line, `parseKeywords` reads it
+ * back.
+ */
+export const DEFAULT_RISK_KEYWORDS = RISK_KEYWORDS.join(", ");
+
+/**
  * Rolling-history budget, in approximate tokens. 3000 was hardcoded and never
  * passed by the store, which capped a campaign at roughly 15–25 turns before
  * the early game fell out of memory for good. It ships unchanged so existing
@@ -227,6 +236,11 @@ export function defaultSettings(): Settings {
     spotlightRule: DEFAULT_SPOTLIGHT_RULE,
     stakesEnabled: true,
     stakesRule: DEFAULT_STAKES_RULE,
+    // The 1d6 system stakes.ts used to hardcode — spread so "the default rules"
+    // has exactly one definition.
+    ...DEFAULT_DICE,
+    riskKeywords: DEFAULT_RISK_KEYWORDS,
+    alwaysRoll: false,
     historyBudget: DEFAULT_HISTORY_BUDGET_SETTING,
     maxTokens: DEFAULT_MAX_TOKENS,
   };

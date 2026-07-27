@@ -13,6 +13,7 @@ import { CharactersScreen } from "./components/CharactersScreen";
 import { WorldNotesScreen } from "./components/WorldNotesScreen";
 import { QuestsScreen } from "./components/QuestsScreen";
 import { AdvancedScreen } from "./components/AdvancedScreen";
+import { RpgSystemScreen } from "./components/RpgSystemScreen";
 import { AppearanceScreen } from "./components/AppearanceScreen";
 import { SavesScreen } from "./components/SavesScreen";
 import { MemberSheet } from "./components/MemberSheet";
@@ -130,6 +131,7 @@ export default function App() {
   if (screen === "worldnotes") return <WorldNotesScreen />;
   if (screen === "quests") return <QuestsScreen />;
   if (screen === "advanced") return <AdvancedScreen />;
+  if (screen === "rpg") return <RpgSystemScreen />;
   if (screen === "appearance") return <AppearanceScreen />;
   if (screen === "saves") return <SavesScreen />;
   if (screen === "member") return <MemberSheet />;

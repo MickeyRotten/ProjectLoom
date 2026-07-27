@@ -44,7 +44,7 @@ import {
   setStanding as setEntryStanding,
   standingOf,
 } from "./lib/roster";
-import { computeStakes, rollRecord } from "./lib/stakes";
+import { computeStakes, rollRecord, stakeRules } from "./lib/stakes";
 import { buildMessages } from "./lib/prompt";
 import { completeChat, streamChat, OpenRouterError } from "./lib/openrouter";
 import {
@@ -107,6 +107,7 @@ export type Screen =
   | "worldnotes"
   | "quests"
   | "advanced"
+  | "rpg"
   | "appearance"
   | "saves"
   | "party"
@@ -1032,11 +1033,13 @@ export const useStore = create<LoomStore>((set, get) => {
     // Roll this turn's stakes HERE rather than inside `buildMessages`: the band
     // is both a prompt block and a fact recorded on the narrator message, and
     // rolling it twice could disagree. Seeded on (turn, text), so a regenerate
-    // re-tells the same result instead of re-rolling for a better one.
+    // re-tells the same result instead of re-rolling for a better one. The dice
+    // themselves come from the player's system (Menu → RPG System).
     const stakes = computeStakes(
       trimmed,
       playerCharacter(get().characters, base.roster),
       turn,
+      stakeRules(get().settings),
     );
 
     // Build from `base` (pre-turn history) so the new line isn't duplicated —

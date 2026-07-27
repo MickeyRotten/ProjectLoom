@@ -8,6 +8,7 @@ import {
 } from "./prompt";
 import { defaultPC, newGame, defaultSettings } from "./defaults";
 import { PARTY_LIMIT } from "./roster";
+import { DEFAULT_DICE } from "./stakes";
 import type { Character, GameState, Message, RosterEntry, Settings } from "../types";
 
 const settings = defaultSettings();
@@ -650,7 +651,17 @@ describe("buildHistory", () => {
 });
 
 describe("stakes + conditions blocks", () => {
-  const risky = { risky: true, strengthsInPlay: false, flawsInPlay: false, roll: 2, modifier: 0, total: 2, outcome: "cost" as const };
+  const risky = {
+    risky: true,
+    strengthsInPlay: false,
+    flawsInPlay: false,
+    dice: [2],
+    roll: 2,
+    modifier: 0,
+    total: 2,
+    outcome: "cost" as const,
+    rules: DEFAULT_DICE,
+  };
 
   it("injects the outcome block when stakes are on", () => {
     const msgs = buildMessages({

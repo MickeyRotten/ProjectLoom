@@ -23,6 +23,7 @@ const ENTRIES: { screen: Screen; label: string; note: string }[] = [
   { screen: "scenario", label: "Scenario", note: "Title · premise · opening" },
   { screen: "modelkey", label: "Model & Key", note: "OpenRouter key · models" },
   { screen: "appearance", label: "Appearance", note: "Text size · font · invert" },
+  { screen: "rpg", label: "RPG System", note: "Dice · outcomes · what counts as risky" },
   { screen: "advanced", label: "Advanced", note: "Narrator + image instructions" },
   { screen: "saves", label: "Saves", note: "Snapshot · restore slots" },
 ];

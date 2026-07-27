@@ -29,6 +29,32 @@ export function Section({ label }: { label: string }) {
 }
 
 /**
+ * A full-width on/off row — the settings-screen toggle (Advanced, RPG System).
+ * Distinct from `ToggleField`'s checkbox: this is the whole row, for a setting
+ * that stands on its own rather than sitting inside a form.
+ */
+export function ToggleRow({
+  label,
+  state,
+  onClick,
+}: {
+  label: string;
+  state: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full items-center justify-between border-2 border-ink p-3 text-left uppercase tracking-widest active:bg-ink active:text-paper"
+    >
+      <span>{label}</span>
+      <span className="border-2 border-ink px-2 py-1 text-sm">{state}</span>
+    </button>
+  );
+}
+
+/**
  * A labelled control. `action` puts a control of its own on the label row — the
  * member sheet's ✦ generate buttons. It changes the markup rather than sliding
  * into the existing `<label>`: a button nested inside a label that wraps a form
