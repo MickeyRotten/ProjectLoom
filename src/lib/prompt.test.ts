@@ -50,7 +50,7 @@ function play(turn: number, content: string): Message {
 function member(patch: Partial<Character> & { id: string; name: string }): Character {
   return {
     role: "member", species: "human", sex: "", description: "", personality: "", drive: "",
-    strengths: "", flaws: "", equipment: [],
+    strengths: "", flaws: "", notes: "", equipment: [],
     ...patch,
   };
 }
@@ -118,6 +118,17 @@ describe("buildMessages — ordering", () => {
     expect(msgs[0].content).toContain("PLAYER CHARACTER — Hiro (Human)");
   });
 
+  it("carries the player's own Notes on the PC sheet", () => {
+    const pc = { ...defaultPC(), notes: "he lies about his age" };
+    const msgs = build({ settings, game: newGame(), characters: [pc], playerMessage: "go" });
+    expect(msgs[0].content).toContain("Notes: he lies about his age");
+  });
+
+  it("prints no Notes label when the player wrote none", () => {
+    const msgs = build({ settings, game: newGame(), playerMessage: "go" });
+    expect(msgs[0].content).not.toContain("Notes:");
+  });
+
   it("includes PC personality + drive in the system context", () => {
     const pc = {
       ...defaultPC(),
@@ -179,6 +190,17 @@ describe("party roster + spotlight", () => {
     const msgs = build({ settings, game: newGame(), characters: cast, playerMessage: "go" });
     expect(msgs.some((m) => m.content.includes("PARTY SPOTLIGHT"))).toBe(false);
     expect(msgs[0].content).not.toContain("PARTY — in your company");
+  });
+
+  it("carries a member's player Notes, and omits a blank one", () => {
+    const navi = member({ id: "m-navi", name: "Navi", notes: "never lets her speak first" });
+    const bram = member({ id: "m-bram", name: "Bram" });
+    const block = formatPartyRoster([
+      { ...navi, lastSpokeTurn: 0, standing: "active", condition: "" },
+      { ...bram, lastSpokeTurn: 0, standing: "active", condition: "" },
+    ]);
+    expect(block).toContain("  Notes: never lets her speak first");
+    expect(block.match(/Notes:/g)).toHaveLength(1);
   });
 
   it("characters outside the party are excluded from the roster", () => {

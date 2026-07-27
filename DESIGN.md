@@ -171,7 +171,7 @@ One isolated function returning the OpenRouter `messages[]`, in order:
   - **Location banner** — keyed by `banner:<location>`. On a scene change to an **uncached** location, generate from location name + a short narration excerpt + the **banner style instructions**. Gated by `Settings.locationImages`, see below.
   - **Party portrait** — keyed by `portrait:<memberId>`. When a member has no portrait, generate from their name/species/**sex**/description + the **portrait style instructions** — *unless* the player removed it (`Character.noPortrait`), see **Remove** below. Sex is in the Subject because an image model given only prose guesses, and guesses differently on every regenerate.
 - **Style baked in:** default banner/portrait instructions enforce **1-bit monochrome pixel/line art**. Player-editable under Advanced.
-- **Location images off by default (Advanced → Images → `Settings.locationImages`):** the whole banner feature is opt-in. Portraits are drawn once per character and then reused forever; a location banner is a fresh generation every time the story moves somewhere new, which makes it the app's most expensive habit and the one furthest from the text the player came for. Off means **no generation and no UI**: `syncImages` skips the banner entirely (cached or not), `regenerateBanner` / `editBanner` no-op, `<Banner>` renders `null`, and the Menu's *Compact Location Image* toggle and the Advanced cooldown + banner-style fields are hidden rather than left as dead controls. Nothing is deleted — already-generated banners are still in IndexedDB and reappear the moment it's switched back on. Portraits are unaffected.
+- **Location images off by default (Advanced → Images → `Settings.locationImages`):** the whole banner feature is opt-in. Portraits are drawn once per character and then reused forever; a location banner is a fresh generation every time the story moves somewhere new, which makes it the app's most expensive habit and the one furthest from the text the player came for. Off means **no generation and no UI**: `syncImages` skips the banner entirely (cached or not), `regenerateBanner` / `editBanner` no-op, `<Header>` falls back to the plain single-height ink strip (no art, no image controls), and the Menu's *Compact Location Image* toggle and the Advanced cooldown + banner-style fields are hidden rather than left as dead controls. Nothing is deleted — already-generated banners are still in IndexedDB and reappear the moment it's switched back on. Portraits are unaffected.
 - **Location image cooldown (Advanced → `Settings.bannerCooldown`, 0 = off):** turns to skip automatic banner generation for after one is drawn — `3` means the next 3 turns draw no new location image, the 4th does (`bannerOnCooldown` / `bannerCooldownLeft`, counted from `GameState.lastBannerTurn`). A location-hopping stretch otherwise bills one generation per turn, which is the single easiest way to burn image credit without noticing. Three deliberate limits: the gate is on **generation only**, so an already-cached location still shows its banner instantly; the stamp is written on a real generation only, never a cache hit, so re-treading known ground doesn't stall the next new one; and **⟳ ignores the cooldown** (but restarts it — it *is* a generation). While suppressed the banner placeholder says how many turns are left, so it never reads as a broken image. `lastBannerTurn` is deliberately outside `Reversal` — an undo can't un-spend a generation.
 - **Regenerate:** ⟳ on the banner and on each member sheet re-runs generation and **replaces the cached blob and its master** — generated, edited, or uploaded, whatever is there loses. A forced regeneration that fails flags `imgError` (an *image failed* badge) **with the reason** — "failed" alone is unactionable, and the causes are wildly different (no credit, a refused prompt, an unreadable file). ⟳ also clears `noPortrait`.
 - **Edit (✎):** instruction + the image back to the model; the result **becomes** the new image (display copy *and* master). The edit source is the master, never the display copy — handing a model a 192px 1-bit thumbnail comes back as mush or as a text-only reply that fails the edit outright.
@@ -207,6 +207,7 @@ Character {
   strengths, flaws,                      // free text, one field each
                                          // sex is free text too — pronouns for the narrator,
                                          // a Subject line for the portrait prompt
+  notes,                                 // THE PLAYER'S field — read by the narrator, written by nobody else
   equipment: { label, description }[],   // simple text fields, no catalog
                                          // written once by the creating `add`, player's after that
   useCustomPortraitPrompt?, customPortraitPrompt?
@@ -291,6 +292,14 @@ consumes resolved `PartyMember`s, never the raw halves.
   story quietly rewriting an authored cast a turn at a time; character change
   belongs in the narration, and a deliberate re-read is what the member sheet's
   **Auto-Update** is for.
+- **`Character.notes` is the player's alone.** It rides in the prompt with the
+  rest of the sheet — the PC block, the party roster and an NPC's keyword-gated
+  sheet all print `Notes:` when it is non-empty — but nothing writes it back:
+  `PartyDelta` has no `notes` key, `CharacterOverride` has none either (so
+  neither a narrator delta nor Auto-Update can reach it), and the member sheet
+  gives it no ✦ generate button. It is the one place on a sheet where the
+  player can say what a character is and know that no model output, freeze
+  rule, or re-read will edit it.
 - **Player edits the base; only Auto-Update writes overrides.** A sheet edit the
   player saves writes the global character and retires the override on the
   fields they touched (editing adopts the story's change). Auto-Update writes
@@ -316,9 +325,10 @@ Layout top-to-bottom (the reference screenshot is a **style guide, not literal t
 
 ```
 ┌──────────────────────────────────────┐
-│ THE DUSTY PATH               Day 37   │  header: location · day
-│         location banner (1-bit)       │  generated banner — full-bleed,
-│──────────────────────────────────────│  flush under the header
+│                                       │  header IS the location banner:
+│      location banner (1-bit)          │  double height, art as background,
+│ THE DUSTY PATH          Day 37    =   │  label · day · menu along the bottom
+│──────────────────────────────────────│  over a fast black gradient
 │  narration prose (short, scrolls)     │  message log
 │  ...                                  │
 │  1. Approach the ruins                │  AI options — in the chat view, under
@@ -330,6 +340,19 @@ Layout top-to-bottom (the reference screenshot is a **style guide, not literal t
 └──────────────────────────────────────┘
 ```
 
+- **Top bar = the location banner** (when `Settings.locationImages` is on): one
+  element, not a header plus a strip below it. The bar doubles to 120px, the
+  generated 1-bit image is its background, and the location label, the day and
+  the menu button sit along the **bottom** over a black gradient that reaches
+  full alpha within ~16px — the text stays legible over any image without a
+  soft ramp greying out the whole picture. ⟳ / ✎ / ▲ sit top-right over the
+  art; tapping bare art opens it full-screen. Merging them was the point: the
+  header and the banner were printing the same location name 60px apart, and
+  the banner's height came straight out of the reading area. Everything drawn
+  on the art uses literal `#000`/`#fff` rather than the ink/paper tokens — the
+  banner is a real bitmap that the invert theme does **not** flip, so a themed
+  glyph would go black-on-black the moment the player inverted. With location
+  images off the bar is exactly the strip it always was.
 - **AI options:** 3–4 contextual choices from the `<<<LOOM>>>` block, rendered **in the chat view, directly under the latest narration beat** and **above the party portrait strip**; number keys submit; each just sends its text as a normal turn. They scroll with the chat, tethered to the beat that produced them.
 - **Chat scrolling:** the log opens on the newest beat and follows the tail while the reader is parked there; scrolling up into the history stops the follow and shows a **↓ LATEST** button back to the live edge.
 - **Party strip** sits below the options, above the fixed buttons; always visible; tapping a portrait opens that member's **full-screen sheet** (info · edit fields · **regenerate portrait** · **auto-update**). Strip portraits are zoomed 50% and top-aligned so the face fills the tall slot; the sheet's portrait frame is **2:3**.
@@ -452,7 +475,7 @@ All secondary screens — **member sheet, Party, Inventory, Quests, and every Se
   state — Back pops to the index first, then out of Advanced.
 - **Characters screen** lists the global cast grouped by this adventure's standing — PC, then *In Party n/3*, *Benched*, *NPCs & Allies*, *Gone*, and *Everyone Else* — each row opening the sheet and carrying one-tap moves (**Add to Party** / **Bench** / **Kick** / **Make NPC**). **+ New Character** creates someone in the library only. A filter box appears once the cast grows past 8.
 - **Party screen** lists the company in two halves — *In the scene n/3* (**Bench** / **Kick**) and *Benched* (**Activate** / **Kick**) — with a route to Characters when both are empty. The member sheet carries the same Kick/Add control, the adventure **standing** (active / benched / npc / departed / fallen) with a one-line explanation of what the current one means, **Revert Story Changes** when the story has diverged, and **Delete Character** (library-wide, player-only).
-- **Member sheet fields:** Name · **Species** · **Sex** (both free text — the setting owns the vocabulary) · Portrait Prompt · Appearance · Personality · Drive · Strengths · Flaws · Equipment, then the per-adventure **Condition** and **Standing**. In Edit mode the five prose fields each carry a **✦ generate** button (see *Per-field generation*); ✦ rather than ✨ because the sparkle is an emoji and browsers paint it in colour, which is one colour more than this app has — the same reason the portrait controls are ⟳ and ✎.
+- **Member sheet fields:** Name · **Species** · **Sex** (both free text — the setting owns the vocabulary) · Portrait Prompt · Appearance · Personality · Drive · Strengths · Flaws · **Notes** · Equipment, then the per-adventure **Condition** and **Standing**. **Notes** is the player's own field — no ✦, and no model writes it. In Edit mode the five *other* prose fields each carry a **✦ generate** button (see *Per-field generation*); ✦ rather than ✨ because the sparkle is an emoji and browsers paint it in colour, which is one colour more than this app has — the same reason the portrait controls are ⟳ and ✎.
 - **Style:** pure black/white, monospace, square borders, no rounded corners, no color. Small token set in `theme.css` (`--ink #000`, `--paper #fff`) so it stays one system.
 
 ### Reading area
@@ -463,10 +486,9 @@ prose, with the action options rendering *inside* that same scroll region so a
 fresh beat was often pushed above the fold by its own suggestions. The fixes are
 all about handing that space back:
 
-- **`Settings.bannerSize`** — `compact` swaps the 16:5 banner for a ~40px strip
-  (thumbnail + location, tapping still opens the art full-screen). Independently,
-  a `full` banner with **no art and none coming** renders at strip height too:
-  full height is for images, and an empty box was 122px repeating the header.
+- **`Settings.bannerSize`** — `full` is the double-height top bar (120px),
+  `compact` the single-height one (60px) with the art still behind the label
+  under a flat scrim. Tapping the art opens it full-screen in either.
 - **Party strip** slots are **3:5**, not 1:2 — portraits are face-cropped
   (`origin-top scale-150`), so the extra height never showed more of anyone. A
   party of nobody collapses the four-slot grid to a single row rather than

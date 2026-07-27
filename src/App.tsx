@@ -2,7 +2,6 @@ import { useEffect, useRef } from "react";
 import { useStore } from "./store";
 import { fontTheme } from "./lib/settings";
 import { Header } from "./components/Header";
-import { Banner } from "./components/Banner";
 import { ChatView } from "./components/ChatView";
 import { PartyStrip } from "./components/PartyStrip";
 import { Composer } from "./components/Composer";
@@ -21,7 +20,8 @@ import { PartyScreen } from "./components/PartyScreen";
 import { InventoryScreen } from "./components/InventoryScreen";
 
 /**
- * Phase 2 shell — the core loop plus party: header (location · day), scrolling
+ * Phase 2 shell — the core loop plus party: header (the location banner, with
+ * location · day · menu along its bottom edge), scrolling
  * narration log with AI options under the latest beat, the party portrait
  * strip, and a composer (quick actions · freeform input · GO · ⋯ context menu).
  * Full-screen overlays (member sheet, party, inventory, settings) open over the
@@ -139,7 +139,6 @@ export default function App() {
   return (
     <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
       <Header />
-      <Banner />
       <ChatView />
       <PartyStrip />
       <Composer />

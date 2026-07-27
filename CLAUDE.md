@@ -226,6 +226,17 @@ Generate Again**, ✦ shows only in Edit mode and an accepted text lands in the 
 draft — so Discard Changes is the undo and `updateCharacter` still commits. The store
 action writes nothing and takes the character by value, so it needs single-flight and
 no `streaming` guard. `fields.tsx → Field` gained an `action` slot for the label row.
+Post-MVP also: **player Notes + the banner as the top bar** — `Character.notes`
+is the one sheet field no model writes: it rides in the prompt with the rest of
+the sheet (PC block, party roster, keyword-gated NPC sheet, and `formatSheet`
+for the side calls), but `PartyDelta` and `CharacterOverride` both lack the key,
+so no delta and no Auto-Update can reach it, and the member sheet gives it no ✦.
+Alongside it `<Banner>` is gone: `Header` *is* the banner when
+`Settings.locationImages` is on — double height, art as background, location ·
+day · menu bottom-aligned over a black gradient that hits full alpha in ~16px,
+with ⟳/✎/▲ top-right. `bannerSize` now picks 120px vs 60px (art still behind the
+label, under a flat scrim) rather than banner-vs-strip. Everything sitting on
+the art uses literal `#000`/`#fff` — the bitmap does not invert with the theme.
 Deferred (post-MVP): rolling LLM summarization, NPC/item art, TTS,
 weather animation, multi-world. Track scope in `DESIGN.md → Build Phases`.
 

@@ -52,6 +52,7 @@ type MemberDraft = Pick<
   | "drive"
   | "strengths"
   | "flaws"
+  | "notes"
   | "equipment"
   | "useCustomPortraitPrompt"
   | "customPortraitPrompt"
@@ -115,6 +116,7 @@ export function MemberSheet() {
       drive: member?.drive ?? "",
       strengths: member?.strengths ?? "",
       flaws: member?.flaws ?? "",
+      notes: member?.notes ?? "",
       equipment: member?.equipment ?? [],
       useCustomPortraitPrompt: member?.useCustomPortraitPrompt ?? false,
       customPortraitPrompt: member?.customPortraitPrompt ?? "",
@@ -416,6 +418,24 @@ export function MemberSheet() {
           action={genButton("flaws")}
           onChange={(x) => setField("flaws", x)}
         />
+
+        {/* The player's field, and only theirs — no ✦, because the point of it
+            is text nothing generates and nothing rewrites. The narrator reads
+            it with the rest of the sheet; no delta, override or side call can
+            ever write it back. */}
+        <div className="space-y-1">
+          <AreaField
+            label="Notes"
+            value={v.notes}
+            editing={editing}
+            rows={3}
+            onChange={(x) => setField("notes", x)}
+          />
+          <p className="text-xs opacity-60">
+            Yours to write. The narrator reads it, but never writes it — no story
+            beat, Auto-Update or ✦ generation can touch it.
+          </p>
+        </div>
 
         <fieldset className="space-y-3 border-2 border-ink p-3">
           <legend className="px-1 uppercase tracking-widest text-sm">Equipment</legend>

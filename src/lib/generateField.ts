@@ -99,6 +99,7 @@ export function fieldScanText(character: Character, hint?: string): string {
     character.drive,
     character.strengths,
     character.flaws,
+    character.notes,
     ...(character.equipment ?? []).flatMap((e) => [e.label, e.description]),
     hint ?? "",
   ]

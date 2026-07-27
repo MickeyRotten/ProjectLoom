@@ -18,6 +18,7 @@ function navi(): Character {
     drive: "",
     strengths: "",
     flaws: "",
+    notes: "",
     equipment: [],
   };
 }
