@@ -2,7 +2,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "../store";
 import { OverlayHeader } from "./OverlayHeader";
 import { EditImageButton } from "./EditImageButton";
-import { TextField, AreaField, ReadBlock, EditToolbar, btn, btnSmall } from "./fields";
+import {
+  TextField,
+  AreaField,
+  ReadBlock,
+  Collapsible,
+  EditToolbar,
+  btn,
+  btnSmall,
+} from "./fields";
 import { AutoUpdateModal } from "./AutoUpdateModal";
 import { GenerateFieldModal } from "./GenerateFieldModal";
 import { GEN_FIELD_LABEL, type GenField } from "../lib/generateField";
@@ -59,13 +67,22 @@ type MemberDraft = Pick<
 >;
 
 /**
- * Full-screen member sheet (DESIGN.md → Secondary screens): info · edit fields ·
- * regenerate / upload / remove portrait. Field editing is gated behind Edit mode — fields render as
- * read-only text blocks until the player toggles Edit, and changes live in a local
- * draft until Save Changes. Discard Changes (or leaving the screen) reverts and
- * exits edit mode. Portrait / enlist / delete actions stay available either way.
- * Opening the sheet ensures a portrait exists (unless the player removed it);
- * ⟳ force-regenerates it.
+ * Full-screen member sheet (DESIGN.md → Secondary screens).
+ *
+ * Order is portrait → Image Options (closed) → Edit → the sheet → Story →
+ * Condition → Standing → leave/delete: who this character IS comes first, and
+ * everything you can DO to them follows it. It used to open with six buttons and
+ * an image-prompt fieldset — upload, download, remove, edit, auto-update,
+ * revert — so a sheet whose entire purpose is the prose underneath them made the
+ * player scroll past all of it to reach a name. Nothing was dropped; the rarely
+ * touched controls fold away, and the rest moved below the text they act on.
+ *
+ * Field editing is gated behind Edit mode — fields render as read-only text
+ * blocks until the player toggles Edit, and changes live in a local draft until
+ * Save Changes. Discard Changes (or leaving the screen) reverts and exits edit
+ * mode. Portrait / enlist / delete actions stay available either way. Opening
+ * the sheet ensures a portrait exists (unless the player removed it); ⟳
+ * force-regenerates it.
  */
 export function MemberSheet() {
   const id = useStore((s) => s.memberId);
@@ -246,111 +263,62 @@ export function MemberSheet() {
           </p>
         )}
 
-        {/* Custom art in / stored art out / no art at all. Upload replaces the
-            cached portrait (⟳ still regenerates over it); download hands the
-            blob to the share sheet on mobile, a file download on desktop;
-            remove deletes it and stops the automatic redraw. */}
-        <div className="flex gap-2">
-          <input
-            ref={portraitFile}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) void uploadPortrait(member.id, file);
-              e.target.value = "";
-            }}
-          />
-          <button
-            type="button"
-            disabled={portraitPending}
-            onClick={() => portraitFile.current?.click()}
-            className={`flex-1 ${btnSmall}`}
-          >
-            Upload Image
-          </button>
-          <button
-            type="button"
-            disabled={!portraitUrl || portraitPending || saving}
-            onClick={() => void savePortrait(member.id)}
-            className={`flex-1 ${btnSmall}`}
-          >
-            {saving ? "Saving…" : "Download Image"}
-          </button>
-        </div>
-        <button
-          type="button"
-          disabled={!portraitUrl || portraitPending}
-          onClick={() =>
-            ask(
-              {
-                title: `Remove ${member.name || "this character"}'s image?`,
-                body: "The picture is deleted and none is drawn automatically until you regenerate or upload one.",
-                confirmLabel: "Remove image",
-              },
-              () => removePortrait(member.id),
-            )
-          }
-          className={`w-full ${btnSmall}`}
-        >
-          Remove Image
-        </button>
-        {saveNote && (
-          <p className="text-center text-[0.65rem] uppercase tracking-widest" aria-live="polite">
-            {saveNote.text}
-          </p>
-        )}
-
-        <EditToolbar editing={editing} onEdit={startEdit} onSave={save} onDiscard={discard} />
-
-        {/* Gated behind read mode — an open draft would overwrite whatever the
-            model just wrote the moment the player hits Save Changes. */}
-        {!editing && (
-          <button type="button" onClick={() => setAutoUpdate(true)} className={`w-full ${btn}`}>
-            Auto-Update
-          </button>
-        )}
-
-        {/* The story (a narrator delta or Auto-Update) has rewritten fields for
-            THIS adventure only; the authored character is untouched. Saving an
-            edit adopts the change, this button throws it away. */}
-        {storyChanged && !editing && (
-          <div className="space-y-2 border-2 border-ink p-3">
-            <p className="text-sm uppercase tracking-widest opacity-70">
-              Changed this adventure
-            </p>
+        {/* Custom art in / stored art out / no art at all, folded away. Upload
+            replaces the cached portrait (⟳ still regenerates over it); download
+            hands the blob to the share sheet on mobile, a file download on
+            desktop; remove deletes it and stops the automatic redraw. Three
+            buttons the player touches once a character, sitting closed above
+            the sheet they read every time. */}
+        <Collapsible label="Image Options">
+          <div className="flex gap-2">
+            <input
+              ref={portraitFile}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) void uploadPortrait(member.id, file);
+                e.target.value = "";
+              }}
+            />
             <button
               type="button"
-              onClick={() => revertOverrides(member.id)}
-              className={`w-full ${btnSmall}`}
+              disabled={portraitPending}
+              onClick={() => portraitFile.current?.click()}
+              className={`flex-1 ${btnSmall}`}
             >
-              Revert Story Changes
+              Upload Image
+            </button>
+            <button
+              type="button"
+              disabled={!portraitUrl || portraitPending || saving}
+              onClick={() => void savePortrait(member.id)}
+              className={`flex-1 ${btnSmall}`}
+            >
+              {saving ? "Saving…" : "Download Image"}
             </button>
           </div>
-        )}
-
-        <div className="space-y-4">
-          <TextField label="Name" value={v.name} editing={editing} onChange={(x) => setField("name", x)} />
-          <TextField
-            label="Species"
-            value={v.species}
-            editing={editing}
-            onChange={(x) => setField("species", x)}
-          />
-          {/* Free text, like Species — the setting owns the vocabulary. Read by
-              the narrator for pronouns and by the portrait prompt. */}
-          <TextField
-            label="Sex"
-            value={v.sex}
-            editing={editing}
-            placeholder="male / female / …"
-            onChange={(x) => setField("sex", x)}
-          />
-        </div>
-
-        <fieldset className="space-y-3 border-2 border-ink p-3">
-          <legend className="px-1 uppercase tracking-widest text-sm">Portrait Prompt</legend>
+          <button
+            type="button"
+            disabled={!portraitUrl || portraitPending}
+            onClick={() =>
+              ask(
+                {
+                  title: `Remove ${member.name || "this character"}'s image?`,
+                  body: "The picture is deleted and none is drawn automatically until you regenerate or upload one.",
+                  confirmLabel: "Remove image",
+                },
+                () => removePortrait(member.id),
+              )
+            }
+            className={`w-full ${btnSmall}`}
+          >
+            Remove Image
+          </button>
+          {/* The image prompt lives with the image controls now — it is one
+              more thing about how this character is DRAWN, and it was a whole
+              open fieldset between the portrait and the character's name. */}
           {editing ? (
             <>
               <label className="flex items-center gap-2">
@@ -374,9 +342,39 @@ export function MemberSheet() {
           ) : v.useCustomPortraitPrompt ? (
             <ReadBlock label="Custom image prompt" value={v.customPortraitPrompt ?? ""} />
           ) : (
-            <p className="uppercase tracking-widest text-sm opacity-60">Default prompt</p>
+            <p className="uppercase tracking-widest text-sm opacity-60">
+              Portrait prompt: default. Edit the sheet to override it.
+            </p>
           )}
-        </fieldset>
+        </Collapsible>
+        {saveNote && (
+          <p className="text-center text-[0.65rem] uppercase tracking-widest" aria-live="polite">
+            {saveNote.text}
+          </p>
+        )}
+
+        {/* The one control that belongs above the sheet: everything under it is
+            either read or written depending on this button. */}
+        <EditToolbar editing={editing} onEdit={startEdit} onSave={save} onDiscard={discard} />
+
+        <div className="space-y-4">
+          <TextField label="Name" value={v.name} editing={editing} onChange={(x) => setField("name", x)} />
+          <TextField
+            label="Species"
+            value={v.species}
+            editing={editing}
+            onChange={(x) => setField("species", x)}
+          />
+          {/* Free text, like Species — the setting owns the vocabulary. Read by
+              the narrator for pronouns and by the portrait prompt. */}
+          <TextField
+            label="Sex"
+            value={v.sex}
+            editing={editing}
+            placeholder="male / female / …"
+            onChange={(x) => setField("sex", x)}
+          />
+        </div>
 
         <AreaField
           label="Appearance"
@@ -479,6 +477,38 @@ export function MemberSheet() {
             </button>
           )}
         </fieldset>
+
+        {/* What the STORY may do to this sheet, under the sheet it does it to.
+            Auto-Update is gated behind read mode — an open draft would
+            overwrite whatever the model just wrote the moment the player hits
+            Save Changes — and Revert appears only when the story has actually
+            diverged. Both used to sit above the fields, where they were two of
+            the six buttons a player scrolled past to read a name. */}
+        {!editing && (
+          <div className="space-y-2 border-2 border-ink p-3">
+            <p className="text-sm uppercase tracking-widest opacity-70">Story</p>
+            <button type="button" onClick={() => setAutoUpdate(true)} className={`w-full ${btn}`}>
+              Auto-Update
+            </button>
+            {/* The story (a narrator delta or Auto-Update) has rewritten fields
+                for THIS adventure only; the authored character is untouched.
+                Saving an edit adopts the change, this button throws it away. */}
+            {storyChanged && (
+              <>
+                <p className="text-sm uppercase tracking-widest opacity-70">
+                  Changed this adventure
+                </p>
+                <button
+                  type="button"
+                  onClick={() => revertOverrides(member.id)}
+                  className={`w-full ${btnSmall}`}
+                >
+                  Revert Story Changes
+                </button>
+              </>
+            )}
+          </div>
+        )}
 
         {/* Condition — this adventure's mark, not part of the frozen sheet, so
             it sits outside the Edit gate and outside the member-only block: a

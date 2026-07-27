@@ -201,8 +201,12 @@ export function buildFieldMessages(opts: GenerateFieldOptions): ChatMessage[] {
  * non-string or blank value reads as "nothing came back", so a chatty or
  * truncated reply leaves the sheet alone instead of blanking a field. Returns ""
  * when there is nothing usable.
+ *
+ * Takes the key as a plain string, not a `GenField`: `generateScenario.ts` asks
+ * for `premise` / `openingNarration` through the same one-key JSON contract, and
+ * two copies of a tolerant parser is exactly how the two would drift apart.
  */
-export function parseGeneratedField(raw: string, field: GenField): string {
+export function parseGeneratedField(raw: string, field: string): string {
   const json = extractFirstJsonObject(raw);
   if (!json) return "";
   const parsed = parseJsonTolerant<Record<string, unknown>>(json);

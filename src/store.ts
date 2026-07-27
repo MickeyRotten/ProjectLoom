@@ -61,6 +61,11 @@ import {
   parseGeneratedField,
   type GenField,
 } from "./lib/generateField";
+import {
+  GENERATE_SCENARIO_TEMPERATURE,
+  buildScenarioMessages,
+  type ScenarioField,
+} from "./lib/generateScenario";
 import { parseLoomResponse, truncateForDisplay } from "./lib/loomBlock";
 import { applyDeltas } from "./lib/deltas";
 import { captureReversal, applyReversal } from "./lib/reversal";
@@ -86,6 +91,17 @@ import {
   type GenerateImageOptions,
 } from "./lib/images";
 import { imageFileName, saveBlobAsFile } from "./lib/download";
+
+/** Per-turn knobs — everything about a turn that isn't the player's action. */
+export interface SendTurnOptions {
+  /**
+   * The player's note for a regeneration (↻ Regen → Note). Rides the prompt as
+   * direction to the narrator and nothing else: it is not part of the action,
+   * so it never enters the transcript, the history, or the seed the stakes roll
+   * is drawn from.
+   */
+  note?: string;
+}
 
 /** Per-call knobs for the shared cache-then-generate image helper. */
 interface EnsureImageOptions {
@@ -219,6 +235,14 @@ export interface LoomStore {
     field: GenField,
     hint: string,
   ) => Promise<string | null>;
+  /**
+   * Ask the text model to write ONE scenario field (Premise / Opening
+   * Narration) for the ✦ button beside it. Same shape as `generateField` — no
+   * writes, the text comes back for the modal to preview — and it shares the
+   * `fieldGenPending` / `fieldGenError` pair, since only one generate modal can
+   * be open at a time in either place.
+   */
+  generateScenarioField: (field: ScenarioField, hint: string) => Promise<string | null>;
   /** Clear a stale field-generation failure (modal close / new run). */
   clearFieldGenError: () => void;
   /** Delete a character from the library entirely (and from every adventure). */
@@ -253,7 +277,7 @@ export interface LoomStore {
   dropSlot: (id: string) => Promise<void>;
 
   newAdventure: () => void;
-  sendTurn: (text: string) => Promise<void>;
+  sendTurn: (text: string, opts?: SendTurnOptions) => Promise<void>;
   /** Re-send the input of the last failed turn. */
   retryTurn: () => void;
   /** Abort the in-flight turn; the input rolls back and becomes retryable. */
@@ -273,8 +297,12 @@ export interface LoomStore {
   // Reversal (Phase 5) — unwind the latest turn's applied deltas.
   /** Drop the latest turn (player + narrator), restoring pre-turn scene state. */
   undoLastTurn: () => void;
-  /** Re-run the latest turn's player input for a fresh narration (swipe). */
-  regenerateLastTurn: () => void;
+  /**
+   * Re-run the latest turn's player input for a fresh narration (swipe). An
+   * optional `note` is the player's direction for the retelling ("shorter",
+   * "let her refuse"); without one this is the plain re-roll it always was.
+   */
+  regenerateLastTurn: (note?: string) => void;
   /** Overwrite one message's prose in place (edit the latest narration). */
   editMessage: (id: string, content: string) => void;
   /** Edit the latest player input: unwind the turn, then re-send the new text. */
@@ -287,8 +315,12 @@ export interface LoomStore {
   /** Force-regenerate, replacing the cached blob. */
   regenerateBanner: () => void;
   regeneratePortrait: (memberId: string) => void;
-  /** Edit the cached image with a text instruction (image + text → image). */
-  editBanner: (instruction: string) => void;
+  /**
+   * Edit the cached image with a text instruction (image + text → image). The
+   * banner has no such control any more — ✎ came off the top bar with ⟳ and ▲,
+   * since a button parked on the art is not where a spend belongs — so this is
+   * portraits only.
+   */
   editPortrait: (memberId: string, instruction: string) => void;
   /** Replace a member's portrait with a user-supplied image file. */
   uploadPortrait: (memberId: string, file: Blob) => Promise<void>;
@@ -794,6 +826,38 @@ export const useStore = create<LoomStore>((set, get) => {
     }
   },
 
+  async generateScenarioField(field, hint) {
+    // Single-flight, and nothing else: like `generateField` this writes no game
+    // state, so there is nothing a turn in flight could silently undo.
+    if (get().fieldGenPending) return null;
+
+    set({ fieldGenPending: true, fieldGenError: null });
+    try {
+      const raw = await completeChat({
+        settings: get().settings,
+        messages: buildScenarioMessages({
+          game: get().game,
+          characters: get().characters,
+          field,
+          hint,
+        }),
+        temperature: GENERATE_SCENARIO_TEMPERATURE,
+      });
+      // Same one-key JSON contract as a character field, same tolerant parser.
+      const text = parseGeneratedField(raw, field);
+      if (!text) throw new Error("The model returned nothing usable. Try again.");
+      set({ fieldGenPending: false });
+      return text;
+    } catch (err) {
+      const message =
+        err instanceof OpenRouterError || err instanceof Error
+          ? err.message
+          : "Generation failed.";
+      set({ fieldGenPending: false, fieldGenError: message });
+      return null;
+    }
+  },
+
   clearFieldGenError() {
     set({ fieldGenError: null });
   },
@@ -1024,7 +1088,7 @@ export const useStore = create<LoomStore>((set, get) => {
     await get().refreshSlots();
   },
 
-  async sendTurn(text) {
+  async sendTurn(text, opts) {
     const trimmed = text.trim();
     if (!trimmed || get().streaming) return;
 
@@ -1084,6 +1148,8 @@ export const useStore = create<LoomStore>((set, get) => {
       playerMessage: trimmed,
       stakes,
       historyBudgetTokens: get().settings.historyBudget,
+      // Blank on every ordinary turn, which adds nothing to the prompt.
+      regenerateNote: opts?.note,
     });
 
     try {
@@ -1264,7 +1330,7 @@ export const useStore = create<LoomStore>((set, get) => {
     get().syncImages();
   },
 
-  regenerateLastTurn() {
+  regenerateLastTurn(note) {
     if (get().streaming) return;
     const g = get().game;
     let idx = -1;
@@ -1279,8 +1345,11 @@ export const useStore = create<LoomStore>((set, get) => {
     const turn = g.messages[idx].turn;
     const player = g.messages.find((m) => m.turn === turn && m.role === "player");
     // Unwind the turn, then replay the same player input for a fresh narration.
+    // The note rides beside the input rather than inside it: the input is the
+    // stakes seed, so folding the note in would re-roll the outcome and turn
+    // "make it shorter" into a way to fish for a better result.
     get().undoLastTurn();
-    if (player) void get().sendTurn(player.content);
+    if (player) void get().sendTurn(player.content, { note });
   },
 
   editMessage(id, content) {
@@ -1355,12 +1424,6 @@ export const useStore = create<LoomStore>((set, get) => {
 
   regeneratePortrait(memberId) {
     portrait(memberId, true);
-  },
-
-  editBanner(instruction) {
-    const location = get().game.location.trim();
-    if (!location || !get().settings.locationImages) return;
-    void editImage(bannerKey(location), instruction);
   },
 
   editPortrait(memberId, instruction) {

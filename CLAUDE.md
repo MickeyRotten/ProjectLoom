@@ -175,7 +175,7 @@ Test button (the model catalog is public, so it can't validate anything), a
 filterable `ModelPicker`, and `imgError` recorded on the automatic image path too.
 Post-MVP also: **location images opt-in** (`Settings.locationImages`, Advanced →
 Images, **off by default**) — a banner is a fresh generation on every new place,
-so the feature is off until asked for: `syncImages`/`regenerateBanner`/`editBanner`
+so the feature is off until asked for: `syncImages`/`regenerateBanner`
 no-op, `<Banner>` renders nothing, and the Menu size toggle + Advanced cooldown /
 banner-style fields are hidden, not disabled. Cached banners survive and return
 when it is switched back on. Alongside it, **one-name locations** —
@@ -277,6 +277,27 @@ locked them into opposite parities, so **2d6 could never roll 7**. Now one hash,
 `avalanche`d (murmur3 finalizer), with the extra dice counting off that base.
 Rolls no longer replay to pre-fix values; nothing recomputes a past roll but
 `regenerateLastTurn`.
+Post-MVP also: **UI tweaks + sheet reorganisation** — the location bar lost its
+last on-art control (✎, after ⟳ and ▲; `store.editBanner` deleted with it) and
+its **scrim**: label · day · menu now sit straight on the picture, kept legible
+by an outline (`-webkit-text-stroke` + `paint-order: stroke`) instead of a
+gradient that was darkening a third of every banner. **Scenario ✦**
+(`generateScenario.ts` — Premise + Opening Narration, `generateField.ts`'s
+sibling one level up; context is the scenario, the PC and keyword-matched World
+Notes, never the beats) shares `parseGeneratedField` and the new
+`GenerateModal`, the exchange shell both ✦ flows now render. **↻ Regen takes a
+note** (`prompt.ts → formatRegenerateNote`, `sendTurn(text, { note })`) — one
+line of direction, injected as its own system block beside the roll call and
+never folded into the player's message, which is also the stakes seed; blank is
+byte-for-byte the old re-roll. **Quick actions are editable**
+(`Settings.quickActions` + `settings.ts → normalizeQuickActions` /
+`usableQuickActions`, ✎ beside them → `QuickActionsModal`): label + sent text per
+row, blanking a row drops that button. **Saves** joined the ⋯ quick menu and
+moved up the gear menu with the other play screens. The **member sheet** was
+reordered — portrait → *Image Options* (a closed `fields.tsx → Collapsible`
+holding upload/download/remove + the portrait prompt) → Edit → the sheet →
+*Story* (Auto-Update + Revert) → Condition → Standing → leave/delete, so six
+buttons no longer stand between the player and the character's name.
 Deferred (post-MVP): rolling LLM summarization, NPC/item art, TTS,
 weather animation, multi-world. Track scope in `DESIGN.md → Build Phases`.
 

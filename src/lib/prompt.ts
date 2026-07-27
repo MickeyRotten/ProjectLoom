@@ -49,6 +49,12 @@ export interface BuildOptions {
    * two consumers. Omitted (or `outcome: null`) injects no outcome block.
    */
   stakes?: StakeSignals;
+  /**
+   * The player's note on a REGENERATION — "shorter", "let her say no", "less
+   * combat". Empty or absent on an ordinary turn, which is every turn that
+   * isn't ↻ Regen with something typed into it.
+   */
+  regenerateNote?: string;
 }
 
 /**
@@ -86,6 +92,27 @@ export function approxTokens(text: string): number {
 export function formatScenarioBlock(scenario: Scenario): string {
   if (!scenario.title.trim() && !scenario.premise.trim()) return "";
   return `SCENARIO — ${scenario.title}\n${scenario.premise}`.trim();
+}
+
+/**
+ * The regeneration note block, or "" when there is no note. ↻ Regen without a
+ * note is unchanged — same input, same seed, a different roll of the model — so
+ * a blank note must add nothing at all to the prompt.
+ *
+ * The note is deliberately NOT part of the player's message: it is direction to
+ * the narrator, not something the character said or did, and folding it into the
+ * action would put "make it shorter" in the transcript, in the history window
+ * from then on, and — worst — in the seed the stakes roll is drawn from, where
+ * it would let a player re-roll a bad outcome by retyping their complaint.
+ */
+export function formatRegenerateNote(note: string): string {
+  const text = note.trim();
+  if (!text) return "";
+  return [
+    "RETELL THIS BEAT — the player has thrown away your previous version of this exact turn and asked for it again, with a note.",
+    "Write a DIFFERENT beat for the same action, and follow the note. It is direction from the player, not something their character said or did: never quote it, never narrate it, never have anyone in the scene react to it.",
+    text,
+  ].join("\n");
 }
 
 export function buildMessages(opts: BuildOptions): ChatMessage[] {
@@ -145,6 +172,13 @@ export function buildMessages(opts: BuildOptions): ChatMessage[] {
     const stakes = formatStakesBlock(opts.stakes, settings.stakesRule);
     if (stakes) messages.push({ role: "system", content: stakes });
   }
+
+  // 9d. The player's note on a regeneration. Placed here — after the history,
+  //     beside the roll call and the outcome — because it is a fact about THIS
+  //     retelling and nothing else, and the beat it replaces is not in the
+  //     history to be compared against: the turn was unwound before this call.
+  const regen = formatRegenerateNote(opts.regenerateNote ?? "");
+  if (regen) messages.push({ role: "system", content: regen });
 
   // 10. Output-protocol instruction (how to emit prose + the <<<LOOM>>> block).
   messages.push({ role: "system", content: buildOutputProtocol(settings) });

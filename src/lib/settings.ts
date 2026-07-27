@@ -1,6 +1,12 @@
 import { FONT_CHOICES } from "../types";
-import type { FontChoice, ReasoningEffort, ReasoningLevel, Settings } from "../types";
-import { defaultSettings } from "./defaults";
+import type {
+  FontChoice,
+  QuickAction,
+  ReasoningEffort,
+  ReasoningLevel,
+  Settings,
+} from "../types";
+import { DEFAULT_QUICK_ACTIONS, defaultSettings } from "./defaults";
 
 /**
  * Settings persist in localStorage (small, synchronous, survives reloads).
@@ -21,10 +27,40 @@ export function loadSettings(): Settings {
       // holding a key has plainly been through it, and must not be handed a
       // setup screen for an app they have been playing.
       setupDone: stored.setupDone ?? Boolean(stored.openRouterKey?.trim()),
+      // Spreading `stored` would hand the composer whatever shape localStorage
+      // happens to hold — an array of two, of objects with no `input`, of
+      // nulls. Normalized at READ time, like `normalizeDice`, so the editor and
+      // the composer can both assume three well-formed rows.
+      quickActions: normalizeQuickActions(stored.quickActions),
     };
   } catch {
     return defaultSettings();
   }
+}
+
+/**
+ * Fold anything stored under `quickActions` onto exactly one row per shipped
+ * shortcut. A missing entry (every save written before the row was editable)
+ * takes the default; a present one is kept as the player wrote it, INCLUDING
+ * blank — a blank label or input is how a shortcut is removed, so falling back
+ * to the default there would make the third button undeletable.
+ */
+export function normalizeQuickActions(stored: unknown): QuickAction[] {
+  const list = Array.isArray(stored) ? stored : [];
+  return DEFAULT_QUICK_ACTIONS.map((fallback, i) => {
+    const raw = list[i];
+    if (!raw || typeof raw !== "object") return { ...fallback };
+    const { label, input } = raw as Partial<QuickAction>;
+    return {
+      label: typeof label === "string" ? label.trim() : fallback.label,
+      input: typeof input === "string" ? input.trim() : fallback.input,
+    };
+  });
+}
+
+/** The shortcuts that actually render — both halves written in. */
+export function usableQuickActions(actions: QuickAction[]): QuickAction[] {
+  return actions.filter((a) => a.label.trim() && a.input.trim());
 }
 
 /** Picker copy for each font — label plus what it actually looks like. */

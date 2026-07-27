@@ -8,24 +8,27 @@ import { useConfirm } from "./useConfirm";
  * (no Edit mode). New Adventure reseeds from the current scenario + roster.
  */
 /**
- * Every screen, in one place. Party / Inventory / Quests / World Notes also
- * have the faster ⋯ shortcut beside GO, but they used to live ONLY there —
- * which meant the gear menu, the one thing that looks like navigation, pointed
- * at barely half the app, and four screens were reachable solely through a
- * glyph that reads as "overflow".
+ * Every screen, in one place, play-facing first. Party / Inventory / Quests /
+ * World Notes / **Saves** also have the faster ⋯ shortcut beside GO, but they
+ * used to live ONLY there — which meant the gear menu, the one thing that looks
+ * like navigation, pointed at barely half the app, and four screens were
+ * reachable solely through a glyph that reads as "overflow".
+ *
+ * Saves sits with them rather than last: snapshotting is something you do
+ * *during* play, right before the fight, not a settings chore.
  */
 const ENTRIES: { screen: Screen; label: string; note: string }[] = [
   { screen: "party", label: "Party", note: "Who travels with you · bench" },
   { screen: "inventory", label: "Inventory", note: "Carried items · gold" },
   { screen: "quests", label: "Quests", note: "Active + finished objectives" },
   { screen: "worldnotes", label: "World Notes", note: "Lore the story remembers" },
+  { screen: "saves", label: "Saves", note: "Snapshot · restore slots" },
   { screen: "characters", label: "Characters", note: "Full cast · add to party" },
   { screen: "scenario", label: "Scenario", note: "Title · premise · opening" },
   { screen: "modelkey", label: "Model & Key", note: "OpenRouter key · models" },
   { screen: "appearance", label: "Appearance", note: "Text size · font · invert" },
   { screen: "rpg", label: "RPG System", note: "Dice · outcomes · what counts as risky" },
   { screen: "advanced", label: "Advanced", note: "Narrator + image instructions" },
-  { screen: "saves", label: "Saves", note: "Snapshot · restore slots" },
 ];
 
 export function MenuScreen() {

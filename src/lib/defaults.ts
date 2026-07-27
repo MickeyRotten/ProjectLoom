@@ -4,6 +4,7 @@ import type {
   Item,
   LegacyCharacter,
   LegacyStrengths,
+  QuickAction,
   RosterEntry,
   Scenario,
   Settings,
@@ -75,7 +76,21 @@ Outfits are a modern-anime-meets-fantasy mash-up: crop tops, miniskirts, fishnet
 When describing bodies, use an admiring, playful, celebratory lens — never sleazy or clinical. Use fruits and vegetables for size comparisons: breasts are melon-sized, pumpkin-heavy; cocks are cucumber-thick, eggplant-sized. Emphasize: wide hips, plump rumps, huge breasts, thick thighs, heavy balls, fat cocks, plump mons and cameltoes, thick nipples. This applies to all characters, including the PC's body when relevant.
 `;
 
-export const DEFAULT_OPTION_INSTRUCTIONS = `Offer 3–4 distinct, concrete next actions the player could take right now. Short imperative phrases ("Scan the treeline"), no numbering, no punctuation at the end.`;
+/**
+ * How many composer shortcuts there are. Fixed rather than a list the player
+ * grows: the row is three buttons wide on a phone, and a fourth would either
+ * shrink them below a comfortable tap or wrap.
+ */
+export const QUICK_ACTION_COUNT = 3;
+
+/** The shipped shortcuts — what the row was hardcoded to before it was editable. */
+export const DEFAULT_QUICK_ACTIONS: QuickAction[] = [
+  { label: "Look", input: "I look around." },
+  { label: "Wait", input: "I wait to see what happens." },
+  { label: "Investigate", input: "I investigate my immediate surroundings carefully." },
+];
+
+export const DEFAULT_OPTION_INSTRUCTIONS =`Offer 3–4 distinct, concrete next actions the player could take right now. Short imperative phrases ("Scan the treeline"), no numbering, no punctuation at the end.`;
 
 /*
  * Image prompt defaults. Written as full narrative sentences — Gemini image
@@ -204,6 +219,7 @@ export function defaultSettings(): Settings {
     temperature: 0.8,
     reasoningLevel: DEFAULT_REASONING_LEVEL,
     showActionOptions: true,
+    quickActions: DEFAULT_QUICK_ACTIONS.map((a) => ({ ...a })),
     invert: false,
     textScale: "m",
     font: "system",
