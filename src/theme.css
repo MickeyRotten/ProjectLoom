@@ -11,6 +11,15 @@
 :root {
   --ink: #000000;
   --paper: #ffffff;
+  /*
+   * The dice toss's backdrop (`DiceOverlay`) — ink at 60%, the only tone in the
+   * app that is neither ink nor paper. It is a scrim, not a curtain: the beat
+   * the player just sent stays readable behind the dice, so the roll reads as
+   * something happening *in* the scene rather than a screen the game cut to.
+   * Written as an explicit rgba per theme rather than an opacity utility so it
+   * flips with the ink/paper swap like everything else.
+   */
+  --scrim: rgb(0 0 0 / 0.6);
   --font-mono: ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas,
     "Liberation Mono", monospace;
 
@@ -34,6 +43,7 @@
 :root[data-theme="dark"] {
   --ink: #ffffff;
   --paper: #000000;
+  --scrim: rgb(255 255 255 / 0.6);
 }
 
 /*

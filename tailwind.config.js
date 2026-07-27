@@ -13,6 +13,11 @@ export default {
     colors: {
       ink: "var(--ink)",
       paper: "var(--paper)",
+      // Ink at 60% — the dice toss's backdrop, and the one place the app is
+      // deliberately between its two colors: the game has to stay legible
+      // underneath it. Defined as its own token per theme (theme.css) rather
+      // than an opacity utility, so it flips with everything else.
+      scrim: "var(--scrim)",
       transparent: "transparent",
       current: "currentColor",
     },

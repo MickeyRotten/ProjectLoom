@@ -157,8 +157,14 @@ always did.
   the Edit gate and outside the member-only block, since the PC has one too).
 - **The toss** (`lib/diceAnim.ts` + `components/DiceOverlay.tsx`,
   `Settings.diceAnimation`, on by default): a rolled turn throws the dice across
-  an opaque full-screen layer — real CSS 3D cubes, tumbling, landing on the faces
-  the turn actually rolled — holds the result, and fades out. Staged in `sendTurn`
+  a full-screen **60% ink scrim** — real CSS 3D cubes, tumbling, landing on the
+  faces the turn actually rolled — holds the result on a solid plate, and fades
+  out. The scrim (`--scrim`, its own per-theme token, so it flips with
+  ink/paper) is the one tone in the app that is neither ink nor paper: the beat
+  the player just sent stays legible underneath, so the dice land *in* the scene
+  rather than on a screen the game cut away to — which is also why the result
+  panel gets an opaque backing, since prose showing through the arithmetic is
+  the one thing the scrim costs. Staged in `sendTurn`
   **before** the model is called, so the ~2.4s plays over the wait for the first
   token rather than adding to the turn; tap anywhere to skip. No 3D library: six
   `preserve-3d` faces and two keyframes, with **no lighting or shading** (a lit

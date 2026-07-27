@@ -6,8 +6,10 @@ import { OUTCOME_LABEL, formatRoll, modifierNote } from "../lib/stakes";
 import type { DiceCast } from "../types";
 
 /**
- * The dice toss — an opaque layer over the whole game, dice thrown across it,
- * the result held for a beat, then everything fades back out.
+ * The dice toss — a 60% ink scrim over the whole game, dice thrown across it,
+ * the result held for a beat on an opaque plate, then everything fades back out.
+ * A scrim rather than a curtain: the beat the player just sent stays readable
+ * underneath, so the roll happens IN the scene.
  *
  * It runs on the way IN to a turn, not after it: `sendTurn` rolls before it
  * calls the model, so the cast is staged while the request is still in flight
@@ -88,10 +90,13 @@ function Toss({ cast }: { cast: DiceCast }) {
 
   return (
     <div
-      // Opaque, and over everything — the toss is the only thing happening.
+      // A 60% ink scrim over the whole app rather than a solid layer: the beat
+      // the player just sent stays legible underneath, so the dice land in the
+      // scene instead of on a screen the game cut away to.
+      //
       // Tapping anywhere ends it: an animation that plays every risky turn must
       // be dismissable without hunting for a button.
-      className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-6 bg-ink px-4 text-paper"
+      className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-6 bg-scrim px-4 text-paper"
       style={{
         opacity: entered && !leaving ? 1 : 0,
         transition: `opacity ${leaving ? TIMING.fadeOut : TIMING.fadeIn}ms linear`,
@@ -155,7 +160,7 @@ function Toss({ cast }: { cast: DiceCast }) {
        * the dice don't jump when it appears.
        */}
       <div
-        className="flex min-h-[5.5rem] flex-col items-center gap-2 text-center transition-opacity duration-200"
+        className="flex min-h-[5.5rem] flex-col items-center justify-center gap-1 border-2 border-paper bg-ink px-4 py-3 text-center transition-opacity duration-200"
         style={{ opacity: landed ? 1 : 0 }}
         role="status"
         aria-live="polite"
@@ -163,7 +168,7 @@ function Toss({ cast }: { cast: DiceCast }) {
         <span className="text-sm uppercase tracking-widest opacity-80">
           {formatRoll(roll)}
         </span>
-        <span className="border-2 border-paper px-3 py-1 text-base uppercase tracking-widest">
+        <span className="text-base uppercase tracking-widest">
           {OUTCOME_LABEL[cast.outcome]}
         </span>
         {roll.modifier !== 0 && (
@@ -171,7 +176,7 @@ function Toss({ cast }: { cast: DiceCast }) {
         )}
       </div>
 
-      <span className="absolute bottom-6 text-xs uppercase tracking-widest opacity-40">
+      <span className="absolute bottom-6 text-xs uppercase tracking-widest opacity-70">
         Tap to skip
       </span>
     </div>
