@@ -5,7 +5,7 @@ import { TurnControls } from "./TurnControls";
 import { segmentDialogue } from "../lib/spotlight";
 import { parseInline } from "../lib/markdown";
 import { deriveToasts } from "../lib/toasts";
-import { BAND_SCALE, formatRoll, modifierNote } from "../lib/stakes";
+import { bandScale, formatRoll, modifierNote } from "../lib/stakes";
 import type { Character, Message, TextScale, TurnOutcome } from "../types";
 
 /** Which message (id) is being edited, and the working draft. */
@@ -308,17 +308,17 @@ const OUTCOME_LABEL: Record<TurnOutcome, string> = {
  */
 function Toasts({ msg }: { msg: Message }) {
   const toasts = deriveToasts(msg);
+  // The scale is read off the CURRENT system (RPG System) — the thresholds a
+  // turn was banded under aren't recorded, and the live ones are what the next
+  // roll will be read against anyway.
+  const scale = useStore((s) => bandScale(s.settings));
   if (!toasts.length && !msg.outcome) return null;
   return (
     <div className="flex flex-wrap gap-1">
       {msg.outcome && (
         <span
           className="border-2 border-ink bg-ink px-2 py-0.5 text-xs uppercase tracking-widest text-paper"
-          title={
-            msg.roll
-              ? `${modifierNote(msg.roll)} — ${BAND_SCALE}`
-              : BAND_SCALE
-          }
+          title={msg.roll ? `${modifierNote(msg.roll)} — ${scale}` : scale}
         >
           ◆ {OUTCOME_LABEL[msg.outcome]}
           {msg.roll && ` · ${formatRoll(msg.roll)}`}

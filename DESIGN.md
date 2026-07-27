@@ -84,32 +84,54 @@ gets to pick the answer.** Without it every action succeeded exactly as much as
 the narrator felt like, and `Character.flaws` had no mechanical consumer
 anywhere — it was printed into the prompt and read by nothing.
 
-- **Risk gate.** `isRisky` word-boundary-matches `RISK_KEYWORDS` (via
+**Every number below is a setting** (Menu → **RPG System**). `DEFAULT_DICE` /
+`DEFAULT_STAKE_RULES` are the 1d6 system `stakes.ts` used to hardcode, so an
+unconfigured game — and every call that omits its rules — plays exactly as it
+always did.
+
+- **Risk gate.** `isRisky` word-boundary-matches the risk words (via
   `worldNotes.ts → keywordHits`, so "mentioned" means one thing across lore,
   cast, and risk). Deliberately about *attempts*, not violence — a haggle and a
   lie are gambles, "I look around" is not. A non-risky turn injects **no block
-  at all**: no tokens, no melodrama, and the three quick actions never roll.
-- **The roll.** `rollFor(turn, action)` is FNV-1a over `turn|action`, mod 6 + 1
-  — **pure in (turn, action text)**. `regenerateLastTurn` re-sends the same
-  input on the same turn, so a random roll would let the player re-roll until
-  the answer was "strong"; seeding means a regenerate re-*tells* the same
-  result, and editing the action — genuinely choosing something else — earns a
-  new roll.
-- **The modifier.** +1 when the action's keywords meet the actor's Strengths,
-  −1 when they meet their Flaws, using the same `extractKeywords`/`intersects`
-  pair as the spotlight's `strengthsRelevant`, so relevance can never mean two
-  different things. Both at once cancel to 0 — doing something you are good at
-  in a way that plays to your weakness is exactly an even-odds moment.
-- **The bands.** `total ≥ 5` STRONG · `3–4` MIXED · `≤ 2` COST. The block is
-  marked *authoritative* for the same reason the roll call is: read as advice,
-  the model narrates a triumph over a "cost". The roll and its reason are stated
-  in full ("Rolled 2 -1 (flaws in play) = 1 → COST") — the mechanic is visible,
-  not a hidden hand.
-- **`Settings.stakesRule`** (Advanced → Narrator) is the editable half: what
-  STRONG / MIXED / COST *mean* in this world. The roll is the mechanic and is
-  not editable; the consequence vocabulary is a scenario's business. The shipped
-  rule ends by forbidding PC death — a narrator handed a bare "COST" eventually
-  kills the player and strands the save.
+  at all**: no tokens, no melodrama, and the three quick actions never roll. The
+  list is `Settings.riskKeywords` (comma/newline text, `parseKeywords`, shipped
+  as `RISK_KEYWORDS`); `Settings.alwaysRoll` skips the gate entirely for a table
+  where every turn is a check.
+- **The roll.** `rollDice(turn, action, rules)` hashes FNV-1a over
+  `turn|action` per die, mod `diceSides` + 1 — **pure in (turn, action text,
+  rules)**. `regenerateLastTurn` re-sends the same input on the same turn, so a
+  random roll would let the player re-roll until the answer was "strong";
+  seeding means a regenerate re-*tells* the same result, and editing the action
+  — genuinely choosing something else — earns a new roll. The **first die keeps
+  the original single-die seed**, so a roll made before the dice were
+  configurable still replays to the number it was recorded with. Each extra die
+  is hashed separately (`turn|action|i`) rather than sliced out of one hash, so
+  2d6 has a real 2d6 distribution.
+- **The modifier.** `+strengthsBonus` when the action's keywords meet the
+  actor's Strengths, `−flawsPenalty` when they meet their Flaws, using the same
+  `extractKeywords`/`intersects` pair as the spotlight's `strengthsRelevant`, so
+  relevance can never mean two different things. Both apply at once — on the
+  shipped ±1 that cancels to 0 (doing something you are good at in a way that
+  plays to your weakness is an even-odds moment); a table that weights them
+  differently gets whichever way it leans. A 0 bonus turns Strengths off
+  mechanically without touching the sheet.
+- **The bands.** `total ≥ strongThreshold` STRONG · `≥ mixedThreshold` MIXED ·
+  below COST (shipped: 5+ / 3–4 / 2−). The block is marked *authoritative* for
+  the same reason the roll call is: read as advice, the model narrates a triumph
+  over a "cost". The roll, its reason **and the scale** are stated in full
+  ("Rolled 1d6 2 -1 (flaws in play) = 1 → COST." / "Scale: 5+ strong · 3–4 mixed
+  · 2− cost.") — the mechanic is visible, not a hidden hand, and a 3 that needed
+  a 4 is a different beat from a 3 that needed a 12.
+- **`normalizeDice` sanitizes on every read**, never on write: dice are clamped
+  to 1–10 × d2–d100, modifiers to 0–20, thresholds inside the range the dice can
+  actually reach (an unreachable STRONG makes every gamble a disaster, which
+  reads as a bug rather than a house rule), and MIXED can never sit above STRONG.
+  Clamping at *read* time is what lets the screen edit one field without
+  quietly rewriting the one below it mid-keystroke.
+- **`Settings.stakesRule`** (RPG System → Results) is the editable half: what
+  STRONG / MIXED / COST *mean* in this world. The shipped rule ends by
+  forbidding PC death — a narrator handed a bare "COST" eventually kills the
+  player and strands the save.
 - **Conditions** (`RosterEntry.condition`, `LoomBlock.conditions`) are where a
   COST lands: free text, per-adventure, matched by name across the **whole**
   cast **including the PC** — unlike `PartyDelta`, because the player is who a
@@ -121,10 +143,12 @@ anywhere — it was printed into the prompt and read by nothing.
   reference-diffs the roster). Reversal needs no new slice — conditions live in
   the roster it already snapshots.
 - **Visible in play:** the band **and the arithmetic behind it** are recorded on
-  the narrator `Message` (`outcome` + `TurnRoll`, written by `rollRecord`) and
-  render as one inverted chip above that beat's state-change toasts — *"Strong
-  result · 1d6 4 +1 = 5"*, with the modifier's reason and the band scale on the
-  chip's title. The verdict alone read as the app editorialising about the beat;
+  the narrator `Message` (`outcome` + `TurnRoll`, written by `rollRecord` — which
+  also stores the dice it was rolled on, so a transcript still reads correctly
+  under a system the player has since re-tuned) and render as one inverted chip
+  above that beat's state-change toasts — *"Strong result · 1d6 4 +1 = 5"*, or
+  *"2d6 [4, 3] 7 +1 = 8"* on multiple dice, with the modifier's reason and the
+  band scale on the chip's title. The verdict alone read as the app editorialising about the beat;
   the numbers show it was a die, and show Strengths/Flaws doing something. The
   wording of the reason lives once, in `modifierNote`, shared by the prompt block
   and the chip, and the flags are stored rather than the prose so old saves can't
@@ -172,8 +196,8 @@ One isolated function returning the OpenRouter `messages[]`, in order:
   - **Party portrait** — keyed by `portrait:<memberId>`. When a member has no portrait, generate from their name/species/**sex**/description + the **portrait style instructions** — *unless* the player removed it (`Character.noPortrait`), see **Remove** below. Sex is in the Subject because an image model given only prose guesses, and guesses differently on every regenerate.
 - **Style baked in:** default banner/portrait instructions enforce **1-bit monochrome pixel/line art**. Player-editable under Advanced.
 - **Location images off by default (Advanced → Images → `Settings.locationImages`):** the whole banner feature is opt-in. Portraits are drawn once per character and then reused forever; a location banner is a fresh generation every time the story moves somewhere new, which makes it the app's most expensive habit and the one furthest from the text the player came for. Off means **no generation and no UI**: `syncImages` skips the banner entirely (cached or not), `regenerateBanner` / `editBanner` no-op, `<Header>` falls back to the plain single-height ink strip (no art, no image controls), and the Menu's *Compact Location Image* toggle and the Advanced cooldown + banner-style fields are hidden rather than left as dead controls. Nothing is deleted — already-generated banners are still in IndexedDB and reappear the moment it's switched back on. Portraits are unaffected.
-- **Location image cooldown (Advanced → `Settings.bannerCooldown`, 0 = off):** turns to skip automatic banner generation for after one is drawn — `3` means the next 3 turns draw no new location image, the 4th does (`bannerOnCooldown` / `bannerCooldownLeft`, counted from `GameState.lastBannerTurn`). A location-hopping stretch otherwise bills one generation per turn, which is the single easiest way to burn image credit without noticing. Three deliberate limits: the gate is on **generation only**, so an already-cached location still shows its banner instantly; the stamp is written on a real generation only, never a cache hit, so re-treading known ground doesn't stall the next new one; and **⟳ ignores the cooldown** (but restarts it — it *is* a generation). While suppressed the banner placeholder says how many turns are left, so it never reads as a broken image. `lastBannerTurn` is deliberately outside `Reversal` — an undo can't un-spend a generation.
-- **Regenerate:** ⟳ on the banner and on each member sheet re-runs generation and **replaces the cached blob and its master** — generated, edited, or uploaded, whatever is there loses. A forced regeneration that fails flags `imgError` (an *image failed* badge) **with the reason** — "failed" alone is unactionable, and the causes are wildly different (no credit, a refused prompt, an unreadable file). ⟳ also clears `noPortrait`.
+- **Location image cooldown (Advanced → `Settings.bannerCooldown`, 0 = off):** turns to skip automatic banner generation for after one is drawn — `3` means the next 3 turns draw no new location image, the 4th does (`bannerOnCooldown` / `bannerCooldownLeft`, counted from `GameState.lastBannerTurn`). A location-hopping stretch otherwise bills one generation per turn, which is the single easiest way to burn image credit without noticing. Three deliberate limits: the gate is on **generation only**, so an already-cached location still shows its banner instantly; the stamp is written on a real generation only, never a cache hit, so re-treading known ground doesn't stall the next new one; and **`regenerateBanner` ignores the cooldown** (but restarts it — it *is* a generation; no longer reachable from the bar, see *Top bar*). While suppressed the banner placeholder says how many turns are left, so it never reads as a broken image. `lastBannerTurn` is deliberately outside `Reversal` — an undo can't un-spend a generation.
+- **Regenerate:** ⟳ on each member sheet (and `regenerateBanner` in the store) re-runs generation and **replaces the cached blob and its master** — generated, edited, or uploaded, whatever is there loses. A forced regeneration that fails flags `imgError` (an *image failed* badge) **with the reason** — "failed" alone is unactionable, and the causes are wildly different (no credit, a refused prompt, an unreadable file). ⟳ also clears `noPortrait`.
 - **Edit (✎):** instruction + the image back to the model; the result **becomes** the new image (display copy *and* master). The edit source is the master, never the display copy — handing a model a 192px 1-bit thumbnail comes back as mush or as a text-only reply that fails the edit outright.
 - **Remove (member sheet):** *Remove Image* deletes a member's portrait **and its master**, revokes the object URL, and sets `Character.noPortrait` on the global character. The flag is the whole point: the automatic trigger is "no cached portrait → draw one", so without it the next turn's `syncImages` would silently undo the removal. It's a character-level choice (a portrait is shared across adventures), and only ⟳ or an upload clears it.
 - **Upload / download (member sheet):** *Upload Image* replaces a member's portrait with a file from the device — put through the same downscale + 1-bit pass as a generated portrait, so custom art lands in the same visual system and stays small in IndexedDB (with shading **off** it keeps `UPLOAD_PLAIN_WIDTH` instead of the 1-bit pixel width: no pixel grid to snap to, so crushing it that far only loses the photo); ⟳ still regenerates over it. Unlike the generated path, the upload pass is **strict**: a file the browser can't decode (HEIC straight off an iPhone, a renamed non-image) fails the upload loudly instead of being stored verbatim — storing it "succeeds" and then shows a broken portrait that no later edit can repair. *Download Image* saves the stored portrait out, **nearest-neighbor upscaled to ≥ `EXPORT_MIN_WIDTH`** by `toExportBlob` — the display copy is a ~192px sliver that only reads as art because every `<img>` renders `image-rendering: pixelated`, and a file has no such CSS, so the upscale is baked into the exported pixels (integer factor: each stored pixel becomes an exact square). Delivery is `lib/download.ts`, three paths in order: on the **APK**, `@capacitor/filesystem` writes the bytes to the app cache and `@capacitor/share` opens the native save/share sheet — the Android System WebView implements neither `navigator.share` nor blob `<a download>`, so this is the only route that reaches the device; then browser **Web Share** with files; then an `<a download>` click on desktop. A dismissed sheet counts as done; any other failure surfaces as a note under the button.
@@ -199,6 +223,10 @@ Settings {                    // global, edited in Settings
   ditherMode, locationImages, bannerCooldown, bannerInstructions        // Images
   portraitAction/Context/Composition/Style, portraitRefImages,          // Portraits
     portraitRefInstruction
+  // RPG System (its own screen — mechanics, not prompt text):
+  stakesEnabled, stakesRule, riskKeywords, alwaysRoll,
+  diceCount, diceSides, strengthsBonus, flawsPenalty,                   // DiceRules
+    strongThreshold, mixedThreshold
 }
 
 Character[]                   // GLOBAL cast library — outlives every adventure
@@ -345,8 +373,12 @@ Layout top-to-bottom (the reference screenshot is a **style guide, not literal t
   generated 1-bit image is its background, and the location label, the day and
   the menu button sit along the **bottom** over a black gradient that reaches
   full alpha within ~16px — the text stays legible over any image without a
-  soft ramp greying out the whole picture. ⟳ / ✎ / ▲ sit top-right over the
-  art; tapping bare art opens it full-screen. Merging them was the point: the
+  soft ramp greying out the whole picture. **✎ alone** sits top-right over the
+  art; tapping bare art opens it full-screen. Regenerate (⟳) and collapse (▲)
+  were removed from the bar — sizing lives in Menu → *Compact Location Image*,
+  and a redraw is a spend nobody was asking for from a button parked on top of
+  the picture; ✎ stays because it is the one control with no equivalent
+  elsewhere. (`regenerateBanner` is still in the store, just not surfaced.) Merging them was the point: the
   header and the banner were printing the same location name 60px apart, and
   the banner's height came straight out of the reading area. Everything drawn
   on the art uses literal `#000`/`#fff` rather than the ink/paper tokens — the
@@ -451,7 +483,14 @@ optional image model — shown while `Settings.setupDone` is false.
 ### Secondary screens
 All secondary screens — **member sheet, Party, Inventory, Quests, and every Settings sub-screen** — are **full-screen overlays with a Back button** in a top header (the mobile pattern; no split panes). They open over the chat and return to it on Back. Same store/components regardless.
 
-- **Menu (gear)** → full-screen screens: **Quests**, **Scenario** editor, **Characters** (the whole cast), **World Notes**, **Model & Key**, **Appearance**, **Advanced instructions**, **Saves**.
+- **Menu (gear)** → full-screen screens: **Quests**, **Scenario** editor, **Characters** (the whole cast), **World Notes**, **Model & Key**, **Appearance**, **RPG System**, **Advanced instructions**, **Saves**.
+- **RPG System screen** owns the dice and nothing else: **Stakes** on/off, the
+  dice (`diceCount` × `diceSides`), what Strengths and Flaws are worth, where the
+  STRONG/MIXED bands sit, **when to roll** (`alwaysRoll`, or the editable risk-word
+  list), and the **Outcome Rule** — with a live preview reading through
+  `normalizeDice`, so what it shows is what will be rolled. Its own screen rather
+  than a fifth Advanced sub-menu: Advanced is *prompt text handed to a model*,
+  and this is mechanics the app resolves on-device before the model sees the turn.
 - **Appearance screen** holds everything that changes how Loom *looks* and
   nothing that changes how it plays: **Text Size**, **Font**, **Invert Colors**.
   The first and last used to sit loose under the nine menu entries — controls

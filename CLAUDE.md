@@ -237,6 +237,21 @@ day · menu bottom-aligned over a black gradient that hits full alpha in ~16px,
 with ⟳/✎/▲ top-right. `bannerSize` now picks 120px vs 60px (art still behind the
 label, under a flat scrim) rather than banner-vs-strip. Everything sitting on
 the art uses literal `#000`/`#fff` — the bitmap does not invert with the theme.
+Post-MVP also: **RPG System** (`Settings` ⊃ `DiceRules` — `diceCount`/`diceSides`/
+`strengthsBonus`/`flawsPenalty`/`strongThreshold`/`mixedThreshold`, plus
+`riskKeywords` + `alwaysRoll`; Menu → RPG System) — the one mechanic the player
+couldn't touch is now theirs: `stakes.ts` rolls `rollDice(turn, action, rules)`
+(first die keeps the original single-die seed, so old rolls replay; extra dice
+hash on `turn|action|i` for a real NdX distribution), modifies by the configured
+bonus/penalty, and bands on the configured thresholds. `normalizeDice` sanitizes
+at READ time (dice 1–10 × d2–d100, modifiers 0–20, thresholds pinned inside the
+reachable range, MIXED never above STRONG), so the screen can edit one field
+without rewriting the next. `TurnRoll` records `count`/`sides`/`dice`, the chip
+reads "2d6 [4, 3] 7 +1 = 8", and the prompt block gains a `Scale:` line. The
+Stakes toggle + Outcome Rule moved out of Advanced → Narrator (Advanced is prompt
+text; this is on-device mechanics); `ToggleRow` moved to `fields.tsx`.
+Alongside it the **banner bar lost ⟳ and ▲** — sizing is Menu → Compact Location
+Image, and ✎ is the only in-bar control left.
 Deferred (post-MVP): rolling LLM summarization, NPC/item art, TTS,
 weather animation, multi-world. Track scope in `DESIGN.md → Build Phases`.
 

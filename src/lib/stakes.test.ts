@@ -1,16 +1,28 @@
 import { describe, it, expect } from "vitest";
 import {
+  DEFAULT_DICE,
+  DEFAULT_STAKE_RULES,
+  MAX_DICE_COUNT,
   bandFor,
+  bandScale,
   computeStakes,
+  diceNotation,
+  diceRange,
   formatConditionsBlock,
   formatRoll,
   formatStakesBlock,
   isRisky,
   modifierNote,
+  normalizeDice,
+  parseKeywords,
+  rollDice,
   rollFor,
   rollRecord,
+  stakeRules,
 } from "./stakes";
-import type { PartyMember } from "../types";
+import type { StakeRules } from "./stakes";
+import { defaultSettings } from "./defaults";
+import type { DiceRules, PartyMember } from "../types";
 
 function pc(patch: Partial<PartyMember> = {}): PartyMember {
   return {
@@ -169,7 +181,8 @@ describe("formatStakesBlock", () => {
     const block = formatStakesBlock(computeStakes(action, pc(), turn), "  RULE TEXT  ");
     expect(block).toContain("OUTCOME — THIS TURN");
     expect(block).toContain("authoritative");
-    expect(block).toContain("Rolled 6 +0 (nothing in play) = 6 → STRONG.");
+    expect(block).toContain("Rolled 1d6 6 +0 (nothing in play) = 6 → STRONG.");
+    expect(block).toContain("Scale: 5+ strong · 3–4 mixed · 2− cost.");
     expect(block).toContain("RULE: RULE TEXT");
   });
 
@@ -180,7 +193,7 @@ describe("formatStakesBlock", () => {
       computeStakes(action, pc({ flaws: "Weak — cannot smash anything" }), turn),
       "R",
     );
-    expect(block).toContain("Rolled 2 -1 (flaws in play) = 1 → COST.");
+    expect(block).toContain("Rolled 1d6 2 -1 (flaws in play) = 1 → COST.");
   });
 });
 
@@ -211,7 +224,9 @@ describe("rollRecord", () => {
     const action = "I attack the bandit";
     const turn = turnWithRoll(action, 6);
     const rec = rollRecord(computeStakes(action, pc(), turn));
-    expect(rec).toEqual({ roll: 6, modifier: 0, total: 6 });
+    // The dice are recorded alongside the arithmetic — a transcript read under a
+    // system the player has since re-tuned must still show what it was rolled on.
+    expect(rec).toEqual({ roll: 6, modifier: 0, total: 6, count: 1, sides: 6 });
   });
 
   it("flags the modifier's reason, and only when it applied", () => {
@@ -220,7 +235,7 @@ describe("rollRecord", () => {
     const rec = rollRecord(
       computeStakes(action, pc({ flaws: "Weak — cannot smash anything" }), turn),
     );
-    expect(rec).toEqual({ roll: 3, modifier: -1, total: 2, flaws: true });
+    expect(rec).toEqual({ roll: 3, modifier: -1, total: 2, count: 1, sides: 6, flaws: true });
     expect(modifierNote(rec!)).toBe("flaws in play");
   });
 });
@@ -233,6 +248,231 @@ describe("formatRoll", () => {
 
   it("stays a bare roll when nothing did", () => {
     expect(formatRoll({ roll: 4, modifier: 0, total: 4 })).toBe("1d6 4");
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * The configurable system (Menu → RPG System). Everything above pins the
+ * SHIPPED 1d6 behaviour, which every one of these must leave untouched.
+ * ------------------------------------------------------------------ */
+
+/** A rule set built off the shipped one — only what a test actually changes. */
+function rules(patch: Partial<StakeRules> = {}): StakeRules {
+  return { ...DEFAULT_STAKE_RULES, ...patch };
+}
+
+describe("normalizeDice", () => {
+  it("passes a sane system through untouched", () => {
+    const good: DiceRules = {
+      diceCount: 2,
+      diceSides: 6,
+      strengthsBonus: 2,
+      flawsPenalty: 2,
+      strongThreshold: 10,
+      mixedThreshold: 7,
+    };
+    expect(normalizeDice(good)).toEqual(good);
+  });
+
+  it("fills in anything missing from the shipped system", () => {
+    expect(normalizeDice(undefined)).toEqual(DEFAULT_DICE);
+    expect(normalizeDice({ diceSides: 20 }).diceCount).toBe(1);
+  });
+
+  it("clamps dice into a rollable range", () => {
+    expect(normalizeDice({ diceCount: 0 }).diceCount).toBe(1);
+    expect(normalizeDice({ diceCount: 999 }).diceCount).toBe(MAX_DICE_COUNT);
+    // A one-sided die has no roll to make.
+    expect(normalizeDice({ diceSides: 1 }).diceSides).toBe(2);
+    expect(normalizeDice({ diceSides: 2.6 }).diceSides).toBe(3);
+  });
+
+  it("survives values a corrupt save could hold", () => {
+    expect(normalizeDice({ diceSides: NaN }).diceSides).toBe(6);
+    expect(normalizeDice({ strengthsBonus: -3 }).strengthsBonus).toBe(0);
+  });
+
+  it("keeps thresholds reachable — an impossible STRONG is a typo, not a rule", () => {
+    // 1d6 with +1 tops out at 7.
+    expect(normalizeDice({ strongThreshold: 50 }).strongThreshold).toBe(7);
+    expect(normalizeDice({ diceCount: 2, diceSides: 6, strongThreshold: 50 }).strongThreshold).toBe(
+      13,
+    );
+  });
+
+  it("never lets MIXED sit above STRONG, which would leave a gap", () => {
+    const r = normalizeDice({ strongThreshold: 4, mixedThreshold: 6 });
+    expect(r.mixedThreshold).toBe(4);
+  });
+});
+
+describe("rollDice", () => {
+  it("rolls the configured number of dice, each in range", () => {
+    for (let t = 1; t < 60; t++) {
+      const dice = rollDice(t, "I attack the bandit", { ...DEFAULT_DICE, diceCount: 3, diceSides: 8 });
+      expect(dice).toHaveLength(3);
+      for (const d of dice) {
+        expect(d).toBeGreaterThanOrEqual(1);
+        expect(d).toBeLessThanOrEqual(8);
+      }
+    }
+  });
+
+  it("keeps the first die on the original seed, so old rolls replay", () => {
+    // The pre-RPG-System roll WAS this die; a save re-read under 2d6 must still
+    // show the same first number it was written with.
+    const one = rollFor(9, "I climb the wall");
+    expect(rollDice(9, "I climb the wall", { ...DEFAULT_DICE, diceCount: 4 })[0]).toBe(one);
+  });
+
+  it("gives each extra die its own value — 2d6 is not one die doubled", () => {
+    const spreads = new Set<string>();
+    for (let t = 1; t < 40; t++) {
+      const [a, b] = rollDice(t, "I attack", { ...DEFAULT_DICE, diceCount: 2 });
+      spreads.add(`${a === b}`);
+    }
+    expect(spreads.has("false")).toBe(true);
+  });
+
+  it("stays stable for the same turn and action", () => {
+    const r = { ...DEFAULT_DICE, diceCount: 2, diceSides: 10 };
+    expect(rollDice(4, "I shoot the lock", r)).toEqual(rollDice(4, "I shoot the lock", r));
+  });
+});
+
+describe("bandFor with a table's own thresholds", () => {
+  it("reads the configured bands", () => {
+    const r: DiceRules = { ...DEFAULT_DICE, diceSides: 20, strongThreshold: 15, mixedThreshold: 8 };
+    expect(bandFor(15, r)).toBe("strong");
+    expect(bandFor(14, r)).toBe("mixed");
+    expect(bandFor(8, r)).toBe("mixed");
+    expect(bandFor(7, r)).toBe("cost");
+  });
+
+  it("collapses to pass/fail when the two thresholds meet", () => {
+    const r: DiceRules = { ...DEFAULT_DICE, strongThreshold: 4, mixedThreshold: 4 };
+    expect(bandFor(4, r)).toBe("strong");
+    expect(bandFor(3, r)).toBe("cost");
+  });
+});
+
+describe("computeStakes under custom rules", () => {
+  it("uses the table's dice and its modifiers", () => {
+    const r = rules({ diceCount: 2, diceSides: 6, strengthsBonus: 3 });
+    const s = computeStakes("I smash the door open", pc({ strengths: "Can smash walls" }), 5, r);
+    expect(s.dice).toHaveLength(2);
+    expect(s.roll).toBe(s.dice[0] + s.dice[1]);
+    expect(s.modifier).toBe(3);
+    expect(s.total).toBe(s.roll + 3);
+    expect(s.rules.diceSides).toBe(6);
+  });
+
+  it("applies both modifiers when the action touches both, however they weigh", () => {
+    const r = rules({ strengthsBonus: 3, flawsPenalty: 1 });
+    const s = computeStakes(
+      "I climb the tower",
+      pc({ strengths: "Can climb anything", flaws: "Terrified of any tower" }),
+      2,
+      r,
+    );
+    expect(s.modifier).toBe(2);
+  });
+
+  it("rolls on every turn when the table says so", () => {
+    const s = computeStakes("I look around.", pc(), 3, rules({ alwaysRoll: true }));
+    expect(s.risky).toBe(true);
+    expect(s.outcome).not.toBeNull();
+  });
+
+  it("rolls nothing when the player empties the risk words", () => {
+    const s = computeStakes("I attack the bandit", pc(), 3, rules({ keywords: [] }));
+    expect(s.risky).toBe(false);
+    expect(s.outcome).toBeNull();
+  });
+
+  it("takes the player's own risk words", () => {
+    const s = computeStakes("I negotiate with the guild", pc(), 3, rules({ keywords: ["negotiate"] }));
+    expect(s.risky).toBe(true);
+    // …and only those: the shipped list no longer applies.
+    expect(computeStakes("I attack the bandit", pc(), 3, rules({ keywords: ["negotiate"] })).risky).toBe(
+      false,
+    );
+  });
+});
+
+describe("parseKeywords", () => {
+  it("splits on commas and newlines, keeping multi-word entries whole", () => {
+    expect(parseKeywords("attack, climb\n pick the lock ,, ")).toEqual([
+      "attack",
+      "climb",
+      "pick the lock",
+    ]);
+  });
+
+  it("is empty for a blank field — nothing is risky", () => {
+    expect(parseKeywords("   \n , ")).toEqual([]);
+  });
+});
+
+describe("stakeRules", () => {
+  it("reads the shipped system out of default settings", () => {
+    const r = stakeRules(defaultSettings());
+    expect(r.diceCount).toBe(1);
+    expect(r.diceSides).toBe(6);
+    expect(r.alwaysRoll).toBe(false);
+    // The default keyword FIELD must parse back to the shipped list, or the
+    // shipped game and a "reset to default" game would play differently.
+    expect(r.keywords).toEqual(DEFAULT_STAKE_RULES.keywords);
+  });
+
+  it("sanitizes what it finds", () => {
+    const r = stakeRules({ ...defaultSettings(), diceSides: 0, strongThreshold: 999 });
+    expect(r.diceSides).toBe(2);
+    expect(r.strongThreshold).toBeLessThanOrEqual(r.diceCount * r.diceSides + r.strengthsBonus);
+  });
+});
+
+describe("diceNotation / diceRange / bandScale", () => {
+  it("writes the dice the way a table does", () => {
+    expect(diceNotation(DEFAULT_DICE)).toBe("1d6");
+    expect(diceNotation({ ...DEFAULT_DICE, diceCount: 2, diceSides: 10 })).toBe("2d10");
+  });
+
+  it("spans the totals the dice alone can make", () => {
+    expect(diceRange({ ...DEFAULT_DICE, diceCount: 2, diceSides: 6 })).toEqual({ min: 2, max: 12 });
+  });
+
+  it("spells out the bands", () => {
+    expect(bandScale()).toBe("5+ strong · 3–4 mixed · 2− cost");
+    expect(bandScale({ ...DEFAULT_DICE, diceSides: 20, strongThreshold: 15, mixedThreshold: 8 })).toBe(
+      "15+ strong · 8–14 mixed · 7− cost",
+    );
+    // A one-total MIXED band reads as the single number it is.
+    expect(bandScale({ ...DEFAULT_DICE, strongThreshold: 5, mixedThreshold: 4 })).toBe(
+      "5+ strong · 4 mixed · 3− cost",
+    );
+    // No middle at all: don't print an empty range.
+    expect(bandScale({ ...DEFAULT_DICE, strongThreshold: 4, mixedThreshold: 4 })).toBe(
+      "4+ strong · 3− cost",
+    );
+  });
+});
+
+describe("multi-dice records", () => {
+  it("keeps the faces, the dice, and the arithmetic", () => {
+    const s = computeStakes("I attack the bandit", pc(), 3, rules({ diceCount: 2, diceSides: 6 }));
+    const rec = rollRecord(s)!;
+    expect(rec.count).toBe(2);
+    expect(rec.sides).toBe(6);
+    expect(rec.dice).toEqual(s.dice);
+    expect(formatRoll(rec)).toContain(`2d6 [${s.dice.join(", ")}] ${s.roll}`);
+  });
+
+  it("shows the dice and the scale in the narrator's block", () => {
+    const r = rules({ diceCount: 2, diceSides: 6, strongThreshold: 10, mixedThreshold: 7 });
+    const block = formatStakesBlock(computeStakes("I attack the bandit", pc(), 3, r), "RULE");
+    expect(block).toContain("Rolled 2d6 [");
+    expect(block).toContain("Scale: 10+ strong · 7–9 mixed · 6− cost.");
   });
 });
 

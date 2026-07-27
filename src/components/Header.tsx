@@ -38,7 +38,6 @@ export function Header() {
   const url = useStore((s) => s.images[key]);
   const pending = useStore((s) => s.imgPending[key]);
   const imageError = useStore((s) => s.imgError[key]);
-  const regenerate = useStore((s) => s.regenerateBanner);
   const edit = useStore((s) => s.editBanner);
   // Turns left on the generation cooldown (Advanced). Without this an empty bar
   // is indistinguishable from a silently broken one.
@@ -89,35 +88,19 @@ export function Header() {
         />
       )}
 
-      {/* Image controls live in the tall bar only — the compact one is a single
-          row with no free space, exactly as the compact banner strip was. */}
-      {full && (
+      {/* ✎ only. Regenerate (⟳) and collapse (▲) are gone from the bar: sizing
+          lives in Menu → Compact Location Image, and a redraw is a spend the
+          player was never asking for from a button sitting on top of the art.
+          Edit stays because it is the one control with no equivalent elsewhere.
+          Tall bar only — the compact one is a single row with no free space. */}
+      {full && url && (
         <div className="absolute right-1 top-1 flex gap-1">
-          {url && (
-            <EditImageButton
-              label="Edit banner"
-              disabled={pending}
-              onSubmit={edit}
-              className="min-h-11 min-w-11 border-2 border-[#fff] bg-[#000]/70 px-2 leading-none text-[#fff] disabled:opacity-40 active:bg-[#fff] active:text-[#000]"
-            />
-          )}
-          <button
-            type="button"
-            aria-label="Regenerate banner"
+          <EditImageButton
+            label="Edit banner"
             disabled={pending}
-            onClick={regenerate}
+            onSubmit={edit}
             className="min-h-11 min-w-11 border-2 border-[#fff] bg-[#000]/70 px-2 leading-none text-[#fff] disabled:opacity-40 active:bg-[#fff] active:text-[#000]"
-          >
-            ⟳
-          </button>
-          <button
-            type="button"
-            aria-label="Collapse location image"
-            onClick={() => updateSettings({ bannerSize: "compact" })}
-            className="min-h-11 min-w-11 border-2 border-[#fff] bg-[#000]/70 px-2 leading-none text-[#fff] active:bg-[#fff] active:text-[#000]"
-          >
-            ▲
-          </button>
+          />
         </div>
       )}
 
@@ -127,7 +110,7 @@ export function Header() {
           {pending && <span className="truncate">rendering banner…</span>}
           {!pending && waiting > 0 && (
             <span className="text-[0.6rem]">
-              new image in {waiting} {waiting === 1 ? "turn" : "turns"} · ⟳ draws now
+              new image in {waiting} {waiting === 1 ? "turn" : "turns"}
             </span>
           )}
         </div>

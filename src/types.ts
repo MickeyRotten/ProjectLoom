@@ -199,9 +199,19 @@ export type TurnOutcome = "strong" | "mixed" | "cost";
  * (`stakes.ts → modifierNote`) and old saves can't pin an old phrasing.
  */
 export interface TurnRoll {
-  /** The raw d6, 1–6. */
+  /** The dice total, before the modifier. */
   roll: number;
-  /** −1, 0 or +1 from Strengths/Flaws. */
+  /**
+   * Each die as it landed — `[4, 3]` for 2d6. Absent on records written while
+   * the roll was always a single die, and on single-die rolls, where the total
+   * already says everything.
+   */
+  dice?: number[];
+  /** How many dice were rolled. Absent on pre-`DiceRules` records, which read as 1. */
+  count?: number;
+  /** Sides per die. Absent on pre-`DiceRules` records, which read as 6. */
+  sides?: number;
+  /** What Strengths/Flaws added or took off — see `DiceRules`. */
   modifier: number;
   /** `roll + modifier` — what the band was read off. */
   total: number;
@@ -364,7 +374,32 @@ export const REASONING_LEVELS = [
 /** The levels that map to an OpenRouter `reasoning.effort` value. */
 export type ReasoningEffort = Exclude<ReasoningLevel, "auto" | "off">;
 
-export interface Settings {
+/**
+ * The dice a risky action is resolved with (Menu → RPG System). These six
+ * numbers were hardcoded in `stakes.ts` — one d6, ±1 for Strengths/Flaws, bands
+ * at 5+ / 3–4 / 2− — which made "the system" a thing only the app knew. They are
+ * the player's now: 2d6 for a swingy table, 1d20 for a fine-grained one, a fat
+ * Strengths bonus for a power fantasy.
+ *
+ * Sanitized by `stakes.ts → normalizeDice` on every read, so a corrupt or
+ * hand-edited value degrades to something rollable instead of breaking turns.
+ */
+export interface DiceRules {
+  /** How many dice are rolled each time. */
+  diceCount: number;
+  /** Sides per die. */
+  diceSides: number;
+  /** Added to the total when the attempt leans on the actor's Strengths. */
+  strengthsBonus: number;
+  /** Taken off the total when it leans on their Flaws. */
+  flawsPenalty: number;
+  /** Totals at or above this are STRONG. */
+  strongThreshold: number;
+  /** Totals at or above this — but under `strongThreshold` — are MIXED; below, COST. */
+  mixedThreshold: number;
+}
+
+export interface Settings extends DiceRules {
   openRouterKey: string;
   /**
    * Whether the player has been through first-run setup. Gates `SetupScreen`.
@@ -456,6 +491,17 @@ export interface Settings {
   stakesEnabled: boolean;
   /** What the narrator does with the band it is handed — the editable half. */
   stakesRule: string;
+  /**
+   * The words that make an action a gamble, comma- or newline-separated
+   * (`stakes.ts → parseKeywords`). Blank means nothing ever reads as risky, so
+   * only `alwaysRoll` can produce a roll.
+   */
+  riskKeywords: string;
+  /**
+   * Roll on EVERY turn instead of only on keyword-matched attempts — the
+   * "everything is a check" table. `riskKeywords` is unused while this is on.
+   */
+  alwaysRoll: boolean;
   /**
    * Approximate token budget for the rolling history window. The only thing
    * standing between a long game and amnesia, so it is the player's to raise on
