@@ -2,6 +2,7 @@ import { create } from "zustand";
 import type {
   Character,
   CharacterOverride,
+  DiceCast,
   GameState,
   Item,
   Message,
@@ -132,6 +133,13 @@ export interface LoomStore {
   error: string | null;
   /** The input of the last failed/stopped turn, so it can be retried verbatim. */
   failedInput: string | null;
+  /**
+   * The roll currently being thrown across the screen (`DiceOverlay`), staged
+   * the moment the dice are known — while the turn is still streaming. Purely
+   * presentational and never persisted: the turn's authoritative record is
+   * `Message.roll`.
+   */
+  dice: DiceCast | null;
 
   // UI
   screen: Screen;
@@ -250,6 +258,12 @@ export interface LoomStore {
   retryTurn: () => void;
   /** Abort the in-flight turn; the input rolls back and becomes retryable. */
   stopTurn: () => void;
+  /**
+   * End the dice toss — on its own timer, or on a tap that skips it. Takes the
+   * cast's id so a timer belonging to a finished throw cannot clear the throw
+   * that replaced it.
+   */
+  clearDice: (id: string) => void;
 
   // Reversal (Phase 5) — unwind the latest turn's applied deltas.
   /** Drop the latest turn (player + narrator), restoring pre-turn scene state. */
@@ -567,6 +581,7 @@ export const useStore = create<LoomStore>((set, get) => {
   options: [],
   error: null,
   failedInput: null,
+  dice: null,
 
   screen: null,
   history: [],
@@ -1042,6 +1057,19 @@ export const useStore = create<LoomStore>((set, get) => {
       stakeRules(get().settings),
     );
 
+    // The roll as it will be recorded on the beat — computed once, so the dice
+    // thrown across the screen, the chip on the message, and the block the
+    // narrator was handed are all the same numbers by construction.
+    const record = get().settings.stakesEnabled ? rollRecord(stakes) : null;
+
+    // Throw them NOW rather than when the turn lands: the result is already
+    // decided, so the toss plays over the wait for the model's first token
+    // instead of adding time to the turn. Presentational only — a game with the
+    // animation off resolves identically.
+    if (record && stakes.outcome && get().settings.diceAnimation) {
+      set({ dice: { id: uid(), roll: record, outcome: stakes.outcome } });
+    }
+
     // Build from `base` (pre-turn history) so the new line isn't duplicated —
     // it rides as the final user message, not also inside the history window.
     const messages = buildMessages({
@@ -1102,8 +1130,7 @@ export const useStore = create<LoomStore>((set, get) => {
           get().settings.stakesEnabled && stakes.outcome ? stakes.outcome : undefined,
         // The arithmetic beside the verdict — see `TurnRoll`. Same gate, so a
         // game with stakes off records neither.
-        roll:
-          get().settings.stakesEnabled ? (rollRecord(stakes) ?? undefined) : undefined,
+        roll: record ?? undefined,
         appliedDeltas: block ?? undefined,
         reversal,
         day: scene?.day ?? g.day,
@@ -1175,6 +1202,10 @@ export const useStore = create<LoomStore>((set, get) => {
 
   stopTurn() {
     turnAbort?.abort();
+  },
+
+  clearDice(id) {
+    if (get().dice?.id === id) set({ dice: null });
   },
 
   undoLastTurn() {

@@ -190,8 +190,12 @@ export interface StakeSignals {
  * FNV-1a over the seed string. Any stable hash would do; this one is short,
  * dependency-free, and spreads single-character edits across the whole word,
  * which matters because consecutive turns differ by very little text.
+ *
+ * Exported for `diceAnim.ts`, which seeds the dice ANIMATION off the roll it is
+ * showing: one hash means a re-thrown roll re-throws the same arc, and it is one
+ * definition of "deterministic from a seed" rather than two that could drift.
  */
-function hash(seed: string): number {
+export function seedHash(seed: string): number {
   let h = 0x811c9dc5;
   for (let i = 0; i < seed.length; i++) {
     h ^= seed.charCodeAt(i);
@@ -215,7 +219,7 @@ export function rollDice(turn: number, action: string, rules: DiceRules = DEFAUL
   const text = action.trim().toLowerCase();
   const dice: number[] = [];
   for (let i = 0; i < diceCount; i++) {
-    dice.push((hash(i === 0 ? `${turn}|${text}` : `${turn}|${text}|${i}`) % diceSides) + 1);
+    dice.push((seedHash(i === 0 ? `${turn}|${text}` : `${turn}|${text}|${i}`) % diceSides) + 1);
   }
   return dice;
 }
@@ -321,6 +325,18 @@ export function rollRecord(s: StakeSignals): TurnRoll | null {
     ...(s.flawsInPlay ? { flaws: true } : {}),
   };
 }
+
+/**
+ * How a band reads to the player. Here rather than in a component because two
+ * things show it now — the beat's chip and the dice toss — and a band that is
+ * called one thing while the dice are in the air and another once they have
+ * landed reads as two different results.
+ */
+export const OUTCOME_LABEL: Record<TurnOutcome, string> = {
+  strong: "Strong result",
+  mixed: "Mixed result",
+  cost: "It cost you",
+};
 
 /** Signed modifier, e.g. `+1` / `-1`. */
 export function signed(n: number): string {

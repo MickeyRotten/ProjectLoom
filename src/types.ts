@@ -221,6 +221,23 @@ export interface TurnRoll {
   flaws?: boolean;
 }
 
+/**
+ * One throw of the dice, staged for the full-screen toss (`DiceOverlay`).
+ *
+ * A cast is transient UI, never persisted: the authoritative record of what was
+ * rolled is `Message.roll`, written when the turn lands. This is the same
+ * numbers handed to the animation the moment they are known — before the model
+ * has written a word — so the tumble plays over the wait for the first token
+ * instead of adding a delay of its own.
+ *
+ * `id` exists so a timer belonging to a finished cast cannot clear the next one.
+ */
+export interface DiceCast {
+  id: string;
+  roll: TurnRoll;
+  outcome: TurnOutcome;
+}
+
 export interface Message {
   id: string;
   role: MessageRole;
@@ -502,6 +519,13 @@ export interface Settings extends DiceRules {
    * "everything is a check" table. `riskKeywords` is unused while this is on.
    */
   alwaysRoll: boolean;
+  /**
+   * Toss the dice across the screen when a turn rolls (`DiceOverlay`) instead of
+   * only printing the result on the beat's chip. Purely presentational — the
+   * numbers are decided before the animation exists, and turning it off changes
+   * nothing about how a turn resolves.
+   */
+  diceAnimation: boolean;
   /**
    * Approximate token budget for the rolling history window. The only thing
    * standing between a long game and amnesia, so it is the player's to raise on

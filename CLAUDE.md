@@ -252,6 +252,19 @@ Stakes toggle + Outcome Rule moved out of Advanced → Narrator (Advanced is pro
 text; this is on-device mechanics); `ToggleRow` moved to `fields.tsx`.
 Alongside it the **banner bar lost ⟳ and ▲** — sizing is Menu → Compact Location
 Image, and ✎ is the only in-bar control left.
+Post-MVP also: **the dice toss** (`diceAnim.ts` + `DiceOverlay.tsx`,
+`Settings.diceAnimation` in RPG System → Presentation, on by default) — a rolled
+turn throws real CSS 3D cubes across an opaque full-screen layer, lands them on
+the faces the turn actually rolled, shows the arithmetic and the band, and fades
+out (~2.4s, tap to skip). Staged in `sendTurn` *before* the model call, so it
+plays over the wait for the first token instead of adding to the turn. No 3D
+library and no shading — six `preserve-3d` faces, two keyframes, 1-bit
+throughout; pips on a d6, numerals on anything else. `planToss` is pure in the
+`TurnRoll` and seeded through `stakes.ts → seedHash` (exported for it), so a
+regenerated turn re-throws the same arc; `prefers-reduced-motion` skips to the
+result. Presentational only — the roll exists before the animation does.
+`OUTCOME_LABEL` moved into `stakes.ts` so the toss and the beat's chip can't name
+a band differently.
 Deferred (post-MVP): rolling LLM summarization, NPC/item art, TTS,
 weather animation, multi-world. Track scope in `DESIGN.md → Build Phases`.
 

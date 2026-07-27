@@ -217,6 +217,18 @@ export function RpgSystemScreen() {
               </Field>
             )}
 
+            <Section label="Presentation" />
+            <ToggleRow
+              label="Dice Animation"
+              state={settings.diceAnimation ? "ON" : "OFF"}
+              onClick={() => update({ diceAnimation: !settings.diceAnimation })}
+            />
+            <p className="border-2 border-ink p-3 text-sm opacity-70">
+              {settings.diceAnimation
+                ? "The dice are thrown across the screen while the turn is being written — tap to skip. The result is the same either way; it is already decided before they land."
+                : "Off: no toss. The roll still happens, and still shows on the beat as a chip."}
+            </p>
+
             <Section label="Results" />
             <Field label="Outcome Rule">
               <textarea

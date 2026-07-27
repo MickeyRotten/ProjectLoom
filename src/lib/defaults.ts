@@ -241,6 +241,7 @@ export function defaultSettings(): Settings {
     ...DEFAULT_DICE,
     riskKeywords: DEFAULT_RISK_KEYWORDS,
     alwaysRoll: false,
+    diceAnimation: true,
     historyBudget: DEFAULT_HISTORY_BUDGET_SETTING,
     maxTokens: DEFAULT_MAX_TOKENS,
   };

@@ -155,6 +155,21 @@ always did.
   pin old phrasing. Turns recorded before the roll was kept still show their band
   alone. The mark itself is an always-editable field on the member sheet (outside
   the Edit gate and outside the member-only block, since the PC has one too).
+- **The toss** (`lib/diceAnim.ts` + `components/DiceOverlay.tsx`,
+  `Settings.diceAnimation`, on by default): a rolled turn throws the dice across
+  an opaque full-screen layer — real CSS 3D cubes, tumbling, landing on the faces
+  the turn actually rolled — holds the result, and fades out. Staged in `sendTurn`
+  **before** the model is called, so the ~2.4s plays over the wait for the first
+  token rather than adding to the turn; tap anywhere to skip. No 3D library: six
+  `preserve-3d` faces and two keyframes, with **no lighting or shading** (a lit
+  die needs greys the 1-bit tokens don't have — depth reads from the silhouette
+  and the turning faces alone). Pips on a d6, the numeral on anything else. The
+  choreography is *pure in the `TurnRoll`* (`planToss`, seeded through the same
+  `seedHash` as the roll itself), so a regenerated turn re-throws the same arc —
+  nothing new happened, and nothing should look like it did. Presentational only:
+  the numbers exist before the animation does, and the beat's chip shows the same
+  result whether it ran, was skipped, or is switched off. `prefers-reduced-motion`
+  skips straight to the landed result.
 
 ---
 
@@ -224,7 +239,7 @@ Settings {                    // global, edited in Settings
   portraitAction/Context/Composition/Style, portraitRefImages,          // Portraits
     portraitRefInstruction
   // RPG System (its own screen — mechanics, not prompt text):
-  stakesEnabled, stakesRule, riskKeywords, alwaysRoll,
+  stakesEnabled, stakesRule, riskKeywords, alwaysRoll, diceAnimation,
   diceCount, diceSides, strengthsBonus, flawsPenalty,                   // DiceRules
     strongThreshold, mixedThreshold
 }
@@ -487,7 +502,7 @@ All secondary screens — **member sheet, Party, Inventory, Quests, and every Se
 - **RPG System screen** owns the dice and nothing else: **Stakes** on/off, the
   dice (`diceCount` × `diceSides`), what Strengths and Flaws are worth, where the
   STRONG/MIXED bands sit, **when to roll** (`alwaysRoll`, or the editable risk-word
-  list), and the **Outcome Rule** — with a live preview reading through
+  list), the **dice toss** on/off, and the **Outcome Rule** — with a live preview reading through
   `normalizeDice`, so what it shows is what will be rolled. Its own screen rather
   than a fifth Advanced sub-menu: Advanced is *prompt text handed to a model*,
   and this is mechanics the app resolves on-device before the model sees the turn.
