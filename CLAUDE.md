@@ -309,6 +309,22 @@ runs; Gold stays held through a `remove`. The store applies *and records* the fo
 block, since `toasts.ts` chips read `Message.appliedDeltas`. Matching output-protocol
 rule in `prompt.ts` says an `add` is a new acquisition and a changed count is an
 `update`.
+Post-MVP also: **no-op ops, and Gold** — `reconcileBlock` generalized from
+"restated acquisitions" to *an op that changes nothing is not an op*, across every
+channel: a condition equal to the mark already carried, an `update` to the count it
+already is, a quest `add` for a quest on the board, a party op leaving someone where
+they stand, a `remove` for something not held, an op naming a character or item
+nothing resolves. Harmless to the state, not to the transcript — `toasts.ts` chips
+read the recorded block, so a narrator re-stating the PC's condition stamped it on
+four beats in a row. Alongside it **`goldIsNarrated`**: Gold is the field a narrator
+restates and then improvises (15 → 25 → 45 over beats about mushrooms), so a Gold row
+that MOVES the total is dropped unless the beat contains a money word (`MONEY_WORDS`,
+word-boundary matched — "golden wheat" is not gold). Gold-only, prose-only; blank
+prose makes no claim. `reconcileBlock(game, characters, block, prose)` now. Prompt
+side: an `add` means the player TOOK it in the prose just written (an item seen in a
+chest — or waiting behind a "Take the X" option — gets no op), a Gold op only when
+money changes hands, a condition only to set/change/clear, and *every op is a change
+your prose just made*.
 Post-MVP also: **Equip ⇄ Inventory** (`equip.ts`) — the shared pack
 (`GameState.inventory`, per-adventure) and a character's kit
 (`Character.equipment`, global) could not hand anything to each other, so gearing

@@ -490,6 +490,7 @@ function conditionLines(settings: Settings): string[] {
   if (!settings.stakesEnabled) return [];
   return [
     '- "conditions": array of { "name", "condition" } — a lasting mark the story just left on someone ("left arm in a sling", "hunted by the Watch"). Matches ANYONE by name, the player included. Send "condition": "" to clear one. Marks are not sheet fields; write them freely, and clear them when the story resolves them.',
+    '- A mark is not gear: what someone carries or wields belongs in "inventory", not in a condition. And a mark STAYS once written — it is shown back to you every turn under CONDITIONS. Emit one only to set a NEW mark, change the words of an old one, or clear it. Never re-send a mark someone already carries.',
   ];
 }
 
@@ -539,12 +540,14 @@ function buildOutputProtocol(settings: Settings): string {
     ...characterLines,
     ...conditionLines(settings),
     '- "inventory": array of { "op": "add|update|remove", "label", "description", "quantity" }.',
-    '- An inventory "add" is a NEW acquisition, this turn only. If the label is already listed under INVENTORY above, the player HAS it — do not add it again, however often the scene mentions it. Only emit an op when the count actually changes: "update" with the new "quantity", or "remove". Use the label already in INVENTORY, exactly as written.',
-    '- Gold is the permanent currency item in "inventory" — never remove it. When the player gains or spends money, emit { "op": "update", "label": "Gold", "quantity": <new total> }.',
+    '- An inventory "add" means the player TOOK it, in the prose you just wrote — picked it up, was handed it, pulled it free. An object they can merely see is NOT theirs: something lying in a chest, resting on a table, held by someone else, or waiting at the end of an action you are OFFERING them gets no op at all. If "Take the X" is one of your "options", X does not go in the inventory this turn. Wait for them to take it.',
+    '- An inventory "add" is also a NEW acquisition. If the label is already listed under INVENTORY above, the player HAS it — do not add it again, however often the scene mentions it. When the count changes, emit "update" with the new "quantity"; when it is gone, "remove". Use the label already in INVENTORY, exactly as written.',
+    '- Gold is the permanent currency item in "inventory" — never remove it. Emit a Gold op ONLY on a turn where your prose has money actually change hands — the player is paid, robbed, finds coin, buys something — and then emit { "op": "update", "label": "Gold", "quantity": <new total> }. The total in INVENTORY is already authoritative and is shown back to you every turn: never restate it, and never move it for a beat that says nothing about money.',
     '- "quests": array of { "op": "add|update|remove", "label", "description", "reward", "status": "active"|"done" }. Update a quest with status "done" when the player completes it.',
     '- "notes": array of { "op": "add|update", "title", "content", "keywords": [ … ] } — YOUR OWN MEMORY. Only the last few turns are shown back to you; anything else is forgotten unless you write it down here. Note a place, person, faction, promise, or revelation the moment it matters, and add to a note when you learn more. "keywords" are the words that should bring it back — names and aliases; the title always counts. Keep each note to a couple of factual sentences.',
     '- "spoke": array of member names you gave a spoken line this turn (a hint only).',
     "",
+    "Every op is a CHANGE your prose just made. The blocks above already tell you what the player has, who travels with them, what marks they carry and what quests are open — none of it needs confirming, and an op that sets something to what it already is will be discarded. When a turn changes nothing, emit an empty object.",
     'Party dialogue uses the convention `Name: "…"` — the name must be an in-company member.',
     "Never put the JSON before the prose. Never emit more than one block. Never wrap it in code fences.",
   ].join("\n");

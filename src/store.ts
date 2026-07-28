@@ -1264,9 +1264,11 @@ export const useStore = create<LoomStore>((set, get) => {
       const { prose, block } = parseLoomResponse(raw);
       const g = get().game;
       const library = get().characters;
-      // Fold restated ops out BEFORE applying — and record the folded block, not
-      // the raw one, so the transcript's chips report what actually happened.
-      const applied = block ? reconcileBlock(g, block) : null;
+      // Fold restated ops and no-ops out BEFORE applying — and record the folded
+      // block, not the raw one, so the transcript's chips report what actually
+      // happened. The prose rides along for the one check that reads it: a Gold
+      // total that moves on a beat with no money in it.
+      const applied = block ? reconcileBlock(g, library, block, prose) : null;
       const scene = applied ? applyDeltas(g, library, applied) : null;
 
       // Party deltas apply first, THEN deterministic speaker detection bumps
