@@ -13,6 +13,7 @@ import {
 } from "./fields";
 import { AutoUpdateModal } from "./AutoUpdateModal";
 import { GenerateFieldModal } from "./GenerateFieldModal";
+import { GenerateItemModal } from "./GenerateItemModal";
 import { GEN_FIELD_LABEL, type GenField } from "../lib/generateField";
 import { useEditBuffer } from "./useEditBuffer";
 import { useConfirm } from "./useConfirm";
@@ -109,6 +110,9 @@ export function MemberSheet() {
   const [zoom, setZoom] = useState(false);
   const [autoUpdate, setAutoUpdate] = useState(false);
   const [genField, setGenField] = useState<GenField | null>(null);
+  // The equipment row the model is writing — an index into the draft's kit,
+  // since ✦ is only offered while editing.
+  const [genEquip, setGenEquip] = useState<number | null>(null);
   const portraitFile = useRef<HTMLInputElement>(null);
   // Saving hands off to the OS (share sheet / download) and leaves no trace in
   // the app, so the sheet says what happened for a few seconds. `at` makes each
@@ -492,6 +496,17 @@ export function MemberSheet() {
                   >
                     Remove
                   </button>
+                  {/* Same ✦ as the prose fields above, writing a whole row
+                      rather than one field (`generateItem.ts`) — and the same
+                      Edit gate, so the accepted item lands in the draft. */}
+                  <button
+                    type="button"
+                    aria-label={e.label.trim() ? `Generate ${e.label.trim()}` : "Generate equipment"}
+                    onClick={() => setGenEquip(i)}
+                    className="border-2 border-ink px-2 py-1 leading-none active:bg-ink active:text-paper"
+                  >
+                    ✦
+                  </button>
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
@@ -671,6 +686,29 @@ export function MemberSheet() {
           field={genField}
           onAccept={(text) => setField(genField, text)}
           onClose={() => setGenField(null)}
+        />
+      )}
+
+      {/* Gear for THIS character: the draft sheet says who they are, and the
+          rest of the draft kit says what they already have. The row being
+          written is left out of it — it is the draft being replaced. */}
+      {genEquip !== null && v.equipment[genEquip] && (
+        <GenerateItemModal
+          character={{ ...member, ...v }}
+          existing={v.equipment.filter((_, j) => j !== genEquip)}
+          replacing={
+            !!(v.equipment[genEquip].label.trim() || v.equipment[genEquip].description.trim())
+          }
+          onAccept={(item) =>
+            setEquip(
+              v.equipment.map((y, j) =>
+                j === genEquip
+                  ? { ...y, label: item.label, description: item.description, quantity: item.quantity }
+                  : y,
+              ),
+            )
+          }
+          onClose={() => setGenEquip(null)}
         />
       )}
 

@@ -5,6 +5,7 @@ import { canEquip } from "../lib/equip";
 import type { Item } from "../types";
 import { OverlayHeader } from "./OverlayHeader";
 import { EquipModal } from "./EquipModal";
+import { GenerateItemModal } from "./GenerateItemModal";
 import { EditToolbar, btn, btnSmall } from "./fields";
 import { useEditBuffer } from "./useEditBuffer";
 
@@ -20,6 +21,10 @@ import { useEditBuffer } from "./useEditBuffer";
  * their sheet and is never in both (`equip.ts`). It sits in READ mode only: an
  * open draft is not yet the pack, so moving a row out from under it would fight
  * whatever Save Changes wrote next.
+ *
+ * ✦ is the opposite arrangement: EDIT mode only. It asks the model for a whole
+ * row (`generateItem.ts`) and drops it into the draft, so the undo is the
+ * Discard Changes already sitting at the top of the screen.
  */
 export function InventoryScreen() {
   const inventory = useStore((s) => s.game.inventory);
@@ -30,6 +35,9 @@ export function InventoryScreen() {
   );
   // The row being handed to someone — index into the live pack, not the draft.
   const [equipping, setEquipping] = useState<number | null>(null);
+  // The row being written by the model — index into the draft, since ✦ is only
+  // ever offered while editing.
+  const [generating, setGenerating] = useState<number | null>(null);
 
   const list = editing ? draft : inventory;
 
@@ -79,14 +87,26 @@ export function InventoryScreen() {
                   rows={2}
                   className="w-full resize-y border-2 border-ink bg-paper p-2 text-sm focus:outline-none"
                 />
+                {/* Gold has neither button: the purse is permanent, and its
+                    label is locked, so there is nothing here to write. */}
                 {!isGold(it.label) && (
-                  <button
-                    type="button"
-                    onClick={() => remove(i)}
-                    className="border-2 border-ink px-2 py-1 text-xs uppercase tracking-widest active:bg-ink active:text-paper"
-                  >
-                    Remove
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => remove(i)}
+                      className="border-2 border-ink px-2 py-1 text-xs uppercase tracking-widest active:bg-ink active:text-paper"
+                    >
+                      Remove
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={it.label.trim() ? `Generate ${it.label.trim()}` : "Generate item"}
+                      onClick={() => setGenerating(i)}
+                      className="border-2 border-ink px-2 py-1 leading-none active:bg-ink active:text-paper"
+                    >
+                      ✦
+                    </button>
+                  </div>
                 )}
               </>
             ) : (
@@ -124,6 +144,25 @@ export function InventoryScreen() {
           item={inventory[equipping]}
           index={equipping}
           onClose={() => setEquipping(null)}
+        />
+      )}
+
+      {/* The row being written is not part of its own context — it is the draft
+          being replaced, and listing it would tell the model not to write it. */}
+      {generating !== null && draft[generating] && (
+        <GenerateItemModal
+          existing={draft.filter((_, j) => j !== generating)}
+          replacing={
+            !!(draft[generating].label.trim() || draft[generating].description.trim())
+          }
+          onAccept={(item) =>
+            patch(generating, {
+              label: item.label,
+              description: item.description,
+              quantity: item.quantity,
+            })
+          }
+          onClose={() => setGenerating(null)}
         />
       )}
     </main>

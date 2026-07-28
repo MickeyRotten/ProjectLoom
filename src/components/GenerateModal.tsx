@@ -12,16 +12,22 @@ import { btn, btnSmall } from "./fields";
  * Premise); this knows the shape of the exchange — optional guidance in, a
  * preview back, Use This / Generate Again / Cancel — and nothing about either.
  *
+ * Generic over what comes back, because an ITEM is not one string: the pack and
+ * the equipment rows generate a label, a description and a count together
+ * (`generateItem.ts`), and they preview as one block. A caller whose result is
+ * plain text passes no `preview` and gets it rendered as-is.
+ *
  * `fieldGenPending` / `fieldGenError` are read straight off the store rather
  * than passed in: one generate modal is open at a time app-wide, which is the
  * same assumption the single-flight guard in the store actions makes.
  */
-export function GenerateModal({
+export function GenerateModal<T = string>({
   label,
   blurb,
   replacing,
   replacingNote,
   run,
+  preview,
   onAccept,
   onClose,
 }: {
@@ -35,15 +41,17 @@ export function GenerateModal({
    *  member sheet's accepted text lands in a draft, so it has an undo. */
   replacingNote?: string;
   /** Ask the model, with the player's guidance. Null means it failed. */
-  run: (hint: string) => Promise<string | null>;
-  onAccept: (text: string) => void;
+  run: (hint: string) => Promise<T | null>;
+  /** How the result reads in the preview box. Omit for a plain string result. */
+  preview?: (result: T) => React.ReactNode;
+  onAccept: (result: T) => void;
   onClose: () => void;
 }) {
   const pending = useStore((s) => s.fieldGenPending);
   const error = useStore((s) => s.fieldGenError);
   const clearError = useStore((s) => s.clearFieldGenError);
   const [hint, setHint] = useState("");
-  const [result, setResult] = useState<string | null>(null);
+  const [result, setResult] = useState<T | null>(null);
 
   // A stale failure from a previous run must not greet the next open.
   useEffect(() => clearError, [clearError]);
@@ -57,12 +65,12 @@ export function GenerateModal({
   }, [onClose, pending]);
 
   async function generate() {
-    const text = await run(hint);
-    if (text) setResult(text);
+    const next = await run(hint);
+    if (next) setResult(next);
   }
 
   function accept() {
-    if (!result) return;
+    if (result === null) return;
     onAccept(result);
     onClose();
   }
@@ -92,9 +100,9 @@ export function GenerateModal({
         {result !== null && (
           <div className="space-y-2">
             <span className="block uppercase tracking-widest text-sm">{label}</span>
-            <p className="whitespace-pre-wrap break-words border-2 border-ink p-2 text-sm">
-              {result}
-            </p>
+            <div className="whitespace-pre-wrap break-words border-2 border-ink p-2 text-sm">
+              {preview ? preview(result) : String(result)}
+            </div>
             {replacing && (
               <p className="text-xs uppercase tracking-widest opacity-60">
                 {replacingNote ?? `Replaces the ${label} already written.`}
