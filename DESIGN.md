@@ -181,7 +181,18 @@ always did.
   other and it is the table that sits at an angle to the viewer. Square to the
   camera a landed cube is just a bordered square; at an angle its top and side
   show and the perspective does real work. Bounded well inside 45°, or the
-  neighbouring face would out-face the one that was rolled. The scrim (`--scrim`, its own per-theme token, so it flips with
+  neighbouring face would out-face the one that was rolled.
+
+  The throw itself is one animation in three segments (`loom-die-toss`, with
+  `PHASE` naming the keyframe stops `TIMING` is checked against): **up from off
+  the bottom-left**, the way a hand throws them, out to a **scattered spot**
+  inside `SAFE_AREA` — placed by rejection sampling against `MIN_SPACING`, since
+  a plain random draw clumps and overlapping cubes are unreadable — a beat lying
+  there so the throw reads as a throw, then **collected into a centred row**
+  (`gridSpots`, wrapping to a grid past `GRID_COLUMNS`, short last row centred on
+  its own width) above the result plate. The dice are absolutely positioned and
+  moved by transform alone: a flex row would keep asserting a position the
+  animation is trying to leave. The scrim (`--scrim`, its own per-theme token, so it flips with
   ink/paper) is the one tone in the app that is neither ink nor paper: the beat
   the player just sent stays legible underneath, so the dice land *in* the scene
   rather than on a screen the game cut away to — which is also why the result

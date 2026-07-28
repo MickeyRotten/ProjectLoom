@@ -1,13 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
   D6_FACES,
+  GRID_COLUMNS,
+  PHASE,
+  SAFE_AREA,
   SCENE_TILT,
   SLOT_ROTATION,
   TIMING,
   facesFor,
+  gridSpots,
   landedAt,
   leaveAt,
   planToss,
+  scatterSpots,
   slotFor,
   totalMs,
 } from "./diceAnim";
@@ -89,10 +94,10 @@ describe("planToss", () => {
     expect(planToss(r)).toEqual(planToss({ ...r }));
   });
 
-  it("throws dice in from off-screen", () => {
+  it("throws dice up from off the bottom-left corner", () => {
     for (const die of planToss(roll({ count: 2, sides: 6, dice: [1, 6] }))) {
-      expect(die.dy).toBeLessThan(-50);
-      expect(Math.abs(die.dx)).toBeLessThanOrEqual(45);
+      expect(die.dx).toBeLessThan(-50); // off to the left
+      expect(die.dy).toBeGreaterThan(50); // and below the screen
     }
   });
 
@@ -104,7 +109,7 @@ describe("planToss", () => {
 
 describe("timing", () => {
   it("holds the result after the last die lands", () => {
-    expect(landedAt(1)).toBe(TIMING.fadeIn + TIMING.toss);
+    expect(landedAt(1)).toBe(TIMING.fadeIn + TIMING.move);
     expect(landedAt(3)).toBe(landedAt(1) + TIMING.stagger * 2);
     expect(leaveAt(3)).toBe(landedAt(3) + TIMING.hold);
     expect(totalMs(3)).toBe(leaveAt(3) + TIMING.fadeOut);
@@ -136,5 +141,79 @@ describe("the surface", () => {
       expect(die.rx1).toBe(SLOT_ROTATION[slotFor(die.faces, die.value)].rx);
       expect(die.ry1).toBe(SLOT_ROTATION[slotFor(die.faces, die.value)].ry);
     }
+  });
+});
+
+describe("scatter, then collect", () => {
+  it("lands every die inside the safe area", () => {
+    // A die that scatters to the edge reads as escaping the screen, and on a
+    // narrow phone it clips.
+    for (const count of [1, 2, 3, 5, 10]) {
+      for (const spot of scatterSpots(count, `seed|${count}`)) {
+        expect(Math.abs(spot.x)).toBeLessThanOrEqual(SAFE_AREA.x);
+        expect(Math.abs(spot.y)).toBeLessThanOrEqual(SAFE_AREA.y);
+      }
+    }
+  });
+
+  it("keeps a readable throw apart", () => {
+    // Overlapping cubes are unreadable; this is the whole reason placement is
+    // rejection-sampled rather than a plain random draw.
+    const spots = scatterSpots(4, "seed|spread");
+    for (let i = 0; i < spots.length; i++) {
+      for (let j = i + 1; j < spots.length; j++) {
+        const dx = (spots[i].x - spots[j].x) / 20;
+        const dy = (spots[i].y - spots[j].y) / 13;
+        expect(dx * dx + dy * dy).toBeGreaterThanOrEqual(1);
+      }
+    }
+  });
+
+  it("scatters the same roll the same way", () => {
+    expect(scatterSpots(3, "same")).toEqual(scatterSpots(3, "same"));
+    expect(scatterSpots(3, "same")).not.toEqual(scatterSpots(3, "other"));
+  });
+
+  it("collects into a row centred on nothing in particular", () => {
+    // The block has to sit around one point however many dice there are —
+    // otherwise a 2-dice row and a 3-dice row are centred differently.
+    for (const count of [1, 2, 3, 5]) {
+      const spots = gridSpots(count);
+      expect(spots).toHaveLength(count);
+      const sum = spots.reduce((n, s) => n + s.col, 0);
+      expect(Math.abs(sum)).toBeLessThan(1e-9);
+      expect(spots.every((s) => s.row === 0)).toBe(true);
+    }
+  });
+
+  it("wraps to a grid past the row width, centring the short last row", () => {
+    const spots = gridSpots(7);
+    const rows = new Set(spots.map((s) => s.row));
+    expect(rows.size).toBe(2);
+    // Five on the first row, two on the second — and the two are centred on
+    // their own width, not left-aligned under the five.
+    const last = spots.slice(GRID_COLUMNS);
+    expect(last.map((s) => s.col)).toEqual([-0.5, 0.5]);
+  });
+
+  it("gives each die its own spot and its own place in the row", () => {
+    const dice = planToss(roll({ roll: 9, total: 9, count: 3, sides: 6, dice: [4, 3, 2] }));
+    expect(new Set(dice.map((d) => `${d.sx},${d.sy}`)).size).toBe(3);
+    expect(dice.map((d) => d.col)).toEqual([-1, 0, 1]);
+  });
+});
+
+describe("phases", () => {
+  it("keeps the timings in step with the keyframe stops", () => {
+    // `TIMING` and the `loom-die-toss` keyframes describe the same animation
+    // from two files. The percentages there are `PHASE`; if these drift, the
+    // dice stop tumbling before or after they touch down.
+    expect(TIMING.toss / TIMING.move).toBeCloseTo(PHASE.land, 3);
+    expect((TIMING.toss + TIMING.scatter) / TIMING.move).toBeCloseTo(PHASE.gather, 2);
+  });
+
+  it("shows the result only once the dice have been collected", () => {
+    expect(landedAt(1)).toBe(TIMING.fadeIn + TIMING.move);
+    expect(landedAt(3)).toBe(landedAt(1) + TIMING.stagger * 2);
   });
 });

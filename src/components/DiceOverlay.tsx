@@ -104,7 +104,7 @@ function Toss({ cast }: { cast: DiceCast }) {
       //
       // Tapping anywhere ends it: an animation that plays every risky turn must
       // be dismissable without hunting for a button.
-      className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-6 bg-scrim px-4 text-paper"
+      className="fixed inset-0 z-50 bg-scrim text-paper"
       style={{
         opacity: entered && !leaving ? 1 : 0,
         transition: `opacity ${leaving ? TIMING.fadeOut : TIMING.fadeIn}ms linear`,
@@ -113,8 +113,16 @@ function Toss({ cast }: { cast: DiceCast }) {
       role="presentation"
     >
       <div
-        className="loom-dice-scene max-w-full"
-        style={{ "--die": "clamp(52px, 16vw, 84px)" } as CSSProperties}
+        className="loom-dice-scene"
+        style={
+          {
+            "--die": "clamp(52px, 16vw, 84px)",
+            /* Space between dice once they are collected. */
+            "--gap": "10px",
+            /* The collected row sits above the middle, clear of the result. */
+            "--row-origin": "-16vh",
+          } as CSSProperties
+        }
       >
         {/*
          * The surface the dice land on, tilted away from the camera. One
@@ -122,7 +130,7 @@ function Toss({ cast }: { cast: DiceCast }) {
          * it is the table that sits at an angle. See `SCENE_TILT`.
          */}
         <div
-          className="loom-dice-plane flex max-w-full flex-wrap items-center justify-center gap-3"
+          className="loom-dice-plane"
           style={
             {
               "--plane-x": `${SCENE_TILT.x}deg`,
@@ -136,13 +144,22 @@ function Toss({ cast }: { cast: DiceCast }) {
               className="loom-die"
               style={
                 {
+                  // Off the bottom-left corner, where it is thrown from.
                   "--dx": `${d.dx}vw`,
                   "--dy": `${d.dy}vh`,
+                  // Where the throw scatters it to…
+                  "--sx": `${d.sx}vw`,
+                  "--sy": `${d.sy}vh`,
+                  // …and where it is collected, a whole number of dice-widths
+                  // from the middle of the row.
+                  "--gx": `calc(${d.col} * (var(--die) + var(--gap)))`,
+                  "--gy": `calc(var(--row-origin) + ${d.row} * (var(--die) + var(--gap)))`,
                   "--rx0": `${d.rx0}deg`,
                   "--ry0": `${d.ry0}deg`,
                   "--rx1": `${d.rx1}deg`,
                   "--ry1": `${d.ry1}deg`,
                   "--toss": `${TIMING.toss}ms`,
+                  "--move": `${TIMING.move}ms`,
                   // Held until the layer itself has faded in, so nothing is thrown
                   // at a screen that is still half transparent.
                   "--delay": `${TIMING.fadeIn + d.delay}ms`,
@@ -183,7 +200,7 @@ function Toss({ cast }: { cast: DiceCast }) {
        * the dice don't jump when it appears.
        */}
       <div
-        className="flex min-h-[5.5rem] flex-col items-center justify-center gap-1 border-2 border-paper bg-ink px-4 py-3 text-center transition-opacity duration-200"
+        className="pointer-events-none absolute left-1/2 top-1/2 flex min-h-[5.5rem] max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center gap-1 border-2 border-paper bg-ink px-4 py-3 text-center transition-opacity duration-200"
         style={{ opacity: landed ? 1 : 0 }}
         role="status"
         aria-live="polite"
@@ -199,7 +216,7 @@ function Toss({ cast }: { cast: DiceCast }) {
         )}
       </div>
 
-      <span className="absolute bottom-6 text-xs uppercase tracking-widest opacity-70">
+      <span className="absolute inset-x-0 bottom-6 text-center text-xs uppercase tracking-widest opacity-70">
         Tap to skip
       </span>
     </div>
