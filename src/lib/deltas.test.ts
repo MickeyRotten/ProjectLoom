@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { applyDeltas, simplifyLocation } from "./deltas";
+import { applyDeltas, reconcileBlock, simplifyLocation } from "./deltas";
 import { defaultPC, newGame } from "./defaults";
 import { activeMembers, getEntry, partyMembers, resolve } from "./roster";
 import type { Character, GameState } from "../types";
@@ -644,5 +644,168 @@ describe("applyDeltas — world notes", () => {
     const g = game();
     const scene = applyDeltas(g, lib(), { notes: [{ op: "add", title: "" }] });
     expect(scene.worldNotes).toBe(g.worldNotes);
+  });
+});
+
+describe("reconcileBlock — restated ops", () => {
+  it("drops a bare add for an item the player already has", () => {
+    const g = game();
+    g.inventory = [{ label: "Rusty Key", description: "bent", quantity: 1 }];
+    const block = reconcileBlock(g, {
+      inventory: [{ op: "add", label: "rusty key" }],
+    });
+    expect(block.inventory).toEqual([]);
+    // …and the phantom +1 never lands.
+    expect(applyDeltas(g, lib(), block).inventory[0].quantity).toBe(1);
+  });
+
+  it("keeps an add that names a quantity — a real second pickup", () => {
+    const g = game();
+    g.inventory = [{ label: "Torch", description: "", quantity: 1 }];
+    const block = reconcileBlock(g, {
+      inventory: [{ op: "add", label: "Torch", quantity: 2 }],
+    });
+    expect(block.inventory).toHaveLength(1);
+    expect(applyDeltas(g, lib(), block).inventory[0].quantity).toBe(3);
+  });
+
+  it("keeps a bare add for an item the player does NOT have", () => {
+    const g = game();
+    g.inventory = [];
+    const block = reconcileBlock(g, { inventory: [{ op: "add", label: "Lantern" }] });
+    expect(block.inventory).toEqual([{ op: "add", label: "Lantern" }]);
+  });
+
+  it("demotes a restated add carrying a description to an update", () => {
+    const g = game();
+    g.inventory = [{ label: "Knife", description: "dull", quantity: 1 }];
+    const block = reconcileBlock(g, {
+      inventory: [{ op: "add", label: "Knife", description: "notched now" }],
+    });
+    expect(block.inventory).toEqual([
+      { op: "update", label: "Knife", description: "notched now" },
+    ]);
+    const scene = applyDeltas(g, lib(), block);
+    expect(scene.inventory[0]).toMatchObject({ description: "notched now", quantity: 1 });
+  });
+
+  it("counts an item picked up earlier in the SAME block as held", () => {
+    const g = game();
+    g.inventory = [];
+    const block = reconcileBlock(g, {
+      inventory: [
+        { op: "add", label: "Lantern", quantity: 1 },
+        { op: "add", label: "lantern" },
+      ],
+    });
+    expect(block.inventory).toEqual([{ op: "add", label: "Lantern", quantity: 1 }]);
+    expect(applyDeltas(g, lib(), block).inventory[0].quantity).toBe(1);
+  });
+
+  it("lets a re-add through after the same block removed the item", () => {
+    const g = game();
+    g.inventory = [{ label: "Torch", description: "", quantity: 1 }];
+    const block = reconcileBlock(g, {
+      inventory: [
+        { op: "remove", label: "Torch" },
+        { op: "add", label: "Torch" },
+      ],
+    });
+    expect(block.inventory).toHaveLength(2);
+  });
+
+  it("drops a bare add for Gold, which is always held", () => {
+    const g = game();
+    g.inventory = [{ label: "Gold", description: "Currency", quantity: 10 }];
+    const block = reconcileBlock(g, { inventory: [{ op: "add", label: "Gold" }] });
+    expect(block.inventory).toEqual([]);
+  });
+
+  it("keeps Gold held after a remove — the purse is emptied, not deleted", () => {
+    const g = game();
+    g.inventory = [{ label: "Gold", description: "Currency", quantity: 10 }];
+    const block = reconcileBlock(g, {
+      inventory: [
+        { op: "remove", label: "Gold" },
+        { op: "add", label: "gold" },
+      ],
+    });
+    expect(block.inventory).toEqual([{ op: "remove", label: "Gold" }]);
+  });
+
+  it("writes an exact-duplicate row once, whatever the field order", () => {
+    const g = game();
+    g.inventory = [];
+    const block = reconcileBlock(g, {
+      inventory: [
+        { op: "add", label: "Torch", quantity: 2 },
+        { label: "Torch", quantity: 2, op: "add" },
+      ],
+    });
+    expect(block.inventory).toEqual([{ op: "add", label: "Torch", quantity: 2 }]);
+    expect(applyDeltas(g, lib(), block).inventory[0].quantity).toBe(2);
+  });
+
+  it("keeps two adds for the same label with different quantities — a sequence", () => {
+    const g = game();
+    g.inventory = [];
+    const block = reconcileBlock(g, {
+      inventory: [
+        { op: "add", label: "Coin", quantity: 2 },
+        { op: "add", label: "Coin", quantity: 3 },
+      ],
+    });
+    expect(block.inventory).toHaveLength(2);
+  });
+
+  it("de-duplicates party, quest, note and condition rows too", () => {
+    const g = game();
+    const block = reconcileBlock(g, {
+      party: [
+        { op: "add", name: "Navi" },
+        { op: "add", name: "Navi" },
+      ],
+      quests: [
+        { op: "add", label: "Find the well" },
+        { op: "add", label: "Find the well" },
+      ],
+      notes: [
+        { op: "add", title: "Rodstroke", keywords: ["city"] },
+        { op: "add", title: "Rodstroke", keywords: ["city"] },
+      ],
+      conditions: [
+        { name: "Navi", condition: "limping" },
+        { name: "Navi", condition: "limping" },
+      ],
+    });
+    expect(block.party).toHaveLength(1);
+    expect(block.quests).toHaveLength(1);
+    expect(block.notes).toHaveLength(1);
+    expect(block.conditions).toHaveLength(1);
+  });
+
+  it("keeps note rows whose keyword arrays differ", () => {
+    const block = reconcileBlock(game(), {
+      notes: [
+        { op: "add", title: "Rodstroke", keywords: ["city"] },
+        { op: "add", title: "Rodstroke", keywords: ["market"] },
+      ],
+    });
+    expect(block.notes).toHaveLength(2);
+  });
+
+  it("returns the same block when there is nothing to fold", () => {
+    const g = game();
+    g.inventory = [{ label: "Rope", description: "", quantity: 1 }];
+    const block = {
+      location: "Old Well",
+      inventory: [{ op: "add" as const, label: "Lantern", quantity: 1 }],
+    };
+    expect(reconcileBlock(g, block)).toBe(block);
+  });
+
+  it("leaves labelless rows alone — applyDeltas already ignores them", () => {
+    const block = reconcileBlock(game(), { inventory: [{ op: "add", label: "" }] });
+    expect(block.inventory).toEqual([{ op: "add", label: "" }]);
   });
 });

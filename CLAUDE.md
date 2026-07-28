@@ -298,6 +298,17 @@ reordered — portrait → *Image Options* (a closed `fields.tsx → Collapsible
 holding upload/download/remove + the portrait prompt) → Edit → the sheet →
 *Story* (Auto-Update + Revert) → Condition → Standing → leave/delete, so six
 buttons no longer stand between the player and the character's name.
+Post-MVP also: **restated ops** (`deltas.ts → reconcileBlock`) — the narrator
+re-reports an acquisition it already made, and inventory `add` merges quantity, so
+one rusty key became Rusty Key ×7. The parsed block is folded before it applies:
+exact-duplicate rows inside one block are written once (keys sorted, so field order
+can't hide a copy), and an inventory `add` with **no** `quantity` for an item already
+held is dropped — or demoted to the `update` it meant when it carried a new
+description. An explicit quantity is always honoured; held-ness tracks as the block
+runs; Gold stays held through a `remove`. The store applies *and records* the folded
+block, since `toasts.ts` chips read `Message.appliedDeltas`. Matching output-protocol
+rule in `prompt.ts` says an `add` is a new acquisition and a changed count is an
+`update`.
 Deferred (post-MVP): rolling LLM summarization, NPC/item art, TTS,
 weather animation, multi-world. Track scope in `DESIGN.md → Build Phases`.
 

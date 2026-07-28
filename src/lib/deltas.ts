@@ -2,6 +2,7 @@ import type {
   Character,
   Equipment,
   GameState,
+  InventoryDelta,
   Item,
   LoomBlock,
   Note,
@@ -84,6 +85,127 @@ export function simplifyLocation(location: string): string {
     .map((p) => p.trim())
     .filter(Boolean);
   return parts.length ? parts[parts.length - 1] : "";
+}
+
+/**
+ * Fold a parsed block down to the ops that actually SAY something, before
+ * anything applies or records it.
+ *
+ * The narrator restates. Asked every turn what changed, a model will re-emit an
+ * acquisition it already reported — the rusty key it handed over three beats
+ * ago, named again because the key is still in the scene. Most channels shrug
+ * that off (a quest `add` on an existing label is a no-op, a note `add` merges,
+ * a party `add` only re-seats), but inventory MERGES QUANTITY: a restated
+ * `add` is +1 every time it lands, and the purse fills with Rusty Key ×7.
+ *
+ * Two rules, both about restatement and neither about legitimate repetition:
+ *  - an exact-duplicate op row inside ONE block is written once;
+ *  - an inventory `add` for an item the player already has, carrying NO
+ *    quantity, is not an acquisition. It is dropped, or — if it brought a
+ *    description — demoted to the `update` it meant.
+ * An `add` with an explicit quantity is always honoured: "picked up 2 more
+ * torches" is a real event, and second-guessing it would be the opposite bug.
+ *
+ * Runs BEFORE `applyDeltas`, and the result is what the store records as
+ * `Message.appliedDeltas` — `toasts.ts` derives its chips from that record, so
+ * a suppressed op must be gone from the block itself or the transcript keeps
+ * announcing an acquisition that never happened.
+ *
+ * Pure, and reference-stable: a block with nothing to fold is returned as-is,
+ * so the common turn allocates nothing.
+ */
+export function reconcileBlock(game: GameState, block: LoomBlock): LoomBlock {
+  const party = dropRepeats(block.party);
+  const conditions = dropRepeats(block.conditions);
+  const inventory = reconcileInventory(game.inventory, dropRepeats(block.inventory));
+  const quests = dropRepeats(block.quests);
+  const notes = dropRepeats(block.notes);
+
+  if (
+    party === block.party &&
+    conditions === block.conditions &&
+    inventory === block.inventory &&
+    quests === block.quests &&
+    notes === block.notes
+  ) {
+    return block;
+  }
+
+  return { ...block, party, conditions, inventory, quests, notes };
+}
+
+/**
+ * The same op row emitted twice in one block, written once. Rows are compared
+ * on their whole content with keys sorted, so field order — which is the
+ * model's, not ours — can't make one copy look different from the other.
+ *
+ * Only EXACT repeats go: two `add` rows for the same label with different
+ * quantities are a sequence, not a stutter, and are left alone.
+ */
+function dropRepeats<T>(rows: T[] | undefined): T[] | undefined {
+  if (!rows?.length) return rows;
+  const seen = new Set<string>();
+  const kept = rows.filter((row) => {
+    const key = rowKey(row);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  return kept.length === rows.length ? rows : kept;
+}
+
+/** Content key for one delta row — field order normalized away. */
+function rowKey(row: unknown): string {
+  if (!row || typeof row !== "object") return String(row);
+  // The array replacer filters object properties at every depth; array VALUES
+  // (a note's keywords) are untouched by it, so they still count.
+  return JSON.stringify(row, Object.keys(row as object).sort());
+}
+
+/**
+ * Inventory ops with the restated acquisitions taken out (see
+ * `reconcileBlock`). Tracks what the player holds AS THE BLOCK RUNS — an item
+ * this same block just picked up counts as held for the rows after it.
+ */
+function reconcileInventory(
+  current: Item[],
+  deltas: InventoryDelta[] | undefined,
+): InventoryDelta[] | undefined {
+  if (!deltas?.length) return deltas;
+  const held = new Set(current.map((it) => slug(it.label)));
+  let changed = false;
+
+  const kept: InventoryDelta[] = [];
+  for (const d of deltas) {
+    if (!d?.label) {
+      kept.push(d);
+      continue;
+    }
+    const key = slug(d.label);
+
+    if (d.op === "remove") {
+      // Gold is never actually gone — a remove empties the purse, and the row
+      // stays — so it is still "held" for the rows that follow.
+      if (!isGold(d.label)) held.delete(key);
+      kept.push(d);
+      continue;
+    }
+
+    if (d.op === "add" && d.quantity === undefined && held.has(key)) {
+      changed = true;
+      // A restatement that also rewrote the description still has something to
+      // say; one that says only "they have this" has nothing.
+      if (d.description !== undefined) {
+        kept.push({ op: "update", label: d.label, description: d.description });
+      }
+      continue;
+    }
+
+    if (d.op === "add") held.add(key);
+    kept.push(d);
+  }
+
+  return changed ? kept : deltas;
 }
 
 export function applyDeltas(

@@ -540,6 +540,7 @@ function buildOutputProtocol(settings: Settings): string {
     ...characterLines,
     ...conditionLines(settings),
     '- "inventory": array of { "op": "add|update|remove", "label", "description", "quantity" }.',
+    '- An inventory "add" is a NEW acquisition, this turn only. If the label is already listed under INVENTORY above, the player HAS it — do not add it again, however often the scene mentions it. Only emit an op when the count actually changes: "update" with the new "quantity", or "remove". Use the label already in INVENTORY, exactly as written.',
     '- Gold is the permanent currency item in "inventory" — never remove it. When the player gains or spends money, emit { "op": "update", "label": "Gold", "quantity": <new total> }.',
     '- "quests": array of { "op": "add|update|remove", "label", "description", "reward", "status": "active"|"done" }. Update a quest with status "done" when the player completes it.',
     '- "notes": array of { "op": "add|update", "title", "content", "keywords": [ … ] } — YOUR OWN MEMORY. Only the last few turns are shown back to you; anything else is forgotten unless you write it down here. Note a place, person, faction, promise, or revelation the moment it matters, and add to a note when you learn more. "keywords" are the words that should bring it back — names and aliases; the title always counts. Keep each note to a couple of factual sentences.',

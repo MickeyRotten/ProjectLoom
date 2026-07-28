@@ -67,7 +67,7 @@ import {
   type ScenarioField,
 } from "./lib/generateScenario";
 import { parseLoomResponse, truncateForDisplay } from "./lib/loomBlock";
-import { applyDeltas } from "./lib/deltas";
+import { applyDeltas, reconcileBlock } from "./lib/deltas";
 import { captureReversal, applyReversal } from "./lib/reversal";
 import { detectSpeakers } from "./lib/spotlight";
 import {
@@ -1163,7 +1163,10 @@ export const useStore = create<LoomStore>((set, get) => {
       const { prose, block } = parseLoomResponse(raw);
       const g = get().game;
       const library = get().characters;
-      const scene = block ? applyDeltas(g, library, block) : null;
+      // Fold restated ops out BEFORE applying — and record the folded block, not
+      // the raw one, so the transcript's chips report what actually happened.
+      const applied = block ? reconcileBlock(g, block) : null;
+      const scene = applied ? applyDeltas(g, library, applied) : null;
 
       // Party deltas apply first, THEN deterministic speaker detection bumps
       // lastSpokeTurn — the model's `spoke` hint never overrides the prose
@@ -1202,7 +1205,7 @@ export const useStore = create<LoomStore>((set, get) => {
         // The arithmetic beside the verdict — see `TurnRoll`. Same gate, so a
         // game with stakes off records neither.
         roll: record ?? undefined,
-        appliedDeltas: block ?? undefined,
+        appliedDeltas: applied ?? undefined,
         reversal,
         day: scene?.day ?? g.day,
         location: scene?.location ?? g.location,
