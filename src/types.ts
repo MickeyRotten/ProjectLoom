@@ -20,6 +20,16 @@ export interface LegacyStrengths {
 export interface Equipment {
   label: string;
   description: string;
+  /**
+   * How many there are. Absent on every record written before gear could move
+   * between the pack and a character, and on every narrator-authored kit, so it
+   * reads as one (`equip.ts → equipQuantity`) rather than as zero.
+   *
+   * It exists because equipping is a MOVE, not a copy: an `Item` carries a
+   * count and an `Equipment` row that could not would lose it, turning twelve
+   * arrows into one the moment they were handed to the archer.
+   */
+  quantity?: number;
 }
 
 export type CharacterRole = "pc" | "member";

@@ -20,7 +20,7 @@ moves, generates **1-bit pixel-art portraits and location banners** via an image
 - **One pre-made scenario**, fully editable in Settings. Inline editing everywhere — no Edit mode.
 - **Images via OpenRouter** (Nano Banana 2 Lite). Scope: **party portraits + location banners**, generated on demand, player can **regenerate**.
 - **Uncensored adult** default.
-- Carry over: **Spotlight**, **day counter**. Single-category lorebook = **World Notes**. Equipment = simple `{label, description}` text fields per character.
+- Carry over: **Spotlight**, **day counter**. Single-category lorebook = **World Notes**. Equipment = simple `{label, description, quantity?}` text fields per character, **moved** in and out of the shared inventory (see *Equip ⇄ Inventory*).
 - **Turn model: single structured call** (not an agentic tool loop).
 - **Action buttons: fixed + AI-generated** contextual options.
 - **Multiple save slots**, no export/import.
@@ -274,8 +274,10 @@ Character {
                                          // sex is free text too — pronouns for the narrator,
                                          // a Subject line for the portrait prompt
   notes,                                 // THE PLAYER'S field — read by the narrator, written by nobody else
-  equipment: { label, description }[],   // simple text fields, no catalog
+  equipment: { label, description, quantity? }[],  // simple text fields, no catalog
                                          // written once by the creating `add`, player's after that
+                                         // quantity absent = 1; it exists so a stack keeps its
+                                         // count when it MOVES in from the inventory
   useCustomPortraitPrompt?, customPortraitPrompt?
 }
 
@@ -383,6 +385,20 @@ consumes resolved `PartyMember`s, never the raw halves.
   snapshot/restore slots.
 - **Strengths** and **Flaws** are one free-text field each (no label/name), edited as plain text areas on the member sheet.
 
+### Equip ⇄ Inventory — `src/lib/equip.ts`
+
+The two halves of "what you have" could not reach each other: `GameState.inventory` is the party's shared pack (per-adventure), `Character.equipment` is what one person wears or carries (global, riding the cast library). Both were editable, neither could hand anything to the other, so giving the looted sword to the swordswoman meant deleting a row on one screen and retyping it on the other — and typing it in both places is exactly how an item ends up existing twice.
+
+- **It is a MOVE, never a copy.** An item is in the pack or on a person, **never in both**. `equipItem` / `unequipItem` return *both* new arrays or `null`; the store writes both halves together (`moveGear`) — the pack lives on the game, the kit on the character, and half a move applied is a duplicated or a vanished item.
+- **Whole rows move, count and all.** That is what `Equipment.quantity?` is for: twelve arrows are still twelve after they change hands, and the move is exactly reversible — an accidental equip is a one-tap fix, not an arithmetic exercise. Absent reads as **1**, so every record written before this (and every narrator-authored kit) is unchanged.
+- **Merging by the same `slug` the deltas use** (exported from `deltas.ts`, so "match" can't mean two things): equipping 3 arrows onto a kit that holds 12 reads **×15**, not two rows called Arrow. The receiving side's own description wins; a blank one is filled from the sender.
+- **Gold never leaves the purse.** The currency row is permanent and belongs to the party, so `canEquip` refuses it — along with a blank label and an empty row.
+- **Targets are the PC and the company** — `active` **and** `benched`, since stowing gear on the one who stayed behind is half of what a bench is for. NPCs are not: their kit is the world's.
+- **Where the buttons are:** **Equip** on each Inventory row (read mode only — an open draft is not yet the pack) opens a target picker; **Unequip** on each member-sheet Equipment row (also read mode, for the same reason Condition sits outside the Edit gate: it writes two stores at once, which a local draft can't hold).
+- **The narrator sees the count** — `equipLine` is the single renderer for an equipped item (`Label ×3: description`), used by the PC block, the party roster and the Auto-Update sheet, so a count the player moved can't be visible on the sheet and invisible in the prompt. Equipment is still **frozen** for the model: no delta writes it after creation, and moving gear is a player act with no story stamp.
+
+Note the asymmetry the split makes unavoidable: the pack is per-adventure, a character's kit is global. Gear equipped in one adventure travels with that character into the next one; the pack does not.
+
 ---
 
 ## UI — single column, mobile-first, 1-bit
@@ -431,7 +447,7 @@ Layout top-to-bottom (the reference screenshot is a **style guide, not literal t
 - **Chat scrolling:** the log opens on the newest beat and follows the tail while the reader is parked there; scrolling up into the history stops the follow and shows a **↓ LATEST** button back to the live edge.
 - **Party strip** sits below the options, above the fixed buttons; always visible; tapping a portrait opens that member's **full-screen sheet** (info · edit fields · **regenerate portrait** · **auto-update**). Strip portraits are zoomed 50% and top-aligned so the face fills the tall slot; the sheet's portrait frame is **2:3**.
 - **Quick actions (`Settings.quickActions`)** are the three buttons above the input, shipped as LOOK · WAIT · INVESTIGATE and **editable in place**: a ✎ beside them opens a modal with a **label** and an **action** per row (the label is what the button says; the action is what gets sent as the turn, word for word), plus *Reset to Defaults*. What counts as "the thing I do every other turn" is a property of the table, not of the app — a dungeon crawl wants LISTEN, a courtly game wants BOW. **Clearing both halves drops that button**, so a player can run two shortcuts or none; the row is fixed at three because a fourth either shrinks them below a comfortable tap or wraps. `settings.ts → normalizeQuickActions` folds anything stored (a short array, a row with no `input`, junk) onto exactly three well-formed rows at READ time — but never fills a **blank** row back in, since blank is how a button is deleted. ✎ is never disabled: editing a button is not a turn, so it works mid-stream and without a key.
-- **Inventory view:** a list of `Label · Description · Quantity` rows, editable inline.
+- **Inventory view:** a list of `Label · Description · Quantity` rows, editable inline, each with an **Equip** button (see *Equip ⇄ Inventory*).
 - **Quests view:** a list of `Label · Description · Reward` rows (+ active/done status), editable inline; reached from the menu/header (kept off the 3-button row to preserve the screenshot's layout).
 
 ### Character sheet auto-update — `src/lib/autoUpdate.ts`

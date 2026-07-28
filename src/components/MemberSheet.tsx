@@ -17,6 +17,7 @@ import { GEN_FIELD_LABEL, type GenField } from "../lib/generateField";
 import { useEditBuffer } from "./useEditBuffer";
 import { useConfirm } from "./useConfirm";
 import { portraitKey } from "../lib/images";
+import { equipQuantity } from "../lib/equip";
 import {
   getEntry,
   hasOverrides,
@@ -93,6 +94,7 @@ export function MemberSheet() {
   const removeCharacter = useStore((s) => s.removeCharacter);
   const setStanding = useStore((s) => s.setStanding);
   const setCondition = useStore((s) => s.setCondition);
+  const unequip = useStore((s) => s.unequipItem);
   const revertOverrides = useStore((s) => s.revertOverrides);
   const partyFull = isPartyFull(characters, roster);
   const ensurePortrait = useStore((s) => s.ensurePortrait);
@@ -435,6 +437,12 @@ export function MemberSheet() {
           </p>
         </div>
 
+        {/* Equipment is what this character carries; the Inventory screen is the
+            party's shared pack. Gear MOVES between them — Equip there, Unequip
+            here — and is never in both at once (`equip.ts`). Unequip sits
+            outside the Edit gate for the same reason Condition does: it writes
+            two stores at once (the pack and the character), which a local draft
+            has no way to hold. */}
         <fieldset className="space-y-3 border-2 border-ink p-3">
           <legend className="px-1 uppercase tracking-widest text-sm">Equipment</legend>
           {v.equipment.length === 0 && !editing && (
@@ -456,14 +464,48 @@ export function MemberSheet() {
                   setEquip(v.equipment.map((y, j) => (j === i ? { ...y, description: x } : y)))
                 }
               />
-              {editing && (
-                <button
-                  type="button"
-                  onClick={() => setEquip(v.equipment.filter((_, j) => j !== i))}
-                  className="border-2 border-ink px-2 py-1 text-xs uppercase tracking-widest active:bg-ink active:text-paper"
-                >
-                  Remove
-                </button>
+              {editing ? (
+                <div className="flex items-center gap-2">
+                  <span className="uppercase tracking-widest text-sm">Qty</span>
+                  <label className="contents">
+                    <span className="sr-only">Quantity of {e.label || "this item"}</span>
+                    <input
+                      type="number"
+                      min={1}
+                      value={equipQuantity(e)}
+                      onChange={(x) =>
+                        setEquip(
+                          v.equipment.map((y, j) =>
+                            j === i
+                              ? { ...y, quantity: Math.max(1, Number(x.target.value) || 1) }
+                              : y,
+                          ),
+                        )
+                      }
+                      className="w-16 border-2 border-ink bg-paper p-2 text-center tabular-nums focus:outline-none"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setEquip(v.equipment.filter((_, j) => j !== i))}
+                    className="border-2 border-ink px-2 py-1 text-xs uppercase tracking-widest active:bg-ink active:text-paper"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  {equipQuantity(e) > 1 && (
+                    <span className="tabular-nums">× {equipQuantity(e)}</span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => unequip(member.id, i)}
+                    className={btnSmall}
+                  >
+                    Unequip
+                  </button>
+                </div>
               )}
             </div>
           ))}
@@ -475,6 +517,13 @@ export function MemberSheet() {
             >
               + Add Equipment
             </button>
+          )}
+          {!editing && (
+            <p className="text-xs opacity-60">
+              Unequip moves an item — count and all — back into the shared pack.
+              Equip it to someone from the Inventory screen; it is never in both
+              places at once.
+            </p>
           )}
         </fieldset>
 

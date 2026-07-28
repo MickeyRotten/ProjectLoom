@@ -309,6 +309,22 @@ runs; Gold stays held through a `remove`. The store applies *and records* the fo
 block, since `toasts.ts` chips read `Message.appliedDeltas`. Matching output-protocol
 rule in `prompt.ts` says an `add` is a new acquisition and a changed count is an
 `update`.
+Post-MVP also: **Equip ⇄ Inventory** (`equip.ts`) — the shared pack
+(`GameState.inventory`, per-adventure) and a character's kit
+(`Character.equipment`, global) could not hand anything to each other, so gearing
+someone up meant deleting a row on one screen and retyping it on the other. Now
+**Equip** on an Inventory row (read mode, target picker: PC + `active`/`benched`,
+never an NPC) and **Unequip** on a member-sheet Equipment row move it — a MOVE,
+so an item is in the pack or on a person, **never both**. Whole rows move with
+their count: `Equipment.quantity?` (absent = 1) exists so twelve arrows stay
+twelve and the move is exactly reversible. Both halves are written together
+(`store → moveGear`) or not at all, since they live in two different stores;
+merging uses the `slug` now exported from `deltas.ts`, so ×3 onto ×12 is one row
+of ×15. Gold is refused (`canEquip` — the purse is the party's). `equipLine` is
+the one renderer for an equipped item (`Label ×3: description`) across the PC
+block, party roster and Auto-Update sheet, so a moved count can't be visible on
+the sheet and invisible to the narrator. Gear stays frozen for the model:
+moving it is a player act with no story stamp.
 Deferred (post-MVP): rolling LLM summarization, NPC/item art, TTS,
 weather animation, multi-world. Track scope in `DESIGN.md → Build Phases`.
 

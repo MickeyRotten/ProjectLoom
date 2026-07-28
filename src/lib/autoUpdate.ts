@@ -2,6 +2,7 @@ import type { Character, GameState, Message } from "../types";
 import { type ChatMessage, formatScenarioBlock } from "./prompt";
 import { extractFirstJsonObject, parseJsonTolerant } from "./loomBlock";
 import { formatIdentity } from "./roster";
+import { equipLine } from "./equip";
 
 /**
  * Character-sheet auto-update — a side call (never part of a turn) that asks the
@@ -155,7 +156,7 @@ export function buildAutoUpdateMessages(opts: AutoUpdateOptions): ChatMessage[] 
 /** The whole sheet as the model sees it — every field, editable or not. */
 export function formatSheet(c: Character): string {
   const equipment = c.equipment.length
-    ? c.equipment.map((e) => `  - ${e.label}${e.description ? `: ${e.description}` : ""}`).join("\n")
+    ? c.equipment.map((e) => `  - ${equipLine(e)}`).join("\n")
     : "  (none)";
   return [
     `CURRENT SHEET — ${formatIdentity(c)}`,
