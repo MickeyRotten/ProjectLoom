@@ -145,21 +145,22 @@ export interface DieToss {
 }
 
 /**
- * The tilt of the SURFACE the dice land on — a table seen from slightly ABOVE
- * and a little to the side, rather than a sheet of glass square to the camera.
+ * The tilt of the SURFACE the dice land on — a table seen from a few degrees
+ * above and a few to the side, rather than a sheet of glass square to the
+ * camera.
  *
  * One rotation, shared by every die. That is the whole point: dice resting on a
  * common surface are parallel to each other, and it is the surface that is at an
  * angle to the viewer. Tilting each die by its own amount would say the opposite
  * — that they came to rest on nothing in particular.
  *
- * It also earns the 3D: face-on, a landed cube is just a square with a border;
- * at an angle its top and side are visible and the perspective does real work.
- * Looking down at the table is what makes the throw make sense — the dice come
- * up off the bottom-left corner, away from the player, the way a hand throws
- * them.
+ * Deliberately slight. It only has to break the symmetry: at 3° a landed cube
+ * shows a hairline of its top and side, which is enough to read as a solid
+ * rather than a bordered square, while the rolled face stays square-on and
+ * perfectly legible. The tumble is where the depth is sold; this is the resting
+ * pose not throwing that away.
  */
-export const SCENE_TILT = { x: -15, y: 12 };
+export const SCENE_TILT = { x: -3, y: 3 };
 
 /**
  * How far from the centre of the screen a die may land, in vw/vh. Deliberately

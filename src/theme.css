@@ -164,9 +164,9 @@ body,
  * The surface the dice land on. ONE rotation, shared by every die — dice resting
  * on a common table are parallel to each other, and it is the table that sits at
  * an angle to the viewer. Square to the camera, a landed cube is just a bordered
- * square; tilted, its top and side are visible and the 3D does real work. The
- * view looks down at the table, which is what makes the throw read: the dice
- * come up off the bottom-left corner, away from the player.
+ * square; tilted a few degrees, a hairline of its top and side shows and it
+ * reads as a solid. Slight on purpose — the tumble is where the depth is sold,
+ * and the rolled face has to stay square-on and legible (see `SCENE_TILT`).
  *
  * `preserve-3d` is what lets the perspective above reach the faces at all — the
  * whole chain from `.loom-dice-scene` down to `.loom-die-face` has to keep 3D.
