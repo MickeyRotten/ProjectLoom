@@ -176,7 +176,12 @@ always did.
   `Settings.diceAnimation`, on by default): a rolled turn throws the dice across
   a full-screen **60% ink scrim** — real CSS 3D cubes, tumbling, landing on the
   faces the turn actually rolled — holds the result on a solid plate, and fades
-  out. The scrim (`--scrim`, its own per-theme token, so it flips with
+  out. They land on a **tilted surface** (`SCENE_TILT`, one rotation on the
+  scene, not per die): dice resting on a common table are parallel to each
+  other and it is the table that sits at an angle to the viewer. Square to the
+  camera a landed cube is just a bordered square; at an angle its top and side
+  show and the perspective does real work. Bounded well inside 45°, or the
+  neighbouring face would out-face the one that was rolled. The scrim (`--scrim`, its own per-theme token, so it flips with
   ink/paper) is the one tone in the app that is neither ink nor paper: the beat
   the player just sent stays legible underneath, so the dice land *in* the scene
   rather than on a screen the game cut away to — which is also why the result

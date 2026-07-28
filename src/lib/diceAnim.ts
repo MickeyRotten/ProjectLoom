@@ -112,6 +112,20 @@ export interface DieToss {
 }
 
 /**
+ * The tilt of the SURFACE the dice land on — a table seen from slightly above
+ * and a little to the side, rather than a sheet of glass square to the camera.
+ *
+ * One rotation, shared by every die. That is the whole point: dice resting on a
+ * common surface are parallel to each other, and it is the surface that is at an
+ * angle to the viewer. Tilting each die by its own amount would say the opposite
+ * — that they came to rest on nothing in particular.
+ *
+ * It also earns the 3D: face-on, a landed cube is just a square with a border;
+ * at an angle its top and side are visible and the perspective does real work.
+ */
+export const SCENE_TILT = { x: 15, y: -12 };
+
+/**
  * What the six slots show on a die that isn't a d6.
  *
  * The rolled value takes the front slot and the rest walk away from it in even

@@ -158,6 +158,20 @@ body,
   perspective: 900px;
 }
 
+/*
+ * The surface the dice land on. ONE rotation, shared by every die — dice resting
+ * on a common table are parallel to each other, and it is the table that sits at
+ * an angle to the viewer. Square to the camera, a landed cube is just a bordered
+ * square; tilted, its top and side are visible and the 3D does real work.
+ *
+ * `preserve-3d` is what lets the perspective above reach the faces at all — the
+ * whole chain from `.loom-dice-scene` down to `.loom-die-face` has to keep 3D.
+ */
+.loom-dice-plane {
+  transform: rotateX(var(--plane-x)) rotateY(var(--plane-y));
+  transform-style: preserve-3d;
+}
+
 .loom-die {
   width: var(--die);
   height: var(--die);

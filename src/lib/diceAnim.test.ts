@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   D6_FACES,
+  SCENE_TILT,
   SLOT_ROTATION,
   TIMING,
   facesFor,
@@ -113,5 +114,27 @@ describe("timing", () => {
     expect(landedAt(4, true)).toBe(0);
     expect(totalMs(4, true)).toBe(TIMING.reduced);
     expect(totalMs(4, true)).toBeLessThan(totalMs(1));
+  });
+});
+
+describe("the surface", () => {
+  it("tilts, but never far enough to turn the rolled face away", () => {
+    // The dice land on a tilted table (`SCENE_TILT`), which is what makes a
+    // landed cube read as a solid instead of a bordered square. Past 45° on
+    // either axis the neighbouring face would be more camera-facing than the
+    // one the turn actually rolled — the number has to stay the thing you see.
+    expect(SCENE_TILT.x).not.toBe(0);
+    expect(Math.abs(SCENE_TILT.x)).toBeLessThan(45);
+    expect(Math.abs(SCENE_TILT.y)).toBeLessThan(45);
+  });
+
+  it("is one angle for every die, not one per die", () => {
+    // Dice resting on a common table are parallel to each other; it is the
+    // table that sits at an angle. Nothing in a die's plan may carry a tilt.
+    const dice = planToss(roll({ roll: 9, total: 9, count: 3, sides: 6, dice: [4, 3, 2] }));
+    for (const die of dice) {
+      expect(die.rx1).toBe(SLOT_ROTATION[slotFor(die.faces, die.value)].rx);
+      expect(die.ry1).toBe(SLOT_ROTATION[slotFor(die.faces, die.value)].ry);
+    }
   });
 });

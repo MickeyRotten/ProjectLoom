@@ -1,7 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import { useStore } from "../store";
-import { PIP_LAYOUT, TIMING, landedAt, leaveAt, planToss, totalMs } from "../lib/diceAnim";
+import {
+  PIP_LAYOUT,
+  SCENE_TILT,
+  TIMING,
+  landedAt,
+  leaveAt,
+  planToss,
+  totalMs,
+} from "../lib/diceAnim";
 import { OUTCOME_LABEL, formatRoll, modifierNote } from "../lib/stakes";
 import type { DiceCast } from "../types";
 
@@ -105,52 +113,67 @@ function Toss({ cast }: { cast: DiceCast }) {
       role="presentation"
     >
       <div
-        className="loom-dice-scene flex max-w-full flex-wrap items-center justify-center gap-3"
+        className="loom-dice-scene max-w-full"
         style={{ "--die": "clamp(52px, 16vw, 84px)" } as CSSProperties}
       >
-        {dice.map((d, i) => (
-          <div
-            key={i}
-            className="loom-die"
-            style={
-              {
-                "--dx": `${d.dx}vw`,
-                "--dy": `${d.dy}vh`,
-                "--rx0": `${d.rx0}deg`,
-                "--ry0": `${d.ry0}deg`,
-                "--rx1": `${d.rx1}deg`,
-                "--ry1": `${d.ry1}deg`,
-                "--toss": `${TIMING.toss}ms`,
-                // Held until the layer itself has faded in, so nothing is thrown
-                // at a screen that is still half transparent.
-                "--delay": `${TIMING.fadeIn + d.delay}ms`,
-              } as CSSProperties
-            }
-          >
-            <div className="loom-die-cube">
-              {d.faces.map((face, slot) => (
-                <div
-                  key={slot}
-                  className="loom-die-face"
-                  // The six slots of the cube, in the order `diceAnim.ts` plans
-                  // them: front, back, right, left, top, bottom.
-                  style={{
-                    transform: [
-                      "translateZ(calc(var(--die) / 2))",
-                      "rotateY(180deg) translateZ(calc(var(--die) / 2))",
-                      "rotateY(90deg) translateZ(calc(var(--die) / 2))",
-                      "rotateY(-90deg) translateZ(calc(var(--die) / 2))",
-                      "rotateX(90deg) translateZ(calc(var(--die) / 2))",
-                      "rotateX(-90deg) translateZ(calc(var(--die) / 2))",
-                    ][slot],
-                  }}
-                >
-                  <Face value={face} pips={d.pips} />
-                </div>
-              ))}
+        {/*
+         * The surface the dice land on, tilted away from the camera. One
+         * rotation for all of them — they rest parallel on a common table, and
+         * it is the table that sits at an angle. See `SCENE_TILT`.
+         */}
+        <div
+          className="loom-dice-plane flex max-w-full flex-wrap items-center justify-center gap-3"
+          style={
+            {
+              "--plane-x": `${SCENE_TILT.x}deg`,
+              "--plane-y": `${SCENE_TILT.y}deg`,
+            } as CSSProperties
+          }
+        >
+          {dice.map((d, i) => (
+            <div
+              key={i}
+              className="loom-die"
+              style={
+                {
+                  "--dx": `${d.dx}vw`,
+                  "--dy": `${d.dy}vh`,
+                  "--rx0": `${d.rx0}deg`,
+                  "--ry0": `${d.ry0}deg`,
+                  "--rx1": `${d.rx1}deg`,
+                  "--ry1": `${d.ry1}deg`,
+                  "--toss": `${TIMING.toss}ms`,
+                  // Held until the layer itself has faded in, so nothing is thrown
+                  // at a screen that is still half transparent.
+                  "--delay": `${TIMING.fadeIn + d.delay}ms`,
+                } as CSSProperties
+              }
+            >
+              <div className="loom-die-cube">
+                {d.faces.map((face, slot) => (
+                  <div
+                    key={slot}
+                    className="loom-die-face"
+                    // The six slots of the cube, in the order `diceAnim.ts`
+                    // plans them: front, back, right, left, top, bottom.
+                    style={{
+                      transform: [
+                        "translateZ(calc(var(--die) / 2))",
+                        "rotateY(180deg) translateZ(calc(var(--die) / 2))",
+                        "rotateY(90deg) translateZ(calc(var(--die) / 2))",
+                        "rotateY(-90deg) translateZ(calc(var(--die) / 2))",
+                        "rotateX(90deg) translateZ(calc(var(--die) / 2))",
+                        "rotateX(-90deg) translateZ(calc(var(--die) / 2))",
+                      ][slot],
+                    }}
+                  >
+                    <Face value={face} pips={d.pips} />
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
 
       {/*
