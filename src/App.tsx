@@ -11,6 +11,7 @@ import { ModelKeyScreen } from "./components/ModelKeyScreen";
 import { ScenarioScreen } from "./components/ScenarioScreen";
 import { CharactersScreen } from "./components/CharactersScreen";
 import { WorldNotesScreen } from "./components/WorldNotesScreen";
+import { JournalScreen } from "./components/JournalScreen";
 import { QuestsScreen } from "./components/QuestsScreen";
 import { AdvancedScreen } from "./components/AdvancedScreen";
 import { RpgSystemScreen } from "./components/RpgSystemScreen";
@@ -131,6 +132,7 @@ export default function App() {
     if (screen === "scenario") return <ScenarioScreen />;
     if (screen === "characters") return <CharactersScreen />;
     if (screen === "worldnotes") return <WorldNotesScreen />;
+    if (screen === "journal") return <JournalScreen />;
     if (screen === "quests") return <QuestsScreen />;
     if (screen === "advanced") return <AdvancedScreen />;
     if (screen === "rpg") return <RpgSystemScreen />;

@@ -50,6 +50,7 @@ function turn(
       inventory: scene.inventory,
       quests: scene.quests,
       day: scene.day,
+      minutes: scene.minutes,
       location: scene.location,
       weather: scene.weather,
     },
@@ -62,6 +63,30 @@ describe("captureReversal", () => {
     const pre = seed();
     const rev = captureReversal(pre, pre);
     expect(rev).toMatchObject({ day: 3, location: "The Dusty Path", weather: "windy" });
+  });
+
+  it("captures the clock, so undo puts the time of day back too", () => {
+    const pre = { ...seed(), minutes: 9 * 60 };
+    const { game: post } = turn(pre, [defaultPC()], { duration: "hours" });
+    const rev = captureReversal(pre, post);
+    expect(post.minutes).toBe(13 * 60);
+    expect(rev.minutes).toBe(9 * 60);
+    expect(applyReversal(post, rev).minutes).toBe(9 * 60);
+  });
+
+  it("captures the journal only on a turn that opened an entry", () => {
+    const pre = seed();
+    expect(captureReversal(pre, { ...pre })).not.toHaveProperty("journal");
+
+    const post = {
+      ...pre,
+      journal: [{ id: "j-1", day: 3, fromTurn: 1, throughTurn: 8, lines: [] }],
+    };
+    const rev = captureReversal(pre, post);
+    expect(rev.journal).toEqual([]);
+    // Undoing the turn that opened the entry takes the entry with it — which is
+    // why the entry is created synchronously, before this snapshot is taken.
+    expect(applyReversal(post, rev).journal).toEqual([]);
   });
 
   it("omits unchanged slices (a plain narration turn stores only scalars)", () => {

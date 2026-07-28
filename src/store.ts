@@ -6,6 +6,7 @@ import type {
   Equipment,
   GameState,
   Item,
+  JournalLine,
   Message,
   Note,
   Quest,
@@ -77,6 +78,13 @@ import {
 } from "./lib/generateItem";
 import { parseLoomResponse, truncateForDisplay } from "./lib/loomBlock";
 import { applyDeltas, reconcileBlock } from "./lib/deltas";
+import {
+  JOURNAL_TEMPERATURE,
+  appendModelLines,
+  buildJournalMessages,
+  openJournalEntry,
+  parseJournalLines,
+} from "./lib/journal";
 import { captureReversal, applyReversal } from "./lib/reversal";
 import { detectSpeakers } from "./lib/spotlight";
 import {
@@ -131,6 +139,7 @@ export type Screen =
   | "scenario"
   | "characters"
   | "worldnotes"
+  | "journal"
   | "quests"
   | "advanced"
   | "rpg"
@@ -341,6 +350,20 @@ export interface LoomStore {
   editMessage: (id: string, content: string) => void;
   /** Edit the latest player input: unwind the turn, then re-send the new text. */
   editUserTurn: (text: string) => void;
+
+  /** A journal entry's written lines are being fetched. */
+  journalPending: boolean;
+  /**
+   * Fetch and append an entry's written lines. Fired after a turn opens one,
+   * and from the Journal screen when a call failed or the player wants it
+   * rewritten. The entry already exists with its facts, so this is never on the
+   * turn's critical path and its failure is never a turn error.
+   */
+  writeJournalEntry: (id: string, replace?: boolean) => Promise<void>;
+  /** Replace an entry's lines wholesale (Journal screen editing). */
+  updateJournalEntry: (id: string, lines: JournalLine[]) => void;
+  /** Delete an entry outright. */
+  deleteJournalEntry: (id: string) => void;
 
   /** Ensure the banner + all in-party portraits exist (cache-then-generate). */
   syncImages: () => void;
@@ -695,6 +718,7 @@ export const useStore = create<LoomStore>((set, get) => {
   autoUpdateError: null,
 
   fieldGenPending: false,
+  journalPending: false,
   fieldGenError: null,
 
   async hydrate() {
@@ -850,6 +874,67 @@ export const useStore = create<LoomStore>((set, get) => {
 
   clearAutoUpdateError() {
     set({ autoUpdateError: null });
+  },
+
+  async writeJournalEntry(id, replace = false) {
+    if (get().journalPending || !get().settings.journalEnabled) return;
+    const game = get().game;
+    const entry = game.journal.find((e) => e.id === id);
+    if (!entry) return;
+
+    // A rewrite drops the previous written lines first, so ⟳ replaces them
+    // instead of stacking a second summary on top of the first. The facts are
+    // the client's and are never thrown away.
+    const base = replace ? entry.lines.filter((l) => l.source === "system") : entry.lines;
+
+    set({ journalPending: true });
+    try {
+      const raw = await completeChat({
+        settings: get().settings,
+        messages: buildJournalMessages(get().settings, game, { ...entry, lines: base }),
+        temperature: JOURNAL_TEMPERATURE,
+      });
+      const lines = parseJournalLines(raw);
+
+      // Re-read the store: the player may have undone the turn that opened this
+      // entry while the call was in flight, and a late write must never
+      // resurrect it. `appendModelLines` returns the same array on a missing id.
+      const current = get().game;
+      const cleared = replace
+        ? current.journal.map((e) =>
+            e.id === id ? { ...e, lines: e.lines.filter((l) => l.source === "system") } : e,
+          )
+        : current.journal;
+      const journal = appendModelLines(cleared, id, lines);
+      if (journal === current.journal) return;
+      const next = { ...current, journal };
+      set({ game: next });
+      void saveActiveGame(next);
+    } catch {
+      // Deliberately silent. The entry keeps its facts, the Journal screen
+      // offers a retry, and a summary that failed is not a turn that failed.
+    } finally {
+      set({ journalPending: false });
+    }
+  },
+
+  updateJournalEntry(id, lines) {
+    const g = get().game;
+    if (!g.journal.some((e) => e.id === id)) return;
+    const next = {
+      ...g,
+      journal: g.journal.map((e) => (e.id === id ? { ...e, lines } : e)),
+    };
+    set({ game: next });
+    void saveActiveGame(next);
+  },
+
+  deleteJournalEntry(id) {
+    const g = get().game;
+    if (!g.journal.some((e) => e.id === id)) return;
+    const next = { ...g, journal: g.journal.filter((e) => e.id !== id) };
+    set({ game: next });
+    void saveActiveGame(next);
   },
 
   async generateField(character, field, hint) {
@@ -1269,14 +1354,18 @@ export const useStore = create<LoomStore>((set, get) => {
       // happened. The prose rides along for the one check that reads it: a Gold
       // total that moves on a beat with no money in it.
       const applied = block ? reconcileBlock(g, library, block, prose) : null;
-      const scene = applied ? applyDeltas(g, library, applied) : null;
+      // Applied even with NO block: an unreadable turn still has to move the
+      // clock, or a parse failure freezes time. An empty block writes nothing
+      // and returns the same slice references, so reversal still captures
+      // nothing — it only advances the clock by the default duration.
+      const scene = applyDeltas(g, library, applied ?? {});
 
       // Party deltas apply first, THEN deterministic speaker detection bumps
       // lastSpokeTurn — the model's `spoke` hint never overrides the prose
       // (loom-spotlight). Run against the post-delta ACTIVE roster: only the
       // members in the scene carry a spotlight debt worth tracking.
-      const characters = scene?.characters ?? library;
-      let roster = scene?.roster ?? g.roster;
+      const characters = scene.characters;
+      let roster = scene.roster;
       const party = activeMembers(characters, roster);
       const spokeIds = new Set(detectSpeakers(prose, party));
       for (const id of spokeIds) roster = setEntry(roster, id, { lastSpokeTurn: turn });
@@ -1284,21 +1373,9 @@ export const useStore = create<LoomStore>((set, get) => {
       // A turn may have written new characters into the global library.
       if (characters !== library) commitCharacters(characters);
 
-      // Reference-diff the pre-turn slices (base) against the post-turn ones so
-      // undo/regenerate can restore exactly what this turn overwrote (Phase 5).
-      const post = {
-        ...base,
-        roster,
-        inventory: scene?.inventory ?? g.inventory,
-        quests: scene?.quests ?? g.quests,
-        worldNotes: scene?.worldNotes ?? g.worldNotes,
-        day: scene?.day ?? g.day,
-        location: scene?.location ?? g.location,
-        weather: scene?.weather ?? g.weather,
-      };
-      const reversal = captureReversal(base, post);
-
-      const narratorMsg: Message = {
+      // The beat itself, minus its reversal — the journal reads this turn's own
+      // ops, so the message has to exist before the snapshot does.
+      const beat: Message = {
         id: uid(),
         role: "narrator",
         content: prose || raw.trim(),
@@ -1309,22 +1386,55 @@ export const useStore = create<LoomStore>((set, get) => {
         // game with stakes off records neither.
         roll: record ?? undefined,
         appliedDeltas: applied ?? undefined,
-        reversal,
-        day: scene?.day ?? g.day,
-        location: scene?.location ?? g.location,
-        weather: scene?.weather ?? g.weather,
+        day: scene.day,
+        minutes: scene.minutes,
+        location: scene.location,
+        weather: scene.weather,
       };
+      const transcript = [...g.messages, beat];
+
+      // The journal entry (if this turn closed one) is opened HERE, before the
+      // reversal snapshot, carrying only its client-derived lines — no network.
+      // Its written lines are fetched afterwards and appended in place.
+      // Snapshotting before an async append would restore to a state the entry
+      // was already in, and undo would leave it stranded.
+      const journal = openJournalEntry({
+        game: { ...g, messages: transcript },
+        settings: get().settings,
+        characters,
+        turn,
+        day: scene.day,
+        rested: scene.rested,
+      });
+
+      // Reference-diff the pre-turn slices (base) against the post-turn ones so
+      // undo/regenerate can restore exactly what this turn overwrote (Phase 5).
+      const post = {
+        ...base,
+        roster,
+        inventory: scene.inventory,
+        quests: scene.quests,
+        worldNotes: scene.worldNotes,
+        journal,
+        day: scene.day,
+        minutes: scene.minutes,
+        location: scene.location,
+        weather: scene.weather,
+      };
+      const narratorMsg: Message = { ...beat, reversal: captureReversal(base, post) };
 
       const nextGame: GameState = {
         ...g,
         messages: [...g.messages, narratorMsg],
         roster,
-        day: scene?.day ?? g.day,
-        location: scene?.location ?? g.location,
-        weather: scene?.weather ?? g.weather,
-        inventory: scene?.inventory ?? g.inventory,
-        quests: scene?.quests ?? g.quests,
-        worldNotes: scene?.worldNotes ?? g.worldNotes,
+        journal,
+        day: scene.day,
+        minutes: scene.minutes,
+        location: scene.location,
+        weather: scene.weather,
+        inventory: scene.inventory,
+        quests: scene.quests,
+        worldNotes: scene.worldNotes,
       };
 
       set({
@@ -1338,6 +1448,13 @@ export const useStore = create<LoomStore>((set, get) => {
       // Deterministic triggers: a new location gets a banner, new members get
       // portraits. Fire-and-forget — never blocks the turn.
       get().syncImages();
+
+      // Same posture for the journal: the entry is already saved with its
+      // facts, so fetching its written lines happens after the beat has landed
+      // and can fail without the player ever seeing it.
+      if (journal !== g.journal) {
+        void get().writeJournalEntry(journal[journal.length - 1].id);
+      }
     } catch (err) {
       const aborted =
         err instanceof DOMException

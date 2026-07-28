@@ -1,4 +1,13 @@
-import type { Character, Equipment, GameState, PartyMember, Scenario, Settings } from "../types";
+import type {
+  Character,
+  Equipment,
+  GameState,
+  JournalEntry,
+  PartyMember,
+  Scenario,
+  Settings,
+} from "../types";
+import { phaseOf } from "./clock";
 import { equipLine } from "./equip";
 import {
   computeRelevantGear,
@@ -158,6 +167,15 @@ export function buildMessages(opts: BuildOptions): ChatMessage[] {
   //    budget-trimmed tail of recent turns.
   messages.push(...buildHistory(game, budget));
 
+  // 9a. The journal — what already happened, as terse dated lists. Placed
+  //     AFTER the history because it is the older material: the window holds
+  //     the last few beats verbatim, and this is the stretch behind them that
+  //     the window has already dropped.
+  if (settings.journalEnabled) {
+    const journal = formatJournalBlock(game.journal, settings.journalBudget);
+    if (journal) messages.push({ role: "system", content: journal });
+  }
+
   // 9b. Active-party roll call — the authoritative composition, re-read from
   //     the roster every turn and placed AFTER the history on purpose: the
   //     history outlives membership, so the last thing the model reads before
@@ -249,8 +267,13 @@ function buildSystemContext(
     parts.push(`ACTIVE QUESTS\n${qs}`);
   }
 
-  // Current scene, so the model stays anchored.
-  parts.push(`CURRENT SCENE — location: ${game.location}; day: ${game.day}; weather: ${game.weather}`);
+  // Current scene, so the model stays anchored. Time is a PHASE, never a clock
+  // face: a model told "14:30" writes "at half past two" into the prose, which
+  // leaks an exact time to a player who is only ever shown the phase — and
+  // implies clocks exist in a setting that may not have them.
+  parts.push(
+    `CURRENT SCENE — location: ${game.location}; day: ${game.day}; time: ${phaseOf(game.minutes)}; weather: ${game.weather}`,
+  );
 
   return parts.join("\n\n");
 }
@@ -482,6 +505,58 @@ export function buildHistory(game: GameState, budgetTokens: number): ChatMessage
 }
 
 /**
+ * How many of the newest entries keep their written lines. Older ones fall back
+ * to the `system` lines the client derived from the deltas — the facts reach
+ * roughly ten times further back than the prose does, at a tenth of the cost.
+ */
+export const JOURNAL_PROSE_ENTRIES = 4;
+
+/**
+ * The `JOURNAL` block: what already happened, newest entry first, filled until
+ * the budget runs out. `buildHistory`'s sibling — a budgeted window over the
+ * transcript, just a much older and much denser stretch of it.
+ *
+ * Deliberately NOT keyword-gated the way World Notes are. Notes are topical, so
+ * gating works; a journal is chronological, and gating would hide the entry
+ * that mattered. It is bounded by construction instead, and entries past
+ * `JOURNAL_PROSE_ENTRIES` decay to their facts before dropping out altogether.
+ *
+ * Entries stay whole in `GameState` and on the Journal screen regardless: the
+ * journal the player reads and the journal the model reads are two products of
+ * the same data.
+ */
+export function formatJournalBlock(entries: JournalEntry[], budgetTokens: number): string {
+  if (!entries.length || budgetTokens <= 0) return "";
+
+  const header =
+    "JOURNAL — what has already happened on this adventure, newest first. Your own record, kept because only the last few beats are shown to you. Treat it as true. Do not recap it back to the player.";
+
+  let used = approxTokens(header);
+  const blocks: string[] = [];
+
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const entry = entries[i];
+    const age = entries.length - 1 - i;
+    const lines =
+      age < JOURNAL_PROSE_ENTRIES
+        ? entry.lines
+        : entry.lines.filter((l) => l.source === "system");
+    if (!lines.length) continue;
+
+    const text = `Day ${entry.day}\n${lines.map((l) => `- ${l.text}`).join("\n")}`;
+    const cost = approxTokens(text);
+    // Unlike the history window there is no "always keep the newest": an entry
+    // is memory, not the turn being answered, and a budget of 0 must mean none.
+    if (used + cost > budgetTokens) break;
+    used += cost;
+    blocks.push(text);
+  }
+
+  if (!blocks.length) return "";
+  return `${header}\n\n${blocks.join("\n\n")}`;
+}
+
+/**
  * The `conditions` field, documented only when stakes are on. With stakes off
  * nothing in the game produces a mark, so the line would be ~60 tokens a turn
  * teaching the model a channel it has no reason to use.
@@ -532,7 +607,8 @@ function buildOutputProtocol(settings: Settings): string {
     "<<<END>>>",
     "",
     "JSON fields (include only what changed this turn):",
-    '- "weather", "day": the current scene (string / number).',
+    '- "weather": the current scene (string).',
+    '- "duration": how much time your prose just took, as ONE of these words — "moment" (a blow lands, a door opens), "brief" (a short exchange), "scene" (a conversation, a search of one room), "hour", "hours" (a thorough search, a long negotiation), "halfday" (a journey across the region), "day" (a long haul), "night" (the player sleeps until morning). Always send it. The day and the time of day are counted from this, so guess honestly — never send a number, and never try to set the day yourself.',
     '- "location": the name of the place the scene is in, and NOTHING else — one name, the most specific one. Never join two place names: "Damp Cellar", not "Boars Head Tavern - Damp Cellar"; "Market Square", not "Rodstroke: Market Square". No dash, colon, slash or parent place, and no description.',
     optionsLine,
     '- "party": array of character ops, each { "op": "add|update|remove", "name", "standing" }. Add a character when they enter the player\'s story; remove when they leave it.',

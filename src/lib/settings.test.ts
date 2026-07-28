@@ -1,8 +1,20 @@
 import { describe, expect, it } from "vitest";
 import type { ReasoningLevel, Settings } from "../types";
-import { DEFAULT_QUICK_ACTIONS, QUICK_ACTION_COUNT, defaultSettings } from "./defaults";
+import {
+  DEFAULT_JOURNAL_MAX_TURNS,
+  DEFAULT_JOURNAL_MIN_TURNS,
+  DEFAULT_QUICK_ACTIONS,
+  QUICK_ACTION_COUNT,
+  defaultSettings,
+} from "./defaults";
 import {
   FONT_LABELS,
+  MAX_JOURNAL_BUDGET,
+  MAX_JOURNAL_TURNS,
+  MIN_JOURNAL_TURNS,
+  clampJournalBudget,
+  clampJournalMaxTurns,
+  clampJournalMinTurns,
   clampMaxTokens,
   fontTheme,
   normalizeQuickActions,
@@ -146,5 +158,29 @@ describe("usableQuickActions", () => {
       { label: "", input: "I run." },
     ]);
     expect(actions.map((a) => a.label)).toEqual(["Look"]);
+  });
+});
+
+describe("journal clamps", () => {
+  it("keeps 0 for the budget — it means inject nothing", () => {
+    expect(clampJournalBudget(0)).toBe(0);
+    expect(clampJournalBudget(-50)).toBe(0);
+  });
+
+  it("caps the budget and rounds", () => {
+    expect(clampJournalBudget(MAX_JOURNAL_BUDGET + 5000)).toBe(MAX_JOURNAL_BUDGET);
+    expect(clampJournalBudget(612.4)).toBe(612);
+  });
+
+  it("pins the turn triggers inside the usable range", () => {
+    // A stored 0 for the gap would make every single turn a boundary.
+    expect(clampJournalMaxTurns(0)).toBe(MIN_JOURNAL_TURNS);
+    expect(clampJournalMinTurns(0)).toBe(MIN_JOURNAL_TURNS);
+    expect(clampJournalMaxTurns(9999)).toBe(MAX_JOURNAL_TURNS);
+  });
+
+  it("falls a garbage value back to the shipped default", () => {
+    expect(clampJournalMaxTurns(NaN)).toBe(DEFAULT_JOURNAL_MAX_TURNS);
+    expect(clampJournalMinTurns(NaN)).toBe(DEFAULT_JOURNAL_MIN_TURNS);
   });
 });

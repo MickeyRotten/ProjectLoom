@@ -9,6 +9,7 @@ import {
   DEFAULT_CHARACTER_UPDATE_INSTRUCTIONS,
   DEFAULT_CUSTOM_INSTRUCTIONS,
   DEFAULT_DEPARTURE_INSTRUCTIONS,
+  DEFAULT_JOURNAL_INSTRUCTIONS,
   DEFAULT_OPTION_INSTRUCTIONS,
   DEFAULT_BANNER_INSTRUCTIONS,
   DEFAULT_PORTRAIT_ACTION,
@@ -31,7 +32,16 @@ import {
   MAX_HISTORY_BUDGET,
   MIN_HISTORY_BUDGET,
 } from "../lib/prompt";
-import { clampMaxTokens, MAX_BEAT_TOKENS } from "../lib/settings";
+import {
+  clampJournalBudget,
+  clampJournalMaxTurns,
+  clampJournalMinTurns,
+  clampMaxTokens,
+  MAX_BEAT_TOKENS,
+  MAX_JOURNAL_BUDGET,
+  MAX_JOURNAL_TURNS,
+  MIN_JOURNAL_TURNS,
+} from "../lib/settings";
 
 /**
  * Advanced instructions (DESIGN.md → Menu): the player-editable prompt guidance
@@ -53,6 +63,7 @@ type InstrKey = keyof Pick<
   Settings,
   | "customInstructions"
   | "optionInstructions"
+  | "journalInstructions"
   | "spotlightRule"
   | "appearanceInstructions"
   | "characterCreationInstructions"
@@ -100,6 +111,14 @@ const OPTION_FIELD: InstrSpec = {
   def: DEFAULT_OPTION_INSTRUCTIONS,
   rows: 3,
   hint: "How the suggested actions under each beat are written.",
+};
+
+const JOURNAL_FIELD: InstrSpec = {
+  key: "journalInstructions",
+  label: "Journal Entries",
+  def: DEFAULT_JOURNAL_INSTRUCTIONS,
+  rows: 5,
+  hint: "How a day's entry is written. Quests, joins, departures and marks are recorded by the app itself and never asked for.",
 };
 
 /**
@@ -206,6 +225,10 @@ function NarratorSection() {
   const showActionOptions = useStore((s) => s.settings.showActionOptions);
   const historyBudget = useStore((s) => s.settings.historyBudget);
   const maxTokens = useStore((s) => s.settings.maxTokens);
+  const journalEnabled = useStore((s) => s.settings.journalEnabled);
+  const journalBudget = useStore((s) => s.settings.journalBudget);
+  const journalMaxTurns = useStore((s) => s.settings.journalMaxTurns);
+  const journalMinTurns = useStore((s) => s.settings.journalMinTurns);
   const update = useStore((s) => s.updateSettings);
   return (
     <>
@@ -255,6 +278,78 @@ function NarratorSection() {
           cut off mid-write.
         </p>
       </Field>
+
+      {/* The journal sits directly under the history budget on purpose: they
+          compete for the same context, and the trade only makes sense read
+          together. */}
+      <ToggleRow
+        label="Journal"
+        state={journalEnabled ? "ON" : "OFF"}
+        onClick={() => update({ journalEnabled: !journalEnabled })}
+      />
+      {journalEnabled && (
+        <>
+          <Field label="Memory — Journal Size">
+            <input
+              type="number"
+              inputMode="numeric"
+              min={0}
+              max={MAX_JOURNAL_BUDGET}
+              step={100}
+              value={journalBudget}
+              onChange={(e) =>
+                update({ journalBudget: clampJournalBudget(e.target.valueAsNumber) })
+              }
+              className="w-full border-2 border-ink bg-paper p-2 focus:outline-none"
+            />
+            <p className="text-xs opacity-70">
+              Roughly how many tokens of journal the narrator is shown each turn, newest
+              entries first. Older entries keep only the facts the app recorded before
+              dropping out of the prompt — they stay on the Journal screen either way.
+            </p>
+          </Field>
+
+          <Field label="Journal — Longest Gap">
+            <input
+              type="number"
+              inputMode="numeric"
+              min={MIN_JOURNAL_TURNS}
+              max={MAX_JOURNAL_TURNS}
+              step={1}
+              value={journalMaxTurns}
+              onChange={(e) =>
+                update({ journalMaxTurns: clampJournalMaxTurns(e.target.valueAsNumber) })
+              }
+              className="w-full border-2 border-ink bg-paper p-2 focus:outline-none"
+            />
+            <p className="text-xs opacity-70">
+              An entry is normally written when the party sleeps into a new day. This is
+              the ceiling: after this many turns without one, an entry is written anyway.
+            </p>
+          </Field>
+
+          <Field label="Journal — Shortest Entry">
+            <input
+              type="number"
+              inputMode="numeric"
+              min={MIN_JOURNAL_TURNS}
+              max={MAX_JOURNAL_TURNS}
+              step={1}
+              value={journalMinTurns}
+              onChange={(e) =>
+                update({ journalMinTurns: clampJournalMinTurns(e.target.valueAsNumber) })
+              }
+              className="w-full border-2 border-ink bg-paper p-2 focus:outline-none"
+            />
+            <p className="text-xs opacity-70">
+              A stretch shorter than this folds into the next entry instead of becoming
+              one of its own — a day crossed on the second turn is not a day.
+            </p>
+          </Field>
+
+          <InstrField spec={JOURNAL_FIELD} />
+        </>
+      )}
     </>
   );
 }

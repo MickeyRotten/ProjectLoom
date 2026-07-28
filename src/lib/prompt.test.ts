@@ -651,6 +651,71 @@ describe("buildHistory", () => {
   });
 });
 
+describe("the clock in the scene block", () => {
+  const scene = (game: GameState) =>
+    build({ game, playerMessage: "look around" })
+      .map((m) => m.content)
+      .find((c) => c.includes("CURRENT SCENE")) ?? "";
+
+  it("names the time of day as a phase", () => {
+    const g = { ...newGame(), day: 37, minutes: 15 * 60 };
+    expect(scene(g)).toContain("day: 37; time: afternoon");
+  });
+
+  it("never shows the model a clock face", () => {
+    // A model handed "14:30" writes "at half past two" into the prose, which
+    // leaks an exact time the player is never shown.
+    const g = { ...newGame(), minutes: 14 * 60 + 30 };
+    expect(scene(g)).not.toMatch(/\d{1,2}:\d{2}/);
+  });
+});
+
+describe("journal injection", () => {
+  const entry = (day: number, text: string) => ({
+    id: `j-${day}`,
+    day,
+    fromTurn: 1,
+    throughTurn: 5,
+    lines: [{ text, source: "model" as const }],
+  });
+
+  const contents = (patch: Partial<Settings>, game: GameState) =>
+    build({ settings: { ...settings, ...patch }, game, playerMessage: "walk on" })
+      .map((m) => m.content)
+      .join("\n");
+
+  it("injects the block when there are entries", () => {
+    const game = { ...newGame(), journal: [entry(1, "Crossed the marsh at dusk.")] };
+    const text = contents({}, game);
+    expect(text).toContain("JOURNAL");
+    expect(text).toContain("Crossed the marsh at dusk.");
+  });
+
+  it("injects nothing when the journal is empty", () => {
+    expect(contents({}, newGame())).not.toContain("JOURNAL");
+  });
+
+  it("injects nothing when the setting is off, entries or not", () => {
+    const game = { ...newGame(), journal: [entry(1, "Crossed the marsh at dusk.")] };
+    expect(contents({ journalEnabled: false }, game)).not.toContain("JOURNAL");
+  });
+
+  it("sits after the history and before the roll call", () => {
+    const game = {
+      ...newGame(),
+      messages: [play(1, "go"), narr(1, "You go.")],
+      journal: [entry(1, "Crossed the marsh at dusk.")],
+    };
+    const roles = build({ game, playerMessage: "walk on" });
+    const journalAt = roles.findIndex((m) => m.content.includes("JOURNAL"));
+    const historyAt = roles.findIndex((m) => m.content === "You go.");
+    const rollCallAt = roles.findIndex((m) => m.content.includes("ACTIVE PARTY — THIS TURN"));
+    expect(historyAt).toBeGreaterThanOrEqual(0);
+    expect(journalAt).toBeGreaterThan(historyAt);
+    expect(rollCallAt).toBeGreaterThan(journalAt);
+  });
+});
+
 describe("stakes + conditions blocks", () => {
   const risky = {
     risky: true,

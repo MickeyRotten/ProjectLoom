@@ -22,6 +22,7 @@ const ENTRIES: { screen: Screen; label: string; note: string }[] = [
   { screen: "inventory", label: "Inventory", note: "Carried items · gold" },
   { screen: "quests", label: "Quests", note: "Active + finished objectives" },
   { screen: "worldnotes", label: "World Notes", note: "Lore the story remembers" },
+  { screen: "journal", label: "Journal", note: "What has happened, day by day" },
   { screen: "saves", label: "Saves", note: "Snapshot · restore slots" },
   { screen: "characters", label: "Characters", note: "Full cast · add to party" },
   { screen: "scenario", label: "Scenario", note: "Title · premise · opening" },

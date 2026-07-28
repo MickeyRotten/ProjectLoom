@@ -14,6 +14,7 @@ import type {
   RosterEntry,
   Standing,
 } from "../types";
+import { advanceClock, normalizeDuration } from "./clock";
 import { isGold } from "./defaults";
 import {
   getEntry,
@@ -26,7 +27,8 @@ import {
 
 /**
  * Apply a parsed <<<LOOM>>> block to the active game (loom-turn-protocol):
- *  - location/day/weather OVERWRITE the scene.
+ *  - location/weather OVERWRITE the scene; `duration` ADVANCES the clock, which
+ *    is the only thing that moves the day (`clock.ts`).
  *  - party/inventory/quests are OP-BASED (add | update | remove), keyed by
  *    slugged name/label.
  *
@@ -48,6 +50,10 @@ import {
  */
 export interface AppliedScene {
   day: number;
+  /** Time of day after this turn's duration — see `clock.ts`. */
+  minutes: number;
+  /** The turn was a night's sleep. The journal's boundary signal. */
+  rested: boolean;
   location: string;
   weather: string;
   characters: Character[];
@@ -510,7 +516,10 @@ export function applyDeltas(
   characters: Character[],
   block: LoomBlock,
 ): AppliedScene {
-  const day = block.day ?? game.day;
+  // The clock, not the narrator. `block.day` is deliberately ignored: it is the
+  // field that used to freeze, jump and run backwards, and a second writer for
+  // one number is exactly what this replaces.
+  const clock = advanceClock(game.day, game.minutes, normalizeDuration(block.duration));
   const location =
     block.location === undefined ? game.location : simplifyLocation(block.location) || game.location;
   const weather = block.weather ?? game.weather;
@@ -520,7 +529,9 @@ export function applyDeltas(
   const roster = applyConditions(party.characters, party.roster, block);
 
   return {
-    day,
+    day: clock.day,
+    minutes: clock.minutes,
+    rested: clock.rested,
     location,
     weather,
     characters: party.characters,

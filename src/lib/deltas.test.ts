@@ -32,26 +32,58 @@ function member(id: string, name: string, patch: Partial<Character> = {}): Chara
 }
 
 describe("applyDeltas — scene", () => {
-  it("overwrites location/day/weather when present", () => {
+  it("overwrites location/weather when present", () => {
     const scene = applyDeltas(game(), lib(), {
       location: "The Ruins",
-      day: 40,
       weather: "dust",
     });
     expect(scene.location).toBe("The Ruins");
-    expect(scene.day).toBe(40);
     expect(scene.weather).toBe("dust");
   });
 
   it("keeps prior scene values when a field is absent", () => {
     const g = game();
     g.location = "Old Well";
-    g.day = 5;
     g.weather = "clear";
-    const scene = applyDeltas(g, lib(), { day: 6 });
+    const scene = applyDeltas(g, lib(), {});
     expect(scene.location).toBe("Old Well");
-    expect(scene.day).toBe(6);
     expect(scene.weather).toBe("clear");
+  });
+
+  it("IGNORES a narrator-set day — the clock owns it now", () => {
+    const g = game();
+    g.day = 5;
+    g.minutes = 9 * 60;
+    // The field that used to freeze, jump and run backwards. Kept readable so
+    // old saved blocks still parse, but it moves nothing.
+    const scene = applyDeltas(g, lib(), { day: 40 });
+    expect(scene.day).toBe(5);
+  });
+
+  it("advances the clock by the block's duration", () => {
+    const g = game();
+    g.day = 5;
+    g.minutes = 9 * 60;
+    const scene = applyDeltas(g, lib(), { duration: "hour" });
+    expect(scene.day).toBe(5);
+    expect(scene.minutes).toBe(10 * 60);
+    expect(scene.rested).toBe(false);
+  });
+
+  it("moves time even when the block says nothing", () => {
+    // A turn the parser could not read still has to age the world.
+    const g = game();
+    g.minutes = 9 * 60;
+    expect(applyDeltas(g, lib(), {}).minutes).toBe(9 * 60 + 1);
+  });
+
+  it("rolls the day and flags the rest on a night's sleep", () => {
+    const g = game();
+    g.day = 37;
+    g.minutes = 22 * 60;
+    const scene = applyDeltas(g, lib(), { duration: "night" });
+    expect(scene.day).toBe(38);
+    expect(scene.rested).toBe(true);
   });
 
   it("keeps only the innermost place when the narrator staples two together", () => {
