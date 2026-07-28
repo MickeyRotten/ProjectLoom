@@ -68,6 +68,13 @@ import {
   buildScenarioMessages,
   type ScenarioField,
 } from "./lib/generateScenario";
+import {
+  GENERATE_ITEM_TEMPERATURE,
+  buildItemMessages,
+  parseGeneratedItem,
+  type GeneratedItem,
+  type ItemRow,
+} from "./lib/generateItem";
 import { parseLoomResponse, truncateForDisplay } from "./lib/loomBlock";
 import { applyDeltas, reconcileBlock } from "./lib/deltas";
 import { captureReversal, applyReversal } from "./lib/reversal";
@@ -245,6 +252,22 @@ export interface LoomStore {
    * be open at a time in either place.
    */
   generateScenarioField: (field: ScenarioField, hint: string) => Promise<string | null>;
+  /**
+   * Ask the text model to write ONE inventory / equipment row for the ✦ button
+   * beside it. Same shape as its two siblings — no writes, the row comes back
+   * for the modal to preview, and it shares the `fieldGenPending` /
+   * `fieldGenError` pair — except that it resolves to three values at once,
+   * since a label without its description is half an item.
+   *
+   * `existing` is the list being added to WITHOUT the row being written, and
+   * `character` is set only for a character's kit (as shown on screen — the
+   * sheet's edit draft), never for the shared pack.
+   */
+  generateItem: (
+    hint: string,
+    existing: ItemRow[],
+    character?: Character,
+  ) => Promise<GeneratedItem | null>;
   /** Clear a stale field-generation failure (modal close / new run). */
   clearFieldGenError: () => void;
   /** Delete a character from the library entirely (and from every adventure). */
@@ -885,6 +908,39 @@ export const useStore = create<LoomStore>((set, get) => {
       if (!text) throw new Error("The model returned nothing usable. Try again.");
       set({ fieldGenPending: false });
       return text;
+    } catch (err) {
+      const message =
+        err instanceof OpenRouterError || err instanceof Error
+          ? err.message
+          : "Generation failed.";
+      set({ fieldGenPending: false, fieldGenError: message });
+      return null;
+    }
+  },
+
+  async generateItem(hint, existing, character) {
+    // Single-flight, and nothing else — same reasoning as `generateField`: this
+    // writes no game state, and the row is handed back to a modal.
+    if (get().fieldGenPending) return null;
+
+    set({ fieldGenPending: true, fieldGenError: null });
+    try {
+      const raw = await completeChat({
+        settings: get().settings,
+        messages: buildItemMessages({
+          game: get().game,
+          existing,
+          character,
+          hint,
+        }),
+        temperature: GENERATE_ITEM_TEMPERATURE,
+      });
+      // Three keys rather than one, so it has a parser of its own — a label is
+      // the part that can't be missing.
+      const item = parseGeneratedItem(raw);
+      if (!item) throw new Error("The model returned nothing usable. Try again.");
+      set({ fieldGenPending: false });
+      return item;
     } catch (err) {
       const message =
         err instanceof OpenRouterError || err instanceof Error

@@ -325,6 +325,23 @@ the one renderer for an equipped item (`Label ×3: description`) across the PC
 block, party roster and Auto-Update sheet, so a moved count can't be visible on
 the sheet and invisible to the narrator. Gear stays frozen for the model:
 moving it is a player act with no story stamp.
+Post-MVP also: **model-assisted items** (`generateItem.ts`) — the third ✦, and
+the only one that writes a whole ROW: Inventory rows and member-sheet Equipment
+rows both hold `label`/`description`/`quantity`, so both carry the button beside
+**Remove**, in Edit mode (Edit → + Add Item → ✦ → the shared `GenerateModal`).
+One call returns all three keys, with `parseGeneratedItem` of its own rather than
+three `parseGeneratedField` calls — split up, a description could describe
+something the label never named. A missing label is a failure (the row is left
+alone); a missing description is just a blank field; `normalizeItemQuantity` pins
+the count to 1…`MAX_ITEM_QUANTITY` so a year or a price never lands in the pack.
+`ItemRow` covers both shapes: with no character the prompt gets an `ALREADY IN
+THE PACK` block, with one it gets that character's `formatSheet` with the *draft*
+kit as its EQUIPMENT list (two copies of the same gear read as two sets). Reads
+the scenario, what is carried, and keyword-matched World Notes — never the beats
+— and never the row being written, which is the draft being replaced. Both
+screens are Edit-gated, so Discard Changes is the undo; Gold gets neither ✦ nor
+Remove. `GenerateModal` is now generic over its result with a `preview` render
+prop; string callers pass none.
 Deferred (post-MVP): rolling LLM summarization, NPC/item art, TTS,
 weather animation, multi-world. Track scope in `DESIGN.md → Build Phases`.
 
