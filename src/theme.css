@@ -155,10 +155,43 @@ body,
  * below are written once and never generated per roll.
  */
 .loom-dice-scene {
-  perspective: 900px;
+  position: absolute;
+  inset: 0;
+  /* `900px`, or `none` for a flat orthographic view — RPG System → Presentation. */
+  perspective: var(--perspective);
 }
 
+/*
+ * The surface the dice land on. ONE rotation, shared by every die — dice resting
+ * on a common table are parallel to each other, and it is the table that sits at
+ * an angle to the viewer. Square to the camera, a landed cube is just a bordered
+ * square; tilted a few degrees, a hairline of its top and side shows and it
+ * reads as a solid. Slight on purpose — the tumble is where the depth is sold,
+ * and the rolled face has to stay square-on and legible (see `SCENE_TILT`).
+ *
+ * `preserve-3d` is what lets the perspective above reach the faces at all — the
+ * whole chain from `.loom-dice-scene` down to `.loom-die-face` has to keep 3D.
+ */
+.loom-dice-plane {
+  position: absolute;
+  inset: 0;
+  transform: rotateX(var(--plane-x)) rotateY(var(--plane-y));
+  transform-style: preserve-3d;
+}
+
+/*
+ * Every die is pinned to the centre of the plane and moved from there by its
+ * animation — scatter positions are offsets from the middle of the screen, and
+ * the collected row is offsets from the middle of the row. Laying them out with
+ * flexbox instead would mean animating away from a position the layout keeps
+ * asserting.
+ */
 .loom-die {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  margin-left: calc(var(--die) / -2);
+  margin-top: calc(var(--die) / -2);
   width: var(--die);
   height: var(--die);
   /*
@@ -168,8 +201,12 @@ body,
    * whole chain from the perspective down to the faces has to preserve 3D.
    */
   transform-style: preserve-3d;
-  animation: loom-die-toss var(--toss) cubic-bezier(0.15, 0.75, 0.3, 1)
-    var(--delay) both;
+  /*
+   * Linear at the animation level on purpose: each segment sets its own easing
+   * inside the keyframes, because a throw, a pause and a tidy-up should not
+   * share one curve.
+   */
+  animation: loom-die-toss var(--move) linear var(--delay) both;
 }
 
 .loom-die-cube {
@@ -195,21 +232,35 @@ body,
 }
 
 /*
- * The arc: in from off-screen, a slight overshoot past the resting place, then
- * settle. The overshoot is what makes it read as thrown rather than moved.
+ * The whole journey, in three segments — the percentages are `PHASE` in
+ * `diceAnim.ts`, which a test keeps in step with `TIMING`:
+ *
+ *   0 → 50%   thrown up from off the bottom-left, overshooting its spot and
+ *             dropping back onto it (the overshoot is what makes it read as
+ *             thrown rather than moved);
+ *   50 → 71%  lying where it landed, scattered — the beat that makes the throw
+ *             legible as a throw before it becomes a tidy row;
+ *   71 → 100% collected into the row/grid.
  */
 @keyframes loom-die-toss {
   0% {
-    transform: translate3d(var(--dx), var(--dy), 0) scale(0.5);
+    transform: translate3d(var(--dx), var(--dy), 0) scale(0.55);
+    animation-timing-function: cubic-bezier(0.16, 0.72, 0.3, 1);
   }
-  70% {
-    transform: translate3d(0, 8%, 0) scale(1.08);
+  42% {
+    transform: translate3d(calc(var(--sx) + 2vw), calc(var(--sy) - 5vh), 0)
+      scale(1.06);
+    animation-timing-function: cubic-bezier(0.45, 0, 0.35, 1);
   }
-  85% {
-    transform: translate3d(0, -5%, 0) scale(0.97);
+  50% {
+    transform: translate3d(var(--sx), var(--sy), 0) scale(1);
+  }
+  71% {
+    transform: translate3d(var(--sx), var(--sy), 0) scale(1);
+    animation-timing-function: cubic-bezier(0.5, 0, 0.15, 1);
   }
   100% {
-    transform: translate3d(0, 0, 0) scale(1);
+    transform: translate3d(var(--gx), var(--gy), 0) scale(1);
   }
 }
 

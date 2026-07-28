@@ -178,7 +178,24 @@ always did.
   `Settings.diceAnimation`, on by default): a rolled turn throws the dice across
   a full-screen **60% ink scrim** — real CSS 3D cubes, tumbling, landing on the
   faces the turn actually rolled — holds the result on a solid plate, and fades
-  out. The scrim (`--scrim`, its own per-theme token, so it flips with
+  out. They land on a **tilted surface** (`SCENE_TILT` is the shipped angle;
+  `Settings.dicePitch`/`diceYaw`/`dicePerspective` are the player's, read through
+  `sceneView` — one rotation on the scene, not per die): dice resting on a common table are parallel to each
+  other and it is the table that sits at an angle to the viewer. Square to the
+  camera a landed cube is just a bordered square; at an angle its top and side
+  show and the perspective does real work. Bounded well inside 45°, or the
+  neighbouring face would out-face the one that was rolled.
+
+  The throw itself is one animation in three segments (`loom-die-toss`, with
+  `PHASE` naming the keyframe stops `TIMING` is checked against): **up from off
+  the bottom-left**, the way a hand throws them, out to a **scattered spot**
+  inside `SAFE_AREA` — placed by rejection sampling against `MIN_SPACING`, since
+  a plain random draw clumps and overlapping cubes are unreadable — a beat lying
+  there so the throw reads as a throw, then **collected into a centred row**
+  (`gridSpots`, wrapping to a grid past `GRID_COLUMNS`, short last row centred on
+  its own width) above the result plate. The dice are absolutely positioned and
+  moved by transform alone: a flex row would keep asserting a position the
+  animation is trying to leave. The scrim (`--scrim`, its own per-theme token, so it flips with
   ink/paper) is the one tone in the app that is neither ink nor paper: the beat
   the player just sent stays legible underneath, so the dice land *in* the scene
   rather than on a screen the game cut away to — which is also why the result
@@ -265,6 +282,7 @@ Settings {                    // global, edited in Settings
     portraitRefInstruction
   // RPG System (its own screen — mechanics, not prompt text):
   stakesEnabled, stakesRule, riskKeywords, alwaysRoll, diceAnimation,
+  dicePitch, diceYaw, dicePerspective,                                  // how the toss is drawn
   diceCount, diceSides, strengthsBonus, flawsPenalty,                   // DiceRules
     strongThreshold, mixedThreshold
 }
@@ -582,7 +600,11 @@ All secondary screens — **member sheet, Party, Inventory, Quests, and every Se
 - **RPG System screen** owns the dice and nothing else: **Stakes** on/off, the
   dice (`diceCount` × `diceSides`), what Strengths and Flaws are worth, where the
   STRONG/MIXED bands sit, **when to roll** (`alwaysRoll`, or the editable risk-word
-  list), the **dice toss** on/off, and the **Outcome Rule** — with a live preview reading through
+  list), the **dice toss** on/off with its **Test Roll** and view controls
+  (**Table Pitch** / **Table Yaw** / **Perspective**, shown only when the toss
+  is on — `sceneView` clamps the angles inside `MAX_TILT` on read, since past
+  45° the neighbouring face would out-face the rolled one), and the **Outcome
+  Rule** — with a live preview reading through
   `normalizeDice`, so what it shows is what will be rolled. Its own screen rather
   than a fifth Advanced sub-menu: Advanced is *prompt text handed to a model*,
   and this is mechanics the app resolves on-device before the model sees the turn.

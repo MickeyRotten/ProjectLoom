@@ -58,12 +58,28 @@ export const SLOT_ROTATION: FaceRotation[] = [
 export const TIMING = {
   /** The layer fading in over the game. */
   fadeIn: 180,
-  /** One die, thrown to its resting place. */
-  toss: 820,
+  /**
+   * A die's whole journey: thrown in, scattered where it lands, then collected
+   * into the row. ONE animation with three segments (`loom-die-toss` in
+   * theme.css) rather than three animations, so nothing can drift out of step.
+   */
+  move: 1400,
+  /**
+   * How long of `move` the die is still in the air and tumbling — the cube's
+   * spin runs for exactly this. Must stay in step with the **50%** stop in the
+   * keyframes, which is where the die touches down; there is a test.
+   */
+  toss: 700,
+  /**
+   * The pause between landing scattered and being collected, so the throw is
+   * legible as a throw before it becomes a tidy row. Matches the gap between
+   * the keyframes' 50% and **71%** stops.
+   */
+  scatter: 294,
   /** Gap between consecutive dice landing. */
   stagger: 90,
-  /** How long the landed result stays up to be read. */
-  hold: 1000,
+  /** How long the collected result stays up to be read. */
+  hold: 900,
   /** The layer fading back out. */
   fadeOut: 320,
   /**
@@ -73,10 +89,17 @@ export const TIMING = {
   reduced: 900,
 };
 
-/** When the last die has landed and the total can be shown. */
+/**
+ * The keyframe stops `loom-die-toss` is written with, as fractions of `move`.
+ * CSS keyframes take literal percentages, so these are the one place the two
+ * files agree — `TIMING` is checked against them in the tests.
+ */
+export const PHASE = { land: 0.5, gather: 0.71 };
+
+/** When the last die has been collected and the total can be shown. */
 export function landedAt(count: number, reduced = false): number {
   if (reduced) return 0;
-  return TIMING.fadeIn + TIMING.toss + TIMING.stagger * Math.max(0, count - 1);
+  return TIMING.fadeIn + TIMING.move + TIMING.stagger * Math.max(0, count - 1);
 }
 
 /** When the layer starts fading out. */
@@ -107,8 +130,153 @@ export interface DieToss {
   /** Where the die is thrown from, as a viewport-relative offset. */
   dx: number;
   dy: number;
+  /** Where it first lands — scattered, in vw/vh from the centre of the screen. */
+  sx: number;
+  sy: number;
+  /**
+   * Where it is collected to, in whole dice-widths from the centre of the row.
+   * Units rather than lengths because the die's size is a CSS `clamp()` the
+   * layout resolves — the component multiplies these by it.
+   */
+  col: number;
+  row: number;
   /** Stagger, in ms. */
   delay: number;
+}
+
+/**
+ * The tilt of the SURFACE the dice land on — a table seen from a few degrees
+ * above and a few to the side, rather than a sheet of glass square to the
+ * camera.
+ *
+ * One rotation, shared by every die. That is the whole point: dice resting on a
+ * common surface are parallel to each other, and it is the surface that is at an
+ * angle to the viewer. Tilting each die by its own amount would say the opposite
+ * — that they came to rest on nothing in particular.
+ *
+ * Deliberately slight. It only has to break the symmetry: at 3° a landed cube
+ * shows a hairline of its top and side, which is enough to read as a solid
+ * rather than a bordered square, while the rolled face stays square-on and
+ * perfectly legible. The tumble is where the depth is sold; this is the resting
+ * pose not throwing that away.
+ */
+export const SCENE_TILT = { x: -3, y: 3 };
+
+/**
+ * How far the tilt may be pushed, in degrees (RPG System → Presentation). Past
+ * 45° on either axis the neighbouring face is more camera-facing than the one
+ * the turn actually rolled, and the toss would be showing the wrong number — so
+ * this is a correctness bound, not a taste one.
+ */
+export const MAX_TILT = 40;
+
+/** How far away the camera sits when perspective is on. */
+export const PERSPECTIVE_PX = 900;
+
+/** The scene as the player has set it up. */
+export interface SceneView {
+  /** Pitch and yaw of the surface, in degrees. */
+  x: number;
+  y: number;
+  /** The `perspective` CSS value — `none` draws the dice orthographically. */
+  perspective: string;
+}
+
+/** Clamp one player-entered angle, falling back when it isn't a number. */
+function clampTilt(value: number, fallback: number): number {
+  if (!Number.isFinite(value)) return fallback;
+  return Math.min(MAX_TILT, Math.max(-MAX_TILT, Math.round(value)));
+}
+
+/**
+ * The scene the dice are drawn in, read off the player's settings. Sanitized at
+ * READ time like `normalizeDice`, so a hand-edited or corrupt stored value
+ * degrades to something drawable instead of pointing the camera at the back of
+ * the dice.
+ */
+export function sceneView(settings: {
+  dicePitch?: number;
+  diceYaw?: number;
+  dicePerspective?: boolean;
+}): SceneView {
+  return {
+    x: clampTilt(settings.dicePitch ?? SCENE_TILT.x, SCENE_TILT.x),
+    y: clampTilt(settings.diceYaw ?? SCENE_TILT.y, SCENE_TILT.y),
+    // `none` is a real CSS value here, not a missing one: it flattens the scene
+    // instead of leaving the property unset.
+    perspective: (settings.dicePerspective ?? true) ? `${PERSPECTIVE_PX}px` : "none",
+  };
+}
+
+/**
+ * How far from the centre of the screen a die may land, in vw/vh. Deliberately
+ * short of the edges: a die that scatters into the corner reads as escaping the
+ * screen, and on a narrow phone it would clip.
+ */
+export const SAFE_AREA = { x: 30, y: 22 };
+
+/**
+ * Minimum spacing between two scattered dice, in vw/vh — roughly a die's own
+ * footprint, so a throw reads as several dice rather than one clump. Different
+ * per axis because vw and vh are different lengths on a phone and the die is
+ * square in neither.
+ */
+const MIN_SPACING = { x: 20, y: 13 };
+
+/** Dice per row once they are collected — beyond this the row wraps to a grid. */
+export const GRID_COLUMNS = 5;
+
+/**
+ * Where the dice come to rest as a tidy block: a centred row, wrapping to a
+ * grid past `GRID_COLUMNS`. Both axes are centred on 0, so the block sits
+ * around one point however many dice there are and whatever the last row holds.
+ */
+export function gridSpots(count: number): { col: number; row: number }[] {
+  const perRow = Math.min(count, GRID_COLUMNS);
+  const rows = Math.ceil(count / perRow);
+  return Array.from({ length: count }, (_, i) => {
+    const row = Math.floor(i / perRow);
+    // The last row is usually short — centre it on its OWN width, or a 7-dice
+    // throw ends with two dice hanging off to the left.
+    const inRow = Math.min(perRow, count - row * perRow);
+    const col = (i % perRow) - (inRow - 1) / 2;
+    return { col, row: row - (rows - 1) / 2 };
+  });
+}
+
+/** Are two scatter spots far enough apart to read as two dice? */
+function clear(a: { x: number; y: number }, b: { x: number; y: number }): boolean {
+  const dx = (a.x - b.x) / MIN_SPACING.x;
+  const dy = (a.y - b.y) / MIN_SPACING.y;
+  return dx * dx + dy * dy >= 1;
+}
+
+/**
+ * Where the dice first land — scattered across the safe area, seeded so the
+ * same roll scatters the same way.
+ *
+ * Placed by rejection: draw a spot, keep it if it clears the dice already down,
+ * otherwise draw again. Pure randomness clumps, and a clump of overlapping
+ * cubes is unreadable; a grid with jitter reads as a grid. After `TRIES` the
+ * last candidate is taken regardless — with ten dice in this area there is no
+ * arrangement that clears, and a slightly crowded throw beats no throw.
+ */
+export function scatterSpots(count: number, seed: string): { x: number; y: number }[] {
+  const TRIES = 12;
+  const spots: { x: number; y: number }[] = [];
+  for (let i = 0; i < count; i++) {
+    let spot = { x: 0, y: 0 };
+    for (let t = 0; t < TRIES; t++) {
+      const h = seedHash(`${seed}|scatter|${i}|${t}`);
+      spot = {
+        x: ((h % (SAFE_AREA.x * 2 + 1)) - SAFE_AREA.x) | 0,
+        y: (((h >>> 11) % (SAFE_AREA.y * 2 + 1)) - SAFE_AREA.y) | 0,
+      };
+      if (spots.every((s) => clear(spot, s))) break;
+    }
+    spots.push(spot);
+  }
+  return spots;
 }
 
 /**
@@ -152,6 +320,9 @@ function facesRolled(roll: TurnRoll): number[] {
 export function planToss(roll: TurnRoll): DieToss[] {
   const sides = roll.sides ?? 6;
   const values = facesRolled(roll);
+  const seed = `${roll.total}|${roll.roll}|${values.join(",")}`;
+  const scatter = scatterSpots(values.length, seed);
+  const grid = gridSpots(values.length);
 
   return values.map((value, i) => {
     const h = seedHash(`${roll.total}|${roll.roll}|${value}|${i}`);
@@ -171,10 +342,15 @@ export function planToss(roll: TurnRoll): DieToss[] {
       ry1: landing.ry,
       rx0: landing.rx - 360 * spinX,
       ry0: landing.ry - 360 * spinY,
-      // Thrown in from above and off to one side, so the dice arrive from
-      // somewhere rather than growing where they land.
-      dx: ((h >>> 8) % 90) - 45,
-      dy: -70 - ((h >>> 16) % 25),
+      // Thrown UP from off the bottom-left corner — the dice come from the
+      // player's own hand, out of frame, rather than dropping in from nowhere.
+      dx: -75 - ((h >>> 8) % 35),
+      dy: 60 + ((h >>> 16) % 30),
+      // Where the throw scatters them, and where they are collected to.
+      sx: scatter[i].x,
+      sy: scatter[i].y,
+      col: grid[i].col,
+      row: grid[i].row,
       delay: i * TIMING.stagger,
     };
   });

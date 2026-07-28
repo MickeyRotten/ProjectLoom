@@ -254,8 +254,17 @@ Post-MVP also: **the dice toss** (`diceAnim.ts` + `DiceOverlay.tsx`,
 `Settings.diceAnimation` in RPG System → Presentation, on by default) — a rolled
 turn throws real CSS 3D cubes across a full-screen 60% ink scrim (`--scrim`, a
 per-theme token so it flips with ink/paper — the game stays legible underneath),
-lands them on the faces the turn actually rolled, shows the arithmetic and the
-band on an opaque plate, and fades out (~2.4s, tap to skip). Staged in `sendTurn` *before* the model call, so it
+lands them on the faces the turn actually rolled — thrown **up from off the
+bottom-left**, scattered across the screen inside `SAFE_AREA` (rejection-sampled
+so cubes don't overlap), then **collected into a centred row** (`gridSpots`) — on
+a **tilted surface** (`SCENE_TILT`, one rotation shared by every die, so they
+rest parallel like dice on a table rather than square to the glass — angle and
+`perspective: none` are the player's via `Settings.dicePitch`/`diceYaw`/
+`dicePerspective` in RPG System → Presentation, clamped on read by `sceneView`),
+shows the
+arithmetic and the band on an opaque plate, and fades out (~2.8s, tap to skip).
+One keyframed animation carries throw → scatter → collect, with `PHASE` pinning
+its stops to `TIMING`. Staged in `sendTurn` *before* the model call, so it
 plays over the wait for the first token instead of adding to the turn. No 3D
 library and no shading — six `preserve-3d` faces, two keyframes, 1-bit
 throughout; pips on a d6, numerals on anything else. `planToss` is pure in the
