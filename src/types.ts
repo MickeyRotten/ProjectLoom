@@ -558,6 +558,22 @@ export interface Settings extends DiceRules {
    */
   diceAnimation: boolean;
   /**
+   * The tilt of the surface the dice land on, in degrees — pitch is the tip
+   * toward or away from the viewer, yaw the turn to one side. Shipped a few
+   * degrees off square (`diceAnim.ts → SCENE_TILT`), which is enough to show a
+   * landed cube has sides; the player owns it because "how much 3D" is taste,
+   * and 0/0 is a perfectly reasonable answer.
+   */
+  dicePitch: number;
+  diceYaw: number;
+  /**
+   * Draw the dice with a vanishing point. On, a die's distance from the middle
+   * of the screen shows in it — the ones off to the side turn their faces
+   * slightly away. Off is an orthographic view: every die is drawn identically
+   * wherever it sits, which is flatter but perfectly even.
+   */
+  dicePerspective: boolean;
+  /**
    * Approximate token budget for the rolling history window. The only thing
    * standing between a long game and amnesia, so it is the player's to raise on
    * a large-context model.

@@ -3,11 +3,11 @@ import type { CSSProperties } from "react";
 import { useStore } from "../store";
 import {
   PIP_LAYOUT,
-  SCENE_TILT,
   TIMING,
   landedAt,
   leaveAt,
   planToss,
+  sceneView,
   totalMs,
 } from "../lib/diceAnim";
 import { OUTCOME_LABEL, formatRoll, modifierNote } from "../lib/stakes";
@@ -70,6 +70,8 @@ function reducedMotion(): boolean {
 
 function Toss({ cast }: { cast: DiceCast }) {
   const clearDice = useStore((s) => s.clearDice);
+  // How the scene is set up is the player's (RPG System → Presentation).
+  const view = useStore((s) => sceneView(s.settings));
   const dice = useMemo(() => planToss(cast.roll), [cast.roll]);
   const reduced = useMemo(reducedMotion, []);
 
@@ -117,6 +119,8 @@ function Toss({ cast }: { cast: DiceCast }) {
         style={
           {
             "--die": "clamp(52px, 16vw, 84px)",
+            /* `none` draws the dice orthographically — see `sceneView`. */
+            "--perspective": view.perspective,
             /* Space between dice once they are collected. */
             "--gap": "10px",
             /* The collected row sits above the middle, clear of the result. */
@@ -133,8 +137,8 @@ function Toss({ cast }: { cast: DiceCast }) {
           className="loom-dice-plane"
           style={
             {
-              "--plane-x": `${SCENE_TILT.x}deg`,
-              "--plane-y": `${SCENE_TILT.y}deg`,
+              "--plane-x": `${view.x}deg`,
+              "--plane-y": `${view.y}deg`,
             } as CSSProperties
           }
         >

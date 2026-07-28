@@ -12,6 +12,7 @@ import {
   diceRange,
   normalizeDice,
 } from "../lib/stakes";
+import { MAX_TILT, SCENE_TILT } from "../lib/diceAnim";
 import type { DiceRules } from "../types";
 
 /**
@@ -238,6 +239,60 @@ export function RpgSystemScreen() {
               itself. Plays even with the animation off, since watching it is how you
               decide.
             </p>
+
+            {/*
+             * How the toss is DRAWN — only worth showing when there is a toss.
+             * Test Roll sits directly above, which is what makes these editable
+             * at all: the numbers mean nothing until you watch them.
+             */}
+            {settings.diceAnimation && (
+              <>
+                <NumberField
+                  label="Table Pitch"
+                  value={settings.dicePitch}
+                  min={-MAX_TILT}
+                  max={MAX_TILT}
+                  onChange={(dicePitch) => update({ dicePitch })}
+                  hint="Degrees the surface tips away from you. Negative looks down at the table, positive up from under it. 0 is dead-on."
+                />
+                <NumberField
+                  label="Table Yaw"
+                  value={settings.diceYaw}
+                  min={-MAX_TILT}
+                  max={MAX_TILT}
+                  onChange={(diceYaw) => update({ diceYaw })}
+                  hint="Degrees the surface turns to one side. A few degrees is enough to show a landed die has sides."
+                />
+                <ToggleRow
+                  label="Perspective"
+                  state={settings.dicePerspective ? "ON" : "OFF"}
+                  onClick={() => update({ dicePerspective: !settings.dicePerspective })}
+                />
+                <p className="text-xs opacity-70">
+                  On, dice further from the middle of the screen turn their faces
+                  slightly away, as real dice on a table would. Off draws every die
+                  identically wherever it sits — flatter, and perfectly even.
+                </p>
+                <button
+                  type="button"
+                  onClick={() =>
+                    update({
+                      dicePitch: SCENE_TILT.x,
+                      diceYaw: SCENE_TILT.y,
+                      dicePerspective: true,
+                    })
+                  }
+                  disabled={
+                    settings.dicePitch === SCENE_TILT.x &&
+                    settings.diceYaw === SCENE_TILT.y &&
+                    settings.dicePerspective
+                  }
+                  className={`w-full ${btnSmall}`}
+                >
+                  Reset view
+                </button>
+              </>
+            )}
 
             <Section label="Results" />
             <Field label="Outcome Rule">

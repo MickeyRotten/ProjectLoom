@@ -258,7 +258,10 @@ lands them on the faces the turn actually rolled — thrown **up from off the
 bottom-left**, scattered across the screen inside `SAFE_AREA` (rejection-sampled
 so cubes don't overlap), then **collected into a centred row** (`gridSpots`) — on
 a **tilted surface** (`SCENE_TILT`, one rotation shared by every die, so they
-rest parallel like dice on a table rather than square to the glass), shows the
+rest parallel like dice on a table rather than square to the glass — angle and
+`perspective: none` are the player's via `Settings.dicePitch`/`diceYaw`/
+`dicePerspective` in RPG System → Presentation, clamped on read by `sceneView`),
+shows the
 arithmetic and the band on an opaque plate, and fades out (~2.8s, tap to skip).
 One keyframed animation carries throw → scatter → collect, with `PHASE` pinning
 its stops to `TIMING`. Staged in `sendTurn` *before* the model call, so it

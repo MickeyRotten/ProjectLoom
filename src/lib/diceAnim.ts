@@ -163,6 +163,52 @@ export interface DieToss {
 export const SCENE_TILT = { x: -3, y: 3 };
 
 /**
+ * How far the tilt may be pushed, in degrees (RPG System → Presentation). Past
+ * 45° on either axis the neighbouring face is more camera-facing than the one
+ * the turn actually rolled, and the toss would be showing the wrong number — so
+ * this is a correctness bound, not a taste one.
+ */
+export const MAX_TILT = 40;
+
+/** How far away the camera sits when perspective is on. */
+export const PERSPECTIVE_PX = 900;
+
+/** The scene as the player has set it up. */
+export interface SceneView {
+  /** Pitch and yaw of the surface, in degrees. */
+  x: number;
+  y: number;
+  /** The `perspective` CSS value — `none` draws the dice orthographically. */
+  perspective: string;
+}
+
+/** Clamp one player-entered angle, falling back when it isn't a number. */
+function clampTilt(value: number, fallback: number): number {
+  if (!Number.isFinite(value)) return fallback;
+  return Math.min(MAX_TILT, Math.max(-MAX_TILT, Math.round(value)));
+}
+
+/**
+ * The scene the dice are drawn in, read off the player's settings. Sanitized at
+ * READ time like `normalizeDice`, so a hand-edited or corrupt stored value
+ * degrades to something drawable instead of pointing the camera at the back of
+ * the dice.
+ */
+export function sceneView(settings: {
+  dicePitch?: number;
+  diceYaw?: number;
+  dicePerspective?: boolean;
+}): SceneView {
+  return {
+    x: clampTilt(settings.dicePitch ?? SCENE_TILT.x, SCENE_TILT.x),
+    y: clampTilt(settings.diceYaw ?? SCENE_TILT.y, SCENE_TILT.y),
+    // `none` is a real CSS value here, not a missing one: it flattens the scene
+    // instead of leaving the property unset.
+    perspective: (settings.dicePerspective ?? true) ? `${PERSPECTIVE_PX}px` : "none",
+  };
+}
+
+/**
  * How far from the centre of the screen a die may land, in vw/vh. Deliberately
  * short of the edges: a die that scatters into the corner reads as escaping the
  * screen, and on a narrow phone it would clip.

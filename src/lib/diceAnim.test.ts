@@ -3,6 +3,8 @@ import {
   D6_FACES,
   GRID_COLUMNS,
   PHASE,
+  MAX_TILT,
+  PERSPECTIVE_PX,
   SAFE_AREA,
   SCENE_TILT,
   SLOT_ROTATION,
@@ -13,6 +15,7 @@ import {
   leaveAt,
   planToss,
   scatterSpots,
+  sceneView,
   slotFor,
   totalMs,
 } from "./diceAnim";
@@ -129,8 +132,8 @@ describe("the surface", () => {
     // either axis the neighbouring face would be more camera-facing than the
     // one the turn actually rolled — the number has to stay the thing you see.
     expect(SCENE_TILT.x).not.toBe(0);
-    expect(Math.abs(SCENE_TILT.x)).toBeLessThan(45);
-    expect(Math.abs(SCENE_TILT.y)).toBeLessThan(45);
+    expect(Math.abs(SCENE_TILT.x)).toBeLessThanOrEqual(MAX_TILT);
+    expect(Math.abs(SCENE_TILT.y)).toBeLessThanOrEqual(MAX_TILT);
   });
 
   it("is one angle for every die, not one per die", () => {
@@ -215,5 +218,46 @@ describe("phases", () => {
   it("shows the result only once the dice have been collected", () => {
     expect(landedAt(1)).toBe(TIMING.fadeIn + TIMING.move);
     expect(landedAt(3)).toBe(landedAt(1) + TIMING.stagger * 2);
+  });
+});
+
+describe("sceneView", () => {
+  it("draws the scene the player set up", () => {
+    expect(sceneView({ dicePitch: -12, diceYaw: 8, dicePerspective: true })).toEqual({
+      x: -12,
+      y: 8,
+      perspective: `${PERSPECTIVE_PX}px`,
+    });
+  });
+
+  it("flattens the scene when perspective is off", () => {
+    // `none` is a real CSS value, not an absent one — it has to actually
+    // flatten the scene rather than leave the property unset.
+    expect(sceneView({ dicePerspective: false }).perspective).toBe("none");
+  });
+
+  it("falls back to the shipped view for anything missing", () => {
+    expect(sceneView({})).toEqual({
+      x: SCENE_TILT.x,
+      y: SCENE_TILT.y,
+      perspective: `${PERSPECTIVE_PX}px`,
+    });
+  });
+
+  it("clamps a tilt that would turn the rolled face away", () => {
+    // Past 45° the neighbouring face is the more camera-facing one and the toss
+    // would be showing the wrong number — so this bound is correctness, not
+    // taste, and it is enforced on READ so a stored value can't defeat it.
+    expect(sceneView({ dicePitch: 400, diceYaw: -400 })).toMatchObject({
+      x: MAX_TILT,
+      y: -MAX_TILT,
+    });
+    expect(MAX_TILT).toBeLessThan(45);
+    expect(sceneView({ dicePitch: NaN }).x).toBe(SCENE_TILT.x);
+  });
+
+  it("allows a dead-on view", () => {
+    // 0/0 is a legitimate answer — some players will want the dice flat.
+    expect(sceneView({ dicePitch: 0, diceYaw: 0 })).toMatchObject({ x: 0, y: 0 });
   });
 });

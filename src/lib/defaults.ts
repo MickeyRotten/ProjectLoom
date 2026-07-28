@@ -10,6 +10,7 @@ import type {
   Settings,
 } from "../types";
 import { PARTY_LIMIT, normalizeRoster, strengthsText } from "./roster";
+import { SCENE_TILT } from "./diceAnim";
 import { DEFAULT_DICE, RISK_KEYWORDS } from "./stakes";
 
 /**
@@ -258,6 +259,11 @@ export function defaultSettings(): Settings {
     riskKeywords: DEFAULT_RISK_KEYWORDS,
     alwaysRoll: false,
     diceAnimation: true,
+    // The shipped tilt lives with the animation it belongs to, so "the default
+    // scene" has one definition (`diceAnim.ts → SCENE_TILT`).
+    dicePitch: SCENE_TILT.x,
+    diceYaw: SCENE_TILT.y,
+    dicePerspective: true,
     historyBudget: DEFAULT_HISTORY_BUDGET_SETTING,
     maxTokens: DEFAULT_MAX_TOKENS,
   };

@@ -157,7 +157,8 @@ body,
 .loom-dice-scene {
   position: absolute;
   inset: 0;
-  perspective: 900px;
+  /* `900px`, or `none` for a flat orthographic view — RPG System → Presentation. */
+  perspective: var(--perspective);
 }
 
 /*
