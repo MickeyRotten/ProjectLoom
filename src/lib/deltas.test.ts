@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { applyDeltas, reconcileBlock, simplifyLocation } from "./deltas";
+import { applyDeltas, goldIsNarrated, reconcileBlock, simplifyLocation } from "./deltas";
 import { defaultPC, newGame } from "./defaults";
 import { activeMembers, getEntry, partyMembers, resolve } from "./roster";
 import type { Character, GameState } from "../types";
@@ -651,7 +651,7 @@ describe("reconcileBlock — restated ops", () => {
   it("drops a bare add for an item the player already has", () => {
     const g = game();
     g.inventory = [{ label: "Rusty Key", description: "bent", quantity: 1 }];
-    const block = reconcileBlock(g, {
+    const block = reconcileBlock(g, lib(), {
       inventory: [{ op: "add", label: "rusty key" }],
     });
     expect(block.inventory).toEqual([]);
@@ -662,7 +662,7 @@ describe("reconcileBlock — restated ops", () => {
   it("keeps an add that names a quantity — a real second pickup", () => {
     const g = game();
     g.inventory = [{ label: "Torch", description: "", quantity: 1 }];
-    const block = reconcileBlock(g, {
+    const block = reconcileBlock(g, lib(), {
       inventory: [{ op: "add", label: "Torch", quantity: 2 }],
     });
     expect(block.inventory).toHaveLength(1);
@@ -672,14 +672,14 @@ describe("reconcileBlock — restated ops", () => {
   it("keeps a bare add for an item the player does NOT have", () => {
     const g = game();
     g.inventory = [];
-    const block = reconcileBlock(g, { inventory: [{ op: "add", label: "Lantern" }] });
+    const block = reconcileBlock(g, lib(), { inventory: [{ op: "add", label: "Lantern" }] });
     expect(block.inventory).toEqual([{ op: "add", label: "Lantern" }]);
   });
 
   it("demotes a restated add carrying a description to an update", () => {
     const g = game();
     g.inventory = [{ label: "Knife", description: "dull", quantity: 1 }];
-    const block = reconcileBlock(g, {
+    const block = reconcileBlock(g, lib(), {
       inventory: [{ op: "add", label: "Knife", description: "notched now" }],
     });
     expect(block.inventory).toEqual([
@@ -692,7 +692,7 @@ describe("reconcileBlock — restated ops", () => {
   it("counts an item picked up earlier in the SAME block as held", () => {
     const g = game();
     g.inventory = [];
-    const block = reconcileBlock(g, {
+    const block = reconcileBlock(g, lib(), {
       inventory: [
         { op: "add", label: "Lantern", quantity: 1 },
         { op: "add", label: "lantern" },
@@ -705,7 +705,7 @@ describe("reconcileBlock — restated ops", () => {
   it("lets a re-add through after the same block removed the item", () => {
     const g = game();
     g.inventory = [{ label: "Torch", description: "", quantity: 1 }];
-    const block = reconcileBlock(g, {
+    const block = reconcileBlock(g, lib(), {
       inventory: [
         { op: "remove", label: "Torch" },
         { op: "add", label: "Torch" },
@@ -717,14 +717,14 @@ describe("reconcileBlock — restated ops", () => {
   it("drops a bare add for Gold, which is always held", () => {
     const g = game();
     g.inventory = [{ label: "Gold", description: "Currency", quantity: 10 }];
-    const block = reconcileBlock(g, { inventory: [{ op: "add", label: "Gold" }] });
+    const block = reconcileBlock(g, lib(), { inventory: [{ op: "add", label: "Gold" }] });
     expect(block.inventory).toEqual([]);
   });
 
   it("keeps Gold held after a remove — the purse is emptied, not deleted", () => {
     const g = game();
     g.inventory = [{ label: "Gold", description: "Currency", quantity: 10 }];
-    const block = reconcileBlock(g, {
+    const block = reconcileBlock(g, lib(), {
       inventory: [
         { op: "remove", label: "Gold" },
         { op: "add", label: "gold" },
@@ -736,7 +736,7 @@ describe("reconcileBlock — restated ops", () => {
   it("writes an exact-duplicate row once, whatever the field order", () => {
     const g = game();
     g.inventory = [];
-    const block = reconcileBlock(g, {
+    const block = reconcileBlock(g, lib(), {
       inventory: [
         { op: "add", label: "Torch", quantity: 2 },
         { label: "Torch", quantity: 2, op: "add" },
@@ -749,7 +749,7 @@ describe("reconcileBlock — restated ops", () => {
   it("keeps two adds for the same label with different quantities — a sequence", () => {
     const g = game();
     g.inventory = [];
-    const block = reconcileBlock(g, {
+    const block = reconcileBlock(g, lib(), {
       inventory: [
         { op: "add", label: "Coin", quantity: 2 },
         { op: "add", label: "Coin", quantity: 3 },
@@ -760,7 +760,7 @@ describe("reconcileBlock — restated ops", () => {
 
   it("de-duplicates party, quest, note and condition rows too", () => {
     const g = game();
-    const block = reconcileBlock(g, {
+    const block = reconcileBlock(g, lib(), {
       party: [
         { op: "add", name: "Navi" },
         { op: "add", name: "Navi" },
@@ -774,8 +774,8 @@ describe("reconcileBlock — restated ops", () => {
         { op: "add", title: "Rodstroke", keywords: ["city"] },
       ],
       conditions: [
-        { name: "Navi", condition: "limping" },
-        { name: "Navi", condition: "limping" },
+        { name: "Hiro", condition: "limping" },
+        { name: "Hiro", condition: "limping" },
       ],
     });
     expect(block.party).toHaveLength(1);
@@ -785,7 +785,7 @@ describe("reconcileBlock — restated ops", () => {
   });
 
   it("keeps note rows whose keyword arrays differ", () => {
-    const block = reconcileBlock(game(), {
+    const block = reconcileBlock(game(), lib(), {
       notes: [
         { op: "add", title: "Rodstroke", keywords: ["city"] },
         { op: "add", title: "Rodstroke", keywords: ["market"] },
@@ -801,11 +801,264 @@ describe("reconcileBlock — restated ops", () => {
       location: "Old Well",
       inventory: [{ op: "add" as const, label: "Lantern", quantity: 1 }],
     };
-    expect(reconcileBlock(g, block)).toBe(block);
+    expect(reconcileBlock(g, lib(), block)).toBe(block);
   });
 
   it("leaves labelless rows alone — applyDeltas already ignores them", () => {
-    const block = reconcileBlock(game(), { inventory: [{ op: "add", label: "" }] });
+    const block = reconcileBlock(game(), lib(), { inventory: [{ op: "add", label: "" }] });
     expect(block.inventory).toEqual([{ op: "add", label: "" }]);
+  });
+});
+
+describe("reconcileBlock — an op that changes nothing", () => {
+  it("drops an inventory update that sets the quantity it already is", () => {
+    const g = game();
+    g.inventory = [{ label: "Ancient Sword", description: "warm", quantity: 1 }];
+    const block = reconcileBlock(g, lib(), {
+      inventory: [{ op: "update", label: "Ancient Sword", quantity: 1 }],
+    });
+    expect(block.inventory).toEqual([]);
+  });
+
+  it("keeps an inventory update that moves the quantity", () => {
+    const g = game();
+    g.inventory = [{ label: "Ration", description: "", quantity: 2 }];
+    const block = reconcileBlock(g, lib(), {
+      inventory: [{ op: "update", label: "Ration", quantity: 1 }],
+    });
+    expect(block.inventory).toHaveLength(1);
+  });
+
+  it("drops an update or remove for an item the player never had", () => {
+    const g = game();
+    g.inventory = [];
+    const block = reconcileBlock(g, lib(), {
+      inventory: [
+        { op: "update", label: "Ghost Lantern", quantity: 3 },
+        { op: "remove", label: "Ghost Lantern" },
+      ],
+    });
+    expect(block.inventory).toEqual([]);
+  });
+
+  it("drops a condition that re-states the mark someone already carries", () => {
+    const g = game();
+    g.roster = [{ id: "pc", standing: "none", lastSpokeTurn: 0, condition: "Armed with a glowing sword" }];
+    const block = reconcileBlock(g, lib(), {
+      conditions: [{ name: "Hiro", condition: "Armed with a glowing sword" }],
+    });
+    expect(block.conditions).toEqual([]);
+  });
+
+  it("keeps a condition that changes the words, and one that clears it", () => {
+    const g = game();
+    g.roster = [{ id: "pc", standing: "none", lastSpokeTurn: 0, condition: "limping" }];
+    expect(
+      reconcileBlock(g, lib(), { conditions: [{ name: "Hiro", condition: "limping badly" }] })
+        .conditions,
+    ).toHaveLength(1);
+    expect(
+      reconcileBlock(g, lib(), { conditions: [{ name: "Hiro", condition: "" }] }).conditions,
+    ).toHaveLength(1);
+  });
+
+  it("drops a blank condition for someone unmarked, and one naming a stranger", () => {
+    const g = game();
+    const block = reconcileBlock(g, lib(), {
+      conditions: [
+        { name: "Hiro", condition: "" },
+        { name: "Nobody At All", condition: "cursed" },
+      ],
+    });
+    expect(block.conditions).toEqual([]);
+  });
+
+  it("drops a quest add for a quest already on the board", () => {
+    const g = game();
+    g.quests = [
+      { id: "q1", label: "Find the well", description: "", reward: "", status: "active" },
+    ];
+    const block = reconcileBlock(g, lib(), {
+      quests: [{ op: "add", label: "find the well" }],
+    });
+    expect(block.quests).toEqual([]);
+  });
+
+  it("keeps the quest update that completes it, drops one that restates it", () => {
+    const g = game();
+    g.quests = [
+      { id: "q1", label: "Find the well", description: "dig", reward: "", status: "active" },
+    ];
+    expect(
+      reconcileBlock(g, lib(), { quests: [{ op: "update", label: "Find the well", status: "done" }] })
+        .quests,
+    ).toHaveLength(1);
+    expect(
+      reconcileBlock(g, lib(), {
+        quests: [{ op: "update", label: "Find the well", description: "dig", status: "active" }],
+      }).quests,
+    ).toEqual([]);
+  });
+
+  it("drops a note write that says what the note already says", () => {
+    const g = game();
+    g.worldNotes = [{ id: "n1", title: "Rodstroke", keywords: ["city"], content: "A village." }];
+    const block = reconcileBlock(g, lib(), {
+      notes: [{ op: "add", title: "Rodstroke", content: "A village.", keywords: ["city"] }],
+    });
+    expect(block.notes).toEqual([]);
+  });
+
+  it("drops a party op that leaves someone where they already stand", () => {
+    const navi = member("m-navi", "Navi");
+    const g = game();
+    g.roster = [{ id: "m-navi", standing: "active", lastSpokeTurn: 0 }];
+    const block = reconcileBlock(g, lib(navi), {
+      party: [
+        { op: "add", name: "Navi" },
+        { op: "update", name: "Navi", standing: "active" },
+      ],
+    });
+    expect(block.party).toEqual([]);
+  });
+
+  it("keeps a party op that actually moves someone", () => {
+    const navi = member("m-navi", "Navi");
+    const g = game();
+    g.roster = [{ id: "m-navi", standing: "active", lastSpokeTurn: 0 }];
+    const block = reconcileBlock(g, lib(navi), {
+      party: [{ op: "update", name: "Navi", standing: "benched" }],
+    });
+    expect(block.party).toHaveLength(1);
+  });
+
+  it("drops an add for the fallen — applyParty never re-recruits them", () => {
+    const navi = member("m-navi", "Navi");
+    const g = game();
+    g.roster = [{ id: "m-navi", standing: "fallen", lastSpokeTurn: 0 }];
+    const block = reconcileBlock(g, lib(navi), { party: [{ op: "add", name: "Navi" }] });
+    expect(block.party).toEqual([]);
+  });
+
+  it("keeps an add that creates somebody new", () => {
+    const block = reconcileBlock(game(), lib(), { party: [{ op: "add", name: "Grubnub" }] });
+    expect(block.party).toHaveLength(1);
+  });
+
+  it("drops an update or remove naming a character nobody knows", () => {
+    const block = reconcileBlock(game(), lib(), {
+      party: [
+        { op: "update", name: "Nobody", standing: "benched" },
+        { op: "remove", name: "Nobody" },
+      ],
+    });
+    expect(block.party).toEqual([]);
+  });
+});
+
+describe("reconcileBlock — Gold", () => {
+  const purse = (quantity: number): GameState => {
+    const g = game();
+    g.inventory = [{ label: "Gold", description: "Currency", quantity }];
+    return g;
+  };
+
+  it("drops a Gold update that repeats the total already in the purse", () => {
+    const block = reconcileBlock(purse(15), lib(), {
+      inventory: [{ op: "update", label: "Gold", quantity: 15 }],
+    });
+    expect(block.inventory).toEqual([]);
+  });
+
+  it("drops a Gold gain the beat never narrates", () => {
+    const block = reconcileBlock(
+      purse(15),
+      lib(),
+      { inventory: [{ op: "update", label: "Gold", quantity: 45 }] },
+      "You creep forward. The soft light of the mushrooms illuminates a polished black leather satchel, half-buried in moss.",
+    );
+    expect(block.inventory).toEqual([]);
+  });
+
+  it("keeps a Gold gain the beat pays for", () => {
+    const block = reconcileBlock(
+      purse(10),
+      lib(),
+      { inventory: [{ op: "update", label: "Gold", quantity: 15 }] },
+      "In a small pouch tied to his belt, your fingers close around a handful of clinking coins.",
+    );
+    expect(block.inventory).toHaveLength(1);
+  });
+
+  it("keeps a Gold loss the beat spends", () => {
+    const block = reconcileBlock(
+      purse(15),
+      lib(),
+      { inventory: [{ op: "update", label: "Gold", quantity: 5 }] },
+      "You haggle the innkeeper down and pay for the room.",
+    );
+    expect(block.inventory).toHaveLength(1);
+  });
+
+  it("drops an unnarrated Gold add and an unnarrated Gold remove alike", () => {
+    const flat = "The forest swallows you whole. Ancient oaks rise on either side of the road.";
+    expect(
+      reconcileBlock(purse(10), lib(), { inventory: [{ op: "add", label: "Gold", quantity: 30 }] }, flat)
+        .inventory,
+    ).toEqual([]);
+    expect(
+      reconcileBlock(purse(10), lib(), { inventory: [{ op: "remove", label: "Gold" }] }, flat).inventory,
+    ).toEqual([]);
+  });
+
+  it("judges nothing when there is no prose to judge", () => {
+    const block = reconcileBlock(purse(10), lib(), {
+      inventory: [{ op: "update", label: "Gold", quantity: 999 }],
+    });
+    expect(block.inventory).toHaveLength(1);
+  });
+
+  it("leaves every other item alone on a beat with no money in it", () => {
+    const g = purse(10);
+    g.inventory = [...g.inventory, { label: "Rope", description: "", quantity: 1 }];
+    const block = reconcileBlock(
+      g,
+      lib(),
+      { inventory: [{ op: "add", label: "Lantern", quantity: 1 }] },
+      "The forest swallows you whole.",
+    );
+    expect(block.inventory).toHaveLength(1);
+  });
+});
+
+describe("goldIsNarrated", () => {
+  it("reads the verbs of paying and the nouns of coin", () => {
+    for (const prose of [
+      "a handful of clinking coins",
+      "you pay the toll",
+      "the merchant is paid in full",
+      "she offers a reward",
+      "you haggle for the blade",
+      "the purse is lighter now",
+      "you bought the lantern",
+      "buried treasure",
+    ]) {
+      expect(goldIsNarrated(prose)).toBe(true);
+    }
+  });
+
+  it("does not read money into a beat that has none", () => {
+    expect(goldIsNarrated("The glow of the mushrooms grows brighter on the mossy ground.")).toBe(
+      false,
+    );
+    // No substring matches: "golden" is not gold, "coincidence" is not a coin.
+    expect(goldIsNarrated("The golden wheat sways around your waist, a coincidence of light.")).toBe(
+      false,
+    );
+  });
+
+  it("treats blank prose as no claim at all", () => {
+    expect(goldIsNarrated("")).toBe(true);
+    expect(goldIsNarrated("   ")).toBe(true);
   });
 });

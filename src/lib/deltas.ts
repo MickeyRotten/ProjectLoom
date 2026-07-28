@@ -1,5 +1,6 @@
 import type {
   Character,
+  ConditionDelta,
   Equipment,
   GameState,
   InventoryDelta,
@@ -9,11 +10,19 @@ import type {
   NoteDelta,
   PartyDelta,
   Quest,
+  QuestDelta,
   RosterEntry,
   Standing,
 } from "../types";
 import { isGold } from "./defaults";
-import { partyFull, setCondition, setStanding, standingOf, strengthsText } from "./roster";
+import {
+  getEntry,
+  partyFull,
+  setCondition,
+  setStanding,
+  standingOf,
+  strengthsText,
+} from "./roster";
 
 /**
  * Apply a parsed <<<LOOM>>> block to the active game (loom-turn-protocol):
@@ -104,28 +113,53 @@ export function simplifyLocation(location: string): string {
  * a party `add` only re-seats), but inventory MERGES QUANTITY: a restated
  * `add` is +1 every time it lands, and the purse fills with Rusty Key ×7.
  *
- * Two rules, both about restatement and neither about legitimate repetition:
- *  - an exact-duplicate op row inside ONE block is written once;
- *  - an inventory `add` for an item the player already has, carrying NO
- *    quantity, is not an acquisition. It is dropped, or — if it brought a
- *    description — demoted to the `update` it meant.
- * An `add` with an explicit quantity is always honoured: "picked up 2 more
- * torches" is a real event, and second-guessing it would be the opposite bug.
+ * ONE RULE, applied to every channel: **an op that would change nothing is not
+ * an op.** A row is dropped when the state it asks for is the state already
+ * there — a condition re-stating a mark someone already carries, an `update`
+ * setting a quantity to the number it already is, a quest `add` for a quest
+ * already on the board, a party `add` re-seating someone already sitting there,
+ * a `remove` for something not held. Plus the two special cases the shape of
+ * the data creates:
+ *  - an exact-duplicate row inside ONE block is written once;
+ *  - an inventory `add` for an item already held, carrying NO quantity, is a
+ *    restatement rather than an acquisition — dropped, or demoted to the
+ *    `update` it meant if it brought a new description. An `add` WITH a
+ *    quantity is always honoured: "picked up 2 more torches" is a real event,
+ *    and second-guessing it would be the opposite bug.
  *
- * Runs BEFORE `applyDeltas`, and the result is what the store records as
- * `Message.appliedDeltas` — `toasts.ts` derives its chips from that record, so
- * a suppressed op must be gone from the block itself or the transcript keeps
- * announcing an acquisition that never happened.
+ * Why the no-op rule earns its keep twice over: the state is unharmed either
+ * way (applying "set X to what X already is" is free), but the transcript is
+ * not. `toasts.ts` derives its chips from the RECORDED block, so a narrator
+ * that re-states the player's condition every turn stamps "Hiro: Armed with a
+ * strange, glowing sword" onto four beats in a row, and a Gold `update` that
+ * repeats the current total reads as though money changed hands. A chip is a
+ * claim that something happened. Dropping the row is what makes it true.
+ *
+ * Runs BEFORE `applyDeltas`, and the result is what the store both applies and
+ * records.
  *
  * Pure, and reference-stable: a block with nothing to fold is returned as-is,
  * so the common turn allocates nothing.
  */
-export function reconcileBlock(game: GameState, block: LoomBlock): LoomBlock {
-  const party = dropRepeats(block.party);
-  const conditions = dropRepeats(block.conditions);
-  const inventory = reconcileInventory(game.inventory, dropRepeats(block.inventory));
-  const quests = dropRepeats(block.quests);
-  const notes = dropRepeats(block.notes);
+export function reconcileBlock(
+  game: GameState,
+  characters: Character[],
+  block: LoomBlock,
+  /**
+   * This turn's narration, for the one check that needs it (`goldIsNarrated`).
+   * Optional: callers with no prose to hand simply skip that check.
+   */
+  prose = "",
+): LoomBlock {
+  const party = reconcileParty(characters, game.roster, dropRepeats(block.party));
+  const conditions = reconcileConditions(
+    characters,
+    game.roster,
+    dropRepeats(block.conditions),
+  );
+  const inventory = reconcileInventory(game.inventory, dropRepeats(block.inventory), prose);
+  const quests = reconcileQuests(game.quests, dropRepeats(block.quests));
+  const notes = reconcileNotes(game.worldNotes, dropRepeats(block.notes));
 
   if (
     party === block.party &&
@@ -169,49 +203,306 @@ function rowKey(row: unknown): string {
 }
 
 /**
- * Inventory ops with the restated acquisitions taken out (see
- * `reconcileBlock`). Tracks what the player holds AS THE BLOCK RUNS — an item
- * this same block just picked up counts as held for the rows after it.
+ * Walk a channel's rows, keeping / rewriting / dropping each. A fold returning
+ * the row itself keeps it, a new object replaces it, `null` drops it. The
+ * original array comes back untouched when every row survived unchanged, which
+ * is what keeps `reconcileBlock` allocation-free on an ordinary turn.
+ */
+function foldRows<T>(rows: T[] | undefined, fold: (row: T) => T | null): T[] | undefined {
+  if (!rows?.length) return rows;
+  let changed = false;
+  const kept: T[] = [];
+  for (const row of rows) {
+    const out = fold(row);
+    if (out === row) {
+      kept.push(row);
+      continue;
+    }
+    changed = true;
+    if (out !== null) kept.push(out);
+  }
+  return changed ? kept : rows;
+}
+
+/**
+ * Inventory ops with the restatements and the no-ops taken out. Tracks the pack
+ * AS THE BLOCK RUNS — an item this same block just picked up counts as held for
+ * the rows after it, and a row that changes a count moves the number the next
+ * row is compared against.
  */
 function reconcileInventory(
   current: Item[],
   deltas: InventoryDelta[] | undefined,
+  prose: string,
 ): InventoryDelta[] | undefined {
-  if (!deltas?.length) return deltas;
-  const held = new Set(current.map((it) => slug(it.label)));
-  let changed = false;
+  const held = new Map(current.map((it) => [slug(it.label), it]));
+  const narrated = goldIsNarrated(prose);
 
-  const kept: InventoryDelta[] = [];
-  for (const d of deltas) {
-    if (!d?.label) {
-      kept.push(d);
-      continue;
-    }
+  return foldRows(deltas, (d) => {
+    if (!d?.label) return d;
     const key = slug(d.label);
+    const item = held.get(key);
+    // A Gold row that MOVES the total has to be earned in the prose — see
+    // `goldIsNarrated`. Rows that leave the total alone are judged as no-ops
+    // below, like any other row.
+    const gold = isGold(d.label);
 
     if (d.op === "remove") {
-      // Gold is never actually gone — a remove empties the purse, and the row
-      // stays — so it is still "held" for the rows that follow.
-      if (!isGold(d.label)) held.delete(key);
-      kept.push(d);
-      continue;
-    }
-
-    if (d.op === "add" && d.quantity === undefined && held.has(key)) {
-      changed = true;
-      // A restatement that also rewrote the description still has something to
-      // say; one that says only "they have this" has nothing.
-      if (d.description !== undefined) {
-        kept.push({ op: "update", label: d.label, description: d.description });
+      // Nothing to take away, so nothing happened — and a "removed from
+      // inventory" chip for an item the player never had is pure fiction.
+      if (!item) return null;
+      if (gold) {
+        // Gold is never actually gone: a remove empties the purse and the row
+        // survives, so the item stays "held" for the rows that follow.
+        if (item.quantity === 0) return null;
+        if (!narrated) return null;
+        held.set(key, { ...item, quantity: 0 });
+        return d;
       }
-      continue;
+      held.delete(key);
+      return d;
     }
 
-    if (d.op === "add") held.add(key);
-    kept.push(d);
-  }
+    if (d.op === "update") {
+      // An update names a row that must already exist; `applyInventory` drops
+      // it otherwise, and a chip for it would report a change to nothing.
+      if (!item) return null;
+      const description = d.description ?? item.description;
+      const quantity = d.quantity ?? item.quantity;
+      if (description === item.description && quantity === item.quantity) return null;
+      if (gold && quantity !== item.quantity && !narrated) return null;
+      held.set(key, { ...item, description, quantity });
+      return d;
+    }
 
-  return changed ? kept : deltas;
+    // add — a NEW acquisition. Without a quantity, on something already held,
+    // it is the narrator restating possession, not the player picking anything
+    // up: the pack keeps what it has, and only a fresh description survives, as
+    // the `update` the row meant.
+    if (item && d.quantity === undefined) {
+      if (d.description === undefined || d.description === item.description) return null;
+      held.set(key, { ...item, description: d.description });
+      return { op: "update", label: d.label, description: d.description };
+    }
+
+    const quantity = d.quantity ?? 1;
+    if (gold && !narrated) return null;
+    held.set(
+      key,
+      item
+        ? { ...item, quantity: item.quantity + quantity, description: d.description ?? item.description }
+        : { label: d.label, description: d.description ?? "", quantity },
+    );
+    return d;
+  });
+}
+
+/**
+ * Words that mean money changed hands. A Gold row that moves the total is
+ * accepted only when the beat it rides on contains one of them.
+ *
+ * This is the one check in here that reads the prose, and it exists because
+ * Gold is the field a narrator will restate and then quietly improvise: asked
+ * every turn what changed, and shown "Gold ×15" in INVENTORY every turn, it
+ * starts answering with a number — 15, then 25, then 45 — across beats about
+ * mushrooms and satchels where not a coin is mentioned. Restated totals are
+ * caught as no-ops; an invented one is a real change, and the only evidence
+ * that it never happened is the narration itself.
+ *
+ * Deliberately generous, because the cost is asymmetric: a missed word silently
+ * withholds money the player earned, so the list covers the verbs of paying and
+ * the nouns of coin, and any Gold row is let through when there is no prose to
+ * judge (a caller that passes none is not making a claim about the beat).
+ */
+const MONEY_WORDS = [
+  "gold",
+  "coins?",
+  "coppers?",
+  "silvers?",
+  "purses?",
+  "pouch(es)?",
+  "money",
+  "cash",
+  "currency",
+  "funds?",
+  "pay(s|ing|ment|ments)?",
+  "paid",
+  "spend(s|ing)?",
+  "spent",
+  "prices?",
+  "costs?",
+  "fees?",
+  "rewards?",
+  "bribes?",
+  "wages?",
+  "tolls?",
+  "ransoms?",
+  "treasures?",
+  "loot(s|ed|ing)?",
+  "buy(s|ing)?",
+  "bought",
+  "sells?",
+  "sold",
+  "haggl(e|es|ed|ing)",
+  "barter(s|ed|ing)?",
+];
+
+const MONEY_RE = new RegExp(`(?<![\\w])(${MONEY_WORDS.join("|")})(?![\\w])`, "i");
+
+/** Does this beat say money moved? Blank prose is not a claim either way. */
+export function goldIsNarrated(prose: string): boolean {
+  if (!prose.trim()) return true;
+  return MONEY_RE.test(prose);
+}
+
+/**
+ * Conditions that would rewrite a mark to the words already on it, dropped.
+ * This is the channel restatement hurts most: a mark is not a change, it is a
+ * STATE, so a narrator that keeps re-reporting "Armed with a strange, glowing
+ * sword" leaves the same chip on every beat until the sword is gone.
+ */
+function reconcileConditions(
+  characters: Character[],
+  roster: RosterEntry[],
+  deltas: ConditionDelta[] | undefined,
+): ConditionDelta[] | undefined {
+  const marks = new Map<string, string>();
+
+  return foldRows(deltas, (d) => {
+    if (!d?.name || typeof d.condition !== "string") return d;
+    const key = slug(d.name);
+    const found = characters.find((c) => slug(c.name) === key);
+    // Nobody by that name — `applyConditions` ignores the row, so a chip for it
+    // would mark a person the game has never heard of.
+    if (!found) return null;
+    const current = marks.get(found.id) ?? getEntry(roster, found.id).condition ?? "";
+    const next = d.condition.trim();
+    if (next === current.trim()) return null;
+    marks.set(found.id, next);
+    return d;
+  });
+}
+
+/** Quest ops that would leave the board exactly as it is, dropped. */
+function reconcileQuests(current: Quest[], deltas: QuestDelta[] | undefined): QuestDelta[] | undefined {
+  const board = new Map(current.map((q) => [slug(q.label), q]));
+
+  return foldRows(deltas, (d) => {
+    if (!d?.label) return d;
+    const key = slug(d.label);
+    const quest = board.get(key);
+
+    if (d.op === "remove") return quest ? (board.delete(key), d) : null;
+
+    if (d.op === "add") {
+      // `applyQuests` no-ops an add on a quest already on the board — the chip
+      // would announce a quest the player started turns ago.
+      if (quest) return null;
+      board.set(key, {
+        id: "",
+        label: d.label,
+        description: d.description ?? "",
+        reward: d.reward ?? "",
+        status: d.status ?? "active",
+      });
+      return d;
+    }
+
+    if (!quest) return null;
+    const next = {
+      ...quest,
+      description: d.description ?? quest.description,
+      reward: d.reward ?? quest.reward,
+      status: d.status ?? quest.status,
+    };
+    if (
+      next.description === quest.description &&
+      next.reward === quest.reward &&
+      next.status === quest.status
+    ) {
+      return null;
+    }
+    board.set(key, next);
+    return d;
+  });
+}
+
+/**
+ * Note ops that would write back what the note already says, dropped. Mirrors
+ * `applyNotes`' own no-op test — the one that keeps a note-only turn from
+ * recording a reversal snapshot — so the chip and the state agree.
+ */
+function reconcileNotes(current: Note[], deltas: NoteDelta[] | undefined): NoteDelta[] | undefined {
+  const known = new Map(current.map((n) => [slug(n.title), n]));
+
+  return foldRows(deltas, (d) => {
+    if (!d?.title) return d;
+    const key = slug(d.title);
+    const note = known.get(key);
+
+    if (d.op === "remove") return note ? (known.delete(key), d) : null;
+
+    const keywords = noteKeywords(d.keywords);
+    if (!note) {
+      known.set(key, { id: "", title: d.title, keywords: keywords ?? [], content: d.content ?? "" });
+      return d;
+    }
+    const content = d.content ?? note.content;
+    const merged = keywords ? mergeKeywords(note.keywords, keywords) : note.keywords;
+    if (content === note.content && merged === note.keywords) return null;
+    known.set(key, { ...note, content, keywords: merged });
+    return d;
+  });
+}
+
+/**
+ * Party ops that would leave someone exactly where they already stand, dropped.
+ * Standing is all a party op can move (a sheet freezes at creation), so a row
+ * asking for the standing already recorded is asking for nothing.
+ *
+ * An `add` naming somebody NEW is never a no-op — that one creates a character.
+ */
+function reconcileParty(
+  characters: Character[],
+  roster: RosterEntry[],
+  deltas: PartyDelta[] | undefined,
+): PartyDelta[] | undefined {
+  const seats = new Map<string, Standing>();
+  const seatOf = (id: string) => seats.get(id) ?? standingOf(roster, id);
+
+  return foldRows(deltas, (d) => {
+    if (!d?.name) return d;
+    const key = slug(d.name);
+    const found = characters.find((c) => c.role === "member" && slug(c.name) === key);
+
+    if (d.op === "remove") {
+      if (!found) return null;
+      const want = exitStanding(d);
+      if (want === seatOf(found.id)) return null;
+      seats.set(found.id, want);
+      return d;
+    }
+
+    if (d.op === "update") {
+      // Standing is the whole of an update; without one `applyParty` skips the
+      // row outright.
+      if (!found || !d.standing) return null;
+      if (d.standing === seatOf(found.id)) return null;
+      seats.set(found.id, d.standing);
+      return d;
+    }
+
+    // add — creation is always a change; seating someone is one only if it
+    // moves them. The dead are never re-recruited, so an `add` naming them is
+    // skipped by `applyParty` and must not chip either.
+    if (!found) return d;
+    const here = seatOf(found.id);
+    if (here === "fallen") return null;
+    const want = d.standing ?? "active";
+    if (want === here) return null;
+    seats.set(found.id, want);
+    return d;
+  });
 }
 
 export function applyDeltas(
