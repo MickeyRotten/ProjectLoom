@@ -266,6 +266,8 @@ export interface Message {
   reversal?: Reversal;
   /** Scene snapshot at this message, for header display + reversal restore. */
   day?: number;
+  /** Time of day, minutes since midnight. Absent on pre-clock messages. */
+  minutes?: number;
   location?: string;
   weather?: string;
 }
@@ -280,9 +282,18 @@ export interface Message {
  */
 export interface Reversal {
   day: number;
+  /** Time of day. Absent on turns recorded before the clock existed. */
+  minutes?: number;
   location: string;
   weather: string;
   roster?: RosterEntry[];
+  /**
+   * Present only on a turn that opened a journal entry — which is why the entry
+   * is created SYNCHRONOUSLY when the turn lands, before its prose is fetched.
+   * A snapshot taken before an async append would restore to a state the entry
+   * was already in.
+   */
+  journal?: JournalEntry[];
   /**
    * Pre-split saves stored the whole character array here. Kept readable so
    * undo still works on turns recorded before the roster/library split.
@@ -316,6 +327,42 @@ export interface Scenario {
   startLocation: string;
 }
 
+/**
+ * One line of a journal entry, and who wrote it.
+ *
+ * `system` lines are derived by the client from `Message.appliedDeltas` — the
+ * same records `toasts.ts` reads for its chips — so they are exact, free, and
+ * cannot be invented. `model` lines come from the side call and cover what left
+ * no state change behind: crossed the marsh, refused the ferryman, the bridge
+ * was out. The tag is what lets an old entry decay to its facts instead of
+ * disappearing: `model` lines drop out of the prompt first.
+ */
+export interface JournalLine {
+  text: string;
+  source: "system" | "model";
+}
+
+/**
+ * A day's worth of what happened, as a short list.
+ *
+ * The rolling history window is a fixed token budget, so a turn that falls out
+ * of it has never happened as far as the model is concerned. The journal is
+ * what catches that material: written at a boundary the CLIENT decides (see
+ * `journal.ts`), from the full transcript in `GameState.messages` rather than
+ * from the trimmed window, and injected as its own always-on block.
+ *
+ * Player-visible and editable, which is the whole argument for it over a hidden
+ * rolling summary — a summary that quietly gets a fact wrong is unfixable.
+ */
+export interface JournalEntry {
+  id: string;
+  /** The day the entry STARTED. An entry may span a midnight. */
+  day: number;
+  fromTurn: number;
+  throughTurn: number;
+  lines: JournalLine[];
+}
+
 export interface GameState {
   scenario: Scenario;
   /** Per-adventure character state. The cast itself is stored globally. */
@@ -324,8 +371,16 @@ export interface GameState {
   inventory: Item[];
   quests: Quest[];
   messages: Message[];
+  /** What happened, in order — see `JournalEntry`. Per-adventure. */
+  journal: JournalEntry[];
   turnNumber: number;
   day: number;
+  /**
+   * Time of day, minutes since midnight. Internal: never rendered as a clock
+   * face and never sent to the model, which only ever sees a phase word
+   * (`clock.ts → phaseOf`).
+   */
+  minutes: number;
   location: string;
   weather: string;
   /**
@@ -581,6 +636,32 @@ export interface Settings extends DiceRules {
   historyBudget: number;
   /** Cap on a beat's length, in tokens. 0 sends no cap at all. */
   maxTokens: number;
+  /**
+   * Whether the journal exists at all — writing entries and injecting them.
+   * Off leaves existing entries alone: they stay on the screen and return when
+   * it is switched back on.
+   */
+  journalEnabled: boolean;
+  /**
+   * Approximate token budget for the injected journal block. Sits beside
+   * `historyBudget` because they compete for the same context, and past a
+   * certain age the trade favours the journal: a summarised day is far denser
+   * than the raw beats it replaces, and those beats were being evicted anyway.
+   */
+  journalBudget: number;
+  /**
+   * Turns since the last entry after which one is written regardless of the
+   * clock — the fallback for a player who never sleeps.
+   */
+  journalMaxTurns: number;
+  /**
+   * Turns an interval must reach before it earns an entry. Stops a day crossed
+   * on the second turn from producing a two-turn entry; the interval folds into
+   * the next one instead.
+   */
+  journalMinTurns: number;
+  /** Player-editable rule for what a journal line should be. */
+  journalInstructions: string;
 }
 
 /* ------------------------------------------------------------------ *
@@ -673,6 +754,18 @@ export interface NoteDelta {
 export interface LoomBlock {
   location?: string;
   weather?: string;
+  /**
+   * How long this turn took, as a label off the ladder in `clock.ts`. The
+   * client owns the arithmetic: it maps the label to minutes, rolls the day
+   * over at midnight, and anchors `night` to the morning. See `DurationLabel`.
+   */
+  duration?: string;
+  /**
+   * @deprecated The narrator no longer sets the day — `duration` does, through
+   * `clock.ts`. Two writers for one number is how it came to freeze, jump and
+   * run backwards. Kept readable only because blocks recorded before the clock
+   * ride inside saved messages (`Message.appliedDeltas`) and must still parse.
+   */
   day?: number;
   options?: string[];
   party?: PartyDelta[];

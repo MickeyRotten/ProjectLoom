@@ -367,8 +367,35 @@ the scenario, what is carried, and keyword-matched World Notes — never the bea
 screens are Edit-gated, so Discard Changes is the undo; Gold gets neither ✦ nor
 Remove. `GenerateModal` is now generic over its result with a `preview` render
 prop; string callers pass none.
-Deferred (post-MVP): rolling LLM summarization, NPC/item art, TTS,
-weather animation, multi-world. Track scope in `DESIGN.md → Build Phases`.
+Post-MVP also: **the clock + the journal** (`clock.ts`, `journal.ts`) — the two
+halves of long-game memory. `day` was a field the *narrator* wrote and nothing
+validated, so it could freeze, jump or run backwards; now the narrator emits a
+**duration label** off a ladder (`moment · brief · scene · hour · hours ·
+halfday · day · night`) and the client owns every number. An unrecognised label
+falls to the smallest, making a garbage value unrepresentable rather than
+clamped; `moment` is non-zero and `applyDeltas` runs even on an unparseable
+block, so every turn ages the world; `night` **anchors** to the next 07:00
+instead of adding a fixed span (clamped past `MAX_ANCHOR_REACH`), and a landed
+anchor sets `rested`. `"day"` left the output protocol — one writer for time.
+Time reaches the player and the narrator as a **phase word** only (`phaseOf`,
+eight bands); `GameState.minutes` is internal, so nothing can narrate "half past
+two". On top of it, `GameState.journal` catches what the history window evicts:
+terse dated lists written at a **client-chosen** boundary (a `rested` turn
+landing in a new day, a turn ceiling, a floor that folds short stretches on),
+read off the full transcript rather than the trimmed window. Each entry carries
+`system` lines derived from `Message.appliedDeltas` — exact, free, the same
+records `toasts.ts` chips read — plus `model` lines for what left no state
+change, with the facts scaffolding the call and forbidden as output. Opened
+**synchronously** before `captureReversal` and written **asynchronously** after,
+so undo wins the race (`appendModelLines` no-ops on a missing id) and a failed
+call still leaves a usable entry. Injected by `prompt.ts → formatJournalBlock`
+after the history — always-on, never keyword-gated (a journal is chronological,
+not topical), bounded by `Settings.journalBudget` with old entries decaying to
+their facts. Editable on the **Journal** screen, where the player keeps every
+entry forever while the model sees only the tail.
+Deferred (post-MVP): rolling LLM summarization of the beats themselves,
+NPC/item art, TTS, weather animation, multi-world. Track scope in
+`DESIGN.md → Build Phases`.
 
 ## Attribution
 

@@ -6,7 +6,13 @@ import type {
   ReasoningLevel,
   Settings,
 } from "../types";
-import { DEFAULT_QUICK_ACTIONS, defaultSettings } from "./defaults";
+import {
+  DEFAULT_JOURNAL_BUDGET,
+  DEFAULT_JOURNAL_MAX_TURNS,
+  DEFAULT_JOURNAL_MIN_TURNS,
+  DEFAULT_QUICK_ACTIONS,
+  defaultSettings,
+} from "./defaults";
 
 /**
  * Settings persist in localStorage (small, synchronous, survives reloads).
@@ -32,6 +38,16 @@ export function loadSettings(): Settings {
       // nulls. Normalized at READ time, like `normalizeDice`, so the editor and
       // the composer can both assume three well-formed rows.
       quickActions: normalizeQuickActions(stored.quickActions),
+      // Same discipline for the journal's numbers: sanitized at READ, so the
+      // screen can edit one field without having to rewrite the next, and a
+      // stored 0 for the gap can never make every turn a boundary.
+      journalBudget: clampJournalBudget(stored.journalBudget ?? DEFAULT_JOURNAL_BUDGET),
+      journalMaxTurns: clampJournalMaxTurns(
+        stored.journalMaxTurns ?? DEFAULT_JOURNAL_MAX_TURNS,
+      ),
+      journalMinTurns: clampJournalMinTurns(
+        stored.journalMinTurns ?? DEFAULT_JOURNAL_MIN_TURNS,
+      ),
     };
   } catch {
     return defaultSettings();
@@ -94,6 +110,36 @@ export const MAX_BEAT_TOKENS = 8000;
 export function clampMaxTokens(value: number): number {
   if (!Number.isFinite(value) || value <= 0) return 0;
   return Math.min(MAX_BEAT_TOKENS, Math.round(value));
+}
+
+/**
+ * Ceiling for the injected journal. Deliberately well under the history budget
+ * — the journal's job is continuity over the recent stretch, not permanent
+ * recall, and everything durable should already be a World Note.
+ */
+export const MAX_JOURNAL_BUDGET = 8000;
+
+/** Bounds for the journal's turn triggers. */
+export const MIN_JOURNAL_TURNS = 1;
+export const MAX_JOURNAL_TURNS = 200;
+
+/** Clamp the journal's token budget. 0 is meaningful: it injects nothing. */
+export function clampJournalBudget(value: number): number {
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  return Math.min(MAX_JOURNAL_BUDGET, Math.round(value));
+}
+
+function clampTurns(value: number, fallback: number): number {
+  if (!Number.isFinite(value)) return fallback;
+  return Math.min(MAX_JOURNAL_TURNS, Math.max(MIN_JOURNAL_TURNS, Math.round(value)));
+}
+
+export function clampJournalMaxTurns(value: number): number {
+  return clampTurns(value, DEFAULT_JOURNAL_MAX_TURNS);
+}
+
+export function clampJournalMinTurns(value: number): number {
+  return clampTurns(value, DEFAULT_JOURNAL_MIN_TURNS);
 }
 
 /**

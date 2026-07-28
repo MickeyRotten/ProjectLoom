@@ -9,6 +9,7 @@ import type {
   Scenario,
   Settings,
 } from "../types";
+import { MORNING_ANCHOR, normalizeMinutes } from "./clock";
 import { PARTY_LIMIT, normalizeRoster, strengthsText } from "./roster";
 import { SCENE_TILT } from "./diceAnim";
 import { DEFAULT_DICE, RISK_KEYWORDS } from "./stakes";
@@ -204,6 +205,29 @@ export const DEFAULT_HISTORY_BUDGET_SETTING = 3000;
 export const DEFAULT_MAX_TOKENS = 700;
 
 /**
+ * Journal defaults. The budget is deliberately a fraction of the history one:
+ * entries are terse lists, and the block's job is continuity over the recent
+ * stretch, not permanent recall — anything from Day 12 that still matters
+ * should already be a World Note, a quest or a condition.
+ */
+export const DEFAULT_JOURNAL_BUDGET = 600;
+
+/** Turns after which an entry is written even though nobody has slept. */
+export const DEFAULT_JOURNAL_MAX_TURNS = 30;
+
+/** Turns an interval must reach to earn its own entry. */
+export const DEFAULT_JOURNAL_MIN_TURNS = 4;
+
+/**
+ * What a journal line is. Player-editable, and phrased for a model that has the
+ * beats plus the already-extracted factual lines in front of it — its job is
+ * the half the deltas could not see.
+ */
+export const DEFAULT_JOURNAL_INSTRUCTIONS = `Write what happened to the player character, as a short list of terse past-tense lines — a ship's log, not a diary. One event per line, under twelve words, no adjectives you can spare.
+Only write what the beats show happening. Do not restate who the player is, what they carry, who travels with them, or what quests are open — all of that is in front of you every turn already.
+Skip anything the FACTS list below has already recorded.`;
+
+/**
  * Thinking effort for the text model. `auto` ships because it is the only value
  * that changes nothing: no `reasoning` field is sent, so every model — reasoning
  * or not — behaves exactly as it did before the setting existed.
@@ -266,6 +290,11 @@ export function defaultSettings(): Settings {
     dicePerspective: true,
     historyBudget: DEFAULT_HISTORY_BUDGET_SETTING,
     maxTokens: DEFAULT_MAX_TOKENS,
+    journalEnabled: true,
+    journalBudget: DEFAULT_JOURNAL_BUDGET,
+    journalMaxTurns: DEFAULT_JOURNAL_MAX_TURNS,
+    journalMinTurns: DEFAULT_JOURNAL_MIN_TURNS,
+    journalInstructions: DEFAULT_JOURNAL_INSTRUCTIONS,
   };
 }
 
@@ -343,8 +372,12 @@ export function newGame(scenario: Scenario = DEFAULT_SCENARIO): GameState {
     inventory: [goldItem()],
     quests: [],
     messages: [],
+    journal: [],
     turnNumber: 0,
     day: scenario.startDay,
+    // An adventure opens in the morning — the same anchor a night's sleep wakes
+    // to, so Day 1 reads like every day after it.
+    minutes: MORNING_ANCHOR,
     location: scenario.startLocation || scenario.title,
     weather: "clear",
   };
@@ -426,6 +459,12 @@ export function splitLegacyGame(saved: unknown): LoadedGame | null {
       roster,
       // Saves from before Gold existed gain the permanent currency row.
       inventory: ensureGold(partial.inventory ?? []),
+      // Pre-clock saves have no time of day and open at the morning anchor;
+      // their stored `day` is kept exactly as it was, since nothing recomputes
+      // history. A stored value that is somehow garbage must not reach the
+      // phase bands.
+      minutes: normalizeMinutes(partial.minutes),
+      journal: Array.isArray(partial.journal) ? partial.journal : [],
     },
     characters,
   };

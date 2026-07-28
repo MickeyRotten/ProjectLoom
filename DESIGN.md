@@ -238,7 +238,8 @@ One isolated function returning the OpenRouter `messages[]`, in order:
 7. **World Notes** matched by keyword (single-category, simplified `match_entries`; titles are implicit keywords; scan the new message + last few turns). Notes flagged **permanent** skip matching and inject every turn.
 7b. **Known characters** (`cast.ts`) — the sheets of `npc`-standing allies the scene just named, matched with the same `keywordHits` as the notes and capped at `NPC_LIMIT`. Gated, not always-on: an adventure can know fifty people without any of them costing a turn they're absent from.
 8. **Spotlight block** (from `spotlight.ts`) — over the `active` members only.
-9. **Chat history** window (trim to a token budget; prepend the opening narration as the first assistant turn — port `_trim_to_budget`). *History summarization is deferred* — messages stay short, so a rolling window suffices for MVP.
+9. **Chat history** window (trim to a token budget; prepend the opening narration as the first assistant turn — port `_trim_to_budget`).
+9b. **Journal** (`formatJournalBlock`) — what already happened, newest first, under its own budget. Placed *after* the history because it is the older material: the window holds the last few beats verbatim, and this is the stretch behind them the window has already dropped. Not keyword-gated (a journal is chronological, not topical); bounded by construction instead, with entries past `JOURNAL_PROSE_ENTRIES` decaying to their client-derived facts before dropping out.
 10. **Active-party roll call** (`formatPartyComposition`) — the *authoritative* composition, re-read from the roster **every turn** and placed **after** the history on purpose: history outlives membership, so the last thing the model reads before the action is who is actually here. Names the `active` members `n/PARTY_LIMIT`, the `benched` ones under an explicit "NOT in this scene", the most recent departures with their `standing` (`partedMembers`) so the narrator stops writing them in — and never resurrects a `fallen` one — and every `npc` by name, so an ally is never forgotten between the turns that reach them. **Always emitted, even for an empty party** ("the player is ALONE") — the empty case is exactly where the history drifts.
 11. **Output-protocol instruction** — how to emit prose + the `<<<LOOM>>>` block, and the `option` instruction (player-editable).
 12. **Player's new message.**
@@ -307,8 +308,9 @@ GameState {                   // the active adventure (autosaved) + what each sa
   worldNotes: Note[]          // { id, title, keywords[], content }  — single-category lorebook
   inventory: Item[]           // { label, description, quantity }  — shared party inventory
   quests: Quest[]             // { id, label, description, reward, status }
-  messages: Message[]         // { role, content, turn, appliedDeltas, day, location, weather }
-  turnNumber, day, location, weather
+  messages: Message[]         // { role, content, turn, appliedDeltas, day, minutes, location, weather }
+  journal: JournalEntry[]     // { id, day, fromTurn, throughTurn, lines: { text, source }[] }
+  turnNumber, day, minutes, location, weather   // `minutes` = time of day, client-owned (clock.ts)
   lastBannerTurn?                       // turn a location banner was last GENERATED — cooldown anchor
 }
 
@@ -729,8 +731,66 @@ non-streamed side calls alike — one text model, one thinking behaviour.
   level truncates the beat (and with it the `<<<LOOM>>>` block). The picker says
   so under the buttons rather than trying to reconcile the two numbers.
 
-*Still deferred:* rolling LLM summarization. The narrator's own notes cover the
-same ground while staying inspectable; revisit only if they prove insufficient.
+### The clock
+
+`day` used to be a field the **narrator** wrote (`LoomBlock.day` straight into
+`applyDeltas`), and nothing validated it: it could freeze for sixty turns, jump
+three at once, or run backwards. `clock.ts` flips the authority — the narrator
+emits a **duration**, the client owns every number.
+
+- **A ladder of labels, never a number.** `moment · brief · scene · hour ·
+  hours · halfday · day · night`, mapped to minutes on the client. An
+  unrecognised label falls to the smallest one, so `ticks: 100000` is
+  *unrepresentable* rather than caught — sanitising by type instead of by clamp.
+  `"day"` left the output protocol entirely: one writer for time.
+- **`moment` is non-zero**, so every turn ages the world. `applyDeltas` runs even
+  when a block failed to parse, for the same reason — a turn the parser could not
+  read must still move the clock.
+- **`night` anchors rather than adds.** It advances *to* the next 07:00, because
+  a fixed eight hours is wrong at both ends (bed at 21:00 wakes you at 05:00, bed
+  at 02:00 wakes you at 10:00) and the fiction says "you wake at dawn" in both
+  cases. Picked more than `MAX_ANCHOR_REACH` from the anchor it is clamped to an
+  ordinary long duration — that label was a mistake, and honouring it would eat a
+  day silently. A rest that lands the anchor sets `rested`, the journal's signal.
+- **Time is a PHASE, never a clock face** — `phaseOf` gives eight bands, and both
+  the player and the narrator see only those. A model handed "14:30" writes "at
+  half past two" into the prose, which leaks an exact time to a player who is
+  shown none, and implies clocks exist in a setting that may not have them.
+  `minutes` is internal arithmetic and reaches neither.
+
+### The journal
+
+The window's eviction, caught. Written at a boundary the **client** picks — never
+the model — and read off `GameState.messages`, the full transcript, so it still
+sees the beats the model stopped being shown thirty turns ago.
+
+- **Entries are terse lists**, not prose: 3–6 short past-tense lines, capped at
+  write time. A day costs ~40–70 tokens instead of ~90.
+- **Two authors, one shape.** `system` lines are derived here from
+  `Message.appliedDeltas` — the same records `toasts.ts` reads for its chips — so
+  quests, joins, departures, marks and moves are exact, free and unfakeable. The
+  side call writes only what left no state change behind, with the facts handed
+  to it as scaffolding and forbidden as output. Grounding a summariser on what it
+  cannot invent is the cheapest accuracy available, and a failed call still
+  leaves a usable entry.
+- **The boundary is the long rest, not the calendar.** Rolling on midnight would
+  cut a tavern scene in half; waiting for a `rested` turn that lands in a new day
+  matches how a day is played. A turn ceiling covers the player who never sleeps,
+  and a floor folds a too-short stretch into the next entry.
+- **Created synchronously, written asynchronously.** The entry is opened with its
+  facts *before* `captureReversal` snapshots, because a snapshot taken before an
+  async append would restore to a state the entry was already in and undo would
+  strand it. The late write re-reads the store and no-ops on a missing id, so
+  undo wins the race.
+- **Player-visible and editable**, which is the whole argument over a hidden
+  rolling summary. Note the asymmetry: the model is shown a bounded, decaying
+  tail; the player keeps every entry forever on the Journal screen. Same data,
+  two products.
+
+*Still deferred:* rolling LLM summarization of the beats themselves. Between the
+narrator's own World Notes (facts, keyword-gated, unbounded) and the journal
+(events, chronological, bounded), the ground it would cover is taken — and both
+of those stay inspectable, which a rolling summary never is.
 
 ---
 

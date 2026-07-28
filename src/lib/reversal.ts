@@ -23,11 +23,17 @@ import { normalizeRoster } from "./roster";
  * made since the turn ran.
  */
 export function captureReversal(pre: GameState, post: GameState): Reversal {
-  const rev: Reversal = { day: pre.day, location: pre.location, weather: pre.weather };
+  const rev: Reversal = {
+    day: pre.day,
+    minutes: pre.minutes,
+    location: pre.location,
+    weather: pre.weather,
+  };
   if (pre.roster !== post.roster) rev.roster = pre.roster;
   if (pre.inventory !== post.inventory) rev.inventory = pre.inventory;
   if (pre.quests !== post.quests) rev.quests = pre.quests;
   if (pre.worldNotes !== post.worldNotes) rev.worldNotes = pre.worldNotes;
+  if (pre.journal !== post.journal) rev.journal = pre.journal;
   return rev;
 }
 
@@ -44,12 +50,16 @@ export function applyReversal(game: GameState, rev: Reversal): GameState {
   return {
     ...game,
     day: rev.day,
+    // Turns recorded before the clock carry no time; leaving the current one
+    // in place is the only honest answer — there is nothing to restore to.
+    minutes: rev.minutes ?? game.minutes,
     location: rev.location,
     weather: rev.weather,
     roster: roster ? normalizeRoster(roster) : game.roster,
     inventory: rev.inventory ?? game.inventory,
     quests: rev.quests ?? game.quests,
     worldNotes: rev.worldNotes ?? game.worldNotes,
+    journal: rev.journal ?? game.journal,
   };
 }
 

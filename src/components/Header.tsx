@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useStore } from "../store";
 import { bannerCooldownLeft, bannerKey } from "../lib/images";
+import { phaseOf } from "../lib/clock";
 
 /**
  * The top bar — location · day · menu — and, when Location Images are on, the
@@ -28,6 +29,9 @@ import { bannerCooldownLeft, bannerKey } from "../lib/images";
 export function Header() {
   const location = useStore((s) => s.game.location);
   const day = useStore((s) => s.game.day);
+  // A phase word, never a clock face: the minutes are the client's arithmetic,
+  // and "quarter past two" is a precision this setting does not have.
+  const phase = useStore((s) => phaseOf(s.game.minutes));
   const setScreen = useStore((s) => s.setScreen);
   const streaming = useStore((s) => s.streaming);
 
@@ -53,7 +57,9 @@ export function Header() {
       <header className="flex shrink-0 items-center justify-between bg-ink px-3 py-2 text-paper">
         <span className="truncate uppercase">{location}</span>
         <div className="flex items-center gap-3 whitespace-nowrap">
-          <span>Day {day}</span>
+          <span>
+            Day {day} · {phase}
+          </span>
           <MenuButton streaming={streaming} onOpen={() => setScreen("menu")} light={false} />
         </div>
       </header>
@@ -150,7 +156,9 @@ export function Header() {
               ▼
             </button>
           )}
-          <span>Day {day}</span>
+          <span>
+            Day {day} · {phase}
+          </span>
           <MenuButton streaming={streaming} onOpen={() => setScreen("menu")} light />
         </div>
       </div>
