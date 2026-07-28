@@ -1,8 +1,11 @@
+import { useState } from "react";
 import { useStore } from "../store";
 import { isGold } from "../lib/defaults";
+import { canEquip } from "../lib/equip";
 import type { Item } from "../types";
 import { OverlayHeader } from "./OverlayHeader";
-import { EditToolbar, btn } from "./fields";
+import { EquipModal } from "./EquipModal";
+import { EditToolbar, btn, btnSmall } from "./fields";
 import { useEditBuffer } from "./useEditBuffer";
 
 /**
@@ -12,6 +15,11 @@ import { useEditBuffer } from "./useEditBuffer";
  * Editing is gated behind Edit mode: rows render as read-only text blocks until
  * the player toggles Edit, and changes live in a local draft until Save Changes.
  * Discard Changes (or leaving the screen) reverts and exits edit mode.
+ *
+ * EQUIP hands a row to the PC or a companion — the item leaves the pack for
+ * their sheet and is never in both (`equip.ts`). It sits in READ mode only: an
+ * open draft is not yet the pack, so moving a row out from under it would fight
+ * whatever Save Changes wrote next.
  */
 export function InventoryScreen() {
   const inventory = useStore((s) => s.game.inventory);
@@ -20,6 +28,8 @@ export function InventoryScreen() {
     inventory,
     setInventory,
   );
+  // The row being handed to someone — index into the live pack, not the draft.
+  const [equipping, setEquipping] = useState<number | null>(null);
 
   const list = editing ? draft : inventory;
 
@@ -90,6 +100,13 @@ export function InventoryScreen() {
                 <div className="whitespace-pre-wrap break-words text-sm">
                   {it.description ? it.description : <span className="opacity-40">—</span>}
                 </div>
+                {/* Gold stays in the purse — it is the party's money, not
+                    anybody's gear, and the currency row is permanent. */}
+                {canEquip(it) && (
+                  <button type="button" onClick={() => setEquipping(i)} className={btnSmall}>
+                    Equip
+                  </button>
+                )}
               </>
             )}
           </div>
@@ -101,6 +118,14 @@ export function InventoryScreen() {
           </button>
         ) : null}
       </div>
+
+      {equipping !== null && inventory[equipping] && (
+        <EquipModal
+          item={inventory[equipping]}
+          index={equipping}
+          onClose={() => setEquipping(null)}
+        />
+      )}
     </main>
   );
 }

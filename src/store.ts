@@ -3,6 +3,7 @@ import type {
   Character,
   CharacterOverride,
   DiceCast,
+  Equipment,
   GameState,
   Item,
   Message,
@@ -45,6 +46,7 @@ import {
   setStanding as setEntryStanding,
   standingOf,
 } from "./lib/roster";
+import { equipItem as moveToKit, unequipItem as moveToPack, type Move } from "./lib/equip";
 import { computeStakes, previewRoll, rollRecord, stakeRules } from "./lib/stakes";
 import { buildMessages } from "./lib/prompt";
 import { completeChat, streamChat, OpenRouterError } from "./lib/openrouter";
@@ -269,6 +271,15 @@ export interface LoomStore {
   updateItem: (index: number, patch: Partial<Item>) => void;
   removeItem: (index: number) => void;
   setInventory: (inventory: Item[]) => void;
+  /**
+   * Hand a pack row to the PC or a party member — the whole row, count and
+   * all, off `game.inventory` and onto `Character.equipment`. A MOVE: the item
+   * is never in both places (see `equip.ts`). No-op on Gold, on a blank row, or
+   * on a character the library doesn't have.
+   */
+  equipItem: (index: number, characterId: string) => void;
+  /** The reverse — a kit row back into the shared pack, merging by label. */
+  unequipItem: (characterId: string, index: number) => void;
 
   // Save slots (Phase 4) — snapshot / restore / delete of the active game.
   refreshSlots: () => Promise<void>;
@@ -563,6 +574,32 @@ export const useStore = create<LoomStore>((set, get) => {
   function commitCharacters(characters: Character[]) {
     set({ characters });
     void saveCharacters(characters);
+  }
+
+  /**
+   * Apply one gear move — pack ⇄ one character's kit — writing BOTH halves.
+   *
+   * The two sides live in different stores (`game.inventory` is per-adventure,
+   * `Character.equipment` rides the global library), so an item mid-move is the
+   * one moment it could be duplicated or dropped. `equip.ts` computes both new
+   * arrays or returns null; this writes both or neither.
+   */
+  function moveGear(
+    characterId: string,
+    move: (inventory: Item[], equipment: Equipment[]) => Move | null,
+  ) {
+    const { game, characters } = get();
+    const character = characters.find((c) => c.id === characterId);
+    if (!character) return;
+    const moved = move(game.inventory, character.equipment);
+    if (!moved) return;
+
+    const next = { ...game, inventory: moved.inventory };
+    set({ game: next });
+    void saveActiveGame(next);
+    commitCharacters(
+      characters.map((c) => (c.id === characterId ? { ...c, equipment: moved.equipment } : c)),
+    );
   }
 
   const portrait = (memberId: string, force: boolean) => {
@@ -1021,6 +1058,14 @@ export const useStore = create<LoomStore>((set, get) => {
     const game = { ...g, inventory: ensureGold(inventory) };
     set({ game });
     void saveActiveGame(game);
+  },
+
+  equipItem(index, characterId) {
+    moveGear(characterId, (inventory, equipment) => moveToKit(inventory, equipment, index));
+  },
+
+  unequipItem(characterId, index) {
+    moveGear(characterId, (inventory, equipment) => moveToPack(inventory, equipment, index));
   },
 
   newAdventure() {

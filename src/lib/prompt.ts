@@ -1,4 +1,5 @@
-import type { Character, GameState, PartyMember, Scenario, Settings } from "../types";
+import type { Character, Equipment, GameState, PartyMember, Scenario, Settings } from "../types";
+import { equipLine } from "./equip";
 import {
   computeRelevantGear,
   computeSpotlightSignals,
@@ -444,11 +445,9 @@ function buildGearBlock(
 }
 
 /** Port of _format_equipment, simplified to {label, description} — no catalog. */
-function formatEquipment(equipment: { label: string; description: string }[]): string {
+function formatEquipment(equipment: Equipment[]): string {
   if (!equipment.length) return "";
-  const items = equipment
-    .map((e) => `  - ${e.label}${e.description ? `: ${e.description}` : ""}`)
-    .join("\n");
+  const items = equipment.map((e) => `  - ${equipLine(e)}`).join("\n");
   return `Equipment:\n${items}`;
 }
 

@@ -48,7 +48,13 @@ export interface AppliedScene {
   worldNotes: Note[];
 }
 
-const slug = (s: string) =>
+/**
+ * How a name or a label is matched everywhere in this app — case, punctuation
+ * and spacing folded away. Exported so gear moving between the pack and a
+ * character's kit (`equip.ts`) matches rows the SAME way the narrator's deltas
+ * do; two spellings of "match" is how an item ends up listed twice.
+ */
+export const slug = (s: string) =>
   s
     .toLowerCase()
     .trim()
@@ -407,15 +413,24 @@ function makeCharacter(d: PartyDelta, id: string): Character {
  * The delta's equipment, sanitized: labelless rows are dropped (nothing can
  * render or keyword-match them) and a missing description is blank, not
  * undefined. A non-array — the model wrote a string, or nothing — is no gear.
+ *
+ * A `quantity` is kept only when the model volunteered a sane one — the
+ * narrator is never asked for counts, and a garbage value would ride onto the
+ * sheet and into the pack the first time the player unequipped the row.
  */
 function startingEquipment(equipment: PartyDelta["equipment"]): Equipment[] {
   if (!Array.isArray(equipment)) return [];
   return equipment
     .filter((e): e is Equipment => !!e && typeof e.label === "string" && !!e.label.trim())
-    .map((e) => ({
-      label: e.label,
-      description: typeof e.description === "string" ? e.description : "",
-    }));
+    .map((e) => {
+      const out: Equipment = {
+        label: e.label,
+        description: typeof e.description === "string" ? e.description : "",
+      };
+      const quantity = Math.floor(Number(e.quantity));
+      if (Number.isFinite(quantity) && quantity > 1) out.quantity = quantity;
+      return out;
+    });
 }
 
 function applyInventory(current: Item[], block: LoomBlock): Item[] {
