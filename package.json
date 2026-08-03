@@ -6,6 +6,7 @@
   "description": "LLM-driven single-player 1-bit text adventure (client-only React + Capacitor).",
   "scripts": {
     "dev": "vite",
+    "dev:pc": "vite --open /frame.html",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "tsc": "tsc -b --noEmit",

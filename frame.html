@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>Loom — device frame</title>
+    <!--
+      DEV-SERVER ONLY. `vite.config.ts` sets no `build.rollupOptions.input`, so
+      Vite builds `index.html` and nothing else — this file is served by
+      `vite dev` and is silently absent from `dist/`, and therefore from
+      `cap sync` and the APK. That is the whole shipping guard; there is no
+      `import.meta.env.DEV` check anywhere because no part of this reaches a
+      bundle.
+
+      Why an IFRAME and not a centred `max-width` box around the app: Loom
+      measures the VIEWPORT, not its container. `theme.css` sizes `#root` with
+      `100dvh`, `DiceOverlay.tsx` plans the dice scatter in `vw`/`vh`, and ten
+      components render `fixed inset-0` overlays. A CSS box would need
+      `contain: paint` on `#root` plus a `--vw`/`--vh` custom property threaded
+      through every one of those call sites — product churn, in the dice code
+      especially, purely to serve a dev harness. An iframe is a real nested
+      viewport: inside a 393×852 frame `100dvh` IS 852px and `16vw` IS 63px,
+      because they genuinely are. Nothing under `src/` changes.
+    -->
+    <style>
+      :root {
+        --ink: #fff;
+        --paper: #000;
+        --dim: #888;
+        --font: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      body {
+        display: flex;
+        flex-direction: column;
+        /* A backdrop that is neither of the app's two colours, so the device
+           edge reads at a glance in both the light and inverted themes. */
+        background: #2b2b2b;
+        color: var(--ink);
+        font: 12px/1.4 var(--font);
+        overflow: hidden;
+      }
+
+      #bar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 10px;
+        background: var(--paper);
+        border-bottom: 1px solid var(--dim);
+      }
+
+      #bar button {
+        min-height: 28px;
+        padding: 4px 9px;
+        border: 1px solid var(--dim);
+        background: transparent;
+        color: var(--ink);
+        font: inherit;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        cursor: pointer;
+      }
+
+      #bar button:hover {
+        border-color: var(--ink);
+      }
+
+      #bar button[aria-pressed="true"] {
+        background: var(--ink);
+        color: var(--paper);
+        border-color: var(--ink);
+      }
+
+      #bar .sep {
+        width: 1px;
+        align-self: stretch;
+        background: var(--dim);
+        margin: 0 4px;
+      }
+
+      #readout {
+        margin-left: auto;
+        color: var(--dim);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+
+      #stage {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 0;
+        padding: 12px;
+      }
+
+      /*
+       * The wrapper carries the SCALED size so flex centring stays honest — a
+       * `transform` does not change layout size, so without it a downscaled
+       * device would still reserve its full height and sit off-centre.
+       */
+      #wrap {
+        position: relative;
+        flex: none;
+      }
+
+      #device {
+        display: block;
+        /*
+         * `outline`, not `border`: with `box-sizing: border-box` a border eats
+         * into the frame, so a "393×852" device would hand the app a 391×850
+         * viewport and every `vw`/`vh`/`dvh` inside would be off by the width of
+         * the line we drew. An outline is painted outside the box and costs the
+         * layout nothing.
+         */
+        /* `border: 0` is load-bearing too — the UA stylesheet gives an iframe a
+           2px inset border, which costs 4px of viewport the same way. */
+        border: 0;
+        outline: 1px solid var(--dim);
+        background: var(--paper);
+        transform-origin: top left;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="bar">
+      <span id="presets"></span>
+      <span class="sep"></span>
+      <button id="rotate" type="button" title="Swap width and height">⟲ Rotate</button>
+      <button id="reload" type="button" title="Reload the app inside the frame">↻ Reload</button>
+      <span id="readout"></span>
+    </div>
+
+    <div id="stage">
+      <div id="wrap">
+        <!--
+          `allow` keeps the two browser APIs the app actually reaches for
+          working from inside the frame: `download.ts` tries `navigator.share`
+          before falling back to `<a download>`, and share is gated on an
+          explicit allowlist in embedded contexts. Same-origin and unsandboxed,
+          so IndexedDB, localStorage and the OpenRouter fetches behave exactly
+          as they do at the top level — it is the same profile and the same key.
+        -->
+        <iframe
+          id="device"
+          src="/"
+          title="Loom"
+          allow="web-share; clipboard-write"
+        ></iframe>
+      </div>
+    </div>
+
+    <script>
+      // Width × height at portrait. "fit" has no size of its own — it fills
+      // whatever the window leaves, for when you want the app large rather
+      // than accurate.
+      const PRESETS = [
+        { id: "small", label: "360", w: 360, h: 800, title: "Small Android — 360×800" },
+        { id: "iphone", label: "393", w: 393, h: 852, title: "iPhone 15 — 393×852" },
+        { id: "pixel", label: "412", w: 412, h: 915, title: "Pixel 7 — 412×915" },
+        { id: "tablet", label: "744", w: 744, h: 1133, title: "Tablet — 744×1133" },
+        { id: "fit", label: "Fit", w: 0, h: 0, title: "Fill the window" },
+      ];
+
+      // Harness state, deliberately NOT a `Settings` field: nothing here belongs
+      // in `types.ts`, the `normalize*` readers, or a saved game.
+      const KEY = "loom.devframe";
+
+      const bar = document.getElementById("presets");
+      const stage = document.getElementById("stage");
+      const wrap = document.getElementById("wrap");
+      const device = document.getElementById("device");
+      const readout = document.getElementById("readout");
+      const rotateBtn = document.getElementById("rotate");
+
+      /** Stored choice, falling back to a default for anything unreadable. */
+      function load() {
+        try {
+          const raw = JSON.parse(localStorage.getItem(KEY) || "{}");
+          const preset = PRESETS.find((p) => p.id === raw.preset);
+          return { preset: preset ? preset.id : "iphone", rotated: !!raw.rotated };
+        } catch {
+          return { preset: "iphone", rotated: false };
+        }
+      }
+
+      function save() {
+        try {
+          localStorage.setItem(KEY, JSON.stringify(state));
+        } catch {
+          /* private mode — the frame still works, it just forgets. */
+        }
+      }
+
+      const state = load();
+
+      const buttons = PRESETS.map((p) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.textContent = p.label;
+        b.title = p.title;
+        b.addEventListener("click", () => {
+          state.preset = p.id;
+          save();
+          render();
+        });
+        bar.appendChild(b);
+        return { preset: p, el: b };
+      });
+
+      rotateBtn.addEventListener("click", () => {
+        state.rotated = !state.rotated;
+        save();
+        render();
+      });
+
+      document.getElementById("reload").addEventListener("click", () => {
+        // Assigning `src` rather than touching the iframe's own history, so a
+        // reload does not stack entries the app's back handling would then see.
+        device.src = device.src;
+      });
+
+      function render() {
+        const preset = PRESETS.find((p) => p.id === state.preset) || PRESETS[1];
+        for (const { preset: p, el } of buttons) {
+          el.setAttribute("aria-pressed", String(p.id === preset.id));
+        }
+        rotateBtn.disabled = preset.id === "fit";
+
+        // The box the stage can actually give us, minus its own padding.
+        const pad = 24;
+        const availW = Math.max(120, stage.clientWidth - pad);
+        const availH = Math.max(120, stage.clientHeight - pad);
+
+        let w, h;
+        if (preset.id === "fit") {
+          w = availW;
+          h = availH;
+        } else {
+          w = state.rotated ? preset.h : preset.w;
+          h = state.rotated ? preset.w : preset.h;
+        }
+
+        // Downscale only. Scaling leaves the INNER viewport at its true CSS
+        // size, so the app still lays out as an 852px-tall phone on a laptop
+        // that cannot show 852px — only the pixels shrink. Growing it would
+        // instead make the app think it is on a phone it is not, so we don't.
+        const scale = Math.min(1, availW / w, availH / h);
+
+        device.style.width = w + "px";
+        device.style.height = h + "px";
+        device.style.transform = scale < 1 ? `scale(${scale})` : "none";
+        wrap.style.width = w * scale + "px";
+        wrap.style.height = h * scale + "px";
+
+        readout.textContent =
+          `${w} × ${h}` + (scale < 1 ? ` · ${Math.round(scale * 100)}%` : "");
+      }
+
+      addEventListener("resize", render);
+      render();
+    </script>
+  </body>
+</html>
