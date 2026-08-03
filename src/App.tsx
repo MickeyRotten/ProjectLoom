@@ -18,7 +18,6 @@ import { RpgSystemScreen } from "./components/RpgSystemScreen";
 import { AppearanceScreen } from "./components/AppearanceScreen";
 import { SavesScreen } from "./components/SavesScreen";
 import { SyncScreen } from "./components/SyncScreen";
-import { SyncConflictModal } from "./components/SyncConflictModal";
 import { MemberSheet } from "./components/MemberSheet";
 import { PartyScreen } from "./components/PartyScreen";
 import { InventoryScreen } from "./components/InventoryScreen";
@@ -134,7 +133,7 @@ export default function App() {
   // First run: the game cannot take a turn without a key, so ask for one
   // instead of opening on a scenario that fails the moment it is touched.
   //
-  // Cloud Sync is the one screen reachable THROUGH setup: on a second device
+  // Cloud Saves is the one screen reachable THROUGH setup: on a second device
   // the key being asked for is already in the account, so making the player
   // type it in to reach the sign-in that would have supplied it is a wall with
   // a door in it. Signing in pulls `setupDone` and dismisses this anyway.
@@ -176,7 +175,6 @@ export default function App() {
     <>
       {current()}
       <DiceOverlay />
-      <SyncConflictModal />
     </>
   );
 }

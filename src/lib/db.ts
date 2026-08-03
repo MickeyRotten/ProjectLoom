@@ -1,13 +1,7 @@
 import { openDB, type IDBPDatabase } from "idb";
 import type { Character, GameState, LegacyCharacter } from "../types";
 import { migrateCharacter, loadGame, type LoadedGame } from "./defaults";
-import {
-  ACTIVE_DOC,
-  newStamp,
-  slotDoc,
-  type DocStamp,
-  type SyncKey,
-} from "./sync";
+import { newStamp, slotDoc, type DocStamp, type SyncKey } from "./sync";
 import { notifyLocalWrite } from "./dirty";
 
 /**
@@ -71,11 +65,18 @@ export function getDB(): Promise<IDBPDatabase> {
   return dbPromise;
 }
 
-/** Persist the active game (autosave). */
+/**
+ * Persist the active game (autosave).
+ *
+ * Deliberately unstamped. The live game does not travel — the cloud holds the
+ * snapshots the player took, not the turn they just finished (`sync.ts`) — so a
+ * stamp here would describe a document nothing reads, and the write
+ * notification behind it would summon a sync pass on every single beat, which
+ * is exactly what this app used to do.
+ */
 export async function saveActiveGame(game: GameState): Promise<void> {
   const db = await getDB();
   await db.put(SAVES_STORE, game, ACTIVE_KEY);
-  await touchDoc(ACTIVE_DOC);
 }
 
 /**
@@ -152,28 +153,18 @@ export async function deleteSlot(id: string): Promise<void> {
   await touchDoc(slotDoc(id));
 }
 
-/** Ids of every slot stored on this device — the local side of a sync diff. */
-export async function listSlotIds(): Promise<string[]> {
-  const db = await getDB();
-  const keys = (await db.getAllKeys(SAVES_STORE)) as IDBValidKey[];
-  return keys
-    .filter((k): k is string => typeof k === "string" && k.startsWith(SLOT_PREFIX))
-    .map((k) => k.slice(SLOT_PREFIX.length));
-}
-
 /** One slot exactly as stored — what a push sends. */
 export async function readSlot(id: string): Promise<SaveSlot | null> {
   const db = await getDB();
   return ((await db.get(SAVES_STORE, slotKey(id))) as SaveSlot | undefined) ?? null;
 }
 
-/** The stored active game, unmigrated — what a push sends. */
-export async function readActiveGame(): Promise<GameState | null> {
-  const db = await getDB();
-  return ((await db.get(SAVES_STORE, ACTIVE_KEY)) as GameState | undefined) ?? null;
-}
-
-/** All slots, newest first — metadata only is needed, but we hold the game too. */
+/**
+ * All slots, newest first — what the Saves list renders, and the local side of
+ * a sync diff. The games ride along because a pass needs them: a slot's cast
+ * and location are what name the art the cloud should carry with it
+ * (`images.ts → slotImageKeys`).
+ */
 export async function listSlots(): Promise<SaveSlot[]> {
   const db = await getDB();
   const keys = (await db.getAllKeys(SAVES_STORE)) as IDBValidKey[];
@@ -251,12 +242,14 @@ export async function loadFontFiles(id: string): Promise<Blob[]> {
  * Sync bookkeeping (`meta`). One `DocStamp` per document and per image,
  * plus this device's id. See `sync.ts` for what the three numbers mean.
  *
- * It is written on EVERY local save — which is why it is a per-key record
- * rather than one blob: a turn autosaving while a sync is mid-flight would
- * otherwise read-modify-write over the stamp the sync just wrote.
+ * It is written on every save of a document the cloud holds — which is why it
+ * is a per-key record rather than one blob: a snapshot landing while a sync is
+ * mid-flight would otherwise read-modify-write over the stamp the sync just
+ * wrote. The autosaved active game is deliberately NOT stamped; it does not
+ * travel.
  *
  * The `localAt` write is what makes an offline change survive a restart. If it
- * only lived in memory, a game played on a plane would look unchanged to the
+ * only lived in memory, a snapshot taken on a plane would look unchanged to the
  * next sync and be quietly overwritten by the cloud copy.
  * ------------------------------------------------------------------ */
 
@@ -340,8 +333,7 @@ const ACCOUNT_KEY = "account";
  * different one makes every stamp a lie, and acting on it would let the new
  * account's cloud copy silently replace the previous account's local game.
  * Compared at the start of every pass; a mismatch wipes the stamps and the two
- * copies meet as strangers (which, for the active game, means the player is
- * asked).
+ * accounts' saves meet as strangers.
  */
 export async function readSyncAccount(): Promise<string> {
   const db = await getDB();

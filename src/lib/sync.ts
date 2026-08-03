@@ -1,44 +1,52 @@
 /**
- * Cloud sync — the pure half (DESIGN.md → Persistence).
+ * Cloud saves — the pure half (DESIGN.md → Cloud saves).
  *
  * Loom stores everything on the device, which means an adventure is stuck on
- * the device it started on. Sync mirrors the same documents into Supabase so
- * the same game resumes anywhere. This module holds every DECISION — what to
- * push, what to pull, what is a genuine conflict, how a key becomes a storage
- * path — and touches nothing: no network, no IndexedDB, no store. The network
- * edge is `supabaseClient.ts` and the orchestration is `syncEngine.ts`.
+ * the device it started on. The cloud is where the player's **named snapshots**
+ * live, so a save taken on one device restores on another. This module holds
+ * every DECISION — what to push, what to pull, which side of a clash wins, how
+ * a cache key becomes a storage path — and touches nothing: no network, no
+ * IndexedDB, no store. The network edge is `supabaseClient.ts` and the
+ * orchestration is `syncEngine.ts`.
  *
- * That split is the point. A sync bug loses a game, and the logic that decides
+ * That split is the point. A sync bug loses a save, and the logic that decides
  * whether a device's copy or the cloud's copy survives is exactly the kind of
  * thing that cannot be tested through a UI — so it lives here, pure and
  * unit-tested, like `deltas.ts` and `spotlight.ts`.
  */
 
-import type { GameState, Settings } from "../types";
+import type { Settings } from "../types";
 
 /* ------------------------------------------------------------------ *
  * Keys
  * ------------------------------------------------------------------ */
 
-/** The whole document vocabulary. Slots are `slot:<id>`; the rest are singletons. */
-export type SyncKey = "active" | "settings" | `slot:${string}`;
+/** The whole document vocabulary. Slots are `slot:<id>`; settings is a singleton. */
+export type SyncKey = "settings" | `slot:${string}`;
 
-export const ACTIVE_DOC: SyncKey = "active";
 export const SETTINGS_DOC: SyncKey = "settings";
 
 /**
- * The cast's own document, from when the library was global. It is not in
- * `SyncKey` any more — the cast rides inside `active` and inside each slot,
- * because that is where it lives on the device now.
+ * Documents an older build synced that this one leaves strictly alone.
  *
- * The name still has to be known, though: a device that synced under an older
- * build has a `doc:characters` stamp sitting in `meta` and a row sitting on the
- * server. A pass that saw the stamp with nothing local behind it would read the
- * pair as a deletion and push a tombstone, wiping the cast out from under any
- * device still running that build. So the key is skipped instead — left exactly
- * as it is, by both sides.
+ * `active` was the live game, mirrored on every turn — the whole reason this
+ * feature had a conflict prompt, and the reason it cost a full document upload
+ * per beat. `characters` was the cast, from when the library was global.
+ * Neither is in `SyncKey` any more.
+ *
+ * Both names still have to be KNOWN, though: a device that synced under an
+ * older build has a `doc:active` / `doc:characters` stamp sitting in `meta` and
+ * a row sitting on the server. A pass that saw the stamp with nothing local
+ * behind it would read the pair as a deletion and push a tombstone, wiping the
+ * game — or the cast — out from under any device still running that build. So
+ * they are skipped instead: left exactly as they are, by both sides, forever.
  */
+export const LEGACY_ACTIVE_DOC = "active";
 export const LEGACY_CHARACTERS_DOC = "characters";
+
+export const SKIPPED_DOCS: readonly string[] = [LEGACY_ACTIVE_DOC, LEGACY_CHARACTERS_DOC];
+
+export const isSkippedDoc = (key: string): boolean => SKIPPED_DOCS.includes(key);
 
 const SLOT_DOC_PREFIX = "slot:";
 
@@ -50,6 +58,26 @@ export const isSlotDoc = (key: string): boolean => key.startsWith(SLOT_DOC_PREFI
 /** The slot id inside a `slot:<id>` key, or "" for any other key. */
 export const slotIdOf = (key: string): string =>
   isSlotDoc(key) ? key.slice(SLOT_DOC_PREFIX.length) : "";
+
+/**
+ * Whether a local write on this key should wake a sync pass — the whole of
+ * "cloud saves, not a live mirror" in one predicate.
+ *
+ * `dirty.ts` announces every write the app makes: the active game on every
+ * turn, every generated portrait and banner, the journal, settings, slots. The
+ * engine used to ignore the key it was handed and schedule a pass for all of
+ * them, which is what made syncing a per-turn upload of the entire transcript.
+ * Only a snapshot and a settings edit are worth a network round trip now; the
+ * live game and the image cache go nowhere on their own.
+ *
+ * Image writes still STAMP (`db.ts → touchImage`) — the stamp is what makes a
+ * deleted portrait stay deleted on the other device — they just no longer
+ * summon a pass of their own. Whatever a snapshot needs travels with it.
+ */
+export function wakesSync(key: string): boolean {
+  if (isSkippedDoc(key)) return false;
+  return key === SETTINGS_DOC || isSlotDoc(key);
+}
 
 /* ------------------------------------------------------------------ *
  * Stamps — what this device knows about one document
@@ -138,37 +166,26 @@ export function planDoc(
 }
 
 /* ------------------------------------------------------------------ *
- * Conflict policy
+ * Conflict resolution
  * ------------------------------------------------------------------ */
 
 /**
- * How a `conflict` on one key is settled.
+ * Which side of a `conflict` wins. Nothing asks the player any more.
  *
- * `ask` is reserved for the active game, the one document where both answers
- * are real games somebody played and picking wrong is a loss. Everything else
- * has a right answer that needs no interruption: settings are preferences where
- * the newer edit is simply the current one, and a save slot is an immutable
- * snapshot — the same id cannot hold two different games, so whatever the
- * server has is fine.
+ * The one document where both answers were real games somebody played — the
+ * live game — no longer travels, and everything left has a right answer that
+ * needs no interruption: settings are preferences where the newer edit is
+ * simply the current one, and a slot is a named snapshot of a game that has
+ * already been put somewhere safe.
  *
- * The cast used to have a policy of its own (`merge`, a set union). It no
- * longer has a document: it is part of the active game, so it is covered by the
- * one prompt — which is the right answer now that the cast is per-adventure. A
- * union would have quietly refilled a New Adventure's empty cast from the other
- * device's copy.
- */
-export type ConflictPolicy = "ask" | "newest" | "remote";
-
-export function conflictPolicy(key: string): ConflictPolicy {
-  if (key === ACTIVE_DOC) return "ask";
-  if (key === SETTINGS_DOC) return "newest";
-  return "remote";
-}
-
-/**
- * Which side of a `newest` conflict wins. Unparseable or missing remote time
- * falls to the local copy — the device in the player's hand is the better guess
- * when the server's clock says nothing.
+ * A slot used to take the server's copy on the grounds that a snapshot is
+ * immutable, so the same id could not hold two different games. **Overwrite**
+ * made that false: a slot is a name the player re-saves into. Newest is the
+ * honest reading of "I saved over this on both devices", and it is the same
+ * comparison images already settle on.
+ *
+ * Unparseable or missing remote time falls to the local copy — the device in
+ * the player's hand is the better guess when the server's clock says nothing.
  */
 export function newerSide(localAt: number, remoteUpdatedAt: string): "local" | "remote" {
   const remoteMs = Date.parse(remoteUpdatedAt);
@@ -222,11 +239,25 @@ export interface ImagePlan {
  * stamp, no local blob and no pending remote change is a local deletion, which
  * is the only way a removed portrait stays removed — otherwise the other
  * device's copy comes back on the next pull.
+ *
+ * `wanted` is the art the SNAPSHOTS need — the union of every image key named
+ * by a save slot on either side (`images.ts → slotImageKeys`). Traffic is gated
+ * on it, because the cache is not the point: a long game visits dozens of
+ * locations and the banners of places nobody saved at are pure spend. Deletions
+ * are NOT gated — a `remove` for an unwanted key still propagates, or *Remove
+ * Image* and the purge buttons would stop reaching the cloud the moment the key
+ * fell out of scope.
+ *
+ * No garbage collection here on purpose. An object in the bucket that no slot
+ * names is left alone rather than deleted on the inference that nothing wants
+ * it — the inference is only as good as this pass's view of the slots, and the
+ * player already has *Purge Location/Character Images* for saying it out loud.
  */
 export function planImages(
   localKeys: string[],
   stamps: Record<string, DocStamp>,
   remote: RemoteImage[],
+  wanted: ReadonlySet<string>,
 ): ImagePlan {
   const local = new Set(localKeys);
   const byKey = new Map(remote.map((r) => [r.key, r]));
@@ -240,6 +271,7 @@ export function planImages(
     const there = remoteChanged(stamp, rem);
 
     if (local.has(key)) {
+      if (!wanted.has(key)) continue;
       if (!rem) plan.upload.push(key);
       else if (here && there) {
         if (newerSide(stamp?.localAt ?? 0, rem.updatedAt) === "local") plan.upload.push(key);
@@ -253,7 +285,7 @@ export function planImages(
       // Gone here, still there: a deletion to propagate, unless this device
       // simply never had it.
       if (here) plan.remove.push(key);
-      else plan.download.push(key);
+      else if (wanted.has(key)) plan.download.push(key);
     }
   }
 
@@ -302,51 +334,3 @@ export function mergeSettings(current: Settings, incoming: Partial<Settings>): S
   return { ...current, ...clean };
 }
 
-/* ------------------------------------------------------------------ *
- * Conflict presentation
- * ------------------------------------------------------------------ */
-
-/**
- * Enough of a game to choose between two of them. The prompt has to be
- * answerable at a glance by someone who last played days ago, so it is the
- * story's own landmarks — where you are, how far in — not a timestamp pair.
- */
-export interface GameSummary {
-  title: string;
-  day: number;
-  turn: number;
-  location: string;
-  /** Last local write / server `updated_at`, ms. 0 when unknown. */
-  at: number;
-}
-
-export function gameSummary(game: GameState, at: number): GameSummary {
-  return {
-    title: game.scenario.title,
-    day: game.day,
-    turn: game.turnNumber,
-    location: game.location,
-    at,
-  };
-}
-
-/** Name for the auto-snapshot a conflict resolution leaves behind. */
-export function conflictSlotName(side: "local" | "cloud", when: number): string {
-  const stamp = new Date(when).toLocaleString();
-  return `Before sync (${side}) — ${stamp}`;
-}
-
-/**
- * A game nobody has played: the fresh state a first launch (or New Adventure)
- * leaves behind. It counts as "no local game" for sync, so signing in on a new
- * device pulls the real adventure instead of asking the player to choose
- * between it and a scenario they have not started.
- *
- * Turn 0 with no beats, deliberately — not "same as the default scenario". A
- * player who authored a scenario, wrote a cast and has not yet taken a turn has
- * done nothing the cloud copy doesn't already have; a player who took one turn
- * has, and gets asked.
- */
-export function isUntouchedGame(game: GameState): boolean {
-  return game.turnNumber === 0 && game.messages.length === 0;
-}

@@ -1,32 +1,35 @@
 /**
- * Cloud sync — orchestration.
+ * Cloud saves — orchestration.
  *
  * One pass: read what the server has, decide each document's direction with
  * `sync.ts` (pure), move the bytes with `supabaseClient.ts` (network), and
  * stamp what landed. Nothing here decides a merge rule and nothing here holds
  * app state — the store hands in a small set of ports and gets called back.
  *
- * Two rules the whole file is built around:
+ * Three rules the whole file is built around:
  *
- * 1. **A sync never destroys a game.** The one document where both sides can
- *    hold real, different play is the active game, and that is the one case
- *    that asks. Whichever copy loses is written to a save slot first, so the
- *    wrong answer is a restore away rather than a loss.
- * 2. **A stamp is written only after the bytes land.** A crash mid-pass leaves
+ * 1. **The live game never leaves the device.** What travels is what the player
+ *    deliberately saved: named snapshots, and the settings that make a fresh
+ *    install playable. A pass is therefore a rare, small thing rather than a
+ *    per-turn upload of the whole transcript — and with no document that both
+ *    sides can independently PLAY, there is no question left to ask.
+ * 2. **A pass is only ever provoked by a snapshot or a settings edit**
+ *    (`sync.ts → wakesSync`), by a launch, or by the player pressing Sync Now.
+ *    Turns, journal writes and generated art wake nothing.
+ * 3. **A stamp is written only after the bytes land.** A crash mid-pass leaves
  *    a key looking dirty, which costs one redundant transfer next time. The
  *    opposite order would mark a document synced that never left the device.
  */
 
-import type { GameState, Settings } from "../types";
+import type { Settings } from "../types";
 import {
   clearSyncStamps,
   deleteImageStamp,
   deleteSlot,
   deviceId,
   listImageKeys,
-  listSlotIds,
+  listSlots,
   loadImage,
-  readActiveGame,
   readDocStamps,
   readImageStamps,
   readSlot,
@@ -38,17 +41,12 @@ import {
   writeSyncAccount,
   type SaveSlot,
 } from "./db";
-import { loadGame } from "./defaults";
 import { onLocalWrite } from "./dirty";
+import { slotImageKeys } from "./images";
 import { backoffMs, MAX_ATTEMPTS } from "./retry";
 import {
-  ACTIVE_DOC,
-  LEGACY_CHARACTERS_DOC,
   SETTINGS_DOC,
-  conflictPolicy,
-  conflictSlotName,
-  gameSummary,
-  isUntouchedGame,
+  isSkippedDoc,
   isSlotDoc,
   mergeSettings,
   newerSide,
@@ -57,7 +55,7 @@ import {
   slotDoc,
   slotIdOf,
   stripLocalSettings,
-  type GameSummary,
+  wakesSync,
   type RemoteDoc,
 } from "./sync";
 import {
@@ -71,7 +69,7 @@ import {
   type Account,
 } from "./supabaseClient";
 
-/** How long after the last local write a sync is attempted. */
+/** How long after a snapshot or a settings edit a sync is attempted. */
 export const SYNC_DEBOUNCE_MS = 5000;
 
 /**
@@ -83,21 +81,7 @@ export const SYNC_DEBOUNCE_MS = 5000;
 export interface SyncPorts {
   settings: () => Settings;
   account: () => Account | null;
-  /** True while a turn streams — the active game is mid-write and off limits. */
-  busy: () => boolean;
-  game: () => GameState;
-  /**
-   * Adopt a pulled game. `legacyCast` means the document was written before the
-   * cast moved into it and carries none — the store keeps the cast it already
-   * has rather than adopting an empty one.
-   */
-  adoptGame: (game: GameState, legacyCast: boolean) => Promise<void>;
   adoptSettings: (settings: Settings) => void;
-  /**
-   * Both sides of the active game moved. Resolves to the copy to KEEP; the
-   * other is already safe in a slot by the time this is asked.
-   */
-  askActiveConflict: (local: GameSummary, remote: GameSummary) => Promise<"local" | "cloud">;
   /** Named slots changed underneath the Saves screen. */
   slotsChanged: () => void;
   onStatus: (status: SyncStatus) => void;
@@ -138,14 +122,23 @@ const reason = (err: unknown): string =>
  * ------------------------------------------------------------------ */
 
 /**
- * Begin syncing: on local writes (debounced), and whenever the app comes back
- * to the foreground — which on a phone is the moment that matters, since the
- * other device's turns landed while this one was in a pocket.
+ * Begin syncing: one pass now, then one whenever a snapshot is taken, replaced
+ * or deleted, or a setting changes (debounced).
+ *
+ * The pass on start is the launch/sign-in pull — once per app run, and the only
+ * way a device that has never seen this account discovers the saves waiting for
+ * it. There is deliberately no `visibilitychange` pass any more: foregrounding
+ * was worth a round trip when the cloud held a game that could have advanced on
+ * another device, and it is not worth one when the cloud holds snapshots that
+ * only change when somebody presses Save.
  */
 export function startSync(next: SyncPorts): void {
   stopSync();
   ports = next;
-  unsubscribe = onLocalWrite(() => {
+  unsubscribe = onLocalWrite((key) => {
+    // The live game, the journal and every generated image announce themselves
+    // here too. They are not what the cloud holds, so they wake nothing.
+    if (!wakesSync(key)) return;
     // Mid-pass writes — the engine's own adopts, and any real edit made while
     // one is in flight — are answered by one more pass rather than immediately.
     // They cannot loop: the extra pass finds its stamps already clean.
@@ -155,21 +148,15 @@ export function startSync(next: SyncPorts): void {
     }
     schedule(SYNC_DEBOUNCE_MS);
   });
-  document.addEventListener("visibilitychange", onVisible);
   void runSync();
 }
 
 export function stopSync(): void {
   unsubscribe?.();
   unsubscribe = null;
-  document.removeEventListener("visibilitychange", onVisible);
   if (timer) clearTimeout(timer);
   timer = null;
   ports = null;
-}
-
-function onVisible() {
-  if (document.visibilityState === "visible") schedule(0);
 }
 
 function schedule(delay: number) {
@@ -210,7 +197,8 @@ export async function runSync(): Promise<void> {
     status("error", reason(err));
     // Transient failures are the common case on a phone (no signal, captive
     // wifi), so a few backed-off retries happen quietly before the player is
-    // expected to care. After that it waits for the next write or foreground.
+    // expected to care. After that it waits for the next snapshot, the next
+    // launch, or Sync Now.
     if (failures < MAX_ATTEMPTS) schedule(backoffMs(failures));
   } finally {
     running = false;
@@ -226,8 +214,8 @@ async function syncPass(p: SyncPorts, settings: Settings, account: Account): Pro
   const now = Date.now();
 
   // Signed into a different account than the stamps describe — see
-  // `db.ts → readSyncAccount`. Wiping them is what turns "silently adopt the
-  // new account's cloud game" into "ask", which is the whole point.
+  // `db.ts → readSyncAccount`. Every stamp describes a document that account
+  // never wrote, so none of them can be trusted to say what has already synced.
   if ((await readSyncAccount()) !== account.id) {
     await clearSyncStamps();
     await writeSyncAccount(account.id);
@@ -237,33 +225,21 @@ async function syncPass(p: SyncPorts, settings: Settings, account: Account): Pro
   const remoteDocs = await pullDocs(settings);
   const byKey = new Map(remoteDocs.map((d) => [d.key, d]));
 
-  const storedGame = await readActiveGame();
-  const localSlots = await listSlotIds();
+  const localSlots = await listSlots();
   const hasLocal = new Map<string, boolean>([
-    // An unplayed game is not a game: a device that just installed the app has
-    // a fresh scenario sitting in `active`, and treating it as a rival copy
-    // would greet every new device with a conflict prompt.
-    [ACTIVE_DOC, storedGame !== null && !isUntouchedGame(storedGame)],
     [SETTINGS_DOC, true], // settings always exist — defaults are settings too
-    ...localSlots.map((id) => [slotDoc(id), true] as [string, boolean]),
+    ...localSlots.map((s) => [slotDoc(s.id), true] as [string, boolean]),
   ]);
 
   const keys = new Set<string>([...hasLocal.keys(), ...byKey.keys(), ...Object.keys(stamps)]);
 
   for (const key of keys) {
-    // Left alone entirely — see `sync.ts → LEGACY_CHARACTERS_DOC`.
-    if (key === LEGACY_CHARACTERS_DOC) continue;
-    // A turn is streaming: the game in hand is half-written and the message
-    // list is about to change again. Skip just this key — the rest of the
-    // documents have nothing to do with the turn.
-    if (key === ACTIVE_DOC && p.busy()) continue;
+    // The live game and the old global cast — left alone entirely, by both
+    // sides. See `sync.ts → SKIPPED_DOCS`.
+    if (isSkippedDoc(key)) continue;
 
     const present = hasLocal.get(key) ?? false;
-    // An unplayed active game also has to drop its stamp, or "written locally
-    // since the last sync" (hydrate autosaves on every launch) would read as a
-    // change worth defending and turn a first sign-in into a conflict prompt.
-    // Only the active game: a missing SLOT genuinely is a deletion to push.
-    const stamp = key === ACTIVE_DOC && !present ? undefined : stamps[key];
+    const stamp = stamps[key];
     const remote = byKey.get(key) ?? null;
     const action = planDoc(stamp, present, remote);
     if (action === "none") continue;
@@ -280,7 +256,29 @@ async function syncPass(p: SyncPorts, settings: Settings, account: Account): Pro
     await resolve(p, settings, account, key, remote!, at, device);
   }
 
-  await syncImages(settings, account);
+  await syncImages(settings, account, wantedImages(localSlots, remoteDocs));
+}
+
+/**
+ * The art the saves need — every image key named by a slot on either side.
+ *
+ * Both sides, because the two halves answer different questions: the local
+ * slots say what to UPLOAD, and the slots sitting in the cloud (whose bodies
+ * this pass already has in hand from `pullDocs`, so this costs nothing) say
+ * what to DOWNLOAD for a save this device has not restored yet.
+ */
+function wantedImages(local: SaveSlot[], remote: RemoteDoc[]): Set<string> {
+  const wanted = new Set<string>();
+  const add = (slot: SaveSlot | null | undefined) => {
+    if (!slot?.game) return;
+    for (const key of slotImageKeys(slot.game)) wanted.add(key);
+  };
+  for (const slot of local) add(slot);
+  for (const doc of remote) {
+    if (!isSlotDoc(doc.key) || doc.deleted) continue;
+    add(doc.doc as SaveSlot | null);
+  }
+  return wanted;
 }
 
 /* ------------------------------------------------------------------ *
@@ -289,7 +287,6 @@ async function syncPass(p: SyncPorts, settings: Settings, account: Account): Pro
 
 /** Whatever this device holds under `key`, ready to be sent. */
 async function localBody(p: SyncPorts, key: string): Promise<unknown> {
-  if (key === ACTIVE_DOC) return (await readActiveGame()) ?? p.game();
   // Settings live in memory, not in IndexedDB, so the store's copy IS the
   // stored copy — read fresh rather than from the pass's opening snapshot.
   if (key === SETTINGS_DOC) return stripLocalSettings(p.settings());
@@ -326,10 +323,6 @@ async function pull(p: SyncPorts, key: string, remote: RemoteDoc): Promise<void>
       }
       return;
     }
-    if (key === ACTIVE_DOC) {
-      await adoptRemoteGame(p, remote.doc as GameState);
-      return;
-    }
     if (key === SETTINGS_DOC) {
       p.adoptSettings(mergeSettings(p.settings(), (remote.doc ?? {}) as Partial<Settings>));
       return;
@@ -349,8 +342,9 @@ async function pull(p: SyncPorts, key: string, remote: RemoteDoc): Promise<void>
 }
 
 /**
- * Both sides moved. `conflictPolicy` says how that is settled per document —
- * only the active game reaches the player.
+ * Both sides moved. Nothing asks — the newer write wins, in both directions
+ * (`sync.ts → newerSide`). A slot is a name the player re-saved into on two
+ * devices; settings are preferences whose later edit is the current one.
  */
 async function resolve(
   p: SyncPorts,
@@ -361,81 +355,8 @@ async function resolve(
   at: number,
   device: string,
 ): Promise<void> {
-  switch (conflictPolicy(key)) {
-    case "newest": {
-      if (newerSide(at, remote.updatedAt) === "remote") await pull(p, key, remote);
-      else await push(p, settings, account, key, true, at, device);
-      return;
-    }
-    case "remote":
-      // A save slot is an immutable snapshot under a unique id, so "both
-      // changed" can only mean one side re-uploaded the same thing.
-      await pull(p, key, remote);
-      return;
-    case "ask":
-      await askAboutGame(p, settings, account, remote, at, device);
-  }
-}
-
-/**
- * The only prompt in the whole feature: two real games under one save.
- *
- * Both copies are snapshotted to named slots BEFORE the question is asked, so
- * whichever way it is answered — and whatever happens next, including the app
- * being killed mid-prompt — neither game is gone.
- */
-async function askAboutGame(
-  p: SyncPorts,
-  settings: Settings,
-  account: Account,
-  remote: RemoteDoc,
-  at: number,
-  device: string,
-): Promise<void> {
-  const localGame = (await readActiveGame()) ?? p.game();
-  const remoteGame = loadGame(remote.doc as GameState)?.game;
-  if (!remoteGame) {
-    // Nothing readable on the server — this device's game is the only game.
-    await push(p, settings, account, ACTIVE_DOC, true, at, device);
-    return;
-  }
-
-  const remoteAtMs = Date.parse(remote.updatedAt) || Date.now();
-  await keepSafe(localGame, "local", at);
-  await keepSafe(remoteGame, "cloud", remoteAtMs);
-  p.slotsChanged();
-
-  const choice = await p.askActiveConflict(
-    gameSummary(localGame, at),
-    gameSummary(remoteGame, remoteAtMs),
-  );
-
-  if (choice === "cloud") {
-    await pull(p, ACTIVE_DOC, remote);
-    return;
-  }
-  // Keeping the local game means the server's copy is replaced — safe, because
-  // it is sitting in a slot that just synced along with everything else.
-  const now = Date.now();
-  const remoteStamp = await pushDoc(settings, account.id, ACTIVE_DOC, localGame, device);
-  await writeDocStamp(ACTIVE_DOC, { localAt: now, syncedAt: now, remoteAt: remoteStamp });
-}
-
-/** Snapshot one side of a conflict into a named slot. */
-async function keepSafe(game: GameState, side: "local" | "cloud", when: number): Promise<void> {
-  const slot: SaveSlot = {
-    id: `conflict-${side}-${when}`,
-    name: conflictSlotName(side, when),
-    savedAt: when,
-    game: structuredClone(game),
-  };
-  await saveSlot(slot);
-}
-
-async function adoptRemoteGame(p: SyncPorts, doc: GameState): Promise<void> {
-  const loaded = loadGame(doc);
-  if (!loaded) return;
-  await p.adoptGame(loaded.game, loaded.legacyCast);
+  if (newerSide(at, remote.updatedAt) === "remote") await pull(p, key, remote);
+  else await push(p, settings, account, key, true, at, device);
 }
 
 /** Run a write of PULLED data without the engine hearing its own footsteps. */
@@ -455,17 +376,23 @@ async function apply(fn: () => Promise<void> | void): Promise<void> {
 /**
  * Blobs move on the same three-way comparison as documents, minus the prompt:
  * two versions of a portrait are not two stories, so the newer one wins
- * silently (`sync.ts → planImages`).
+ * silently — and only for the art the saves actually name (`sync.ts →
+ * planImages`). Deletions still travel whether the key is wanted or not, which
+ * is what keeps *Remove Image* and the purge buttons reaching the cloud.
  *
  * A failed blob never fails the pass. Images are a cache — a portrait that did
  * not make it across is redrawn or re-synced later, and stopping here would
- * take the game text down with it.
+ * take the saves down with it.
  */
-async function syncImages(settings: Settings, account: Account): Promise<void> {
+async function syncImages(
+  settings: Settings,
+  account: Account,
+  wanted: ReadonlySet<string>,
+): Promise<void> {
   const stamps = await readImageStamps();
   const local = await listImageKeys();
   const remote = await listImages(settings, account.id);
-  const plan = planImages(local, stamps, remote);
+  const plan = planImages(local, stamps, remote, wanted);
   const remoteAt = new Map(remote.map((r) => [r.key, r.updatedAt]));
 
   for (const key of plan.upload) {

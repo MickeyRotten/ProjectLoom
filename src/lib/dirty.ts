@@ -1,10 +1,15 @@
 /**
  * The local-write bus.
  *
- * Every autosave in the app already funnels through a handful of functions in
- * `db.ts` and `settings.ts`, so those are where a "this changed" signal
- * belongs — not at the ~40 `void saveActiveGame(...)` call sites in `store.ts`,
- * which would be forty chances to forget one and lose a turn to the cloud.
+ * Every write worth announcing already funnels through a handful of functions
+ * in `db.ts` and `settings.ts`, so those are where a "this changed" signal
+ * belongs — not at the call sites, which would be dozens of chances to forget
+ * one and lose a snapshot to the cloud.
+ *
+ * The bus announces EVERY local write, including the ones the cloud has no
+ * interest in (the live game, the journal, generated art). Filtering is the
+ * subscriber's job — `sync.ts → wakesSync` — because "what is worth a network
+ * round trip" is a sync decision and the storage layer should not hold one.
  *
  * It is a bus rather than a direct call because the storage layer must not know
  * the sync engine exists: `syncEngine.ts` imports `settings.ts` for its config,

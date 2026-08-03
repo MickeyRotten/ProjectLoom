@@ -1,6 +1,7 @@
 import type {
   Character,
   DitherMode,
+  GameState,
   GenerateImageOptions,
   ImagePromptTemplate,
   PromptFormat,
@@ -88,6 +89,27 @@ export function imageKindOf(key: string): ImageKind | null {
 /** Every key of one kind, masters included — what a purge deletes. */
 export function imageKeysOfKind(keys: Iterable<string>, kind: ImageKind): string[] {
   return [...keys].filter((key) => imageKindOf(key) === kind);
+}
+
+/**
+ * The art one saved game needs to look right when it is restored — the cast's
+ * portraits and the banner of the place it was saved at. This is what a cloud
+ * save carries (`sync.ts → planImages`), and it is a small, bounded set on
+ * purpose: the blob store also holds the banner of every location a long game
+ * ever passed through, and nobody restores to those.
+ *
+ * Display copies only, deliberately no `src:` masters. A master is the big copy
+ * (up to 1024px, full grey) and it exists so ✎ and the download upscale have
+ * real pixels to work from — neither of which a restored save needs. Uploading
+ * them would roughly double the bytes of the one thing that still travels.
+ */
+export function slotImageKeys(game: GameState): string[] {
+  // Read defensively: this also runs over slot documents pulled from the cloud,
+  // which may have been written by a build from before the cast lived in the
+  // game — a shape the type says cannot happen and the wire says can.
+  const keys = (game.characters ?? []).filter((c) => c?.id).map((c) => portraitKey(c.id));
+  if (game.location?.trim()) keys.push(bannerKey(game.location));
+  return [...new Set(keys)];
 }
 
 /* ----------------------------- generation gate --------------------------- */

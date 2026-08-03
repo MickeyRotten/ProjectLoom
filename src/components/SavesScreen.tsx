@@ -13,6 +13,11 @@ import { useConfirm } from "./useConfirm";
  * "The whole active game" now means the cast and the player character too —
  * they live in `GameState`, so a restored slot gives back the people the story
  * was saved with rather than whoever happens to be in the app.
+ *
+ * This is also the cloud's only surface. A slot uploads when it is taken, and
+ * opening this screen is the one moment a pull is worth a round trip — cloud
+ * saves are exactly what the player came here to look at. Pulled slots simply
+ * appear in the list, so there is nothing to mark and nothing to press.
  */
 /** The player character a slot was saved with, or "" for a pre-cast slot. */
 const pcName = (slot: SaveSlot): string =>
@@ -25,6 +30,9 @@ export function SavesScreen() {
   const overwriteSlot = useStore((s) => s.overwriteSlot);
   const restoreSlot = useStore((s) => s.restoreSlot);
   const dropSlot = useStore((s) => s.dropSlot);
+  const account = useStore((s) => s.account);
+  const syncNow = useStore((s) => s.syncNow);
+  const status = useStore((s) => s.syncStatus);
   const [name, setName] = useState("");
   // Slots start empty and fill in after `refreshSlots` resolves, so the
   // "no saves" line used to flash on every open.
@@ -34,6 +42,13 @@ export function SavesScreen() {
   useEffect(() => {
     void refreshSlots().finally(() => setLoaded(true));
   }, [refreshSlots]);
+
+  // What is on the device shows immediately (above); the cloud's copies arrive
+  // when they arrive. A pulled slot calls `slotsChanged`, which refreshes this
+  // list on its own, so nothing here waits on the network.
+  useEffect(() => {
+    if (account) void syncNow();
+  }, [account, syncNow]);
 
   const doSave = () => {
     void snapshotSlot(name);
@@ -45,6 +60,19 @@ export function SavesScreen() {
       <OverlayHeader title="Saves" />
 
       <div className="flex-1 space-y-4 overflow-y-auto p-3">
+        {/* Only when signed in: on a device that never syncs there is no cloud
+            to have an opinion about, and a permanent "off" line would be noise
+            on the screen the player uses most. */}
+        {account && (
+          <p className="text-sm opacity-70" role="status">
+            {status.state === "syncing"
+              ? "Checking the cloud…"
+              : status.state === "error"
+                ? `Cloud saves unavailable — ${status.error ?? "unknown error"}`
+                : "Saves are kept in the cloud."}
+          </p>
+        )}
+
         <div className="space-y-2 border-2 border-ink p-3">
           <span className="block uppercase tracking-widest text-sm">Snapshot current game</span>
           <input

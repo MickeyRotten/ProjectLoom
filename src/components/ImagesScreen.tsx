@@ -592,7 +592,7 @@ function StorageSection() {
         master kept behind it for edits.
         {syncing
           ? " Both this device and the cloud."
-          : " This device only; sign in under Cloud Sync to clear the cloud copies too."}
+          : " This device only; sign in under Cloud Saves to clear the cloud copies too."}
       </p>
 
       <button

@@ -167,10 +167,12 @@ interface DocRow {
 /**
  * Every document the account holds, metadata included.
  *
- * `doc` bodies come back with it — the active game is the only large one, and a
- * second round-trip per key to fetch bodies separately would cost more than the
- * bytes do. If that ever inverts, the fix is a `select` without `doc` here plus
- * a per-key fetch in the engine; the plan it feeds does not change.
+ * `doc` bodies come back with it. The engine needs them for more than a pull —
+ * a cloud slot's body is what names the portraits and the banner this device
+ * should download (`syncEngine.ts → wantedImages`) — and a second round trip per
+ * key would cost more than the bytes do. If that ever inverts, the fix is a
+ * `select` without `doc` here plus a per-key fetch in the engine; the plan it
+ * feeds does not change.
  */
 export async function pullDocs(settings: Settings): Promise<RemoteDoc[]> {
   const c = await need(settings);

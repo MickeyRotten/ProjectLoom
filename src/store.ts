@@ -33,7 +33,6 @@ import {
   type SyncPorts,
   type SyncStatus,
 } from "./lib/syncEngine";
-import type { GameSummary } from "./lib/sync";
 import { downloadWebFont, mountWebFonts, unmountWebFont } from "./lib/webFonts";
 import {
   loadActiveGame,
@@ -179,17 +178,6 @@ export type Screen =
   | "party"
   | "inventory"
   | "member";
-
-/**
- * Both devices played, both copies are real games. The prompt is the only place
- * cloud sync ever interrupts the player, and it only ever appears with both
- * games already snapshotted into save slots — so either answer is reversible.
- */
-export interface SyncConflict {
-  local: GameSummary;
-  cloud: GameSummary;
-  choose: (keep: "local" | "cloud") => void;
-}
 
 export interface LoomStore {
   settings: Settings;
@@ -378,7 +366,7 @@ export interface LoomStore {
   /** The reverse — a kit row back into the shared pack, merging by label. */
   unequipItem: (characterId: string, index: number) => void;
 
-  /* --- Cloud sync (Menu → Cloud Sync) --- */
+  /* --- Cloud saves (Menu → Cloud Saves) --- */
   /** The signed-in account, or null when signed out / sync off. */
   account: Account | null;
   syncStatus: SyncStatus;
@@ -388,8 +376,6 @@ export interface LoomStore {
   authError: string | null;
   /** Set after a sign-up that needs an email confirmation before it can sign in. */
   authNotice: string | null;
-  /** The active-game conflict awaiting an answer — see `SyncConflict`. */
-  syncConflict: SyncConflict | null;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -771,59 +757,23 @@ export const useStore = create<LoomStore>((set, get) => {
   }
 
   /**
-   * Everything cloud sync is allowed to touch, in one place (`syncEngine.ts →
+   * Everything cloud saves are allowed to touch, in one place (`syncEngine.ts →
    * SyncPorts`). Built fresh on each start so the closures read live state.
    *
+   * A short list, and that is the headline: the game being played is not on it.
    * Adopting pulled data goes through the SAME writers a player edit does —
-   * `saveActiveGame`, `commitCharacters`, `saveSettings` — rather than poking
-   * `set` and leaving the disk copy behind. The engine suppresses its own
-   * notifications while adopting, so this cannot echo.
+   * `saveSlot`, `saveSettings` — rather than poking `set` and leaving the disk
+   * copy behind. The engine suppresses its own notifications while adopting, so
+   * this cannot echo.
    */
   function syncPorts(): SyncPorts {
     return {
       settings: () => get().settings,
       account: () => get().account,
-      busy: () => get().streaming,
-      game: () => get().game,
-      async adoptGame(incoming, legacyCast) {
-        // A game pushed by a build that kept the cast outside it carries none.
-        // The cast in hand is the only one there is — adopting an empty one
-        // would leave the pulled adventure with no player character.
-        const game = legacyCast
-          ? { ...incoming, characters: get().game.characters }
-          : incoming;
-        const lastNarrator = [...game.messages].reverse().find((m) => m.role === "narrator");
-        set({
-          game,
-          options: lastNarrator?.appliedDeltas?.options ?? [],
-          streamText: "",
-          error: null,
-          failedInput: null,
-        });
-        await saveActiveGame(game);
-        // The pulled game names locations and companions this device may have
-        // no art for yet; the blobs arrive in the same pass, so this publishes
-        // whatever is already cached and leaves the rest to the next one.
-        get().syncImages();
-      },
       adoptSettings(settings) {
         saveSettings(settings);
         set({ settings });
         void mountWebFonts(settings.webFonts);
-      },
-      askActiveConflict(local, cloud) {
-        return new Promise<"local" | "cloud">((resolve) => {
-          set({
-            syncConflict: {
-              local,
-              cloud,
-              choose: (keep) => {
-                set({ syncConflict: null });
-                resolve(keep);
-              },
-            },
-          });
-        });
       },
       slotsChanged() {
         void get().refreshSlots();
@@ -926,7 +876,6 @@ export const useStore = create<LoomStore>((set, get) => {
   authPending: false,
   authError: null,
   authNotice: null,
-  syncConflict: null,
 
   autoUpdating: false,
   autoUpdateError: null,
@@ -1498,7 +1447,7 @@ export const useStore = create<LoomStore>((set, get) => {
     try {
       const account = await authSignIn(get().settings, email.trim(), password);
       // Signing in IS switching sync on: nobody types an email and a password
-      // into a screen called Cloud Sync to leave it off.
+      // into a screen called Cloud Saves to leave it off.
       get().updateSettings({ syncEnabled: true });
       set({ account });
       startSync(syncPorts());
@@ -1536,15 +1485,12 @@ export const useStore = create<LoomStore>((set, get) => {
 
   async signOut() {
     stopSync();
-    // A pending conflict prompt belongs to a session that no longer exists.
-    get().syncConflict?.choose("local");
     try {
       await authSignOut(get().settings);
     } finally {
       set({
         account: null,
-        syncConflict: null,
-        syncStatus: { state: "idle", lastSyncedAt: 0, error: null },
+              syncStatus: { state: "idle", lastSyncedAt: 0, error: null },
       });
     }
   },
