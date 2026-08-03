@@ -46,6 +46,38 @@ export function sourceKey(key: string): string {
   return `src:${key}`;
 }
 
+/* ----------------------------- generation gate --------------------------- */
+
+/**
+ * Whether a request may be sent to the image model at all
+ * (`Settings.imagesEnabled`, Model & Key).
+ *
+ * Written as `!== false` rather than a bare read: a save from before the switch
+ * existed carries no field, and the only sane reading of "absent" is the
+ * behaviour that save was played with — images on. `loadSettings` merges the
+ * default in anyway; this makes a settings object built by hand (or by a test)
+ * behave the same way.
+ *
+ * The gate is on GENERATION only. Cached art still displays, uploads still land,
+ * and nothing stored is deleted — switching back on picks up exactly where the
+ * player left off.
+ */
+export function imagesAllowed(settings: Pick<Settings, "imagesEnabled">): boolean {
+  return settings.imagesEnabled !== false;
+}
+
+/**
+ * Whether a LOCATION banner may be generated: both the master switch and the
+ * location-images opt-in. Two settings, one question — the banner path had to
+ * ask it in three places, and a gate that reads only half of it is a generation
+ * the player switched off.
+ */
+export function bannerAllowed(
+  settings: Pick<Settings, "imagesEnabled" | "locationImages">,
+): boolean {
+  return imagesAllowed(settings) && settings.locationImages;
+}
+
 /* ------------------------------- cooldown ------------------------------- */
 
 /**

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useStore } from "../store";
-import { bannerCooldownLeft, bannerKey } from "../lib/images";
+import { bannerCooldownLeft, bannerKey, imagesAllowed } from "../lib/images";
 import { phaseOf } from "../lib/clock";
 
 /**
@@ -44,8 +44,13 @@ export function Header() {
   const imageError = useStore((s) => s.imgError[key]);
   // Turns left on the generation cooldown (Advanced). Without this an empty bar
   // is indistinguishable from a silently broken one.
+  // ...only while banners can be drawn at all: with image generation off (Model
+  // & Key) the wait never ends, so counting it down would be a lie told every
+  // turn.
   const waiting = useStore((s) =>
-    bannerCooldownLeft(s.settings.bannerCooldown, s.game.lastBannerTurn, s.game.turnNumber),
+    imagesAllowed(s.settings)
+      ? bannerCooldownLeft(s.settings.bannerCooldown, s.game.lastBannerTurn, s.game.turnNumber)
+      : 0,
   );
   const [zoom, setZoom] = useState(false);
   const [showWhy, setShowWhy] = useState(false);

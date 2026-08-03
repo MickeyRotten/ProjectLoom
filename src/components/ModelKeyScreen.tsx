@@ -1,6 +1,6 @@
 import { useStore } from "../store";
 import { OverlayHeader } from "./OverlayHeader";
-import { Field } from "./fields";
+import { Field, ToggleRow } from "./fields";
 import { KeyField } from "./KeyField";
 import { ModelPicker } from "./ModelPicker";
 import { splitModels, useModelCatalog } from "./useModelCatalog";
@@ -95,22 +95,42 @@ export function ModelKeyScreen() {
           </p>
         </div>
 
-        <KeyField
-          label="Image API Key"
-          value={settings.imageKey}
-          onChange={(v) => update({ imageKey: v })}
-          placeholder="Optional — blank uses the key above"
-          hint="Separate key billed for image generation. Leave blank to reuse the OpenRouter API Key."
+        {/* The master switch for every image request. Off hides the key and
+            model under it rather than greying them out — they steer a call that
+            can no longer happen, and a dead field reads as a broken one. */}
+        <ToggleRow
+          label="Image Generation"
+          state={settings.imagesEnabled ? "ON" : "OFF"}
+          onClick={() => update({ imagesEnabled: !settings.imagesEnabled })}
         />
 
-        <ModelPicker
-          label="Image Model"
-          value={settings.imageModelId}
-          onChange={(v) => update({ imageModelId: v })}
-          models={image}
-          loading={loading}
-          error={error}
-        />
+        {settings.imagesEnabled ? (
+          <>
+            <KeyField
+              label="Image API Key"
+              value={settings.imageKey}
+              onChange={(v) => update({ imageKey: v })}
+              placeholder="Optional — blank uses the key above"
+              hint="Separate key billed for image generation. Leave blank to reuse the OpenRouter API Key."
+            />
+
+            <ModelPicker
+              label="Image Model"
+              value={settings.imageModelId}
+              onChange={(v) => update({ imageModelId: v })}
+              models={image}
+              loading={loading}
+              error={error}
+            />
+          </>
+        ) : (
+          <p className="border-2 border-ink p-3 text-sm opacity-70">
+            Off: nothing is sent to an image model — no portraits are drawn, no location
+            images, and the regenerate and edit buttons are hidden. Pictures you already
+            have still show, and you can still upload your own art on a character's sheet.
+            Nothing is deleted; switching this back on picks up where you left off.
+          </p>
+        )}
 
         <Field label={`Temperature — ${settings.temperature.toFixed(2)}`}>
           <input

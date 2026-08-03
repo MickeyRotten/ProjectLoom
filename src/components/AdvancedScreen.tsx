@@ -23,6 +23,7 @@ import {
 import {
   blobToRefImage,
   clampBannerCooldown,
+  imagesAllowed,
   MAX_BANNER_COOLDOWN,
   MAX_REF_IMAGES,
   refImageToDataUrl,
@@ -370,6 +371,24 @@ function CharactersSection() {
   );
 }
 
+/**
+ * Shown at the top of the two image sections while the master switch (Model &
+ * Key → Image Generation) is off. The fields under it still edit fine and are
+ * still worth setting up ahead of time — but nothing here draws anything while
+ * that switch is off, and silently editing prompts that never run is worse than
+ * one line of explanation.
+ */
+function GenerationOffNote() {
+  const enabled = useStore((s) => imagesAllowed(s.settings));
+  if (enabled) return null;
+  return (
+    <p className="border-2 border-ink p-3 text-sm">
+      Image generation is switched off under Menu → Model &amp; Key. These settings are
+      kept and take effect the moment you switch it back on.
+    </p>
+  );
+}
+
 function ImagesSection() {
   const ditherMode = useStore((s) => s.settings.ditherMode);
   const locationImages = useStore((s) => s.settings.locationImages);
@@ -377,6 +396,8 @@ function ImagesSection() {
   const update = useStore((s) => s.updateSettings);
   return (
     <>
+      <GenerationOffNote />
+
       <ToggleRow
         label="1-Bit Shading"
         state={ditherMode === "bayer4" ? "DITHER" : ditherMode === "off" ? "OFF" : "THRESHOLD"}
@@ -461,6 +482,8 @@ function PortraitsSection() {
 
   return (
     <>
+      <GenerationOffNote />
+
       {PORTRAIT_FIELDS.map((f) => (
         <InstrField key={f.key} spec={f} />
       ))}

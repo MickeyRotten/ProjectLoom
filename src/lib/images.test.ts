@@ -14,9 +14,11 @@ import {
   exportScale,
   extractImageDataUrl,
   extractMessageText,
+  bannerAllowed,
   generateImage,
   ImageError,
   imageRequestKey,
+  imagesAllowed,
   isModelSafeImage,
   PORTRAIT_PIXEL_WIDTH,
   portraitKey,
@@ -406,6 +408,26 @@ describe("toExportBlob / toSourceBlob", () => {
     );
     await expect(toExportBlob(blob)).resolves.toBe(blob);
     expect(close).toHaveBeenCalled();
+  });
+});
+
+describe("generation gate", () => {
+  it("images are allowed while the master switch is on", () => {
+    expect(imagesAllowed({ imagesEnabled: true })).toBe(true);
+    expect(imagesAllowed({ imagesEnabled: false })).toBe(false);
+  });
+
+  it("a save written before the switch existed keeps drawing", () => {
+    // Absent means "played with images on" — the only reading that doesn't
+    // silently switch a feature off under an existing game.
+    expect(imagesAllowed({} as { imagesEnabled: boolean })).toBe(true);
+  });
+
+  it("a banner needs BOTH the master switch and the location-images opt-in", () => {
+    expect(bannerAllowed({ imagesEnabled: true, locationImages: true })).toBe(true);
+    expect(bannerAllowed({ imagesEnabled: true, locationImages: false })).toBe(false);
+    expect(bannerAllowed({ imagesEnabled: false, locationImages: true })).toBe(false);
+    expect(bannerAllowed({ imagesEnabled: false, locationImages: false })).toBe(false);
   });
 });
 

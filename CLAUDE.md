@@ -393,6 +393,16 @@ after the history — always-on, never keyword-gated (a journal is chronological
 not topical), bounded by `Settings.journalBudget` with old entries decaying to
 their facts. Editable on the **Journal** screen, where the player keeps every
 entry forever while the model sees only the tail.
+Post-MVP also: **image generation master switch** (`Settings.imagesEnabled`,
+Model & Key → Image Generation, **on** by default) — `locationImages` only ever
+gated banners, so switching off the portrait spend meant *Remove Image* on every
+character forever. Off means no request reaches the image model at all:
+`images.ts → imagesAllowed`/`bannerAllowed` fold into the existing `cacheOnly`
+flag, so `syncImages` degrades to a cache probe (already-drawn art still shows),
+`regenerateBanner`/`editImage`/forced portraits no-op, ⟳ + ✎ hide on the member
+sheet, the banner cooldown countdown stops rendering, and the Image API Key +
+Image Model fields hide under the switch. Uploads/downloads/Remove keep working —
+none of them calls a model — and nothing stored is deleted.
 Deferred (post-MVP): rolling LLM summarization of the beats themselves,
 NPC/item art, TTS, weather animation, multi-world. Track scope in
 `DESIGN.md → Build Phases`.
