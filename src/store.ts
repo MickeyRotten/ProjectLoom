@@ -94,6 +94,7 @@ import {
   bannerKey,
   bannerOnCooldown,
   blobToDataUrl,
+  imageEditAllowed,
   imagesAllowed,
   buildBannerPrompt,
   buildEditPrompt,
@@ -588,8 +589,9 @@ export const useStore = create<LoomStore>((set, get) => {
     if (get().imgPending[key] || !instruction.trim()) return;
     // Image generation off (Model & Key): an edit is a generation like any
     // other. The ✎ button is hidden while it's off, so this is the belt to that
-    // braces — nothing reaches the image model behind the switch's back.
-    if (!imagesAllowed(get().settings)) return;
+    // braces — nothing reaches the image model behind the switch's back. Same
+    // for the ComfyUI backend, which has no edit path at all.
+    if (!imageEditAllowed(get().settings)) return;
     const source = await loadEditSource(key);
     if (!source) {
       // Nothing cached at all is a plain no-op; a cached image we can't send is

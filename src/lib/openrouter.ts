@@ -2,6 +2,7 @@ import type { Settings } from "../types";
 import type { ChatMessage } from "./prompt";
 import { MAX_ATTEMPTS, backoffMs, isRetryableStatus, sleep } from "./retry";
 import { reasoningBody } from "./settings";
+import { safeErrorText } from "./http";
 
 /**
  * OpenRouter streaming chat completion (OpenAI-compatible SSE). Direct fetch,
@@ -376,16 +377,3 @@ function parseFrame(payload: string): Frame {
   }
 }
 
-async function safeErrorText(res: Response): Promise<string> {
-  try {
-    const text = await res.text();
-    try {
-      const json = JSON.parse(text);
-      return json?.error?.message ?? text.slice(0, 200);
-    } catch {
-      return text.slice(0, 200);
-    }
-  } catch {
-    return "";
-  }
-}

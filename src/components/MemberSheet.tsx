@@ -17,7 +17,7 @@ import { GenerateItemModal } from "./GenerateItemModal";
 import { GEN_FIELD_LABEL, type GenField } from "../lib/generateField";
 import { useEditBuffer } from "./useEditBuffer";
 import { useConfirm } from "./useConfirm";
-import { imagesAllowed, portraitKey } from "../lib/images";
+import { imageEditAllowed, imagesAllowed, portraitKey } from "../lib/images";
 import { equipQuantity } from "../lib/equip";
 import {
   getEntry,
@@ -108,6 +108,9 @@ export function MemberSheet() {
   const portraitPending = useStore((s) => (id ? s.imgPending[portraitKey(id)] : false));
   const imageError = useStore((s) => (id ? s.imgError[portraitKey(id)] : undefined));
   const imagesOn = useStore((s) => imagesAllowed(s.settings));
+  // ✎ is narrower than ⟳: the ComfyUI backend can draw a portrait but cannot
+  // edit one, so the button goes rather than fails.
+  const editOn = useStore((s) => imageEditAllowed(s.settings));
   const [zoom, setZoom] = useState(false);
   const [autoUpdate, setAutoUpdate] = useState(false);
   const [genField, setGenField] = useState<GenField | null>(null);
@@ -251,7 +254,7 @@ export function MemberSheet() {
               ⟳
             </button>
           )}
-          {imagesOn && portraitUrl && (
+          {editOn && portraitUrl && (
             <EditImageButton
               label="Edit portrait"
               disabled={portraitPending}

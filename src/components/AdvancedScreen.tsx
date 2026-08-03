@@ -389,6 +389,24 @@ function GenerationOffNote() {
   );
 }
 
+/**
+ * The same courtesy for the reference images, which are the one thing on these
+ * screens the ComfyUI backend genuinely cannot use — a workflow the player
+ * wrote has no agreed place to put a style image, and pretending otherwise
+ * would mean uploads that quietly do nothing.
+ */
+function ComfyRefNote() {
+  const comfy = useStore((s) => imagesAllowed(s.settings) && s.settings.imageBackend === "comfyui");
+  if (!comfy) return null;
+  return (
+    <p className="border-2 border-ink p-3 text-sm">
+      Pictures are being drawn by ComfyUI, which doesn't take reference images — the
+      prompt below still steers it, but build the art style into the workflow. These are
+      kept for whenever OpenRouter is selected again.
+    </p>
+  );
+}
+
 function ImagesSection() {
   const ditherMode = useStore((s) => s.settings.ditherMode);
   const locationImages = useStore((s) => s.settings.locationImages);
@@ -483,6 +501,7 @@ function PortraitsSection() {
   return (
     <>
       <GenerationOffNote />
+      <ComfyRefNote />
 
       {PORTRAIT_FIELDS.map((f) => (
         <InstrField key={f.key} spec={f} />

@@ -75,6 +75,23 @@ jobs:
           fi
           npx cap sync android
 
+      # --- Cleartext HTTP: the ComfyUI backend talks to a box on the LAN ---
+      - name: Allow cleartext traffic
+        run: |
+          # Settings → Model & Key → ComfyUI points the app at a server the
+          # player runs themselves, which is http:// on a private address —
+          # nobody puts a TLS cert on 192.168.1.x. Android blocks plaintext by
+          # default from targetSdk 28, and the generated manifest is not
+          # committed, so the flag has to be re-applied after every cap sync.
+          # Idempotent: skipped when Capacitor already set it.
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          if grep -q "usesCleartextTraffic" "$MANIFEST"; then
+            echo "Already set; leaving the manifest alone."
+          else
+            sed -i -E 's|(<application\b)|\1\n        android:usesCleartextTraffic="true"|' "$MANIFEST"
+            grep -n "usesCleartextTraffic" "$MANIFEST"
+          fi
+
       # --- Versioning: strictly-increasing code so installs upgrade cleanly ---
       - name: Apply app version
         run: |
