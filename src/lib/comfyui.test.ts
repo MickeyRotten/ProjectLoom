@@ -7,6 +7,7 @@ import {
   comfyExecutionError,
   comfyMime,
   comfyPromptError,
+  comfyUrl,
   comfyViewUrl,
   fetchComfyOptions,
   firstComfyImage,
@@ -155,6 +156,25 @@ describe("urls", () => {
   it("strips trailing slashes and falls back when blank", () => {
     expect(normalizeComfyUrl("http://host:8188/")).toBe("http://host:8188");
     expect(normalizeComfyUrl("  ")).toBe("http://127.0.0.1:8188");
+  });
+
+  it("assumes http:// for a bare LAN address — what a person types on a phone", () => {
+    expect(normalizeComfyUrl("192.168.1.9:8188")).toBe("http://192.168.1.9:8188");
+    expect(normalizeComfyUrl(" 192.168.1.9:8188/ ")).toBe("http://192.168.1.9:8188");
+    expect(normalizeComfyUrl("my-pc.local:8188")).toBe("http://my-pc.local:8188");
+  });
+
+  it("never rewrites a scheme the player typed", () => {
+    expect(normalizeComfyUrl("https://comfy.example.com")).toBe("https://comfy.example.com");
+    expect(normalizeComfyUrl("HTTP://Host:8188")).toBe("HTTP://Host:8188");
+  });
+
+  it("builds an absolute request URL from a scheme-less base", () => {
+    // The bug this guards: a relative base resolves against the WebView's own
+    // origin, so the request never leaves for the LAN at all.
+    const url = comfyUrl("192.168.1.9:8188", "/system_stats");
+    expect(url).toBe("http://192.168.1.9:8188/system_stats");
+    expect(new URL(url).hostname).toBe("192.168.1.9");
   });
 
   it("encodes the view query — a filename with a space must survive", () => {

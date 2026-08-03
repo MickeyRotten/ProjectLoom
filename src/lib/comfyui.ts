@@ -205,10 +205,23 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null;
 }
 
-/** Trim a player-typed base URL to something joinable. Blank → the default. */
+/**
+ * Trim a player-typed base URL to something joinable. Blank → the default.
+ *
+ * A missing scheme is assumed to be `http://`, because this field is typed on a
+ * phone and `192.168.1.9:8188` is what a person writes. Left alone it is not an
+ * absolute URL at all — a scheme must start with a letter, so the digits make
+ * it a RELATIVE path, which resolves against the WebView's own origin and
+ * fails as `https://localhost/192.168.1.9:8188/system_stats`. The error that
+ * produces says nothing about the missing four characters that caused it.
+ *
+ * `http` and not `https`: nobody puts a TLS certificate on a LAN address, and
+ * an explicit `https://` the player typed is still honoured.
+ */
 export function normalizeComfyUrl(url: string): string {
   const trimmed = url.trim().replace(/\/+$/, "");
-  return trimmed || DEFAULT_COMFY_URL;
+  if (!trimmed) return DEFAULT_COMFY_URL;
+  return /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
 }
 
 /** `<base><path>` with exactly one slash between them. */
@@ -616,8 +629,13 @@ function httpError(what: string, status: number, detail: string): ImageError {
 function networkError(err: unknown): ImageError {
   if (err instanceof ImageError) return err;
   const why = err instanceof Error ? err.message : "request failed";
+  // No response at all, which on a phone is almost never the app's doing: the
+  // PC's firewall is blocking the port, ComfyUI is bound to 127.0.0.1 so only
+  // that machine can see it, or the two devices are not actually on the same
+  // network (guest SSID, VPN, client isolation). Naming them beats "check the
+  // URL", which is the one cause the player has already checked twice.
   return new ImageError(
-    `Could not reach ComfyUI — ${why}. Check the URL under Model & Key.`,
+    `Could not reach ComfyUI — ${why}. Open the same address in this device's browser: if that fails too, it is the PC's firewall, the --listen address, or the network — not Loom.`,
     { retryable: true },
   );
 }
