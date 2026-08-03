@@ -35,6 +35,7 @@ moves, generates **1-bit pixel-art portraits and location banners** via an image
 | Styling | **Tailwind** + a tiny 1-bit token set | pure `--ink`/`--paper`, monospace |
 | State | **Zustand** | mirrors Wayward |
 | Persistence | **IndexedDB** (via `idb`) | saves + generated image blobs (too big for localStorage) |
+| Cloud sync | **Supabase** (Postgres + Storage), opt-in | mirror of the same documents, so a game resumes on another device |
 | AI | **OpenRouter** (OpenAI-compatible), text + image | direct `fetch`, no SDK |
 | Packaging | **Capacitor** → Android APK | wraps the built web app; no embedded server |
 
@@ -675,7 +676,8 @@ optional image model — shown while `Settings.setupDone` is false.
 ### Secondary screens
 All secondary screens — **member sheet, Party, Inventory, Quests, and every Settings sub-screen** — are **full-screen overlays with a Back button** in a top header (the mobile pattern; no split panes). They open over the chat and return to it on Back. Same store/components regardless.
 
-- **Menu (gear)** → full-screen screens, play-facing first: **Party**, **Inventory**, **Quests**, **World Notes**, **Saves**, then **Characters** (the whole cast), the **Scenario** editor, **Model & Key**, **Appearance**, **RPG System**, **Advanced instructions**. The first five are also on the ⋯ shortcut beside GO.
+- **Menu (gear)** → full-screen screens, play-facing first: **Party**, **Inventory**, **Quests**, **World Notes**, **Saves**, then **Characters** (the whole cast), the **Scenario** editor, **Model & Key**, **Cloud Sync**, **Appearance**, **RPG System**, **Advanced instructions**. The first five are also on the ⋯ shortcut beside GO.
+- **Cloud Sync screen** is the account and nothing else: email + password, sign in / create account, last-sync line, **Sync Now**, **Sign Out**, and a closed **Supabase Project** section for a player running their own project (blank = the build's own, from `VITE_SUPABASE_*`). No checkboxes for *what* syncs — a half-synced save is worse than none.
 - **RPG System screen** owns the dice and nothing else: **Stakes** on/off, the
   dice (`diceCount` × `diceSides`), what Strengths and Flaws are worth, where the
   STRONG/MIXED bands sit, **when to roll** (`alwaysRoll`, or the editable risk-word
@@ -895,6 +897,60 @@ of those stay inspectable, which a rolling summary never is.
 ---
 
 *Deferred (not MVP):* NPC/item art, TTS, weather animation, multi-world.
+
+---
+
+## Cloud sync — `src/lib/sync.ts` · `syncEngine.ts` · `supabaseClient.ts`
+
+The device *is* the database (IndexedDB + localStorage), which means an
+adventure is stuck on the device it started on. Sync mirrors the same documents
+into a Supabase project the player owns, so signing in on a second device
+resumes the same game. **Opt-in** (`Settings.syncEnabled`, off by default) and
+additive: with it off, nothing about the app changes and no request is made —
+the SDK is a lazy `import()`, so its ~130 KB is not even in the main bundle.
+
+**The remote shape is deliberately dumb** (`supabase/schema.sql`): one
+key/value table `loom_docs (user_id, key, doc jsonb, deleted, device,
+updated_at)` and one private Storage bucket `loom-images`. The keys are
+`active` · `characters` · `settings` · `slot:<id>`; images are objects at
+`<user_id>/<base64url(cache key)>`, encoded because a cache key is free text
+("banner:Boars Head Tavern"). Every policy is `auth.uid() = user_id` — the
+anon key ships in the app, as it is meant to, and RLS is what protects the data.
+`updated_at` is stamped by a trigger, never by the client: it is the merge
+clock, and two phones disagree about what time it is.
+
+**Merging is a watermark, not a clock comparison.** Each key carries a
+`DocStamp { localAt, syncedAt, remoteAt }` in a new IndexedDB `meta` store —
+`localAt > syncedAt` means "changed here since the last sync",
+`remote.updated_at !== remoteAt` means "changed there". `planDoc` turns that
+into `push | pull | conflict | none`, and it is pure and unit-tested, because a
+wrong answer here loses a game. `localAt` is written on every save (inside
+`db.ts`/`settings.ts`, not at the ~40 `saveActiveGame` call sites — see
+`dirty.ts`) so a game played on a plane still looks changed after a restart.
+
+**Only the active game can ask.** `conflictPolicy` per key: the cast **merges**
+(`roster.ts → mergeLibrary`, a set union — two devices that each authored a
+companion keep both), settings take the **newest**, a save slot is an immutable
+snapshot so the server's copy stands, and the active game **asks**
+(`SyncConflictModal`, in the story's terms: title · day · turn · location).
+Both copies are snapshotted into save slots *before* the question is asked, so
+either answer is undoable from Saves and a sync can never destroy a game.
+Images never ask — two versions of a portrait are not two stories, so the newer
+one wins silently (`planImages`), and a local deletion propagates as a delete
+rather than being undone by the other device's copy.
+
+**Ordering rule:** a stamp is written only after the bytes land. A crash
+mid-pass leaves a key looking dirty and costs one redundant transfer; the
+opposite order would mark a document synced that never left the device. Passes
+are single-flight, debounced 5s after the last write, and re-run when the app
+comes back to the foreground — which on a phone is the moment that matters.
+
+**What does not travel:** `supabaseUrl` / `supabaseAnonKey` (this device's way
+in — a blank override pushed from one device would lock out the other) and
+`comfyUrl` (a LAN address that means a different machine elsewhere). The
+OpenRouter key *does*, by choice, so a new device is playable the moment it
+signs in. Added web fonts are re-added per device — the `webFonts` list syncs,
+the woff2 files do not.
 
 ---
 

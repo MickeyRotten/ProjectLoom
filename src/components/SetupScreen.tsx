@@ -18,6 +18,7 @@ import { btn } from "./fields";
 export function SetupScreen() {
   const settings = useStore((s) => s.settings);
   const update = useStore((s) => s.updateSettings);
+  const setScreen = useStore((s) => s.setScreen);
   const scenarioTitle = useStore((s) => s.game.scenario.title);
   const { models, loading, error } = useModelCatalog();
   const { text, image } = splitModels(models);
@@ -82,6 +83,15 @@ export function SetupScreen() {
           className={`w-full ${btn}`}
         >
           {ready ? `Begin — ${scenarioTitle}` : "Add a key to begin"}
+        </button>
+
+        {/* The second device. Everything above is already in the cloud for a
+            player who syncs — including the key — so setup must not be a wall
+            they have to type their way past to reach the account that would
+            have filled it in. Signing in pulls the settings and `setupDone`
+            with them, which dismisses this screen on its own. */}
+        <button type="button" onClick={() => setScreen("sync")} className={`w-full ${btn}`}>
+          Already have a Loom account? Sign in
         </button>
       </div>
     </main>

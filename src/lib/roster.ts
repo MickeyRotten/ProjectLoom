@@ -426,3 +426,19 @@ export function dropEntry(roster: RosterEntry[], id: string): RosterEntry[] {
 export function gameParty(game: GameState, characters: Character[]): PartyMember[] {
   return partyMembers(characters, game.roster);
 }
+
+/**
+ * Fold characters from another copy of the library into this one, by id.
+ * Whoever is already here wins — the other copy may be older than an edit.
+ *
+ * Written for the legacy-save split (a pre-split save still carrying its cast)
+ * and reused by cloud sync, where it is why the cast is the one document that
+ * never has to ask the player anything: two devices that each authored a
+ * companion both keep theirs, and an edit made here is not undone by the
+ * version the other device happens to hold.
+ */
+export function mergeLibrary(library: Character[], incoming: Character[]): Character[] {
+  const known = new Set(library.map((c) => c.id));
+  const extra = incoming.filter((c) => !known.has(c.id));
+  return extra.length ? [...library, ...extra] : library;
+}

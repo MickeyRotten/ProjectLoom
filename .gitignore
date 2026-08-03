@@ -10,6 +10,11 @@ dist-ssr/
 .vite/
 coverage/
 
+# local env (cloud-sync project config) — `.env.example` is the committed copy
+.env
+.env.local
+.env.*.local
+
 # TS incremental build info
 *.tsbuildinfo
 

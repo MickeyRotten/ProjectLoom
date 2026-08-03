@@ -648,6 +648,27 @@ export interface DiceRules {
 export interface Settings extends DiceRules, ComfySettings {
   openRouterKey: string;
   /**
+   * Cloud sync (Menu → Cloud Sync). Off is the shipped state and the whole app
+   * behaves exactly as it did before it existed — no client is constructed, no
+   * request is made, nothing leaves the device.
+   */
+  syncEnabled: boolean;
+  /**
+   * Supabase project URL and ANON key. Both are public by design — they ship
+   * inside every Supabase client app, and Row Level Security is what protects
+   * the data — so they sit in settings like the OpenRouter key rather than in a
+   * build secret. Blank falls back to the build-time `VITE_SUPABASE_*` values
+   * (`supabaseClient.ts → syncConfig`), so the packaged APK works untouched and
+   * a player can still point their own build at their own project.
+   *
+   * Per-DEVICE, deliberately: they are excluded from the settings blob that
+   * syncs (`sync.ts → DEVICE_LOCAL_SETTINGS`), since a device pushing its blank
+   * override would otherwise lock the other one out of the account it is
+   * syncing with.
+   */
+  supabaseUrl: string;
+  supabaseAnonKey: string;
+  /**
    * Whether the player has been through first-run setup. Gates `SetupScreen`.
    * Deliberately its own flag rather than "is there a key": gating on the key
    * would throw the player out of setup on the first character they typed.
