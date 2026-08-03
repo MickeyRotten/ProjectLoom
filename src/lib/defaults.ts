@@ -234,6 +234,21 @@ Skip anything the FACTS list below has already recorded.`;
  */
 export const DEFAULT_REASONING_LEVEL = "auto" as const;
 
+/**
+ * The shipped colors — the stark reading of 1-bit, ink glyphs on paper. They
+ * are the fallback for every unreadable stored value, so they must be a pair
+ * anyone can see: black on white, maximum contrast, no assumptions.
+ */
+export const DEFAULT_PAPER = "#ffffff";
+export const DEFAULT_INK = "#000000";
+
+/**
+ * Shipped reading size, in pixels. 16 is what the old `textScale: "m"` resolved
+ * to through Tailwind's `text-base`, so the setting means the same thing across
+ * the change.
+ */
+export const DEFAULT_TEXT_SIZE = 16;
+
 export function defaultSettings(): Settings {
   return {
     openRouterKey: "",
@@ -249,9 +264,11 @@ export function defaultSettings(): Settings {
     reasoningLevel: DEFAULT_REASONING_LEVEL,
     showActionOptions: true,
     quickActions: DEFAULT_QUICK_ACTIONS.map((a) => ({ ...a })),
-    invert: false,
-    textScale: "m",
+    paper: DEFAULT_PAPER,
+    ink: DEFAULT_INK,
+    textSize: DEFAULT_TEXT_SIZE,
     font: "system",
+    webFonts: [],
     // Off by default (Advanced → Images): the story reads fine without a
     // banner, and every new location would otherwise bill an image generation
     // before the player has decided they want any.

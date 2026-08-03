@@ -613,17 +613,39 @@ All secondary screens — **member sheet, Party, Inventory, Quests, and every Se
   than a fifth Advanced sub-menu: Advanced is *prompt text handed to a model*,
   and this is mechanics the app resolves on-device before the model sees the turn.
 - **Appearance screen** holds everything that changes how Loom *looks* and
-  nothing that changes how it plays: **Text Size**, **Font**, **Invert Colors**.
-  The first and last used to sit loose under the nine menu entries — controls
-  parked below a navigation list, reachable only by scrolling past it. **Font**
-  (`Settings.font`: `system` · `VT323` · `Jersey 15`) repoints the single
-  `--font-mono` token through a `data-font` attribute on `<html>`, the same
-  one-attribute mechanism as the theme swap, so no component knows about it.
-  Both display faces are **bundled** (`src/fonts/`, SIL OFL) rather than linked
-  from Google Fonts — the packaged APK plays offline, where a webfont over the
-  network simply never arrives — and each carries a `size-adjust` so a Text Size
-  setting means the same thing whichever font is picked. An unrecognised stored
-  value falls back to `system` (`settings.ts → fontTheme`).
+  nothing that changes how it plays: **Text Size**, **Font**, **Colors**. All
+  three started as closed lists — a four-step scale, three faces, and an Invert
+  Colors toggle — and all three are now open.
+  - **Font** (`Settings.font`) repoints the single `--font-mono` token through a
+    `data-font` attribute on `<html>`, so no component knows about it. Three
+    faces are **bundled** (`system` · `VT323` · `Jersey 15`; `src/fonts/`, SIL
+    OFL) rather than linked from Google Fonts — the packaged APK plays offline,
+    where a webfont over the network simply never arrives — and the two display
+    faces carry a `size-adjust` so a Text Size setting means the same thing
+    across them. Beyond those, the player **adds a Google Web Font by name**
+    (`webFonts.ts`, `Settings.webFonts: WebFont[]`): Add fetches
+    `fonts.googleapis.com/css2` — a 400 there *is* the spelling check —
+    keeps the **latin + latin-ext** faces off the response's subset comments,
+    downloads the woff2 files and stores them in a **`fonts` object store**
+    (`db.ts`, DB v2), then injects the equivalent `@font-face` +
+    `[data-font]` rules from blob URLs. Downloaded, not linked, so an added font
+    behaves like a bundled one from the second launch onward. Each face's
+    `unicode-range` is **persisted on the record**: re-mounted without them, two
+    subsets both claim every character and a latin-ext file with no basic Latin
+    in it blanks the app. **Remove** deletes the files; an unrecognised or
+    removed selection falls back to `system` (`settings.ts → fontTheme`).
+  - **Text Size** is **pixels** — `[−] 16 px [+]`, ±2 a press, 10–40 — not a
+    four-step scale, because an added font carries no `size-adjust` and renders
+    at whatever size its designer drew. Scope is unchanged: narration only.
+  - **Colors** are two free values, `Settings.paper` and `Settings.ink`, set from
+    a native swatch or a typed hex and sanitized on read (`normalizeHex`).
+    `App.tsx` writes them onto `<html>` as the `--paper`/`--ink` tokens and
+    **derives** the rest — `--scrim` (ink at 60%), `color-scheme` and the
+    `theme-color` meta from the paper's relative luminance — so a color is
+    decided in exactly one place. The old **Invert Colors** toggle is gone: it
+    was one point in this space, and it is the first two of four presets (Ink on
+    Paper · Paper on Ink · Amber CRT · Green CRT). Generated banner and portrait
+    art is a real 1-bit bitmap and stays black and white whatever is picked.
 - **Advanced screen** is an **index of sub-menus**, not one scroll: **Narrator**
   (voice + suggested actions), **Characters** (appearance · creation · the freeze
   rule · standings · departures · spotlight), **Images** (1-bit shading · location
@@ -637,7 +659,7 @@ All secondary screens — **member sheet, Party, Inventory, Quests, and every Se
 - **Party screen** lists the company in two halves — *In the scene n/3* (**Bench** / **Kick**) and *Benched* (**Activate** / **Kick**) — with a route to Characters when both are empty. The member sheet carries the same Kick/Add control, the adventure **standing** (active / benched / npc / departed / fallen) with a one-line explanation of what the current one means, **Revert Story Changes** when the story has diverged, and **Delete Character** (library-wide, player-only).
 - **Member sheet order:** portrait → **Image Options** (a closed disclosure: upload · download · remove · the custom portrait prompt) → **Edit** → the sheet → **Story** (Auto-Update, and Revert Story Changes when the story has diverged) → **Condition** → **Standing** → leave/delete. Who the character *is* comes first and everything you can *do* to them follows: the sheet used to open with six buttons and an image-prompt fieldset, so a screen whose entire purpose is the prose underneath them made the player scroll past all of it to reach a name. Nothing was removed — the once-a-character controls fold away, the rest moved below the text they act on.
 - **Member sheet fields:** Name · **Species** · **Sex** (both free text — the setting owns the vocabulary) · Appearance · Personality · Drive · Strengths · Flaws · **Notes** · Equipment, then the per-adventure **Condition** and **Standing**. **Notes** is the player's own field — no ✦, and no model writes it. In Edit mode the five *other* prose fields each carry a **✦ generate** button (see *Per-field generation*), and so does every **Equipment** row, beside its Remove (see *Item generation*); ✦ rather than ✨ because the sparkle is an emoji and browsers paint it in colour, which is one colour more than this app has — the same reason the portrait controls are ⟳ and ✎.
-- **Style:** pure black/white, monospace, square borders, no rounded corners, no color. Small token set in `theme.css` (`--ink #000`, `--paper #fff`) so it stays one system.
+- **Style:** two colors only, monospace, square borders, no rounded corners, no gradients. Small token set in `theme.css` (`--ink`, `--paper`, shipped as `#000`/`#fff`) so it stays one system — the pair is the player's (Appearance → Colors), but everything still reads through those two tokens and nothing else.
 
 ### Reading area
 
@@ -664,7 +686,7 @@ all about handing that space back:
   pinning the bottom drops the player at the last paragraph of prose they have
   not read, with the options shoving the opening line off the top. Shorter beats
   keep the old tail-follow.
-- **`Settings.textScale`** (S/M/L/XL, Appearance) scales narration **only** — chrome
+- **`Settings.textSize`** (pixels, Appearance) scales narration **only** — chrome
   keeps its sizes, so a large setting buys text rather than a blown-up
   interface. Prose leading went 1.3 → 1.6 (monospace at 1.3 is a wall), and
   player lines are no longer uppercased; the `>` and the rule already mark them.

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useStore } from "./store";
-import { fontTheme } from "./lib/settings";
+import { fontTheme, isDarkPaper, scrimFrom } from "./lib/settings";
 import { Header } from "./components/Header";
 import { ChatView } from "./components/ChatView";
 import { PartyStrip } from "./components/PartyStrip";
@@ -34,8 +34,10 @@ export default function App() {
   const hydrate = useStore((s) => s.hydrate);
   const hydrated = useStore((s) => s.hydrated);
   const screen = useStore((s) => s.screen);
-  const invert = useStore((s) => s.settings.invert);
+  const paper = useStore((s) => s.settings.paper);
+  const ink = useStore((s) => s.settings.ink);
   const font = useStore((s) => s.settings.font);
+  const webFonts = useStore((s) => s.settings.webFonts);
   const setupDone = useStore((s) => s.settings.setupDone);
 
   useEffect(() => {
@@ -88,31 +90,36 @@ export default function App() {
     return () => window.removeEventListener("popstate", onPop);
   }, []);
 
-  // Invert Colors is our dark-mode toggle: `data-theme="dark"` swaps the
-  // ink/paper tokens app-wide (theme.css), flipping every border, background,
-  // and glyph — but NOT the generated banner/portrait bitmaps, which are real
-  // pixels the token swap never touches. It is an attribute rather than a class
-  // on purpose: a class named `invert` collides with Tailwind's own `.invert`
-  // filter utility and inverted the whole page instead (see theme.css).
-  // Pinning `color-scheme` to the active theme tells the engine we own theming,
-  // so a dark-OS WebView won't apply its own force-dark pass (which would
-  // invert those images). Keep the browser chrome (theme-color) matched to the
-  // paper color too.
+  // The player's two colors, written straight onto <html> as the `--paper` /
+  // `--ink` tokens every component reads (theme.css, and Tailwind's
+  // `paper`/`ink` aliases). Setting them inline rather than swapping a
+  // `data-theme` palette means there is exactly one place a color is decided,
+  // and an arbitrary pair is no harder than the two we shipped.
+  //
+  // The rest is DERIVED here so it can never disagree with the pair: `--scrim`
+  // is the ink at 60% (the dice-toss backdrop), and `color-scheme` follows the
+  // paper's luminance. That last one is not cosmetic — it tells the engine we
+  // own theming, so a dark-OS WebView won't run its own force-dark pass over
+  // the generated banner/portrait bitmaps, which are real pixels no token
+  // touches. The browser chrome (theme-color) matches the paper too.
   useEffect(() => {
-    document.documentElement.dataset.theme = invert ? "dark" : "light";
-    document.documentElement.style.colorScheme = invert ? "dark" : "light";
-    document
-      .querySelector('meta[name="theme-color"]')
-      ?.setAttribute("content", invert ? "#000000" : "#ffffff");
-  }, [invert]);
+    const root = document.documentElement;
+    root.style.setProperty("--paper", paper);
+    root.style.setProperty("--ink", ink);
+    root.style.setProperty("--scrim", scrimFrom(ink));
+    root.style.colorScheme = isDarkPaper(paper) ? "dark" : "light";
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", paper);
+  }, [paper, ink]);
 
-  // Font choice rides the same one-attribute mechanism as the theme swap:
-  // `data-font` repoints `--font-mono` (theme.css) for the whole app. Routed
-  // through `fontTheme` so a stored value this build doesn't know about lands on
-  // the platform stack rather than an undefined family.
+  // Font choice rides a one-attribute mechanism of its own: `data-font`
+  // repoints `--font-mono` for the whole app — from theme.css for the bundled
+  // faces, from webFonts.ts's injected stylesheet for added ones. Routed
+  // through `fontTheme` so a stored value this build doesn't know about (or an
+  // added font since removed) lands on the platform stack rather than an
+  // undefined family.
   useEffect(() => {
-    document.documentElement.dataset.font = fontTheme(font);
-  }, [font]);
+    document.documentElement.dataset.font = fontTheme(font, webFonts);
+  }, [font, webFonts]);
 
   if (!hydrated) {
     return (

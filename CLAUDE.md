@@ -403,6 +403,26 @@ flag, so `syncImages` degrades to a cache probe (already-drawn art still shows),
 sheet, the banner cooldown countdown stops rendering, and the Image API Key +
 Image Model fields hide under the switch. Uploads/downloads/Remove keep working —
 none of them calls a model — and nothing stored is deleted.
+Post-MVP also: **an open Appearance screen** (`webFonts.ts`) — its three
+controls were three closed lists and are now three open ones. **Font** keeps the
+bundled faces and gains **Add**: a typed family is fetched from
+`fonts.googleapis.com/css2` (a 400 there *is* the spelling check), its
+**latin + latin-ext** faces read off the response's subset comments
+(`parseFontFaces`/`selectFaces`), the woff2 files downloaded into a new `fonts`
+object store (`db.ts`, DB v2) and re-injected each launch as `@font-face` +
+`[data-font]` rules over blob URLs — **downloaded, not linked**, so an added
+font behaves like a bundled one on a device that plays offline. Each face's
+`unicode-range` rides on `WebFont.ranges`: re-mounted without them two subsets
+both claim every character and a latin-ext file with no basic Latin blanks the
+app. **Text Size** is `Settings.textSize` in **pixels** (`[−] 16 px [+]`, ±2,
+10–40, `clampTextSize` on read; the old `s|m|l|xl` migrates to the 14/16/18/20
+its Tailwind classes already resolved to) — an added font carries no
+`size-adjust`, so the scale had to get finer. **Invert Colors** is gone,
+replaced by `Settings.paper`/`Settings.ink` (`normalizeHex` on read) written
+inline onto `<html>`, with `--scrim`, `color-scheme` and `theme-color`
+**derived** from the pair (`scrimFrom`, `isDarkPaper`) — `theme.css` lost its
+`[data-theme="dark"]` palette, so a colour question no longer has two answers.
+Invert survives as the first two of four presets.
 Deferred (post-MVP): rolling LLM summarization of the beats themselves,
 NPC/item art, TTS, weather animation, multi-world. Track scope in
 `DESIGN.md → Build Phases`.

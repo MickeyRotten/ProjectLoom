@@ -6,7 +6,7 @@ import { segmentDialogue } from "../lib/spotlight";
 import { parseInline } from "../lib/markdown";
 import { deriveToasts } from "../lib/toasts";
 import { OUTCOME_LABEL, bandScale, formatRoll, modifierNote } from "../lib/stakes";
-import type { Character, Message, TextScale } from "../types";
+import type { Character, Message } from "../types";
 
 /** Which message (id) is being edited, and the working draft. */
 type Editing = { id: string; role: "player" | "narrator"; draft: string };
@@ -16,17 +16,6 @@ const NEAR_BOTTOM_PX = 120;
 
 const isNearBottom = (el: HTMLElement) =>
   el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
-
-/**
- * Reading size for narration only. Chrome keeps its own sizes, so "L" buys
- * bigger prose rather than a bigger interface.
- */
-const SCALE_CLASS: Record<TextScale, string> = {
-  s: "text-sm",
-  m: "text-base",
-  l: "text-lg",
-  xl: "text-xl",
-};
 
 /**
  * The message log. Renders the opening narration, each turn, the live
@@ -54,7 +43,7 @@ export function ChatView() {
   const editUserTurn = useStore((s) => s.editUserTurn);
   const hasKey = useStore((s) => Boolean(s.settings.openRouterKey.trim()));
   const setScreen = useStore((s) => s.setScreen);
-  const textScale = useStore((s) => s.settings.textScale);
+  const textSize = useStore((s) => s.settings.textSize);
 
   // Which latest beat has its controls revealed (tap to toggle), and any
   // in-progress inline edit. Both reset when a turn streams or completes.
@@ -133,9 +122,16 @@ export function ChatView() {
 
   return (
     <div className="relative mt-3 flex min-h-0 flex-1 flex-col">
+      {/*
+        Reading size for narration only, in the player's own pixels. It sits on
+        this container and nowhere else, so chrome (buttons, chips, labels —
+        all of which set their own Tailwind size) keeps its dimensions and a
+        large setting buys prose rather than a blown-up interface.
+      */}
       <section
         ref={scrollRef}
-        className={`flex-1 space-y-4 overflow-y-auto px-3 pb-3 ${SCALE_CLASS[textScale]}`}
+        style={{ fontSize: `${textSize}px` }}
+        className="flex-1 space-y-4 overflow-y-auto px-3 pb-3"
       >
         <Beat role="narrator" text={opening} party={party} />
 
