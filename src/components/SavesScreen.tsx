@@ -22,6 +22,7 @@ export function SavesScreen() {
   const slots = useStore((s) => s.slots);
   const refreshSlots = useStore((s) => s.refreshSlots);
   const snapshotSlot = useStore((s) => s.snapshotSlot);
+  const overwriteSlot = useStore((s) => s.overwriteSlot);
   const restoreSlot = useStore((s) => s.restoreSlot);
   const dropSlot = useStore((s) => s.dropSlot);
   const [name, setName] = useState("");
@@ -90,6 +91,25 @@ export function SavesScreen() {
                 className={btnSmall}
               >
                 Restore
+              </button>
+              {/* Overwrite in place: same slot, same name, current game. The
+                  alternative was a second save with the same name beside the
+                  first, which is what the list fills up with otherwise. */}
+              <button
+                type="button"
+                onClick={() =>
+                  ask(
+                    {
+                      title: `Overwrite "${s.name}"?`,
+                      body: "The snapshot stored in this slot is replaced by the game you are playing now. It cannot be recovered.",
+                      confirmLabel: "Overwrite",
+                    },
+                    () => void overwriteSlot(s.id),
+                  )
+                }
+                className={btnSmall}
+              >
+                Overwrite
               </button>
               <button
                 type="button"
