@@ -37,7 +37,7 @@ const MEMBER_SLOTS = 3;
  * sheet, which is where the name is spelled out.
  */
 export function PartyStrip() {
-  const characters = useStore((s) => s.characters);
+  const characters = useStore((s) => s.game.characters);
   const roster = useStore((s) => s.game.roster);
   const openMember = useStore((s) => s.openMember);
   const setScreen = useStore((s) => s.setScreen);

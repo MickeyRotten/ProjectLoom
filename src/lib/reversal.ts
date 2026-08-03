@@ -16,11 +16,11 @@ import { normalizeRoster } from "./roster";
  * a block omits that array; the spotlight only remaps `roster` when someone
  * spoke). So a plain narration turn stores just the three scalars.
  *
- * The global character LIBRARY is deliberately never captured. Undoing a turn
- * that recruited someone un-parties them (the roster restore does that) but
- * leaves the character in Characters — only the player ever deletes a
- * character, and not capturing it means an undo can't clobber a library edit
- * made since the turn ran.
+ * The CAST (`GameState.characters`) is deliberately never captured, even now
+ * that it lives in the same document. Undoing a turn that recruited someone
+ * un-parties them (the roster restore does that) but leaves the character in
+ * Characters — only the player ever deletes a character, and not capturing the
+ * sheets means an undo can't clobber a sheet edit made since the turn ran.
  */
 export function captureReversal(pre: GameState, post: GameState): Reversal {
   const rev: Reversal = {

@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type {
+  AdventureImports,
   Character,
   CharacterOverride,
   DiceCast,
@@ -14,7 +15,7 @@ import type {
   Settings,
   Standing,
 } from "./types";
-import { defaultPC, ensureGold, newCharacter, newGame } from "./lib/defaults";
+import { ensureGold, newCharacter, newGame, seedAdventure, withPC } from "./lib/defaults";
 import { loadSettings, saveSettings } from "./lib/settings";
 import {
   currentAccount,
@@ -29,9 +30,8 @@ import type { GameSummary } from "./lib/sync";
 import { downloadWebFont, mountWebFonts, unmountWebFont } from "./lib/webFonts";
 import {
   loadActiveGame,
-  loadCharacters,
+  loadLegacyCharacters,
   saveActiveGame,
-  saveCharacters,
   loadImage,
   saveImage,
   deleteImage,
@@ -180,12 +180,6 @@ export interface SyncConflict {
 export interface LoomStore {
   settings: Settings;
   game: GameState;
-  /**
-   * The GLOBAL character library — every character ever authored or written
-   * into the story, independent of any adventure. `game.roster` says which of
-   * them are travelling with the player right now.
-   */
-  characters: Character[];
   hydrated: boolean;
 
   // Turn/streaming state
@@ -267,7 +261,7 @@ export interface LoomStore {
   // Authoring (Phase 4) — every edit mutates the active game, autosaved.
   updateScenario: (patch: Partial<Scenario>) => void;
   /**
-   * Player-authored edit: writes the global character, and drops any story
+   * Player-authored edit: writes the authored character sheet, and drops any story
    * override on the fields touched so the player's own text wins immediately.
    */
   updateCharacter: (id: string, patch: Partial<Character>) => void;
@@ -327,7 +321,7 @@ export interface LoomStore {
    * Move a character along this adventure's standing ladder — into the party
    * (`active`, capped at PARTY_LIMIT), onto the bench, to an NPC ally, out of
    * the party entirely (`none` — what Kick does), or out of the story
-   * (`departed` / `fallen`). Never touches the global character.
+   * (`departed` / `fallen`). Never touches the character's sheet.
    */
   setStanding: (id: string, standing: Standing) => void;
   /** Set or clear this adventure's mark on a character (blank clears). */
@@ -382,7 +376,12 @@ export interface LoomStore {
   restoreSlot: (id: string) => Promise<void>;
   dropSlot: (id: string) => Promise<void>;
 
-  newAdventure: () => void;
+  /**
+   * Replace the active game with a fresh one, carrying over exactly what the
+   * player ticked in the New Adventure dialog (`AdventureImports`). Nothing is
+   * implicit any more — the cast is part of the adventure being thrown away.
+   */
+  newAdventure: (imports: AdventureImports) => void;
   sendTurn: (text: string, opts?: SendTurnOptions) => Promise<void>;
   /** Re-send the input of the last failed turn. */
   retryTurn: () => void;
@@ -674,36 +673,48 @@ export const useStore = create<LoomStore>((set, get) => {
   /** Abort handle for the in-flight turn (closure state — not reactive). */
   let turnAbort: AbortController | null = null;
 
-  /** Persist the library alongside whatever game slice just changed. */
+  /**
+   * Write the cast. It is a slice of the game document like any other now, so
+   * this exists for the same reason `setEntry` does: one place that both `set`s
+   * and saves, rather than thirty call sites remembering to do both.
+   */
   function commitCharacters(characters: Character[]) {
-    set({ characters });
-    void saveCharacters(characters);
+    const game = { ...get().game, characters };
+    set({ game });
+    void saveActiveGame(game);
   }
 
   /**
    * Apply one gear move — pack ⇄ one character's kit — writing BOTH halves.
    *
-   * The two sides live in different stores (`game.inventory` is per-adventure,
-   * `Character.equipment` rides the global library), so an item mid-move is the
-   * one moment it could be duplicated or dropped. `equip.ts` computes both new
-   * arrays or returns null; this writes both or neither.
+   * `equip.ts` computes both new arrays or returns null; this writes both or
+   * neither. They used to live in different stores, which made an item mid-move
+   * the one moment it could be duplicated or dropped; now that the cast is part
+   * of the game document it is a single write, and the invariant holds by
+   * construction rather than by care.
    */
   function moveGear(
     characterId: string,
     move: (inventory: Item[], equipment: Equipment[]) => Move | null,
   ) {
-    const { game, characters } = get();
-    const character = characters.find((c) => c.id === characterId);
+    const game = get().game;
+    const character = game.characters.find((c) => c.id === characterId);
     if (!character) return;
     const moved = move(game.inventory, character.equipment);
     if (!moved) return;
 
-    const next = { ...game, inventory: moved.inventory };
+    // Both halves now live in the same document, so the move is one write —
+    // there is no longer a moment where the item could be in both places or
+    // neither, whatever happens between the two saves.
+    const next: GameState = {
+      ...game,
+      inventory: moved.inventory,
+      characters: game.characters.map((c) =>
+        c.id === characterId ? { ...c, equipment: moved.equipment } : c,
+      ),
+    };
     set({ game: next });
     void saveActiveGame(next);
-    commitCharacters(
-      characters.map((c) => (c.id === characterId ? { ...c, equipment: moved.equipment } : c)),
-    );
   }
 
   /**
@@ -721,10 +732,13 @@ export const useStore = create<LoomStore>((set, get) => {
       account: () => get().account,
       busy: () => get().streaming,
       game: () => get().game,
-      characters: () => get().characters,
-      async adoptGame(game, recovered) {
-        const library = mergeLibrary(get().characters, recovered);
-        if (library !== get().characters) commitCharacters(library);
+      async adoptGame(incoming, legacyCast) {
+        // A game pushed by a build that kept the cast outside it carries none.
+        // The cast in hand is the only one there is — adopting an empty one
+        // would leave the pulled adventure with no player character.
+        const game = legacyCast
+          ? { ...incoming, characters: get().game.characters }
+          : incoming;
         const lastNarrator = [...game.messages].reverse().find((m) => m.role === "narrator");
         set({
           game,
@@ -737,11 +751,6 @@ export const useStore = create<LoomStore>((set, get) => {
         // The pulled game names locations and companions this device may have
         // no art for yet; the blobs arrive in the same pass, so this publishes
         // whatever is already cached and leaves the rest to the next one.
-        get().syncImages();
-      },
-      async adoptCharacters(characters) {
-        set({ characters });
-        await saveCharacters(characters);
         get().syncImages();
       },
       adoptSettings(settings) {
@@ -797,7 +806,7 @@ export const useStore = create<LoomStore>((set, get) => {
   }
 
   const portrait = (memberId: string, force: boolean) => {
-    const base = get().characters.find((c) => c.id === memberId);
+    const base = get().game.characters.find((c) => c.id === memberId);
     if (!base) return;
     // Image generation off (Model & Key): ⟳ has nothing to do, and the
     // automatic pass degrades to a cache probe — a portrait drawn before the
@@ -810,7 +819,7 @@ export const useStore = create<LoomStore>((set, get) => {
     if (!force && base.noPortrait) return;
     if (force && base.noPortrait) {
       commitCharacters(
-        get().characters.map((c) => (c.id === memberId ? { ...c, noPortrait: false } : c)),
+        get().game.characters.map((c) => (c.id === memberId ? { ...c, noPortrait: false } : c)),
       );
     }
     // Portraits are drawn from what the character looks like IN THIS ADVENTURE,
@@ -838,7 +847,6 @@ export const useStore = create<LoomStore>((set, get) => {
   return {
   settings: loadSettings(),
   game: newGame(),
-  characters: [defaultPC()],
   hydrated: false,
 
   streaming: false,
@@ -874,32 +882,39 @@ export const useStore = create<LoomStore>((set, get) => {
   fieldGenError: null,
 
   async hydrate() {
-    const stored = await loadCharacters();
     const loaded = await loadActiveGame();
-
-    // The library is authoritative; a pre-split save contributes any character
-    // it still holds that the library has never seen. Existing ids win, so a
-    // character edited since the save is never clobbered by the old copy.
-    const characters = mergeLibrary(stored ?? [], loaded?.characters ?? []);
-    const library = characters.length ? characters : [defaultPC()];
-
     if (loaded) {
+      // The one-time fold: a game stored while the cast was global has none of
+      // its own, so it takes the old library wholesale. Anything that library
+      // no longer has — a pre-split save still carrying its own people — is
+      // folded in behind it, so no authored character is lost on the way over.
+      const game = loaded.legacyCast
+        ? {
+            ...loaded.game,
+            characters: withPC(
+              mergeLibrary((await loadLegacyCharacters()) ?? [], loaded.game.characters),
+            ),
+          }
+        : { ...loaded.game, characters: withPC(loaded.game.characters) };
+
       // Restore trailing options from the last narrator turn.
-      const lastNarrator = [...loaded.game.messages]
-        .reverse()
-        .find((m) => m.role === "narrator");
+      const lastNarrator = [...game.messages].reverse().find((m) => m.role === "narrator");
       set({
-        game: loaded.game,
-        characters: library,
+        game,
         options: lastNarrator?.appliedDeltas?.options ?? [],
         hydrated: true,
       });
-      void saveActiveGame(loaded.game);
+      void saveActiveGame(game);
     } else {
-      set({ characters: library, hydrated: true });
-      void saveActiveGame(get().game);
+      // No stored game at all — but a device upgrading from a build that had
+      // never autosaved could still hold a library, so it is worth asking.
+      const stored = await loadLegacyCharacters();
+      const game = stored?.length
+        ? { ...get().game, characters: withPC(stored) }
+        : get().game;
+      set({ game, hydrated: true });
+      void saveActiveGame(game);
     }
-    void saveCharacters(library);
     get().syncImages();
     // Added fonts live as blobs in IndexedDB, so their stylesheet has to be
     // rebuilt every launch — nothing else mounts them.
@@ -998,7 +1013,7 @@ export const useStore = create<LoomStore>((set, get) => {
   },
 
   updateCharacter(id, patch) {
-    const characters = get().characters.map((c) => (c.id === id ? { ...c, ...patch } : c));
+    const characters = get().game.characters.map((c) => (c.id === id ? { ...c, ...patch } : c));
     commitCharacters(characters);
 
     // A player edit is the authored truth, so it also retires the story's
@@ -1020,7 +1035,7 @@ export const useStore = create<LoomStore>((set, get) => {
   addCharacter() {
     const character = newCharacter(uid());
     // Lands in the library only — the player adds them to the party from there.
-    commitCharacters([...get().characters, character]);
+    commitCharacters([...get().game.characters, character]);
     return character.id;
   },
 
@@ -1029,7 +1044,7 @@ export const useStore = create<LoomStore>((set, get) => {
     // A turn in flight owns the roster (its reversal snapshot is already
     // captured), so a sheet rewrite mid-stream would be silently undone.
     if (!selected.length || get().autoUpdating || get().streaming) return false;
-    const base = get().characters.find((c) => c.id === id);
+    const base = get().game.characters.find((c) => c.id === id);
     if (!base) return false;
     const character = resolve(base, getEntry(get().game.roster, id));
 
@@ -1045,7 +1060,7 @@ export const useStore = create<LoomStore>((set, get) => {
         throw new Error("The model returned no usable fields. Try again.");
       }
       // The character can be deleted while the call is in flight.
-      if (!get().characters.some((c) => c.id === id)) {
+      if (!get().game.characters.some((c) => c.id === id)) {
         set({ autoUpdating: false });
         return false;
       }
@@ -1177,7 +1192,7 @@ export const useStore = create<LoomStore>((set, get) => {
         settings: get().settings,
         messages: buildScenarioMessages({
           game: get().game,
-          characters: get().characters,
+          characters: get().game.characters,
           field,
           hint,
         }),
@@ -1237,9 +1252,9 @@ export const useStore = create<LoomStore>((set, get) => {
 
   removeCharacter(id) {
     // The PC is never deletable — only other characters.
-    const target = get().characters.find((c) => c.id === id);
+    const target = get().game.characters.find((c) => c.id === id);
     if (!target || target.role === "pc") return;
-    commitCharacters(get().characters.filter((c) => c.id !== id));
+    commitCharacters(get().game.characters.filter((c) => c.id !== id));
 
     // Forget them in the active adventure too. Save slots may still name them;
     // `partyMembers` skips ids the library no longer has, so those degrade to a
@@ -1267,7 +1282,7 @@ export const useStore = create<LoomStore>((set, get) => {
 
   setStanding(id, standing) {
     const g = get().game;
-    const target = get().characters.find((c) => c.id === id);
+    const target = get().game.characters.find((c) => c.id === id);
     if (!target || target.role !== "member") return;
     // Only the scene is capped. Everything else — bench, NPC, kick, departed —
     // is always allowed, and a standing change is never coupled to another:
@@ -1275,7 +1290,7 @@ export const useStore = create<LoomStore>((set, get) => {
     if (
       standing === "active" &&
       standingOf(g.roster, id) !== "active" &&
-      partyFull(get().characters, g.roster)
+      partyFull(get().game.characters, g.roster)
     )
       return;
     const roster = setEntryStanding(g.roster, id, standing);
@@ -1404,22 +1419,10 @@ export const useStore = create<LoomStore>((set, get) => {
     moveGear(characterId, (inventory, equipment) => moveToPack(inventory, equipment, index));
   },
 
-  newAdventure() {
-    // Reseed from the current scenario. Characters are global and untouched —
-    // the whole cast survives, but the PARTY starts empty and is rebuilt from
-    // Characters or by the narrator recruiting during play.
-    //
-    // The world's NPCs carry over: an ally is a fact about the setting, not
-    // about one run, and re-marking the whole supporting cast by hand every
-    // new adventure is the kind of chore that just doesn't get done.
-    const g = get().game;
-    const fresh = newGame(g.scenario);
-    const game = {
-      ...fresh,
-      roster: g.roster
-        .filter((e) => e.standing === "npc")
-        .map((e) => ({ id: e.id, standing: "npc" as const, lastSpokeTurn: 0 })),
-    };
+  newAdventure(imports) {
+    // What survives is the player's call now that the cast belongs to the
+    // adventure — `seedAdventure` holds every rule; this just writes the result.
+    const game = seedAdventure(get().game, imports);
     set({ game, options: [], streamText: "", error: null, failedInput: null });
     void saveActiveGame(game);
     get().syncImages();
@@ -1520,12 +1523,14 @@ export const useStore = create<LoomStore>((set, get) => {
   async restoreSlot(id) {
     const loaded = await loadSlot(id);
     if (!loaded) return;
-    const { game } = loaded;
-    // A slot restores an ADVENTURE, never the cast — characters authored since
-    // the snapshot must survive it. A pre-split slot still carries characters,
-    // so fold in any the library has never seen.
-    const library = mergeLibrary(get().characters, loaded.characters);
-    if (library !== get().characters) commitCharacters(library);
+    // A slot restores a whole ADVENTURE — its cast and its player character
+    // included, which is the point: a snapshot you restore should give you back
+    // the people you saved it with, not whoever happens to be in the app now.
+    // A slot taken while the cast lived outside the game carries none, so it
+    // keeps the one in hand rather than restoring to nobody.
+    const game = loaded.legacyCast
+      ? { ...loaded.game, characters: get().game.characters }
+      : { ...loaded.game, characters: withPC(loaded.game.characters) };
     const lastNarrator = [...game.messages].reverse().find((m) => m.role === "narrator");
     set({
       game,
@@ -1578,7 +1583,7 @@ export const useStore = create<LoomStore>((set, get) => {
     // themselves come from the player's system (Menu → RPG System).
     const stakes = computeStakes(
       trimmed,
-      playerCharacter(get().characters, base.roster),
+      playerCharacter(get().game.characters, base.roster),
       turn,
       stakeRules(get().settings),
     );
@@ -1601,7 +1606,7 @@ export const useStore = create<LoomStore>((set, get) => {
     const messages = buildMessages({
       settings: get().settings,
       game: base,
-      characters: get().characters,
+      characters: get().game.characters,
       playerMessage: trimmed,
       stakes,
       historyBudgetTokens: get().settings.historyBudget,
@@ -1619,7 +1624,7 @@ export const useStore = create<LoomStore>((set, get) => {
 
       const { prose, block } = parseLoomResponse(raw);
       const g = get().game;
-      const library = get().characters;
+      const library = get().game.characters;
       // Fold restated ops and no-ops out BEFORE applying — and record the folded
       // block, not the raw one, so the transcript's chips report what actually
       // happened. The prose rides along for the one check that reads it: a Gold
@@ -1641,8 +1646,9 @@ export const useStore = create<LoomStore>((set, get) => {
       const spokeIds = new Set(detectSpeakers(prose, party));
       for (const id of spokeIds) roster = setEntry(roster, id, { lastSpokeTurn: turn });
 
-      // A turn may have written new characters into the global library.
-      if (characters !== library) commitCharacters(characters);
+      // A turn may have written new characters into the cast; it rides into
+      // `nextGame` below with every other slice the turn touched, so there is
+      // one write and one autosave for the whole turn.
 
       // The beat itself, minus its reversal — the journal reads this turn's own
       // ops, so the message has to exist before the snapshot does.
@@ -1697,6 +1703,7 @@ export const useStore = create<LoomStore>((set, get) => {
       const nextGame: GameState = {
         ...g,
         messages: [...g.messages, narratorMsg],
+        characters,
         roster,
         journal,
         day: scene.day,
@@ -1805,7 +1812,7 @@ export const useStore = create<LoomStore>((set, get) => {
     // The snapshot predates any character deleted since the turn ran, and undo
     // never touches the library — so drop entries nothing can resolve rather
     // than let them sit in the adventure holding party slots.
-    const roster = pruneRoster(get().characters, restored.roster);
+    const roster = pruneRoster(get().game.characters, restored.roster);
 
     // Drop both messages of that turn; restore options from the now-latest beat.
     const messages = g.messages.filter((m) => m.turn !== narrator.turn);
@@ -1891,7 +1898,7 @@ export const useStore = create<LoomStore>((set, get) => {
     // only after the PC sheet is opened once. Benched members are covered as
     // well, since the Party screen shows them; everyone further out gets theirs
     // lazily, when their sheet opens.
-    const chars = get().characters;
+    const chars = get().game.characters;
     for (const c of chars) if (c.role === "pc") portrait(c.id, false);
     for (const m of partyMembers(chars, g.roster)) portrait(m.id, false);
   },
@@ -1943,9 +1950,9 @@ export const useStore = create<LoomStore>((set, get) => {
       await saveSource(key, file);
       publishImage(key, blob);
       // Supplying art is the clearest possible "I want a picture here".
-      if (get().characters.some((c) => c.id === memberId && c.noPortrait)) {
+      if (get().game.characters.some((c) => c.id === memberId && c.noPortrait)) {
         commitCharacters(
-          get().characters.map((c) => (c.id === memberId ? { ...c, noPortrait: false } : c)),
+          get().game.characters.map((c) => (c.id === memberId ? { ...c, noPortrait: false } : c)),
         );
       }
     } catch (err) {
@@ -1972,14 +1979,14 @@ export const useStore = create<LoomStore>((set, get) => {
     set({ images });
     setImageError(key, null);
     commitCharacters(
-      get().characters.map((c) => (c.id === memberId ? { ...c, noPortrait: true } : c)),
+      get().game.characters.map((c) => (c.id === memberId ? { ...c, noPortrait: true } : c)),
     );
   },
 
   async downloadPortrait(memberId) {
     const blob = await loadImage(portraitKey(memberId));
     if (!blob) return false;
-    const name = get().characters.find((c) => c.id === memberId)?.name ?? "";
+    const name = get().game.characters.find((c) => c.id === memberId)?.name ?? "";
     try {
       // The stored blob is the display copy — a ~192px sliver that only looks
       // right because the app renders it `pixelated`. Bake that upscale into

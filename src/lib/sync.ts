@@ -21,11 +21,24 @@ import type { GameState, Settings } from "../types";
  * ------------------------------------------------------------------ */
 
 /** The whole document vocabulary. Slots are `slot:<id>`; the rest are singletons. */
-export type SyncKey = "active" | "characters" | "settings" | `slot:${string}`;
+export type SyncKey = "active" | "settings" | `slot:${string}`;
 
 export const ACTIVE_DOC: SyncKey = "active";
-export const CHARACTERS_DOC: SyncKey = "characters";
 export const SETTINGS_DOC: SyncKey = "settings";
+
+/**
+ * The cast's own document, from when the library was global. It is not in
+ * `SyncKey` any more — the cast rides inside `active` and inside each slot,
+ * because that is where it lives on the device now.
+ *
+ * The name still has to be known, though: a device that synced under an older
+ * build has a `doc:characters` stamp sitting in `meta` and a row sitting on the
+ * server. A pass that saw the stamp with nothing local behind it would read the
+ * pair as a deletion and push a tombstone, wiping the cast out from under any
+ * device still running that build. So the key is skipped instead — left exactly
+ * as it is, by both sides.
+ */
+export const LEGACY_CHARACTERS_DOC = "characters";
 
 const SLOT_DOC_PREFIX = "slot:";
 
@@ -133,16 +146,21 @@ export function planDoc(
  *
  * `ask` is reserved for the active game, the one document where both answers
  * are real games somebody played and picking wrong is a loss. Everything else
- * has a right answer that needs no interruption: the cast is a set and merges,
- * settings are preferences where the newer edit is simply the current one, and
- * a save slot is an immutable snapshot — the same id cannot hold two different
- * games, so whatever the server has is fine.
+ * has a right answer that needs no interruption: settings are preferences where
+ * the newer edit is simply the current one, and a save slot is an immutable
+ * snapshot — the same id cannot hold two different games, so whatever the
+ * server has is fine.
+ *
+ * The cast used to have a policy of its own (`merge`, a set union). It no
+ * longer has a document: it is part of the active game, so it is covered by the
+ * one prompt — which is the right answer now that the cast is per-adventure. A
+ * union would have quietly refilled a New Adventure's empty cast from the other
+ * device's copy.
  */
-export type ConflictPolicy = "ask" | "merge" | "newest" | "remote";
+export type ConflictPolicy = "ask" | "newest" | "remote";
 
 export function conflictPolicy(key: string): ConflictPolicy {
   if (key === ACTIVE_DOC) return "ask";
-  if (key === CHARACTERS_DOC) return "merge";
   if (key === SETTINGS_DOC) return "newest";
   return "remote";
 }

@@ -10,15 +10,18 @@ import { PARTY_LIMIT, allMembers, partyCount } from "../lib/roster";
 const FILTER_THRESHOLD = 8;
 
 /**
- * Characters (DESIGN.md → Menu) — the GLOBAL cast library. Every character ever
- * authored or written into the story lives here and survives New Adventure;
- * what they are to you *this* adventure — in the scene, benched, an ally, gone —
- * is a per-adventure standing managed from these rows (or the member sheet).
- * "+ New Character" creates someone in the library only. The PC is always
- * present and can't be removed (handled in the sheet + store).
+ * Characters (DESIGN.md → Menu) — THIS adventure's cast. Every character
+ * authored or written into the story lives here; what they are to you right now
+ * — in the scene, benched, an ally, gone — is a standing managed from these rows
+ * (or the member sheet). "+ New Character" creates someone in the cast without
+ * putting them in the party. The PC is always present and can't be removed
+ * (handled in the sheet + store).
+ *
+ * The cast belongs to the adventure: a save slot restores the people it was
+ * taken with, and New Adventure asks which of them to bring.
  */
 export function CharactersScreen() {
-  const characters = useStore((s) => s.characters);
+  const characters = useStore((s) => s.game.characters);
   const roster = useStore((s) => s.game.roster);
   const openMember = useStore((s) => s.openMember);
   const addCharacter = useStore((s) => s.addCharacter);

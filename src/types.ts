@@ -35,9 +35,15 @@ export interface Equipment {
 export type CharacterRole = "pc" | "member";
 
 /**
- * An authored character in the GLOBAL cast library — adventure-independent and
- * outliving every New Adventure. Party membership and everything else that is
- * true only "this run" lives in `RosterEntry`, not here.
+ * An authored character in THIS adventure's cast (`GameState.characters`) — the
+ * sheet, and only the sheet. Party membership and everything else that changes
+ * as the story runs lives in `RosterEntry`, not here.
+ *
+ * The cast used to be global, outliving every New Adventure. It isn't: a save
+ * slot is a snapshot of a whole adventure, and a cast sitting outside it meant
+ * restoring one gave you the story back with somebody else's people in it — the
+ * player character included. It lives in the game document now, which is what
+ * makes a snapshot restore the game you actually saved.
  */
 export interface Character {
   id: string;
@@ -365,7 +371,17 @@ export interface JournalEntry {
 
 export interface GameState {
   scenario: Scenario;
-  /** Per-adventure character state. The cast itself is stored globally. */
+  /**
+   * This adventure's cast — every authored sheet, the PC first among them.
+   * Always holds exactly one `role: "pc"` character.
+   */
+  characters: Character[];
+  /**
+   * Per-adventure character STATE, keyed by `Character.id` — standing,
+   * last-spoke, conditions, story overrides. Still separate from the sheets
+   * above even though both now live in this document: a sheet is authored once
+   * and frozen, and this is the half the story keeps rewriting.
+   */
   roster: RosterEntry[];
   worldNotes: Note[];
   inventory: Item[];
@@ -389,6 +405,29 @@ export interface GameState {
    * Undefined on a fresh or pre-cooldown adventure, which reads as "never".
    */
   lastBannerTurn?: number;
+}
+
+/**
+ * What a New Adventure carries over from the one being replaced.
+ *
+ * Everything here used to be implicit and un-negotiable: the scenario and the
+ * whole cast always survived, the world notes never did. Now that the cast is
+ * part of the adventure, "start again" has to ask — the same four things are
+ * either the setting you have built up over weeks or exactly the baggage you
+ * are trying to leave behind, and the app cannot know which.
+ *
+ * `pc` and `characters` are separate because they usually differ: a new run in
+ * the same world with the same hero is the common case, and so is a new hero in
+ * a world full of people you wrote.
+ */
+export interface AdventureImports {
+  /** Title, premise, opening narration, start day + location. */
+  scenario: boolean;
+  /** The player character's sheet, as authored. */
+  pc: boolean;
+  /** Every other character sheet in the cast. */
+  characters: boolean;
+  worldNotes: boolean;
 }
 
 /**

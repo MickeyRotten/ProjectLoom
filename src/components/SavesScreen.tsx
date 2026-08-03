@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useStore } from "../store";
+import type { SaveSlot } from "../lib/db";
 import { OverlayHeader } from "./OverlayHeader";
 import { btn, btnSmall } from "./fields";
 import { useConfirm } from "./useConfirm";
@@ -8,7 +9,15 @@ import { useConfirm } from "./useConfirm";
  * Saves (DESIGN.md → Menu): named snapshot slots of the whole active game.
  * Snapshot the current game under a name, restore a slot (replacing the active
  * game), or delete one. The active game keeps autosaving independently.
+ *
+ * "The whole active game" now means the cast and the player character too —
+ * they live in `GameState`, so a restored slot gives back the people the story
+ * was saved with rather than whoever happens to be in the app.
  */
+/** The player character a slot was saved with, or "" for a pre-cast slot. */
+const pcName = (slot: SaveSlot): string =>
+  slot.game.characters?.find((c) => c.role === "pc")?.name.trim() ?? "";
+
 export function SavesScreen() {
   const slots = useStore((s) => s.slots);
   const refreshSlots = useStore((s) => s.refreshSlots);
@@ -60,6 +69,10 @@ export function SavesScreen() {
             </div>
             <div className="text-sm opacity-70">
               {s.game.scenario.title} · Day {s.game.day} · Turn {s.game.turnNumber}
+              {/* Whose story it is — the one thing a restore now brings back
+                  that it didn't before. Absent on slots taken while the cast
+                  lived outside the game, which restore the cast in hand. */}
+              {pcName(s) && ` · ${pcName(s)}`}
             </div>
             <div className="flex gap-2">
               <button
@@ -68,7 +81,7 @@ export function SavesScreen() {
                   ask(
                     {
                       title: `Restore "${s.name}"?`,
-                      body: "The game you are playing now is replaced. Snapshot it first if you want to keep it.",
+                      body: "The game you are playing now is replaced — its cast and player character included. Snapshot it first if you want to keep it.",
                       confirmLabel: "Restore",
                     },
                     () => void restoreSlot(s.id),

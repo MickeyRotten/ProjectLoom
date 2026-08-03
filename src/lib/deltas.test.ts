@@ -8,7 +8,7 @@ function game(): GameState {
   return newGame();
 }
 
-/** The global character library: just the PC unless a test adds more. */
+/** The adventure's cast: just the PC unless a test adds more. */
 function lib(...extra: Character[]): Character[] {
   return [defaultPC(), ...extra];
 }

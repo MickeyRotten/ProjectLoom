@@ -71,7 +71,7 @@ loop. The model returns **narration prose followed by one machine-read JSON bloc
 - `options` are the **AI-generated action buttons** — inline in the same call, so no extra request per turn (Wayward's `inline` action-suggestions mode).
 - State changes (`location`/`day`/`weather`/`party`/`inventory`/`quests`) are applied to the active save (op-based add/update/remove; inventory carries `quantity`, quests carry `reward`). `spoke` is a hint, but **`lastSpokeTurn` is updated deterministically** from the prose via the ported `detectSpeakers` (never trust the model alone).
 - **`location` is ONE place name, the most specific one.** The protocol says so ("Damp Cellar", never "Boars Head Tavern - Damp Cellar"), and `deltas.ts → simplifyLocation` enforces it on the way in: a compound joined by ` - `, ` — `, ` / `, ` > `, ` | ` or `: ` keeps only the **last** segment, since with those joiners the tail is the narrower place. Prompt wording alone wasn't enough — the location is a scene label *and* the banner's cache key, so "Tavern - Damp Cellar" is a different key from "Damp Cellar" and the same room gets drawn again every time the model changes its mind about the prefix. Commas are deliberately **not** joiners ("Rodstroke, Mesmeria" nests the other way round), and a hyphen without surrounding spaces is part of a name ("Half-Moon Inn"). A location that is nothing but separators leaves the scene unchanged.
-- `party` ops match **by name across the whole character library**, so a companion from an earlier adventure is re-used, not duplicated. **A sheet is authored once, at creation, and frozen after**: only an `add` naming someone genuinely new writes `species`/`description`/`personality`/`drive`/`strengths`/`flaws` **and their starting `equipment`** (straight onto the new `Character`) — the narrator kits a companion out from the appearance it just wrote, and the gear is the player's from then on. Every later op — `add` or `update` — carries `standing` and nothing else; sheet fields on a character who already exists are dropped. An `add`/`update` may carry `"standing": "active" | "benched" | "npc"`, and a `remove` `"standing": "departed" | "fallen"` — nothing the model emits ever deletes anyone. See *Characters ⟂ Party*.
+- `party` ops match **by name across the whole cast**, so a companion from an earlier adventure is re-used, not duplicated. **A sheet is authored once, at creation, and frozen after**: only an `add` naming someone genuinely new writes `species`/`description`/`personality`/`drive`/`strengths`/`flaws` **and their starting `equipment`** (straight onto the new `Character`) — the narrator kits a companion out from the appearance it just wrote, and the gear is the player's from then on. Every later op — `add` or `update` — carries `standing` and nothing else; sheet fields on a character who already exists are dropped. An `add`/`update` may carry `"standing": "active" | "benched" | "npc"`, and a `remove` `"standing": "departed" | "fallen"` — nothing the model emits ever deletes anyone. See *Characters ⟂ Party*.
 - **An op that changes nothing is not an op** (`deltas.ts → reconcileBlock`) — every channel, folded before anything applies or records it. A narrator asked every turn *what changed* answers with the state instead: it re-reports an acquisition it already made, re-states a mark someone already carries, re-sends the Gold total it can see in INVENTORY. Most of that is harmless to the state (setting X to what X already is costs nothing) but **inventory `add` merges quantity**, so a restated `add` is `+1` a turn and the pack fills with Rusty Key ×7 — and none of it is harmless to the transcript, since `toasts.ts` derives its chips from the recorded block. A chip is a claim that something happened: "Hiro: Armed with a strange, glowing sword" on four beats in a row, "Gold: 15" on a beat where nobody paid anybody. So a row is dropped when the state it asks for is the state already there — a condition equal to the current mark, an `update` to the count it already is, a quest `add` for a quest already on the board, a party op leaving someone where they stand, a `remove` for something not held, an op naming a character or item nothing resolves. Plus the two the data shape creates: an **exact-duplicate row inside one block** is written once (keys sorted, so field order can't hide a copy), and an inventory **`add` with NO `quantity` for an item already held** is a restatement — dropped, or demoted to the `update` it meant if it brought a new `description`. An `add` *with* a quantity is always honoured ("picked up 2 more torches" is a real event). State is tracked *as the block runs*, so a pickup earlier in the same block counts, and Gold stays held through a `remove` (the purse empties, the row survives). The store applies **and records** the folded block.
 - **Gold has to be earned in the prose** (`deltas.ts → goldIsNarrated`). Gold is the field a narrator restates and then quietly improvises: shown "Gold ×15" every turn and asked what changed, it starts answering with a number — 15, then 25, then 45 — across beats about mushrooms and satchels where not a coin is mentioned. A restated total is caught as a no-op; an **invented** one is a real change, and the only evidence it never happened is the narration. So a Gold row that MOVES the total is dropped unless the beat contains a money word (`MONEY_WORDS` — the nouns of coin and the verbs of paying, matched on word boundaries so "golden wheat" and "coincidence" are not money). Deliberately generous, because the costs are asymmetric: a missed word silently withholds money the player earned. The check is Gold-only and prose-only — every other item is judged on state alone, and a caller passing no prose makes no claim about the beat. Nothing comparable guards *seeing* vs *taking*: the discriminating signal is a verb, and the log that motivated this had "the sword slides free" (a real pickup, no acquisition verb) next to "inside lies a crystal" (not a pickup) — a verb gate would have dropped the real one. That half is prompt-side.
 - **The prompt carries the matching rules**, so the fold is a backstop rather than the only defence: an inventory `add` means the player TOOK it in the prose just written (an object seen in a chest, held by someone else, or waiting at the end of an offered option gets no op — *if "Take the X" is one of your options, X is not in the inventory*); a Gold op only on a turn where money changes hands, never restating the total; a condition only to set, change, or clear a mark, never to re-send one; and, over all of it, *every op is a change your prose just made — an op that sets something to what it already is will be discarded.*
@@ -366,8 +366,7 @@ ImagePromptTemplate {         // one image dialect — lib/imageTemplates.ts
     strongThreshold, mixedThreshold
 }
 
-Character[]                   // GLOBAL cast library — outlives every adventure
-Character {
+Character {                   // one authored sheet — lives in GameState.characters
   id, role, name, species, sex, description, personality, drive,
   strengths, flaws,                      // free text, one field each
                                          // sex is free text too — pronouns for the narrator,
@@ -382,6 +381,7 @@ Character {
 
 GameState {                   // the active adventure (autosaved) + what each save slot stores
   scenario: { title, premise, openingNarration, startDay }   // the editable pre-made scenario
+  characters: Character[]     // THIS adventure's cast — the PC among them
   roster: RosterEntry[]       // per-adventure character state (SPARSE — absent = defaults)
   worldNotes: Note[]          // { id, title, keywords[], content }  — single-category lorebook
   inventory: Item[]           // { label, description, quantity }  — shared party inventory
@@ -434,20 +434,30 @@ consumes resolved `PartyMember`s, never the raw halves.
   `keywordHits`): their sheet rides along only when the new message or the last
   few beats name them, capped at `NPC_LIMIT`. The roll call still lists every
   NPC by name every turn, so an adventure can know fifty people at the cost of
-  one line. NPCs carry over into a **New Adventure** — an ally is a fact about
-  the setting, not about one run.
+  one line. NPCs carry into a **New Adventure** alongside the cast they belong to
+  — an ally is a fact about the setting, not about one run.
 - **Kick ≠ leaving the story.** Kick sets `none`: out of the party, still in
   Characters with portrait and sheet, and the narrator is told nothing about it.
   `departed` / `fallen` are story outcomes the player or the narrator sets, and
   only those reach the "no longer travelling" line.
 
-- **Characters are global.** The model creates a character there first, and the
-  player adds them to the Party from there. **"New Adventure" preserves the whole
-  cast and empties the Party** (only `npc` standings carry over); a companion written in one
-  adventure can be recruited into the next with their portrait and sheet intact.
-  Save slots snapshot the *adventure*, never the cast, so restoring an old slot
-  can't delete a character authored since. A slot naming a since-deleted
-  character degrades to a smaller party rather than breaking.
+- **Characters belong to the adventure.** They live in `GameState.characters`,
+  so a save slot snapshots the cast and the **player character** with everything
+  else, and restoring one gives back the people the story was saved with. They
+  were global once, outliving every New Adventure; that made a snapshot a
+  half-restore — the same plot with somebody else's hero in it — and it is the
+  one thing a save is for. `roster.ts` still joins the two halves the same way;
+  what changed is only which document the sheets sit in. A roster entry naming a
+  since-deleted character still degrades to a smaller party rather than breaking.
+- **"New Adventure" asks what to bring** (`NewAdventureModal` →
+  `defaults.ts → seedAdventure`, pure): **Scenario & Opening · Player Character ·
+  Characters · World Notes**, four independent checkboxes, defaulting to the
+  first two. Nothing survives implicitly, because nothing can: the cast is part
+  of the adventure being thrown away, and a sequel in a world you wrote and a
+  clean break are equally common. The party always starts empty; `npc` standings
+  ride along only when the cast does, since an ally is a fact about the setting
+  and the setting is what the cast carries. Beats, journal, quests and inventory
+  always reset — those *are* the adventure.
 - **The party cap is measured on resolved members, never raw entries.**
   `partyCount`/`partyFull` go through `activeMembers`, so an entry nothing can
   resolve — a save slot or an **undo** restoring a snapshot taken before the
@@ -487,7 +497,7 @@ consumes resolved `PartyMember`s, never the raw halves.
 
 ### Equip ⇄ Inventory — `src/lib/equip.ts`
 
-The two halves of "what you have" could not reach each other: `GameState.inventory` is the party's shared pack (per-adventure), `Character.equipment` is what one person wears or carries (global, riding the cast library). Both were editable, neither could hand anything to the other, so giving the looted sword to the swordswoman meant deleting a row on one screen and retyping it on the other — and typing it in both places is exactly how an item ends up existing twice.
+The two halves of "what you have" could not reach each other: `GameState.inventory` is the party's shared pack (per-adventure), `Character.equipment` is what one person wears or carries (riding the character's own sheet). Both were editable, neither could hand anything to the other, so giving the looted sword to the swordswoman meant deleting a row on one screen and retyping it on the other — and typing it in both places is exactly how an item ends up existing twice.
 
 - **It is a MOVE, never a copy.** An item is in the pack or on a person, **never in both**. `equipItem` / `unequipItem` return *both* new arrays or `null`; the store writes both halves together (`moveGear`) — the pack lives on the game, the kit on the character, and half a move applied is a duplicated or a vanished item.
 - **Whole rows move, count and all.** That is what `Equipment.quantity?` is for: twelve arrows are still twelve after they change hands, and the move is exactly reversible — an accidental equip is a one-tap fix, not an arithmetic exercise. Absent reads as **1**, so every record written before this (and every narrator-authored kit) is unchanged.
@@ -912,7 +922,7 @@ the SDK is a lazy `import()`, so its ~130 KB is not even in the main bundle.
 **The remote shape is deliberately dumb** (`supabase/migrations/`): one
 key/value table `loom_docs (user_id, key, doc jsonb, deleted, device,
 updated_at)` and one private Storage bucket `loom-images`. The keys are
-`active` · `characters` · `settings` · `slot:<id>`; images are objects at
+`active` · `settings` · `slot:<id>`; images are objects at
 `<user_id>/<base64url(cache key)>`, encoded because a cache key is free text
 ("banner:Boars Head Tavern"). Every policy is `auth.uid() = user_id` — the
 anon key ships in the app, as it is meant to, and RLS is what protects the data.
@@ -928,16 +938,24 @@ wrong answer here loses a game. `localAt` is written on every save (inside
 `db.ts`/`settings.ts`, not at the ~40 `saveActiveGame` call sites — see
 `dirty.ts`) so a game played on a plane still looks changed after a restart.
 
-**Only the active game can ask.** `conflictPolicy` per key: the cast **merges**
-(`roster.ts → mergeLibrary`, a set union — two devices that each authored a
-companion keep both), settings take the **newest**, a save slot is an immutable
-snapshot so the server's copy stands, and the active game **asks**
+**Only the active game can ask.** `conflictPolicy` per key: settings take the
+**newest**, a save slot is an immutable snapshot so the server's copy stands,
+and the active game **asks**
 (`SyncConflictModal`, in the story's terms: title · day · turn · location).
 Both copies are snapshotted into save slots *before* the question is asked, so
 either answer is undoable from Saves and a sync can never destroy a game.
 Images never ask — two versions of a portrait are not two stories, so the newer
 one wins silently (`planImages`), and a local deletion propagates as a delete
 rather than being undone by the other device's copy.
+
+The cast used to be a document of its own with a **merge** policy (a set union).
+It has neither now: it rides inside `active`, so it is covered by the one prompt
+— which is the only correct answer once the cast is per-adventure, since a union
+would quietly refill a New Adventure's empty cast from the other device. The old
+`characters` key is **skipped**, not tombstoned (`sync.ts →
+LEGACY_CHARACTERS_DOC`): a stamp with nothing local behind it reads as a
+deletion, and pushing that would wipe the cast out from under a device still
+running the older build.
 
 **Ordering rule:** a stamp is written only after the bytes land. A crash
 mid-pass leaves a key looking dirty and costs one redundant transfer; the

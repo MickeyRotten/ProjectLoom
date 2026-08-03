@@ -1,9 +1,8 @@
 import { openDB, type IDBPDatabase } from "idb";
 import type { Character, GameState, LegacyCharacter } from "../types";
-import { migrateCharacter, splitLegacyGame, type LoadedGame } from "./defaults";
+import { migrateCharacter, loadGame, type LoadedGame } from "./defaults";
 import {
   ACTIVE_DOC,
-  CHARACTERS_DOC,
   newStamp,
   slotDoc,
   type DocStamp,
@@ -41,9 +40,10 @@ export const META_STORE = "meta";
 export const ACTIVE_KEY = "__active__";
 
 /**
- * Reserved key for the GLOBAL character library. It sits outside every game
- * snapshot on purpose: the cast survives New Adventure, and restoring an old
- * save slot must never delete a character authored since that save.
+ * Reserved key for the character library as it was when the library was GLOBAL.
+ * Nothing writes it any more — the cast lives inside the game document, so a
+ * snapshot restores the people it was taken with — but it is still read once,
+ * to hand the cast to a stored game written before the move.
  */
 export const CHARACTERS_KEY = "__characters__";
 
@@ -86,23 +86,20 @@ export async function saveActiveGame(game: GameState): Promise<void> {
 export async function loadActiveGame(): Promise<LoadedGame | null> {
   const db = await getDB();
   const game = (await db.get(SAVES_STORE, ACTIVE_KEY)) as GameState | undefined;
-  return splitLegacyGame(game);
-}
-
-/** Persist the global character library. */
-export async function saveCharacters(characters: Character[]): Promise<void> {
-  const db = await getDB();
-  await db.put(SAVES_STORE, characters, CHARACTERS_KEY);
-  await touchDoc(CHARACTERS_DOC);
+  return loadGame(game);
 }
 
 /**
- * Load the global character library, or null before it has ever been written.
- * Every record goes through `migrateCharacter` — this store outlives every
- * field rename (Strengths losing its label, `flaws` arriving), and it is the
- * authoritative copy of the cast, so a stale shape here reaches every screen.
+ * The old global character library, or null on a device that never had one.
+ * Read-only and migration-only: it is what a stored game written during the
+ * global-library era gets its cast from, once, on the first launch after the
+ * move. Every record goes through `migrateCharacter`, since this store predates
+ * several field renames.
+ *
+ * Deliberately not deleted after the fold. It costs a few kilobytes and it is
+ * the only copy of the cast a downgrade could find.
  */
-export async function loadCharacters(): Promise<Character[] | null> {
+export async function loadLegacyCharacters(): Promise<Character[] | null> {
   const db = await getDB();
   const stored = (await db.get(SAVES_STORE, CHARACTERS_KEY)) as LegacyCharacter[] | undefined;
   return Array.isArray(stored) ? stored.map(migrateCharacter) : null;
@@ -117,7 +114,11 @@ export async function loadCharacters(): Promise<Character[] | null> {
 
 const SLOT_PREFIX = "slot:";
 
-/** A stored snapshot: metadata for the Saves list plus the full game. */
+/**
+ * A stored snapshot: metadata for the Saves list plus the full game — which
+ * since the cast moved into `GameState` includes every character sheet and the
+ * player character. Restoring a slot restores the people, not just the plot.
+ */
 export interface SaveSlot {
   id: string;
   name: string;
@@ -138,7 +139,7 @@ export async function saveSlot(slot: SaveSlot): Promise<void> {
 export async function loadSlot(id: string): Promise<LoadedGame | null> {
   const db = await getDB();
   const slot = (await db.get(SAVES_STORE, slotKey(id))) as SaveSlot | undefined;
-  return splitLegacyGame(slot?.game);
+  return loadGame(slot?.game);
 }
 
 /** Delete a named slot. */

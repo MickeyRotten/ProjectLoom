@@ -17,7 +17,7 @@
  *    opposite order would mark a document synced that never left the device.
  */
 
-import type { Character, GameState, Settings } from "../types";
+import type { GameState, Settings } from "../types";
 import {
   clearSyncStamps,
   deleteImageStamp,
@@ -25,7 +25,6 @@ import {
   deviceId,
   listImageKeys,
   listSlotIds,
-  loadCharacters,
   loadImage,
   readActiveGame,
   readDocStamps,
@@ -39,12 +38,12 @@ import {
   writeSyncAccount,
   type SaveSlot,
 } from "./db";
-import { migrateCharacter, splitLegacyGame } from "./defaults";
+import { loadGame } from "./defaults";
 import { onLocalWrite } from "./dirty";
 import { backoffMs, MAX_ATTEMPTS } from "./retry";
 import {
   ACTIVE_DOC,
-  CHARACTERS_DOC,
+  LEGACY_CHARACTERS_DOC,
   SETTINGS_DOC,
   conflictPolicy,
   conflictSlotName,
@@ -71,7 +70,6 @@ import {
   uploadImage,
   type Account,
 } from "./supabaseClient";
-import { mergeLibrary } from "./roster";
 
 /** How long after the last local write a sync is attempted. */
 export const SYNC_DEBOUNCE_MS = 5000;
@@ -88,10 +86,12 @@ export interface SyncPorts {
   /** True while a turn streams — the active game is mid-write and off limits. */
   busy: () => boolean;
   game: () => GameState;
-  characters: () => Character[];
-  /** Adopt a pulled game (and any cast a legacy-shaped save carried). */
-  adoptGame: (game: GameState, recovered: Character[]) => Promise<void>;
-  adoptCharacters: (characters: Character[]) => Promise<void>;
+  /**
+   * Adopt a pulled game. `legacyCast` means the document was written before the
+   * cast moved into it and carries none — the store keeps the cast it already
+   * has rather than adopting an empty one.
+   */
+  adoptGame: (game: GameState, legacyCast: boolean) => Promise<void>;
   adoptSettings: (settings: Settings) => void;
   /**
    * Both sides of the active game moved. Resolves to the copy to KEEP; the
@@ -244,7 +244,6 @@ async function syncPass(p: SyncPorts, settings: Settings, account: Account): Pro
     // a fresh scenario sitting in `active`, and treating it as a rival copy
     // would greet every new device with a conflict prompt.
     [ACTIVE_DOC, storedGame !== null && !isUntouchedGame(storedGame)],
-    [CHARACTERS_DOC, (await loadCharacters()) !== null],
     [SETTINGS_DOC, true], // settings always exist — defaults are settings too
     ...localSlots.map((id) => [slotDoc(id), true] as [string, boolean]),
   ]);
@@ -252,6 +251,8 @@ async function syncPass(p: SyncPorts, settings: Settings, account: Account): Pro
   const keys = new Set<string>([...hasLocal.keys(), ...byKey.keys(), ...Object.keys(stamps)]);
 
   for (const key of keys) {
+    // Left alone entirely — see `sync.ts → LEGACY_CHARACTERS_DOC`.
+    if (key === LEGACY_CHARACTERS_DOC) continue;
     // A turn is streaming: the game in hand is half-written and the message
     // list is about to change again. Skip just this key — the rest of the
     // documents have nothing to do with the turn.
@@ -289,7 +290,6 @@ async function syncPass(p: SyncPorts, settings: Settings, account: Account): Pro
 /** Whatever this device holds under `key`, ready to be sent. */
 async function localBody(p: SyncPorts, key: string): Promise<unknown> {
   if (key === ACTIVE_DOC) return (await readActiveGame()) ?? p.game();
-  if (key === CHARACTERS_DOC) return (await loadCharacters()) ?? p.characters();
   // Settings live in memory, not in IndexedDB, so the store's copy IS the
   // stored copy — read fresh rather than from the pass's opening snapshot.
   if (key === SETTINGS_DOC) return stripLocalSettings(p.settings());
@@ -330,10 +330,6 @@ async function pull(p: SyncPorts, key: string, remote: RemoteDoc): Promise<void>
       await adoptRemoteGame(p, remote.doc as GameState);
       return;
     }
-    if (key === CHARACTERS_DOC) {
-      await p.adoptCharacters(incomingCharacters(remote.doc));
-      return;
-    }
     if (key === SETTINGS_DOC) {
       p.adoptSettings(mergeSettings(p.settings(), (remote.doc ?? {}) as Partial<Settings>));
       return;
@@ -366,19 +362,6 @@ async function resolve(
   device: string,
 ): Promise<void> {
   switch (conflictPolicy(key)) {
-    case "merge": {
-      // The cast is a set: keep everyone, this device's version of a shared id
-      // wins, and push the union back so the other device gets the additions.
-      const merged = mergeLibrary(
-        (await loadCharacters()) ?? p.characters(),
-        incomingCharacters(remote.doc),
-      );
-      await apply(() => p.adoptCharacters(merged));
-      const remoteAt = await pushDoc(settings, account.id, key, merged, device);
-      const now = Date.now();
-      await writeDocStamp(key, { localAt: now, syncedAt: now, remoteAt });
-      return;
-    }
     case "newest": {
       if (newerSide(at, remote.updatedAt) === "remote") await pull(p, key, remote);
       else await push(p, settings, account, key, true, at, device);
@@ -410,7 +393,7 @@ async function askAboutGame(
   device: string,
 ): Promise<void> {
   const localGame = (await readActiveGame()) ?? p.game();
-  const remoteGame = splitLegacyGame(remote.doc as GameState)?.game;
+  const remoteGame = loadGame(remote.doc as GameState)?.game;
   if (!remoteGame) {
     // Nothing readable on the server — this device's game is the only game.
     await push(p, settings, account, ACTIVE_DOC, true, at, device);
@@ -450,14 +433,9 @@ async function keepSafe(game: GameState, side: "local" | "cloud", when: number):
 }
 
 async function adoptRemoteGame(p: SyncPorts, doc: GameState): Promise<void> {
-  const loaded = splitLegacyGame(doc);
+  const loaded = loadGame(doc);
   if (!loaded) return;
-  await p.adoptGame(loaded.game, loaded.characters);
-}
-
-/** A pulled cast, folded onto the current shape like any stored one. */
-function incomingCharacters(doc: unknown): Character[] {
-  return Array.isArray(doc) ? doc.map((c) => migrateCharacter(c)) : [];
+  await p.adoptGame(loaded.game, loaded.legacyCast);
 }
 
 /** Run a write of PULLED data without the engine hearing its own footsteps. */

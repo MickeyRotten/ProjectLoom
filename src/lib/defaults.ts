@@ -1,4 +1,5 @@
 import type {
+  AdventureImports,
   Character,
   GameState,
   Item,
@@ -353,14 +354,19 @@ export function newCharacter(id: string): Character {
 }
 
 /**
- * A fresh adventure seeded from the editable scenario. The cast lives in the
- * global character library and is untouched here — a new adventure starts with
- * an EMPTY party (`roster: []`), and the player recruits from Characters or
- * lets the narrator do it.
+ * A fresh adventure seeded from the editable scenario. The cast is part of the
+ * adventure now, so a fresh one holds exactly the PC and nobody else — the
+ * party starts EMPTY (`roster: []`) and is rebuilt from Characters or by the
+ * narrator recruiting during play. `newAdventure` passes the cast it was told
+ * to carry over; everything else starts from `defaultPC()`.
  */
-export function newGame(scenario: Scenario = DEFAULT_SCENARIO): GameState {
+export function newGame(
+  scenario: Scenario = DEFAULT_SCENARIO,
+  characters: Character[] = [defaultPC()],
+): GameState {
   return {
     scenario,
+    characters,
     roster: [],
     worldNotes: [],
     inventory: [goldItem()],
@@ -411,35 +417,43 @@ export function migrateCharacter(saved: LegacyCharacter): Character {
 export interface LoadedGame {
   game: GameState;
   /**
-   * Characters recovered from a pre-split save. Empty for saves written since —
-   * the cast lives in its own store now.
+   * The stored game carried no cast of its own — it was written while the
+   * library was global. `game.characters` is EMPTY in that case, which is not a
+   * playable state: the caller has to supply the cast (hydrate folds in the old
+   * global library; a restored slot keeps the one already in hand). Every save
+   * written since carries its own cast and this is false.
    */
-  characters: Character[];
+  legacyCast: boolean;
 }
 
 /**
  * Merge a stored game over a fresh skeleton so saves written by older app
- * versions load without crashing the turn builder, and split a pre-refactor
- * `characters: Character[]` into the global library plus this adventure's
- * roster. Ids are preserved, so every existing portrait blob keeps resolving.
+ * versions load without crashing the turn builder, and fold its cast onto the
+ * current `Character` shape. Ids are preserved, so every existing portrait blob
+ * keeps resolving.
+ *
+ * Three cast eras arrive here: the original (characters inside the game, party
+ * state on the character), the split (no characters at all — they lived in a
+ * global store), and the current one (characters inside the game again, party
+ * state on the roster). The first and third are told apart by whether the
+ * records carry `inParty`/`lastSpokeTurn`, which only the first ever did.
  */
-export function splitLegacyGame(saved: unknown): LoadedGame | null {
+export function loadGame(saved: unknown): LoadedGame | null {
   if (!saved || typeof saved !== "object") return null;
   const base = newGame();
-  // Copy before stripping — the caller's object must not be mutated.
-  const partial = { ...(saved as Partial<GameState> & { characters?: LegacyCharacter[] }) };
+  const partial = saved as Omit<Partial<GameState>, "characters"> & {
+    characters?: LegacyCharacter[];
+  };
 
-  const legacy = Array.isArray(partial.characters) ? partial.characters : [];
-  const characters = legacy.map(migrateCharacter);
-  // Don't let the legacy array ride along into the re-saved game.
-  delete partial.characters;
+  const stored = Array.isArray(partial.characters) ? partial.characters : null;
+  const characters = (stored ?? []).map(migrateCharacter);
   // Pre-split saves carried party state on the character; rebuild entries from
   // it so a migrated game opens with exactly the party it was saved with.
   // Everything else goes through `normalizeRoster`, which folds the pre-ladder
   // `inParty` + `status` pair into a single `standing`.
   const roster: RosterEntry[] = partial.roster
     ? normalizeRoster(partial.roster)
-    : legacy.map((c) => ({
+    : (stored ?? []).map((c) => ({
         id: c.id,
         standing: c.role === "member" && c.inParty ? ("active" as const) : ("none" as const),
         lastSpokeTurn: c.lastSpokeTurn ?? 0,
@@ -450,6 +464,7 @@ export function splitLegacyGame(saved: unknown): LoadedGame | null {
       ...base,
       ...partial,
       scenario: { ...base.scenario, ...(partial.scenario ?? {}) },
+      characters,
       roster,
       // Saves from before Gold existed gain the permanent currency row.
       inventory: ensureGold(partial.inventory ?? []),
@@ -460,6 +475,66 @@ export function splitLegacyGame(saved: unknown): LoadedGame | null {
       minutes: normalizeMinutes(partial.minutes),
       journal: Array.isArray(partial.journal) ? partial.journal : [],
     },
-    characters,
+    legacyCast: stored === null,
+  };
+}
+
+/**
+ * Guarantee the cast has a player character, prepending the shipped one when it
+ * doesn't. Every screen, the prompt's PC block and the party strip assume the
+ * cast holds exactly one `role: "pc"`, so a game that somehow arrives without
+ * one — a hand-edited document, a stored library that only ever held
+ * companions, a cast that came across from an older build — gets one rather
+ * than leaving the player with no character to be.
+ *
+ * Returns the SAME array when a PC is already there.
+ */
+export function withPC(characters: Character[]): Character[] {
+  return characters.some((c) => c.role === "pc") ? characters : [defaultPC(), ...characters];
+}
+
+/**
+ * What the New Adventure modal opens with. The scenario and the PC were always
+ * kept before this dialog existed, so they stay ticked; the cast and the world
+ * notes start off, which is what "a new adventure has an empty character list
+ * by default" means in practice — the supporting cast is the thing you most
+ * often want to leave behind, and un-ticking is a worse default than ticking
+ * when the mistake costs a whole authored world.
+ */
+export const DEFAULT_ADVENTURE_IMPORTS: AdventureImports = {
+  scenario: true,
+  pc: true,
+  characters: false,
+  worldNotes: false,
+};
+
+/**
+ * Seed a New Adventure from the one being replaced, carrying over exactly what
+ * the player ticked (`AdventureImports`).
+ *
+ * Pure, and deliberately the only place the rules live: "which of these four
+ * things survives" is the kind of question that gets answered differently in
+ * three call sites otherwise. Everything not listed — beats, journal, quests,
+ * inventory, the clock — always resets; those ARE the adventure.
+ */
+export function seedAdventure(prev: GameState, imports: AdventureImports): GameState {
+  const pc = prev.characters.find((c) => c.role === "pc");
+  const cast: Character[] = [
+    imports.pc && pc ? pc : defaultPC(),
+    ...(imports.characters ? prev.characters.filter((c) => c.role !== "pc") : []),
+  ];
+  const game = newGame(imports.scenario ? prev.scenario : DEFAULT_SCENARIO, cast);
+  return {
+    ...game,
+    // The world's NPCs carry over WITH the cast that holds them: an ally is a
+    // fact about the setting, not about one run, and re-marking the supporting
+    // cast by hand every new adventure is the kind of chore that doesn't get
+    // done. Party standings never carry — a new adventure starts alone.
+    roster: imports.characters
+      ? prev.roster
+          .filter((e) => e.standing === "npc" && cast.some((c) => c.id === e.id))
+          .map((e) => ({ id: e.id, standing: "npc" as const, lastSpokeTurn: 0 }))
+      : [],
+    worldNotes: imports.worldNotes ? prev.worldNotes : [],
   };
 }
