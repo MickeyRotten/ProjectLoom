@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  COMFY_REQUEST_TIMEOUT_MS,
   COMFY_TIMEOUT_MS,
   DEFAULT_COMFY,
   DEFAULT_COMFY_WORKFLOW,
@@ -534,6 +535,36 @@ describe("pingComfy", () => {
   it("explains a 403 the same way generation does", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonRes({}, false, 403)));
     await expect(pingComfy("http://host:8188")).rejects.toThrow(/--enable-cors-header/);
+  });
+
+  it("gives up on a host that never answers instead of hanging forever", async () => {
+    // A firewall that DROPs rather than REJECTs: the request goes out and
+    // nothing ever comes back. Before the timeout this left Connect spinning
+    // with no error, which reads as the app being broken.
+    vi.useFakeTimers();
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+
+    const ping = pingComfy("http://host:8188");
+    const settled = vi.fn();
+    void ping.catch(settled);
+
+    await vi.advanceTimersByTimeAsync(COMFY_REQUEST_TIMEOUT_MS - 1);
+    expect(settled).not.toHaveBeenCalled(); // still waiting, correctly
+
+    await vi.advanceTimersByTimeAsync(2);
+    await expect(ping).rejects.toThrow(/did not answer within 15s/);
+  });
+
+  it("names the firewall in the timeout, since that is what silence means", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+    const ping = pingComfy("http://host:8188");
+    const caught = ping.catch((err: unknown) => err);
+    await vi.advanceTimersByTimeAsync(COMFY_REQUEST_TIMEOUT_MS + 1);
+    const err = await caught;
+    expect(err).toBeInstanceOf(ImageError);
+    expect((err as ImageError).message).toMatch(/firewall/);
+    expect((err as ImageError).retryable).toBe(true);
   });
 });
 

@@ -40,6 +40,31 @@ export const COMFY_POLL_MS = 500;
 export const COMFY_TIMEOUT_MS = 300_000;
 
 /**
+ * How long ONE request may hang before it is called dead.
+ *
+ * `COMFY_TIMEOUT_MS` above bounds a whole generation — the poll loop that waits
+ * for a job — and bounded nothing else. Every individual request had no
+ * deadline at all: not on the web (no signal was passed to `fetch` unless a
+ * caller supplied one) and least of all on native, where `CapacitorHttp` is
+ * given no timeout and the JS has no way to give up on a plugin call that never
+ * calls back. A request that goes unanswered — the exact shape of a firewall
+ * that DROPs instead of REJECTing — left the Connect button spinning "…"
+ * forever with no error, which reads as the app being broken rather than the
+ * network being silent.
+ *
+ * Fifteen seconds because ComfyUI answers `/system_stats` and `/object_info`
+ * locally in milliseconds; anything past a few seconds on a LAN is not slow, it
+ * is gone.
+ */
+export const COMFY_REQUEST_TIMEOUT_MS = 15_000;
+
+/**
+ * The same, for fetching a finished image. Longer because this one is genuinely
+ * a transfer — a 1024px PNG over indifferent wifi — rather than a scrap of JSON.
+ */
+export const COMFY_DOWNLOAD_TIMEOUT_MS = 60_000;
+
+/**
  * The tokens substituted into the workflow. Deliberately SillyTavern's list,
  * spelling included — a player's existing workflow should just work.
  *
@@ -549,6 +574,34 @@ interface ComfyRequest {
   signal?: AbortSignal;
 }
 
+/**
+ * Give up on a request that never answers.
+ *
+ * The race deliberately does NOT cancel the underlying call — a `CapacitorHttp`
+ * request cannot be cancelled from JS, and pretending otherwise would be a
+ * bigger lie than leaving one socket to time out on its own. What matters is
+ * that the PROMISE settles, so the UI stops spinning and says something true.
+ * The native path additionally passes real socket timeouts, so in practice the
+ * connection is dropped as well; this is the backstop for a plugin call that
+ * never calls back at all.
+ */
+function withTimeout<T>(work: Promise<T>, ms: number, what: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const limit = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () =>
+        reject(
+          new ImageError(
+            `ComfyUI did not answer within ${Math.round(ms / 1000)}s (${what}). The address may be reachable but silently dropping traffic — check the PC's firewall and that ComfyUI is still running.`,
+            { retryable: true },
+          ),
+        ),
+      ms,
+    );
+  });
+  return Promise.race([work, limit]).finally(() => clearTimeout(timer)) as Promise<T>;
+}
+
 /** One request returning parsed JSON, plus the status for the caller to judge. */
 async function comfyJson(
   url: string,
@@ -558,19 +611,32 @@ async function comfyJson(
   const http = await nativeHttp();
 
   if (http) {
-    const res = await http.request({
-      url,
+    const res = await withTimeout(
+      http.request({
+        url,
+        method,
+        // Real socket deadlines, so the connection is dropped rather than left
+        // hanging on a host that accepts nothing. `withTimeout` still wraps it:
+        // these are the plugin's promise to time out, not proof that it will.
+        connectTimeout: COMFY_REQUEST_TIMEOUT_MS,
+        readTimeout: COMFY_REQUEST_TIMEOUT_MS,
+        ...(req.body ? { data: JSON.parse(req.body) as unknown, headers: { "Content-Type": "application/json" } } : {}),
+      }),
+      COMFY_REQUEST_TIMEOUT_MS,
       method,
-      ...(req.body ? { data: JSON.parse(req.body) as unknown, headers: { "Content-Type": "application/json" } } : {}),
-    });
+    );
     return { status: res.status, data: res.data as unknown, detail: describeNative(res.data) };
   }
 
-  const res = await fetch(url, {
+  const res = await withTimeout(
+    fetch(url, {
+      method,
+      ...(req.body ? { body: req.body } : {}),
+      ...(req.signal ? { signal: req.signal } : {}),
+    }),
+    COMFY_REQUEST_TIMEOUT_MS,
     method,
-    ...(req.body ? { body: req.body } : {}),
-    ...(req.signal ? { signal: req.signal } : {}),
-  });
+  );
   if (!res.ok) return { status: res.status, data: null, detail: await safeErrorText(res) };
   const data: unknown = await res.json().catch(() => null);
   return { status: res.status, data, detail: "" };
@@ -590,7 +656,17 @@ async function comfyBlob(url: string, mime: string, signal?: AbortSignal): Promi
   const http = await nativeHttp();
 
   if (http) {
-    const res = await http.request({ url, method: "GET", responseType: "blob" });
+    const res = await withTimeout(
+      http.request({
+        url,
+        method: "GET",
+        responseType: "blob",
+        connectTimeout: COMFY_REQUEST_TIMEOUT_MS,
+        readTimeout: COMFY_DOWNLOAD_TIMEOUT_MS,
+      }),
+      COMFY_DOWNLOAD_TIMEOUT_MS,
+      "image download",
+    );
     if (res.status < 200 || res.status >= 300) {
       throw httpError("ComfyUI", res.status, describeNative(res.data));
     }
@@ -600,7 +676,11 @@ async function comfyBlob(url: string, mime: string, signal?: AbortSignal): Promi
     return base64ToBlob(res.data, mime);
   }
 
-  const res = await fetch(url, { ...(signal ? { signal } : {}) });
+  const res = await withTimeout(
+    fetch(url, { ...(signal ? { signal } : {}) }),
+    COMFY_DOWNLOAD_TIMEOUT_MS,
+    "image download",
+  );
   if (!res.ok) throw httpError("ComfyUI", res.status, await safeErrorText(res));
   return await res.blob();
 }
