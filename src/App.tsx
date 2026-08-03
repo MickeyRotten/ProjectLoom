@@ -7,13 +7,13 @@ import { PartyStrip } from "./components/PartyStrip";
 import { Composer } from "./components/Composer";
 import { MenuScreen } from "./components/MenuScreen";
 import { SetupScreen } from "./components/SetupScreen";
-import { ModelKeyScreen } from "./components/ModelKeyScreen";
+import { NarratorScreen } from "./components/NarratorScreen";
+import { ImagesScreen } from "./components/ImagesScreen";
 import { ScenarioScreen } from "./components/ScenarioScreen";
 import { CharactersScreen } from "./components/CharactersScreen";
 import { WorldNotesScreen } from "./components/WorldNotesScreen";
 import { JournalScreen } from "./components/JournalScreen";
 import { QuestsScreen } from "./components/QuestsScreen";
-import { AdvancedScreen } from "./components/AdvancedScreen";
 import { RpgSystemScreen } from "./components/RpgSystemScreen";
 import { AppearanceScreen } from "./components/AppearanceScreen";
 import { SavesScreen } from "./components/SavesScreen";
@@ -80,7 +80,7 @@ export default function App() {
       spare.current = false; // the entry we pushed is the one just popped
       s.goBack();
       // Re-arm here rather than leaving it to the effect below: `goBack` may
-      // have been absorbed by a screen's own depth (an Advanced sub-menu) and
+      // have been absorbed by a screen's own depth (a `SubMenuScreen`) and
       // left `screen` untouched, so the effect — which only runs when `screen`
       // changes — would never fire and the next back would exit the app.
       if (useStore.getState().screen !== null) {
@@ -142,13 +142,13 @@ export default function App() {
 
   const current = () => {
     if (screen === "menu") return <MenuScreen />;
-    if (screen === "modelkey") return <ModelKeyScreen />;
+    if (screen === "narrator") return <NarratorScreen />;
+    if (screen === "images") return <ImagesScreen />;
     if (screen === "scenario") return <ScenarioScreen />;
     if (screen === "characters") return <CharactersScreen />;
     if (screen === "worldnotes") return <WorldNotesScreen />;
     if (screen === "journal") return <JournalScreen />;
     if (screen === "quests") return <QuestsScreen />;
-    if (screen === "advanced") return <AdvancedScreen />;
     if (screen === "rpg") return <RpgSystemScreen />;
     if (screen === "appearance") return <AppearanceScreen />;
     if (screen === "saves") return <SavesScreen />;

@@ -3,6 +3,7 @@ import type { JournalEntry } from "../types";
 import { useStore } from "../store";
 import { OverlayHeader } from "./OverlayHeader";
 import { AreaField, btnSmall } from "./fields";
+import { MenuLink } from "./SubMenuScreen";
 import { useConfirm } from "./useConfirm";
 
 /**
@@ -34,8 +35,11 @@ export function JournalScreen() {
       <div className="flex-1 space-y-4 overflow-y-auto p-3">
         {!enabled && (
           <p className="border-2 border-ink p-3 text-xs uppercase tracking-widest opacity-70">
-            Journal is off (Advanced → Narrator). Entries below are kept and return when it
-            is switched back on.
+            Journal is off —{" "}
+            <MenuLink screen="narrator" section="memory">
+              Narrator → Memory
+            </MenuLink>
+            . Entries below are kept and return when it is switched back on.
           </p>
         )}
 

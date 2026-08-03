@@ -19,7 +19,7 @@ const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
 const MODELS_ENDPOINT = "https://openrouter.ai/api/v1/models";
 const KEY_ENDPOINT = "https://openrouter.ai/api/v1/key";
 
-/** Where a player goes to make a key — linked from Setup and Model & Key. */
+/** Where a player goes to make a key — linked from Setup and Narrator → Model. */
 export const KEY_SIGNUP_URL = "https://openrouter.ai/keys";
 
 export interface KeyStatus {
@@ -92,7 +92,7 @@ function priced(v: unknown): boolean {
 
 /**
  * Fetch the OpenRouter model catalog (public endpoint — no key required). Used
- * to populate the Model & Key dropdowns. Returns id/name/output-modalities,
+ * to populate the model dropdowns. Returns id/name/output-modalities,
  * sorted by id. Throws OpenRouterError on a non-OK response.
  */
 export async function fetchModels(signal?: AbortSignal): Promise<OpenRouterModel[]> {
@@ -151,7 +151,7 @@ export async function streamChat(opts: StreamOptions): Promise<string> {
   const { settings, signal, onDelta } = opts;
 
   if (!settings.openRouterKey.trim()) {
-    throw new OpenRouterError("No OpenRouter API key set. Add one in Model & Key.");
+    throw new OpenRouterError("No OpenRouter API key set. Add one in Narrator → Model.");
   }
 
   let lastErr: unknown;
@@ -189,7 +189,7 @@ export async function completeChat(opts: CompleteOptions): Promise<string> {
   const { settings, signal } = opts;
 
   if (!settings.openRouterKey.trim()) {
-    throw new OpenRouterError("No OpenRouter API key set. Add one in Model & Key.");
+    throw new OpenRouterError("No OpenRouter API key set. Add one in Narrator → Model.");
   }
 
   let lastErr: unknown;
@@ -290,7 +290,7 @@ async function streamOnce(opts: StreamOptions): Promise<string> {
       // and a chatty one both bills more and pushes the <<<LOOM>>> block past
       // where the player is still reading. 0 restores "no cap".
       ...(settings.maxTokens > 0 ? { max_tokens: settings.maxTokens } : {}),
-      // Thinking effort (Model & Key → Reasoning). Absent on "auto", so a
+      // Thinking effort (Narrator → Model → Reasoning). Absent on "auto", so a
       // request looks exactly as it did before the setting existed.
       ...reasoningBody(settings),
       messages,

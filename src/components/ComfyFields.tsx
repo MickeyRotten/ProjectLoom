@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useStore } from "../store";
 import { Collapsible, Field, btnSmall } from "./fields";
+import { MenuLink } from "./SubMenuScreen";
 import { ComfyChoiceField, NumberField } from "./ComfyChoiceField";
 import {
   DEFAULT_COMFY_WORKFLOW,
@@ -24,7 +25,7 @@ type Check =
 const NO_OPTIONS: ComfyOptions = { models: [], samplers: [], schedulers: [], vaes: [] };
 
 /**
- * The ComfyUI half of Model & Key (DESIGN.md → Image Generation → Backends).
+ * The ComfyUI half of Images → Model (DESIGN.md → Image Generation → Backends).
  *
  * Connect first, then everything else: pressing Connect both proves the URL and
  * fills the four name pickers from `/object_info`, because a wrong host and a
@@ -174,12 +175,15 @@ export function ComfyFields() {
         same number of pixels, so both cost about the same to render.
       </p>
 
-      {/* The negative prompt moved to Advanced → Image Prompts, with the rest of
+      {/* The negative prompt moved to Images → Prompt Templates, with the rest of
           the wording: it is dialect, not machine config, and an SD-tag template
           wants a different one from a descriptive template on the same server. */}
       <p className="text-xs opacity-60">
-        The negative prompt lives with the rest of the wording, under Advanced → Image
-        Prompts — it changes with the prompt template rather than with the server.
+        The negative prompt lives with the rest of the wording, under{" "}
+        <MenuLink screen="images" section="prompts">
+          Prompt Templates
+        </MenuLink>{" "}
+        — it changes with the prompt template rather than with the server.
       </p>
 
       <Collapsible label="Advanced ComfyUI">
@@ -249,9 +253,13 @@ export function ComfyFields() {
       </Collapsible>
 
       <p className="border-2 border-ink p-3 text-sm opacity-70">
-        Portrait style reference images (Advanced → Image Prompts) are not sent to ComfyUI —
-        build the look into the workflow instead. Editing a picture with ✎ is OpenRouter
-        only, so that button is hidden while this backend is selected.
+        Portrait style reference images (
+        <MenuLink screen="images" section="prompts">
+          Prompt Templates
+        </MenuLink>
+        ) are not sent to ComfyUI — build the look into the workflow instead. Editing a
+        picture with ✎ is OpenRouter only, so that button is hidden while this backend is
+        selected.
       </p>
     </>
   );

@@ -50,7 +50,7 @@ export function Composer() {
       {!hasKey && (
         <button
           type="button"
-          onClick={() => setScreen("modelkey")}
+          onClick={() => setScreen("narrator", "model")}
           className="w-full border-2 border-ink px-3 py-2 text-xs uppercase tracking-widest active:bg-ink active:text-paper"
         >
           No API key set — add one to play

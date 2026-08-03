@@ -241,7 +241,7 @@ export function MemberSheet() {
             </div>
           )}
           {/* Both controls are generations, so both go with the master switch
-              (Model & Key → Image Generation). Upload / download / remove stay:
+              (Images → Image Generation). Upload / download / remove stay:
               none of them talks to a model. */}
           {imagesOn && (
             <button

@@ -12,7 +12,7 @@ import { btn } from "./fields";
  *
  * Shown by `App` whenever no OpenRouter key is set, so it doubles as the
  * recovery path if a key is later cleared. Everything here is also reachable
- * afterwards from Menu → Model & Key; this screen exists to make the one
+ * afterwards from Menu → Narrator → Model; this screen exists to make the one
  * required step unmissable, not to be a separate settings store.
  */
 export function SetupScreen() {
@@ -57,7 +57,7 @@ export function SetupScreen() {
         />
 
         {/* Hidden if the player has already switched image generation off in
-            Model & Key — a returning setup (a cleared key) must not offer a
+            Images — a returning setup (a cleared key) must not offer a
             model for calls that can't happen. */}
         {settings.imagesEnabled && (
         <ModelPicker
@@ -67,7 +67,7 @@ export function SetupScreen() {
           models={image}
           loading={loading}
           error={error}
-          hint="Draws character portraits — and location images, once you switch those on in Advanced → Images. Leave it be if you'd rather not spend on images — the game plays fine without them, and Model & Key can switch image generation off entirely."
+          hint="Draws character portraits — and location images, once you switch those on under Menu → Images. Leave it be if you'd rather not spend on images — the game plays fine without them, and Menu → Images can switch image generation off entirely."
         />
         )}
 

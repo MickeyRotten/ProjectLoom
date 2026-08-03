@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useStore, type Screen } from "../store";
 import { NewAdventureModal } from "./NewAdventureModal";
 import { OverlayHeader } from "./OverlayHeader";
+import { Section } from "./fields";
 
 /**
  * The gear menu (DESIGN.md → Menu): a full-screen list routing to every
@@ -19,30 +20,44 @@ import { OverlayHeader } from "./OverlayHeader";
  *
  * Saves sits with them rather than last: snapshotting is something you do
  * *during* play, right before the fight, not a settings chore.
+ *
+ * **Grouped**, because the list holds two unlike kinds of thing and used to draw
+ * them as thirteen identical buttons with nothing to chunk them by. The split is
+ * the one already load-bearing in the data model: the first group lives in
+ * `GameState` and is replaced by the next New Adventure, the second lives in
+ * `Settings` and outlives every adventure. Captions rather than a nested
+ * *Settings* screen — the depth would cost a tap on every visit and buy nothing
+ * the caption doesn't.
  */
-const ENTRIES: { screen: Screen; label: string; note: string }[] = [
-  { screen: "party", label: "Party", note: "Who travels with you · bench" },
-  { screen: "inventory", label: "Inventory", note: "Carried items · gold" },
-  { screen: "quests", label: "Quests", note: "Active + finished objectives" },
-  { screen: "worldnotes", label: "World Notes", note: "Lore the story remembers" },
-  { screen: "journal", label: "Journal", note: "What has happened, day by day" },
-  { screen: "saves", label: "Saves", note: "Snapshot · restore slots" },
-  { screen: "characters", label: "Characters", note: "Full cast · add to party" },
-  { screen: "scenario", label: "Scenario", note: "Title · premise · opening" },
-  { screen: "modelkey", label: "Model & Key", note: "OpenRouter key · models" },
-  { screen: "sync", label: "Cloud Sync", note: "Play the same game on another device" },
-  { screen: "appearance", label: "Appearance", note: "Text size · font · colors" },
-  { screen: "rpg", label: "RPG System", note: "Dice · outcomes · what counts as risky" },
-  { screen: "advanced", label: "Advanced", note: "Narrator + image instructions" },
+type Group = "adventure" | "settings";
+
+const GROUP_LABELS: Record<Group, string> = {
+  adventure: "This Adventure",
+  settings: "Settings",
+};
+
+const ENTRIES: { screen: Screen; label: string; note: string; group: Group }[] = [
+  { group: "adventure", screen: "party", label: "Party", note: "Who travels with you · bench" },
+  { group: "adventure", screen: "inventory", label: "Inventory", note: "Carried items · gold" },
+  { group: "adventure", screen: "quests", label: "Quests", note: "Active + finished objectives" },
+  { group: "adventure", screen: "worldnotes", label: "World Notes", note: "Lore the story remembers" },
+  { group: "adventure", screen: "journal", label: "Journal", note: "What has happened, day by day" },
+  { group: "adventure", screen: "saves", label: "Saves", note: "Snapshot · restore slots" },
+  { group: "adventure", screen: "characters", label: "Characters", note: "Full cast · add to party" },
+  { group: "adventure", screen: "scenario", label: "Scenario", note: "Title · premise · opening" },
+  { group: "settings", screen: "narrator", label: "Narrator", note: "API key · model · voice · memory" },
+  { group: "settings", screen: "images", label: "Images", note: "Portraits · location art · prompts" },
+  { group: "settings", screen: "rpg", label: "RPG System", note: "Dice · outcomes · what counts as risky" },
+  { group: "settings", screen: "appearance", label: "Appearance", note: "Text size · font · colors" },
+  { group: "settings", screen: "sync", label: "Cloud Sync", note: "Play the same game on another device" },
 ];
+
+const GROUPS: Group[] = ["adventure", "settings"];
 
 export function MenuScreen() {
   const setScreen = useStore((s) => s.setScreen);
   const newAdventure = useStore((s) => s.newAdventure);
   const game = useStore((s) => s.game);
-  const bannerSize = useStore((s) => s.settings.bannerSize);
-  const locationImages = useStore((s) => s.settings.locationImages);
-  const updateSettings = useStore((s) => s.updateSettings);
   const [starting, setStarting] = useState(false);
 
   return (
@@ -50,40 +65,33 @@ export function MenuScreen() {
       <OverlayHeader title="Menu" />
 
       <div className="flex-1 space-y-3 overflow-y-auto p-3">
-        {ENTRIES.map((e) => (
-          <button
-            key={e.label}
-            type="button"
-            onClick={() => setScreen(e.screen)}
-            className="block w-full border-2 border-ink p-3 text-left active:bg-ink active:text-paper"
-          >
-            <div className="font-bold uppercase tracking-wide">{e.label}</div>
-            <div className="mt-1 text-sm opacity-70">{e.note}</div>
-          </button>
+        {GROUPS.map((group) => (
+          <section key={group} className="space-y-3">
+            <Section label={GROUP_LABELS[group]} />
+            {ENTRIES.filter((e) => e.group === group).map((e) => (
+              <button
+                key={e.label}
+                type="button"
+                onClick={() => setScreen(e.screen)}
+                className="block w-full border-2 border-ink p-3 text-left active:bg-ink active:text-paper"
+              >
+                <div className="font-bold uppercase tracking-wide">{e.label}</div>
+                <div className="mt-1 text-sm opacity-70">{e.note}</div>
+              </button>
+            ))}
+          </section>
         ))}
 
-        {/* Sizing a banner that doesn't exist is noise — the feature toggle
-            lives in Advanced → Images. */}
-        {locationImages && (
-          <button
-            type="button"
-            aria-pressed={bannerSize === "compact"}
-            onClick={() =>
-              updateSettings({ bannerSize: bannerSize === "compact" ? "full" : "compact" })
-            }
-            className="flex w-full items-center justify-between border-2 border-ink p-3 text-left uppercase tracking-widest active:bg-ink active:text-paper"
-          >
-            <span>Compact Location Image</span>
-            <span className="opacity-70">{bannerSize === "compact" ? "On" : "Off"}</span>
-          </button>
-        )}
-
+        {/* Below a rule and off the end of both groups: it replaces the whole
+            first group, so it is not one more place to navigate to. */}
         <button
           type="button"
           onClick={() => setStarting(true)}
-          className="mt-2 block w-full border-2 border-ink p-3 text-left uppercase tracking-widest active:bg-ink active:text-paper"
+          className="mt-4 block w-full border-t-2 border-ink pt-4 text-left"
         >
-          New Adventure
+          <span className="block w-full border-2 border-ink p-3 uppercase tracking-widest">
+            New Adventure
+          </span>
         </button>
       </div>
       {starting && (

@@ -522,7 +522,7 @@ export interface RemotePurge {
 
 /**
  * Delete every cloud image whose cache key `matches`, and forget its stamp —
- * the remote half of Advanced → Images → Purge.
+ * the remote half of Images → Stored Images → Purge.
  *
  * A local purge already stamps each deletion, so an ordinary pass would
  * propagate it — but only for keys this device HAD. A key that exists only in

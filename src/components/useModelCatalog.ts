@@ -3,7 +3,7 @@ import { fetchModels, type OpenRouterModel } from "../lib/openrouter";
 
 /**
  * The OpenRouter model catalog, fetched once and shared by the Setup screen and
- * Model & Key. Lives in a hook rather than each screen so the two can never
+ * Narrator → Model and Images → Model. Lives in a hook rather than each screen so the two can never
  * disagree about what "loading" or "the list failed" looks like.
  */
 export function useModelCatalog(): {

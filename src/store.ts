@@ -153,7 +153,8 @@ export interface SendTurnOptions {
 interface EnsureImageOptions {
   /**
    * Publish a cached blob if there is one, but never hit the network — the
-   * banner cooldown (Advanced → Location Image Cooldown) rides on this.
+   * banner cooldown (Images → Location Images → Location Image Cooldown) rides
+   * on this.
    */
   cacheOnly?: boolean;
   /** Ran only when a NEW image came off the wire, never on a cache hit. */
@@ -164,13 +165,13 @@ interface EnsureImageOptions {
 export type Screen =
   | null
   | "menu"
-  | "modelkey"
+  | "narrator"
+  | "images"
   | "scenario"
   | "characters"
   | "worldnotes"
   | "journal"
   | "quests"
-  | "advanced"
   | "rpg"
   | "appearance"
   | "saves"
@@ -218,6 +219,14 @@ export interface LoomStore {
   /** The member whose full-screen sheet is open (screen === "member"). */
   memberId: string | null;
   /**
+   * A sub-menu a `SubMenuScreen` should open itself at — the one-shot half of a
+   * deep link. Set by `setScreen(screen, section)`, consumed and cleared by the
+   * screen on arrival, so a later plain visit lands on the index. Deliberately
+   * a bare string rather than a union: every screen names its own sections, and
+   * an id that doesn't match one is simply ignored.
+   */
+  section: string | null;
+  /**
    * A screen's claim on Back, for screens with internal depth. Returning true
    * means "handled, don't leave the screen". Registered here rather than passed
    * to the header so the hardware back button obeys it too.
@@ -249,9 +258,16 @@ export interface LoomStore {
   fieldGenError: string | null;
 
   hydrate: () => Promise<void>;
-  setScreen: (screen: Screen) => void;
+  /**
+   * Open an overlay, optionally deep-linking to one of its sub-menus. The
+   * section is what lets a cross-reference be a button instead of a sentence
+   * telling the player which path to walk.
+   */
+  setScreen: (screen: Screen, section?: string) => void;
   /** Return to the previous screen (pops the navigation history). */
   goBack: () => void;
+  /** Drop a consumed deep-link section so a later plain visit lands on the index. */
+  clearSection: () => void;
   /** Claim Back for a screen with internal depth; pass null to release it. */
   setBackHandler: (handler: (() => boolean) | null) => void;
   openMember: (id: string) => void;
@@ -471,7 +487,7 @@ export interface LoomStore {
   downloadPortrait: (memberId: string) => Promise<boolean>;
   /**
    * Delete every stored picture of one kind — display copies AND their masters
-   * — from this device, and from the cloud when signed in (Advanced → Images).
+   * — from this device, and from the cloud when signed in (Images → Stored Images).
    *
    * Wholesale, unlike the member sheet's Remove Image: this is for reclaiming
    * the space a long game's location art takes, or for throwing away a style
@@ -658,7 +674,7 @@ export const useStore = create<LoomStore>((set, get) => {
    */
   async function editImage(key: string, instruction: string): Promise<void> {
     if (get().imgPending[key] || !instruction.trim()) return;
-    // Image generation off (Model & Key): an edit is a generation like any
+    // Image generation off (Images): an edit is a generation like any
     // other. The ✎ button is hidden while it's off, so this is the belt to that
     // braces — nothing reaches the image model behind the switch's back. Same
     // for the ComfyUI backend, which has no edit path at all.
@@ -845,7 +861,7 @@ export const useStore = create<LoomStore>((set, get) => {
   const portrait = (memberId: string, force: boolean) => {
     const base = get().game.characters.find((c) => c.id === memberId);
     if (!base) return;
-    // Image generation off (Model & Key): ⟳ has nothing to do, and the
+    // Image generation off (Images): ⟳ has nothing to do, and the
     // automatic pass degrades to a cache probe — a portrait drawn before the
     // switch was flipped still shows, it just never draws a new one.
     const allowed = imagesAllowed(get().settings);
@@ -896,6 +912,7 @@ export const useStore = create<LoomStore>((set, get) => {
   screen: null,
   history: [],
   memberId: null,
+  section: null,
   backHandler: null,
 
   images: {},
@@ -962,26 +979,36 @@ export const useStore = create<LoomStore>((set, get) => {
     void beginSync();
   },
 
-  setScreen(screen) {
+  setScreen(screen, section) {
     // Authoring edits made mid-stream get silently reverted by a later Undo
     // (the reversal is captured against the pre-turn snapshot), so block opening
     // any overlay while a turn streams — only closing (null) is allowed.
     if (screen !== null && get().streaming) return;
     const cur = get().screen;
-    if (screen === cur) return;
+    // Already here: a plain re-tap is a no-op, but a deep link still has work to
+    // do — jumping between two sub-menus of one screen is exactly what the
+    // cross-references between Images' own sections do.
+    if (screen === cur) {
+      if (section !== undefined) set({ section });
+      return;
+    }
     // Record where we came from so Back returns there, not a fixed parent.
-    set({ screen, history: [...get().history, cur] });
+    set({ screen, section: section ?? null, history: [...get().history, cur] });
   },
 
   goBack() {
-    // A screen with its own internal depth (Advanced's sub-menus) gets first
+    // A screen with its own internal depth (the sub-menu screens) gets first
     // refusal. Routing it through here rather than through the header's `onBack`
     // prop is what makes the ANDROID back button behave like the on-screen one —
     // the hardware button has no way to know about a component's local state.
     if (get().backHandler?.()) return;
     const hist = get().history;
     const prev = hist.length ? hist[hist.length - 1] : null;
-    set({ screen: prev, history: hist.slice(0, -1) });
+    set({ screen: prev, history: hist.slice(0, -1), section: null });
+  },
+
+  clearSection() {
+    if (get().section !== null) set({ section: null });
   },
 
   setBackHandler(handler) {
@@ -1932,7 +1959,7 @@ export const useStore = create<LoomStore>((set, get) => {
   syncImages() {
     const g = get().game;
     const location = g.location.trim();
-    // Location images off (Advanced → Images): nothing is generated and nothing
+    // Location images off (Images → Location Images): nothing is generated and nothing
     // is loaded from cache, since no banner is rendered to put it in.
     if (location && get().settings.locationImages) {
       const excerpt = lastNarration(g);
