@@ -1,0 +1,25 @@
+# Supabase CLI config (`supabase init`), trimmed to what this repo actually
+# decides. The generated file is ~250 lines of local-development defaults —
+# ports, mailer, studio — and every value left in it is a value the GitHub
+# integration will sync onto preview branches. Loom has no local Supabase stack
+# and no Edge Functions: the server side is one table and one bucket, so this
+# holds the project name, the bucket, and nothing else.
+#
+# Working directory for the GitHub integration is `.` — this `supabase/` folder
+# sits at the repository root.
+#
+# Deploying to production applies migrations, Edge Functions and the storage
+# buckets declared here; API, Auth and seed settings are ignored, so nothing in
+# this file can quietly change how the project authenticates.
+
+# Distinguishes projects on one host — a local name, not the project ref.
+project_id = "project-loom"
+
+# Generated portraits, location banners, and the pre-1-bit `src:` masters behind
+# them. PRIVATE: objects are readable only through a signed-in session whose
+# user id is the first path segment (see the migration's storage policy).
+#
+# Also created idempotently by the migration, so a project set up without the
+# GitHub integration gets the same bucket.
+[storage.buckets.loom-images]
+public = false

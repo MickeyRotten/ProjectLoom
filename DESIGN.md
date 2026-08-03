@@ -909,7 +909,7 @@ resumes the same game. **Opt-in** (`Settings.syncEnabled`, off by default) and
 additive: with it off, nothing about the app changes and no request is made —
 the SDK is a lazy `import()`, so its ~130 KB is not even in the main bundle.
 
-**The remote shape is deliberately dumb** (`supabase/schema.sql`): one
+**The remote shape is deliberately dumb** (`supabase/migrations/`): one
 key/value table `loom_docs (user_id, key, doc jsonb, deleted, device,
 updated_at)` and one private Storage bucket `loom-images`. The keys are
 `active` · `characters` · `settings` · `slot:<id>`; images are objects at
