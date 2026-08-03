@@ -48,7 +48,7 @@ const STANDING_HINT: Record<Standing, string> = {
   npc: "Known to this world but not a companion. Appears where the scene reaches them.",
   departed: "Left the story. The narrator is told not to write them in.",
   fallen: "Dead. The narrator will never bring them back.",
-  none: "Not part of this adventure. Still in Characters, and in every other save.",
+  none: "Not in the party and not an NPC. Still in this adventure's Characters.",
 };
 
 /** The character fields that are player-editable on this sheet. */
@@ -88,7 +88,7 @@ type MemberDraft = Pick<
  */
 export function MemberSheet() {
   const id = useStore((s) => s.memberId);
-  const characters = useStore((s) => s.characters);
+  const characters = useStore((s) => s.game.characters);
   const base = characters.find((c) => c.id === id);
   const roster = useStore((s) => s.game.roster);
   const update = useStore((s) => s.updateCharacter);
@@ -664,7 +664,7 @@ export function MemberSheet() {
                   ask(
                     {
                       title: `Delete ${member.name || "this character"}?`,
-                      body: "They are removed from Characters and from every adventure, along with their portrait. This can't be undone.",
+                      body: "They are removed from this adventure's Characters, along with their portrait. Save slots taken earlier still have them. This can't be undone.",
                       confirmLabel: "Delete character",
                     },
                     () => removeCharacter(member.id),

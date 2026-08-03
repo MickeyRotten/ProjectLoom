@@ -33,7 +33,7 @@ import {
  *    slugged name/label.
  *
  * Party ops span BOTH halves of the cast model. Names are matched against the
- * whole global character library, so a companion written in an earlier
+ * whole cast, so a companion written in an earlier
  * adventure is re-used — portrait, sheet and all — instead of duplicated. What
  * an op writes depends on which half owns it:
  *  - membership / standing / last-spoke → this adventure's roster;

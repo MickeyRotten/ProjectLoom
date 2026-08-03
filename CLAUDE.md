@@ -58,7 +58,7 @@ Stack: **React + TS + Vite · Tailwind (1-bit tokens) · Zustand · idb · Capac
 - `npm run dev` — Vite dev server.
 
 Layout: pure logic in `src/lib/` (`loomBlock.ts` parse/truncate · `deltas.ts` op-apply ·
-`roster.ts` character-library ⟂ party join · `prompt.ts` message assembly ·
+`roster.ts` cast ⟂ party join · `prompt.ts` message assembly ·
 `openrouter.ts` streaming + `completeChat` side calls ·
 `autoUpdate.ts` sheet auto-update · `spotlight.ts` **Phase 2** ·
 `stakes.ts` outcome rolls + conditions ·
@@ -99,11 +99,10 @@ strictly so an unreadable file fails loudly instead of poisoning every later edi
 Post-MVP also: **Remove Image** (member sheet — deletes portrait + master and sets
 `Character.noPortrait`, which keeps `syncImages` from silently redrawing it; ⟳/upload clear
 the flag) and `imgError` carrying the failure **reason**, not just a badge.
-Post-MVP also: **Characters ⟂ Party split** (`roster.ts` — the global character
-library lives outside `GameState`; `GameState.roster` holds per-adventure
-membership / `lastSpokeTurn` / `status` / story `overrides`; New Adventure keeps the
-cast and empties the party; **Kick from Party** on the sheet; `splitLegacyGame`
-migration). See `DESIGN.md → Characters ⟂ Party`.
+Post-MVP also: **Characters ⟂ Party split** (`roster.ts` — the cast and the
+per-adventure state are separate halves joined only there; `GameState.roster` holds
+membership / `lastSpokeTurn` / `status` / story `overrides`; **Kick from Party** on
+the sheet). See `DESIGN.md → Characters ⟂ Party`.
 Post-MVP also: **active-party roll call** (`prompt.ts → formatPartyComposition` +
 `roster.ts → partedMembers`) — a compact authoritative party-composition block re-read
 from the roster every turn and injected *after* the history, naming who travels with the
@@ -143,7 +142,7 @@ every later op still drops it, so gear stays the player's. `Character.strengths`
 its `name` label and is one free-text field (`roster.ts → strengthsText` folds the old
 `{name, description}` out of saves, overrides and replayed deltas), joined by a new
 `flaws` field — both plain text areas on the member sheet, both in `CharacterOverride`,
-neither touched by Auto-Update. `db.ts → loadCharacters` migrates the stored library.
+neither touched by Auto-Update. `db.ts → loadLegacyCharacters` migrates the stored library.
 Post-MVP also: **stakes** (`stakes.ts`, `Settings.stakesEnabled`/`stakesRule`) — the
 spotlight's sibling. A risky action (`RISK_KEYWORDS`, matched with `worldNotes.ts →
 keywordHits`) rolls a d6 seeded on `(turn, action)` — so a regenerate re-tells the
@@ -482,8 +481,7 @@ new IndexedDB `meta` store (DB v3) feeds a pure, tested `planDoc` →
 `push | pull | conflict | none`. `localAt` is written inside `db.ts` /
 `settings.ts` rather than at the ~40 `saveActiveGame` call sites (`dirty.ts` is
 the bus), so an offline game still looks changed after a restart. **Only the
-active game asks** (`conflictPolicy`): the cast merges (`roster.ts →
-mergeLibrary`, moved out of the store), settings take the newest, a slot is an
+active game asks** (`conflictPolicy`): settings take the newest, a slot is an
 immutable snapshot, and images settle on the newer copy silently — and both
 sides of a game conflict are snapshotted into save slots *before* the prompt, so
 either answer is undoable and a sync can never destroy a game. A stamp is
@@ -497,6 +495,26 @@ never syncs never carries it. Server side is `supabase/` — one migration
 storage-owned objects) plus a trimmed `config.toml` declaring the bucket, so
 the Supabase GitHub integration can apply it and a hand-run in the SQL editor
 still works.
+Post-MVP also: **the cast belongs to the adventure** (`GameState.characters`) —
+`Character[]` was a global library outside every save, so restoring a snapshot
+gave back the plot with whoever happened to be in the app now, player character
+included. It rides in the game document: a slot snapshots the cast and the PC
+with everything else, `moveGear` writes both halves of an equip in ONE save, and
+a turn's new companions land in `nextGame` with every other slice it touched.
+`defaults.ts → loadGame` (was `splitLegacyGame`) reads all three cast eras and
+flags `legacyCast` for a document written during the global era — hydrate folds
+the old `__characters__` library in once (`db.ts → loadLegacyCharacters`, never
+written again, never deleted), a restored legacy slot keeps the cast in hand, and
+`withPC` guarantees there is always someone to play. Cloud sync lost the
+`characters` document with its `merge` policy: the cast is covered by the active
+game's one prompt, and the retired key is **skipped**, not tombstoned
+(`sync.ts → LEGACY_CHARACTERS_DOC`), so an older build's device keeps its cast.
+Alongside it **New Adventure asks what to bring** (`NewAdventureModal` +
+`defaults.ts → seedAdventure`/`DEFAULT_ADVENTURE_IMPORTS`, pure and tested):
+Scenario & Opening · Player Character · Characters · World Notes, four
+independent ticks, first two on by default. The party always starts empty; `npc`
+standings ride along only with the cast; beats, journal, quests and inventory
+always reset.
 Deferred (post-MVP): rolling LLM summarization of the beats themselves,
 NPC/item art, TTS, weather animation, multi-world. Track scope in
 `DESIGN.md → Build Phases`.

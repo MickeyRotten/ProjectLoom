@@ -46,7 +46,7 @@ export interface ChatMessage {
 export interface BuildOptions {
   settings: Settings;
   game: GameState;
-  /** The global character library the game's roster refers into. */
+  /** The adventure's cast — the sheets its roster refers into. */
   characters: Character[];
   /** The player's new message for this turn. */
   playerMessage: string;

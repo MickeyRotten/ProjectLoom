@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   ACTIVE_DOC,
-  CHARACTERS_DOC,
+  LEGACY_CHARACTERS_DOC,
   SETTINGS_DOC,
   conflictPolicy,
   conflictSlotName,
@@ -85,10 +85,16 @@ describe("conflictPolicy", () => {
     expect(conflictPolicy(ACTIVE_DOC)).toBe("ask");
   });
 
-  it("merges the cast, takes the newest settings, and defers on a slot", () => {
-    expect(conflictPolicy(CHARACTERS_DOC)).toBe("merge");
+  it("takes the newest settings and defers on a slot", () => {
     expect(conflictPolicy(SETTINGS_DOC)).toBe("newest");
     expect(conflictPolicy(slotDoc("abc"))).toBe("remote");
+  });
+
+  it("has nothing to say about the retired cast document", () => {
+    // It is skipped by the pass entirely — no policy, because it never reaches
+    // one. Naming it here so the constant can't quietly change spelling.
+    expect(LEGACY_CHARACTERS_DOC).toBe("characters");
+    expect(isSlotDoc(LEGACY_CHARACTERS_DOC)).toBe(false);
   });
 });
 

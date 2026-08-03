@@ -18,7 +18,7 @@ import { PARTY_LIMIT, activeMembers, benchedMembers } from "../lib/roster";
  * Reached from the fixed PARTY button.
  */
 export function PartyScreen() {
-  const characters = useStore((s) => s.characters);
+  const characters = useStore((s) => s.game.characters);
   const roster = useStore((s) => s.game.roster);
   const openMember = useStore((s) => s.openMember);
   const setStanding = useStore((s) => s.setStanding);

@@ -30,7 +30,7 @@ export function EquipModal({
   index: number;
   onClose: () => void;
 }) {
-  const characters = useStore((s) => s.characters);
+  const characters = useStore((s) => s.game.characters);
   const roster = useStore((s) => s.game.roster);
   const equip = useStore((s) => s.equipItem);
   const first = useRef<HTMLButtonElement>(null);

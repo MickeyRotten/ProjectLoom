@@ -33,7 +33,7 @@ export function ChatView() {
   const messages = useStore((s) => s.game.messages);
   // Every character, not just the party: scrollback dialogue must keep its
   // speaker styling after someone has been kicked or has left.
-  const party = useStore((s) => s.characters);
+  const party = useStore((s) => s.game.characters);
   const streaming = useStore((s) => s.streaming);
   const streamText = useStore((s) => s.streamText);
   const error = useStore((s) => s.error);

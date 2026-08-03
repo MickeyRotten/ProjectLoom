@@ -1,11 +1,14 @@
+import { useState } from "react";
 import { useStore, type Screen } from "../store";
+import { NewAdventureModal } from "./NewAdventureModal";
 import { OverlayHeader } from "./OverlayHeader";
-import { useConfirm } from "./useConfirm";
 
 /**
  * The gear menu (DESIGN.md → Menu): a full-screen list routing to every
  * authoring + settings sub-screen. Everything edits the active game directly
- * (no Edit mode). New Adventure reseeds from the current scenario + roster.
+ * (no Edit mode). New Adventure opens `NewAdventureModal`, which asks what to
+ * carry over — the cast belongs to the adventure being replaced, so nothing
+ * survives implicitly any more.
  */
 /**
  * Every screen, in one place, play-facing first. Party / Inventory / Quests /
@@ -36,10 +39,11 @@ const ENTRIES: { screen: Screen; label: string; note: string }[] = [
 export function MenuScreen() {
   const setScreen = useStore((s) => s.setScreen);
   const newAdventure = useStore((s) => s.newAdventure);
+  const game = useStore((s) => s.game);
   const bannerSize = useStore((s) => s.settings.bannerSize);
   const locationImages = useStore((s) => s.settings.locationImages);
   const updateSettings = useStore((s) => s.updateSettings);
-  const { ask, dialog } = useConfirm();
+  const [starting, setStarting] = useState(false);
 
   return (
     <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
@@ -76,25 +80,23 @@ export function MenuScreen() {
 
         <button
           type="button"
-          onClick={() =>
-            ask(
-              {
-                title: "Start a new adventure?",
-                body: "Your Characters are kept and NPCs carry over, but the party empties and the game you are playing now is replaced. Snapshot it under Saves first if you want it back.",
-                confirmLabel: "New adventure",
-              },
-              () => {
-                newAdventure();
-                setScreen(null);
-              },
-            )
-          }
+          onClick={() => setStarting(true)}
           className="mt-2 block w-full border-2 border-ink p-3 text-left uppercase tracking-widest active:bg-ink active:text-paper"
         >
           New Adventure
         </button>
       </div>
-      {dialog}
+      {starting && (
+        <NewAdventureModal
+          game={game}
+          onClose={() => setStarting(false)}
+          onStart={(imports) => {
+            setStarting(false);
+            newAdventure(imports);
+            setScreen(null);
+          }}
+        />
+      )}
     </main>
   );
 }

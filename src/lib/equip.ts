@@ -9,7 +9,7 @@ import { partyMembers, playerCharacter } from "./roster";
  * The two halves of "what you have" were sealed off from each other: the
  * INVENTORY is the party's shared pack (`GameState.inventory`, per-adventure)
  * and EQUIPMENT is what one character wears or carries (`Character.equipment`,
- * global with the cast). Both were editable, neither could reach the other, so
+ * with the cast). Both were editable, neither could reach the other, so
  * handing the sword the party just looted to the swordswoman meant deleting a
  * row here and retyping it there — and typing it in both places is how an item
  * ends up existing twice.

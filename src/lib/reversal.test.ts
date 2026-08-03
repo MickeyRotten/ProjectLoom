@@ -113,7 +113,7 @@ describe("captureReversal", () => {
     expect(rev.quests).toBeUndefined();
   });
 
-  it("never captures the global character library", () => {
+  it("never captures the cast", () => {
     const pre = seed();
     const { game: post } = turn(pre, [defaultPC()], {
       party: [{ op: "add", name: "Riley" }],
