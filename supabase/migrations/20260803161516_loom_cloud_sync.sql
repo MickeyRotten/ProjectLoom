@@ -16,6 +16,20 @@
 -- policy is `auth.uid() = user_id`, so a stolen anon key reads nothing without a
 -- valid session. Never put the `service_role` key in the app.
 
+-- Every statement below is idempotent DDL, which means a successful run prints
+-- "Success. No rows returned" — and so does a run where the guarded storage
+-- half silently skipped its work, because the SQL Editor does not surface
+-- `raise notice`. Indistinguishable outcomes are how a half-configured project
+-- looks perfectly set up. So each step records what it did, and the last
+-- statement SELECTs the report: paste this in the dashboard and you see, in
+-- rows, exactly what landed.
+create temporary table if not exists loom_setup_report (
+  item text primary key,
+  ok   boolean,
+  note text
+);
+truncate loom_setup_report;
+
 -- ------------------------------------------------------------------ --
 -- Documents: the active game, the cast library, settings, save slots.
 -- ------------------------------------------------------------------ --
@@ -98,9 +112,13 @@ begin
   insert into storage.buckets (id, name, public)
   values ('loom-images', 'loom-images', false)
   on conflict (id) do nothing;
+  insert into loom_setup_report
+  values ('loom-images bucket', true, 'private bucket for portraits, banners and their masters');
 exception
   when insufficient_privilege then
-    raise notice 'loom: could not create the loom-images bucket — make it in the dashboard (Storage → New bucket, public off).';
+    insert into loom_setup_report
+    values ('loom-images bucket', false,
+            'ACTION: Storage -> New bucket -> name loom-images, Public off');
 end;
 $$;
 
@@ -121,8 +139,32 @@ begin
         and (storage.foldername(name))[1] = auth.uid()::text
       )
   $p$;
+  insert into loom_setup_report
+  values ('loom-images RLS policy', true, 'objects are private to the account whose id is the first path segment');
 exception
   when insufficient_privilege then
-    raise notice 'loom: could not create the storage policy — add it in the dashboard (Storage → loom-images → Policies).';
+    insert into loom_setup_report
+    values ('loom-images RLS policy', false,
+            'ACTION: Storage -> loom-images -> Policies -> New policy, for authenticated, all operations, '
+            || 'using and with check: (storage.foldername(name))[1] = auth.uid()::text');
 end;
 $$;
+
+-- ------------------------------------------------------------------ --
+-- The report. Anything with ok = false needs the action in its note; until
+-- then that half of sync does not work, however green the run looked.
+-- ------------------------------------------------------------------ --
+
+insert into loom_setup_report
+values
+  ('loom_docs table', to_regclass('public.loom_docs') is not null,
+   'the synced documents: active game, cast, settings, save slots'),
+  ('loom_docs RLS policy',
+   (select count(*) from pg_policies
+      where schemaname = 'public' and tablename = 'loom_docs') = 1,
+   'one policy for all four commands: auth.uid() = user_id'),
+  ('loom_docs updated_at trigger',
+   exists (select 1 from pg_trigger where tgname = 'loom_docs_touch' and not tgisinternal),
+   'the merge clock — stamped by the server, never by a device');
+
+select item, ok, note from loom_setup_report order by ok, item;
