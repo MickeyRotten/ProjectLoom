@@ -4,7 +4,23 @@ import { Field, ToggleRow } from "./fields";
 import { KeyField } from "./KeyField";
 import { ModelPicker } from "./ModelPicker";
 import { splitModels, useModelCatalog } from "./useModelCatalog";
-import { REASONING_LEVELS, type ReasoningLevel } from "../types";
+import { ComfyFields } from "./ComfyFields";
+import { REASONING_LEVELS, type ImageBackend, type ReasoningLevel } from "../types";
+
+const IMAGE_BACKENDS: ImageBackend[] = ["openrouter", "comfyui"];
+
+const BACKEND_LABELS: Record<ImageBackend, string> = {
+  openrouter: "OpenRouter",
+  comfyui: "ComfyUI",
+};
+
+/** One line under the picker explaining the backend that is actually selected. */
+const BACKEND_NOTES: Record<ImageBackend, string> = {
+  openrouter:
+    "Pictures are drawn in the cloud and billed to your key. Works anywhere, needs no setup.",
+  comfyui:
+    "Pictures are drawn by a ComfyUI server you run yourself. Free to render, and your own models — but it has to be running and reachable from this device.",
+};
 
 /**
  * Labels for the reasoning picker. Short enough for three-across on a phone;
@@ -106,22 +122,56 @@ export function ModelKeyScreen() {
 
         {settings.imagesEnabled ? (
           <>
-            <KeyField
-              label="Image API Key"
-              value={settings.imageKey}
-              onChange={(v) => update({ imageKey: v })}
-              placeholder="Optional — blank uses the key above"
-              hint="Separate key billed for image generation. Leave blank to reuse the OpenRouter API Key."
-            />
+            {/* Which machine draws. The two backends want completely different
+                fields — a key and a model id, or an address and a workflow — so
+                the unselected one's controls go away rather than sit there
+                configuring nothing. Both sets of settings are kept either way,
+                so switching back and forth costs no retyping. */}
+            <div className="space-y-2">
+              <span className="block text-sm uppercase tracking-widest">Image Backend</span>
+              <div className="grid grid-cols-2 gap-2">
+                {IMAGE_BACKENDS.map((backend) => {
+                  const current = settings.imageBackend === backend;
+                  return (
+                    <button
+                      key={backend}
+                      type="button"
+                      aria-pressed={current}
+                      onClick={() => update({ imageBackend: backend })}
+                      className={`min-h-11 border-2 border-ink px-2 py-2 text-sm uppercase tracking-widest ${
+                        current ? "bg-ink text-paper" : "active:bg-ink active:text-paper"
+                      }`}
+                    >
+                      {BACKEND_LABELS[backend]}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-xs opacity-70">{BACKEND_NOTES[settings.imageBackend]}</p>
+            </div>
 
-            <ModelPicker
-              label="Image Model"
-              value={settings.imageModelId}
-              onChange={(v) => update({ imageModelId: v })}
-              models={image}
-              loading={loading}
-              error={error}
-            />
+            {settings.imageBackend === "comfyui" ? (
+              <ComfyFields />
+            ) : (
+              <>
+                <KeyField
+                  label="Image API Key"
+                  value={settings.imageKey}
+                  onChange={(v) => update({ imageKey: v })}
+                  placeholder="Optional — blank uses the key above"
+                  hint="Separate key billed for image generation. Leave blank to reuse the OpenRouter API Key."
+                />
+
+                <ModelPicker
+                  label="Image Model"
+                  value={settings.imageModelId}
+                  onChange={(v) => update({ imageModelId: v })}
+                  models={image}
+                  loading={loading}
+                  error={error}
+                />
+              </>
+            )}
           </>
         ) : (
           <p className="border-2 border-ink p-3 text-sm opacity-70">

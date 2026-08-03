@@ -408,6 +408,71 @@ export interface RefImage {
 }
 
 /**
+ * One image request, as both backends receive it. Lives here rather than in
+ * `images.ts` so `comfyui.ts` can take it without importing the module that
+ * dispatches into it.
+ */
+export interface GenerateImageOptions {
+  settings: Settings;
+  prompt: string;
+  /**
+   * Input images as data URLs — style references and/or an edit source. Sent
+   * as `image_url` parts *before* the text part. OpenRouter only; the ComfyUI
+   * path has no generic place to put them in a player-authored workflow.
+   */
+  images?: string[];
+  /** e.g. "2:3" — `image_config.aspect_ratio` on OpenRouter, the latent shape on ComfyUI. */
+  aspectRatio?: string;
+  signal?: AbortSignal;
+}
+
+/**
+ * Where generated images come from. `openrouter` is the shipped cloud path;
+ * `comfyui` points the same two triggers (portraits, banners) at a ComfyUI
+ * instance the player runs themselves. See `lib/comfyui.ts`.
+ */
+export type ImageBackend = "openrouter" | "comfyui";
+
+/**
+ * ComfyUI connection + workflow settings, mixed into `Settings` the way
+ * `DiceRules` is — one named group, so `DEFAULT_COMFY` in `lib/comfyui.ts` can
+ * be the single definition of "an unconfigured ComfyUI".
+ *
+ * `comfyWorkflow` is raw ComfyUI API-format JSON with `%placeholder%` tokens.
+ * It is the player's to edit, and everything below it exists only to fill those
+ * tokens — a workflow that hardcodes its sampler simply ignores the field.
+ */
+export interface ComfySettings {
+  imageBackend: ImageBackend;
+  /** Base URL of the ComfyUI server, e.g. `http://127.0.0.1:8188`. */
+  comfyUrl: string;
+  /** The workflow graph, as text. See `comfyui.ts → DEFAULT_COMFY_WORKFLOW`. */
+  comfyWorkflow: string;
+  comfyModel: string;
+  comfyVae: string;
+  comfySampler: string;
+  comfyScheduler: string;
+  comfySteps: number;
+  /** CFG scale — `%scale%`, matching SillyTavern's token name. */
+  comfyScale: number;
+  /**
+   * Base pixel size. Banners use it verbatim; a portrait is reshaped to 2:3 at
+   * the same pixel area (`comfyui.ts → comfyDimensions`).
+   */
+  comfyWidth: number;
+  comfyHeight: number;
+  comfyDenoise: number;
+  /** Positive as the player knows it; sent negative, as CLIPSetLastLayer wants. */
+  comfyClipSkip: number;
+  /**
+   * What to keep OUT of the picture. The one field with no OpenRouter
+   * counterpart: a chat image model is told in prose, a diffusion model needs
+   * its own list.
+   */
+  comfyNegativePrompt: string;
+}
+
+/**
  * The typeface the whole app renders in (Settings → Appearance). `system` is
  * the platform monospace stack Loom shipped with; the other two are bitmap-era
  * display faces bundled with the app (`src/fonts/`, SIL OFL) so the APK never
@@ -530,7 +595,7 @@ export interface DiceRules {
   mixedThreshold: number;
 }
 
-export interface Settings extends DiceRules {
+export interface Settings extends DiceRules, ComfySettings {
   openRouterKey: string;
   /**
    * Whether the player has been through first-run setup. Gates `SetupScreen`.

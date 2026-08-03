@@ -17,6 +17,7 @@ import {
   DEFAULT_TEXT_SIZE,
   defaultSettings,
 } from "./defaults";
+import { normalizeComfy } from "./comfyui";
 
 /**
  * Fields that existed in an earlier shape of the stored settings and no longer
@@ -86,6 +87,9 @@ export function loadSettings(): Settings {
           (stored.textScale ? LEGACY_SCALE_PX[stored.textScale] : DEFAULT_TEXT_SIZE),
       ),
       webFonts: normalizeWebFonts(stored.webFonts),
+      // Same discipline for the ComfyUI numbers — a half-typed width must not
+      // be able to persist a latent size that fails every later generation.
+      ...normalizeComfy(stored),
     };
   } catch {
     return defaultSettings();

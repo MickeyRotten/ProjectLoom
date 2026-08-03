@@ -423,6 +423,33 @@ inline onto `<html>`, with `--scrim`, `color-scheme` and `theme-color`
 **derived** from the pair (`scrimFrom`, `isDarkPaper`) — `theme.css` lost its
 `[data-theme="dark"]` palette, so a colour question no longer has two answers.
 Invert survives as the first two of four presets.
+Post-MVP also: **ComfyUI as a second image backend** (`comfyui.ts`,
+`Settings.imageBackend`, Model & Key) — `generateImage` was the only function in
+the app that turns a prompt into pixels, so a second backend is a dispatch inside
+it and nothing downstream (1-bit pass, `src:` master, cache, failure badge) learns
+which machine drew the picture. OpenRouter stays the default and is untouched;
+ComfyUI points the same deterministic triggers at a server the player runs.
+The **workflow is theirs** — raw ComfyUI API-format JSON with SillyTavern's
+`%placeholder%` tokens, substituted by a string replace **with the quotes
+included** (`replaceAll('"%steps%"', JSON.stringify(25))`), which is what makes
+`"steps": "%steps%"` come out as a bare number while a prompt full of quotes lands
+escaped; `scale` is CFG and `clip_skip` goes out negative, so a workflow written
+for SillyTavern works here. `validateWorkflow` runs on the *substituted* text and
+guards both the editor and every generation. Portraits reshape to 2:3 at the same
+pixel area as the configured size (`comfyDimensions`). Requests go through
+**`CapacitorHttp` on native** — one answer to three separate blockers (ComfyUI's
+own cross-origin 403, WebView mixed content, Android cleartext), with
+`usesCleartextTraffic` patched in CI since `android/` isn't committed and
+`androidScheme` deliberately left alone (changing it would orphan every installed
+save). A 403 is translated into the `--enable-cors-header` sentence, since it is
+the error every new user hits and nothing in the app can fix it. **Connect** reads
+`/object_info` to fill the checkpoint/sampler/scheduler/VAE pickers, because a
+wrong host and a mistyped checkpoint fail identically. ✎ **Edit** and portrait
+reference images are OpenRouter-only (`imageEditAllowed`) — feeding an image into
+a player-authored graph needs a different graph — and the button is hidden rather
+than left to fail. `safeErrorText` moved to `http.ts` and `ImageError` to
+`imageError.ts` (breaking the `images.ts` ⟂ `comfyui.ts` cycle); `ImageError`
+gained `status`/`retryable`, since a queue-then-poll flow fails at three points.
 Deferred (post-MVP): rolling LLM summarization of the beats themselves,
 NPC/item art, TTS, weather animation, multi-world. Track scope in
 `DESIGN.md → Build Phases`.

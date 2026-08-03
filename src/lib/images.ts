@@ -1,16 +1,30 @@
-import type { Character, DitherMode, RefImage, Settings } from "../types";
+import type {
+  Character,
+  DitherMode,
+  GenerateImageOptions,
+  RefImage,
+  Settings,
+} from "../types";
 import { quantizeToOneBit } from "./onebit";
 import { backoffMs, isRetryableStatus, MAX_ATTEMPTS, sleep } from "./retry";
+import { generateComfyImage } from "./comfyui";
+import { ImageError } from "./imageError";
+import { safeErrorText } from "./http";
 
 /**
- * Image generation over OpenRouter (DESIGN.md → Image Generation). Two kinds,
- * both triggered deterministically by the client (never model-driven):
+ * Image generation (DESIGN.md → Image Generation). Two kinds, both triggered
+ * deterministically by the client (never model-driven):
  *   - Location banner — keyed `banner:<location>`, generated on a scene change
  *     to an uncached location.
  *   - Party portrait — keyed `portrait:<memberId>`, generated when a member
  *     has no cached portrait.
  *
- * Access shape (verified against OpenRouter docs at build time): a normal
+ * Two backends, one seam: `generateImage` dispatches on `Settings.imageBackend`
+ * and returns a Blob either way, so the 1-bit pass, the `src:` master, the
+ * cache and the failure badge below never learn which one drew it. The
+ * OpenRouter path is here; ComfyUI lives in `comfyui.ts`.
+ *
+ * OpenRouter access shape (verified against their docs at build time): a normal
  * chat-completions POST with `modalities: ["image","text"]`; the generated
  * image comes back as a base64 data URL under
  * `choices[0].message.images[].image_url.url`. Kept mostly pure (key + prompt
@@ -20,7 +34,8 @@ import { backoffMs, isRetryableStatus, MAX_ATTEMPTS, sleep } from "./retry";
 
 const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
 
-export class ImageError extends Error {}
+export { ImageError } from "./imageError";
+export type { GenerateImageOptions } from "../types";
 
 /* ------------------------------ cache keys ------------------------------ */
 
@@ -76,6 +91,20 @@ export function bannerAllowed(
   settings: Pick<Settings, "imagesEnabled" | "locationImages">,
 ): boolean {
   return imagesAllowed(settings) && settings.locationImages;
+}
+
+/**
+ * Whether ✎ may edit an existing image. OpenRouter only: an edit is
+ * "instruction + this picture, give me the picture back", which a chat image
+ * model does natively and a ComfyUI txt2img graph cannot do at all — feeding an
+ * image into a workflow means a different graph with a LoadImage node, which is
+ * the player's to write and not something the app can substitute into one.
+ * Rather than a button that fails, ✎ is hidden.
+ */
+export function imageEditAllowed(
+  settings: Pick<Settings, "imagesEnabled" | "imageBackend">,
+): boolean {
+  return imagesAllowed(settings) && settings.imageBackend !== "comfyui";
 }
 
 /* ------------------------------- cooldown ------------------------------- */
@@ -333,22 +362,18 @@ export function imageRequestKey(settings: Settings): string {
   return settings.imageKey?.trim() || settings.openRouterKey.trim();
 }
 
-export interface GenerateImageOptions {
-  settings: Settings;
-  prompt: string;
-  /**
-   * Input images as data URLs — style references and/or an edit source. Sent
-   * as `image_url` parts *before* the text part.
-   */
-  images?: string[];
-  /** e.g. "2:3" — forwarded as `image_config.aspect_ratio` when set. */
-  aspectRatio?: string;
-  signal?: AbortSignal;
-}
-
 /** True when an OpenRouter error looks like the request body was too big. */
 function isPayloadError(status: number, detail: string): boolean {
   return status === 413 || /too large|payload|exceed/i.test(detail);
+}
+
+/**
+ * Generate one image and return it as a Blob — the single seam every image in
+ * the app comes through, whichever backend the player picked.
+ */
+export async function generateImage(opts: GenerateImageOptions): Promise<Blob> {
+  if (opts.settings.imageBackend === "comfyui") return generateComfyImage(opts);
+  return generateOpenRouterImage(opts);
 }
 
 /**
@@ -359,7 +384,7 @@ function isPayloadError(status: number, detail: string): boolean {
  * exactly one retry. Throws ImageError otherwise; callers treat any failure as
  * non-fatal (a failed image never blocks the turn).
  */
-export async function generateImage(opts: GenerateImageOptions): Promise<Blob> {
+export async function generateOpenRouterImage(opts: GenerateImageOptions): Promise<Blob> {
   const { settings, prompt, images, aspectRatio, signal } = opts;
 
   const key = imageRequestKey(settings);
@@ -693,19 +718,3 @@ export function refImageToDataUrl(ref: RefImage): string {
   return `data:${ref.mime};base64,${ref.b64}`;
 }
 
-async function safeErrorText(res: Response): Promise<string> {
-  try {
-    const text = await res.text();
-    try {
-      const json: unknown = JSON.parse(text);
-      if (isRecord(json) && isRecord(json.error) && typeof json.error.message === "string") {
-        return json.error.message;
-      }
-      return text.slice(0, 200);
-    } catch {
-      return text.slice(0, 200);
-    }
-  } catch {
-    return "";
-  }
-}

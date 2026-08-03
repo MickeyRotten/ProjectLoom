@@ -19,6 +19,7 @@ import {
   ImageError,
   imageRequestKey,
   imagesAllowed,
+  imageEditAllowed,
   isModelSafeImage,
   PORTRAIT_PIXEL_WIDTH,
   portraitKey,
@@ -30,6 +31,7 @@ import {
   UPLOAD_PLAIN_WIDTH,
   uploadStoredWidth,
 } from "./images";
+import { DEFAULT_COMFY } from "./comfyui";
 import type { Settings } from "../types";
 import type { PortraitInstructions } from "./images";
 
@@ -428,6 +430,88 @@ describe("generation gate", () => {
     expect(bannerAllowed({ imagesEnabled: true, locationImages: false })).toBe(false);
     expect(bannerAllowed({ imagesEnabled: false, locationImages: true })).toBe(false);
     expect(bannerAllowed({ imagesEnabled: false, locationImages: false })).toBe(false);
+  });
+
+  it("an edit needs the master switch AND a backend that can edit", () => {
+    expect(imageEditAllowed({ imagesEnabled: true, imageBackend: "openrouter" })).toBe(true);
+    expect(imageEditAllowed({ imagesEnabled: true, imageBackend: "comfyui" })).toBe(false);
+    expect(imageEditAllowed({ imagesEnabled: false, imageBackend: "openrouter" })).toBe(false);
+    // A save from before the backend existed reads as OpenRouter, which is what
+    // it was played with.
+    expect(imageEditAllowed({ imagesEnabled: true } as Settings)).toBe(true);
+  });
+});
+
+describe("generateImage dispatch", () => {
+  const base = { openRouterKey: "sk-test", imageModelId: "m" } as Settings;
+  const orReply = {
+    ok: true,
+    json: () =>
+      Promise.resolve({
+        choices: [{ message: { images: [{ image_url: { url: "data:image/png;base64,AAAA" } }] } }],
+      }),
+  };
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("goes to OpenRouter by default — including for a save with no backend field", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(orReply);
+    vi.stubGlobal("fetch", fetchMock);
+    await generateImage({ settings: base, prompt: "a tower" });
+    expect(fetchMock.mock.calls[0][0]).toContain("openrouter.ai");
+  });
+
+  it("goes to ComfyUI when the backend says so, and sends OpenRouter nothing", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url.includes("/prompt")) {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ prompt_id: "p1" }) });
+      }
+      if (url.includes("/history/")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({
+              p1: {
+                outputs: { "9": { images: [{ filename: "a.png", subfolder: "", type: "output" }] } },
+                status: { status_str: "success", completed: true },
+              },
+            }),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        blob: () => Promise.resolve(new Blob(["x"], { type: "image/png" })),
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const settings = {
+      ...base,
+      ...DEFAULT_COMFY,
+      imageBackend: "comfyui",
+      comfyUrl: "http://box:8188",
+    } as Settings;
+    await generateImage({ settings, prompt: "a tower" });
+
+    const hosts = fetchMock.mock.calls.map((c) => c[0] as string);
+    expect(hosts.every((h) => h.startsWith("http://box:8188"))).toBe(true);
+    expect(hosts.some((h) => h.includes("openrouter.ai"))).toBe(false);
+  });
+
+  it("does not demand an OpenRouter key for the ComfyUI path", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: false, status: 400, statusText: "", text: () => Promise.resolve("{}"), json: () => Promise.resolve({}) }),
+    );
+    const settings = {
+      ...DEFAULT_COMFY,
+      openRouterKey: "",
+      imageBackend: "comfyui",
+    } as Settings;
+    // Fails on ComfyUI's own terms, never on the missing key.
+    await expect(generateImage({ settings, prompt: "x" })).rejects.not.toThrow(/API key/);
   });
 });
 

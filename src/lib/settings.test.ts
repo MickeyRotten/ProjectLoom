@@ -35,6 +35,7 @@ import {
   scrimFrom,
   usableQuickActions,
 } from "./settings";
+import { DEFAULT_COMFY, MAX_COMFY_STEPS, MIN_COMFY_SIDE } from "./comfyui";
 import { FONT_CHOICES } from "../types";
 
 function settingsWith(reasoningLevel: ReasoningLevel): Settings {
@@ -312,6 +313,22 @@ describe("loadSettings migrations", () => {
     expect(s.ink).toBe(DEFAULT_INK);
     expect(s.textSize).toBe(DEFAULT_TEXT_SIZE);
     expect(s.webFonts).toEqual([]);
+  });
+
+  it("keeps a save from before ComfyUI existed on the OpenRouter backend", () => {
+    write({ openRouterKey: "sk-old" });
+    const s = loadSettings();
+    expect(s.imageBackend).toBe("openrouter");
+    expect(s.comfyUrl).toBe(DEFAULT_COMFY.comfyUrl);
+    expect(s.comfyWorkflow).toBe(DEFAULT_COMFY.comfyWorkflow);
+  });
+
+  it("sanitizes stored ComfyUI numbers on read, not on write", () => {
+    write({ imageBackend: "comfyui", comfySteps: 9999, comfyWidth: 3 });
+    const s = loadSettings();
+    expect(s.imageBackend).toBe("comfyui");
+    expect(s.comfySteps).toBe(MAX_COMFY_STEPS);
+    expect(s.comfyWidth).toBe(MIN_COMFY_SIDE);
   });
 
   it("carries the old Invert toggle onto the color pair", () => {

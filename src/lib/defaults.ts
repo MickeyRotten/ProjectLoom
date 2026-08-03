@@ -13,6 +13,7 @@ import { MORNING_ANCHOR, normalizeMinutes } from "./clock";
 import { PARTY_LIMIT, normalizeRoster, strengthsText } from "./roster";
 import { SCENE_TILT } from "./diceAnim";
 import { DEFAULT_DICE, RISK_KEYWORDS } from "./stakes";
+import { DEFAULT_COMFY } from "./comfyui";
 
 /**
  * Ship-time defaults. The pre-made scenario is intentionally minimal for
@@ -260,6 +261,9 @@ export function defaultSettings(): Settings {
     // switch OFF would read as the image pipeline having broken. Location
     // images stay separately opt-in below.
     imagesEnabled: true,
+    // OpenRouter, plus an unconfigured ComfyUI sitting behind it — the whole
+    // group from `comfyui.ts`, so "the default ComfyUI setup" is defined once.
+    ...DEFAULT_COMFY,
     temperature: 0.8,
     reasoningLevel: DEFAULT_REASONING_LEVEL,
     showActionOptions: true,
