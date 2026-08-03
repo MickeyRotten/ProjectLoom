@@ -41,14 +41,18 @@ export type { GenerateImageOptions } from "../types";
 
 /* ------------------------------ cache keys ------------------------------ */
 
+export const BANNER_PREFIX = "banner:";
+export const PORTRAIT_PREFIX = "portrait:";
+export const SOURCE_PREFIX = "src:";
+
 /** Blob-store key for a location banner. Case/whitespace-insensitive. */
 export function bannerKey(location: string): string {
-  return `banner:${location.trim().toLowerCase()}`;
+  return `${BANNER_PREFIX}${location.trim().toLowerCase()}`;
 }
 
 /** Blob-store key for a member portrait. */
 export function portraitKey(memberId: string): string {
-  return `portrait:${memberId}`;
+  return `${PORTRAIT_PREFIX}${memberId}`;
 }
 
 /**
@@ -60,7 +64,30 @@ export function portraitKey(memberId: string): string {
  * edit. Every write path stores its master here so edits start from real pixels.
  */
 export function sourceKey(key: string): string {
-  return `src:${key}`;
+  return `${SOURCE_PREFIX}${key}`;
+}
+
+/** The two kinds of picture the app stores. */
+export type ImageKind = "banner" | "portrait";
+
+/**
+ * Which kind of picture a cache key holds, or null for a key that is neither.
+ *
+ * A master counts as its subject: `src:banner:…` is a banner. A purge that left
+ * the masters behind would free almost none of the bytes (a master is the big
+ * copy — up to 1024px JPEG, the display blob is 192–256px 1-bit) and would let
+ * a later ✎ edit start from art the player deleted.
+ */
+export function imageKindOf(key: string): ImageKind | null {
+  const bare = key.startsWith(SOURCE_PREFIX) ? key.slice(SOURCE_PREFIX.length) : key;
+  if (bare.startsWith(BANNER_PREFIX)) return "banner";
+  if (bare.startsWith(PORTRAIT_PREFIX)) return "portrait";
+  return null;
+}
+
+/** Every key of one kind, masters included — what a purge deletes. */
+export function imageKeysOfKind(keys: Iterable<string>, kind: ImageKind): string[] {
+  return [...keys].filter((key) => imageKindOf(key) === kind);
 }
 
 /* ----------------------------- generation gate --------------------------- */

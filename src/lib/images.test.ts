@@ -17,6 +17,8 @@ import {
   bannerAllowed,
   generateImage,
   ImageError,
+  imageKeysOfKind,
+  imageKindOf,
   imageRequestKey,
   imagesAllowed,
   imageEditAllowed,
@@ -73,6 +75,47 @@ describe("cache keys", () => {
     expect(sourceKey(bannerKey("Ruins"))).toBe("src:banner:ruins");
     // Never collides with a display key — that would overwrite the art itself.
     expect(sourceKey(portraitKey("m-navi"))).not.toBe(portraitKey("m-navi"));
+  });
+});
+
+describe("image kinds (purge)", () => {
+  it("reads a kind off a display key", () => {
+    expect(imageKindOf(bannerKey("Ruins"))).toBe("banner");
+    expect(imageKindOf(portraitKey("m-navi"))).toBe("portrait");
+  });
+
+  it("counts a master as its subject", () => {
+    // The master is the BIG copy, so a purge that skipped it would free nothing
+    // and leave ✎ able to edit art the player deleted.
+    expect(imageKindOf(sourceKey(bannerKey("Ruins")))).toBe("banner");
+    expect(imageKindOf(sourceKey(portraitKey("m-navi")))).toBe("portrait");
+  });
+
+  it("claims nothing it doesn't recognise", () => {
+    expect(imageKindOf("font:vt323:0")).toBeNull();
+    expect(imageKindOf("src:font:vt323:0")).toBeNull();
+    expect(imageKindOf("")).toBeNull();
+    // A location merely CONTAINING the word is not a key of ours.
+    expect(imageKindOf("banner")).toBeNull();
+  });
+
+  it("filters a keyspace down to one kind, masters included", () => {
+    const keys = [
+      bannerKey("Ruins"),
+      sourceKey(bannerKey("Ruins")),
+      portraitKey("m-navi"),
+      sourceKey(portraitKey("m-navi")),
+      "font:vt323:0",
+    ];
+    expect(imageKeysOfKind(keys, "banner")).toEqual(["banner:ruins", "src:banner:ruins"]);
+    expect(imageKeysOfKind(keys, "portrait")).toEqual([
+      "portrait:m-navi",
+      "src:portrait:m-navi",
+    ]);
+    // Every key of ours belongs to exactly one purge.
+    expect(imageKeysOfKind(keys, "banner").concat(imageKeysOfKind(keys, "portrait"))).toHaveLength(
+      keys.length - 1,
+    );
   });
 });
 

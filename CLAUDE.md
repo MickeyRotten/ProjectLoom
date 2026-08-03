@@ -515,6 +515,18 @@ Scenario & Opening · Player Character · Characters · World Notes, four
 independent ticks, first two on by default. The party always starts empty; `npc`
 standings ride along only with the cast; beats, journal, quests and inventory
 always reset.
+Post-MVP also: **image purge** (Advanced → Images) — *Purge Location Images* and
+*Purge Character Images* delete every stored blob of one kind, display copies and
+their `src:` masters, from IndexedDB **and** from Supabase Storage. `images.ts →
+imageKindOf`/`imageKeysOfKind` is the pure classifier (a master counts as its
+subject); the store deletes through `db.deleteImage`, whose stamp makes an
+ordinary sync pass propagate the deletion, and `syncEngine.purgeRemoteImages`
+lists the bucket and removes matching objects directly — without it a cloud-only
+key (drawn on the other phone, never pulled here) has no stamp and `planImages`
+would download it straight back. Best-effort per key: a failed remove leaves the
+object and its stamp, so the local deletion still propagates. Sets no
+`noPortrait` — it is a cache purge, so the deterministic triggers redraw the PC
+and party next turn.
 Deferred (post-MVP): rolling LLM summarization of the beats themselves,
 NPC/item art, TTS, weather animation, multi-world. Track scope in
 `DESIGN.md → Build Phases`.

@@ -25,13 +25,21 @@ import {
   syncConfigured,
   type Account,
 } from "./lib/supabaseClient";
-import { runSync, startSync, stopSync, type SyncPorts, type SyncStatus } from "./lib/syncEngine";
+import {
+  purgeRemoteImages,
+  runSync,
+  startSync,
+  stopSync,
+  type SyncPorts,
+  type SyncStatus,
+} from "./lib/syncEngine";
 import type { GameSummary } from "./lib/sync";
 import { downloadWebFont, mountWebFonts, unmountWebFont } from "./lib/webFonts";
 import {
   loadActiveGame,
   loadLegacyCharacters,
   saveActiveGame,
+  listImageKeys,
   loadImage,
   saveImage,
   deleteImage,
@@ -101,11 +109,14 @@ import { captureReversal, applyReversal } from "./lib/reversal";
 import { detectSpeakers } from "./lib/spotlight";
 import {
   BANNER_PIXEL_WIDTH,
+  BANNER_PREFIX,
   bannerAllowed,
   bannerKey,
   bannerOnCooldown,
   blobToDataUrl,
   imageEditAllowed,
+  imageKeysOfKind,
+  imageKindOf,
   imagesAllowed,
   buildBannerPrompt,
   buildEditPrompt,
@@ -121,6 +132,7 @@ import {
   toOneBitBlob,
   toSourceBlob,
   type GenerateImageOptions,
+  type ImageKind,
 } from "./lib/images";
 import { activeTemplate } from "./lib/imageTemplates";
 import { imageFileName, saveBlobAsFile } from "./lib/download";
@@ -454,6 +466,28 @@ export interface LoomStore {
    * can say so — a failed SAVE must not flag the portrait itself as broken.
    */
   downloadPortrait: (memberId: string) => Promise<boolean>;
+  /**
+   * Delete every stored picture of one kind — display copies AND their masters
+   * — from this device, and from the cloud when signed in (Advanced → Images).
+   *
+   * Wholesale, unlike the member sheet's Remove Image: this is for reclaiming
+   * the space a long game's location art takes, or for throwing away a style
+   * the player has just replaced. It leaves no `noPortrait` flag behind, so the
+   * deterministic triggers redraw what they normally would.
+   */
+  purgeImages: (kind: ImageKind) => Promise<PurgeSummary>;
+}
+
+/** What one purge deleted, for the line the screen shows afterwards. */
+export interface PurgeSummary {
+  /** Blobs deleted from this device. */
+  local: number;
+  /** Objects deleted from the cloud (0 when signed out). */
+  remote: number;
+  /** Cloud objects that refused to go — the next sync retries them. */
+  failed: number;
+  /** Set when the cloud could not be reached at all; local deletion still happened. */
+  error: string | null;
 }
 
 /** The sheet fields the story is allowed to diverge from the base character. */
@@ -483,7 +517,7 @@ export const uid = () =>
 export const useStore = create<LoomStore>((set, get) => {
   /** Stored pixel width for a cache key — banners are wider than portraits. */
   const pixelWidth = (key: string) =>
-    key.startsWith("banner:") ? BANNER_PIXEL_WIDTH : PORTRAIT_PIXEL_WIDTH;
+    key.startsWith(BANNER_PREFIX) ? BANNER_PIXEL_WIDTH : PORTRAIT_PIXEL_WIDTH;
 
   /**
    * Expose a blob under `key` as an object URL in `images`, revoking whatever
@@ -1981,6 +2015,44 @@ export const useStore = create<LoomStore>((set, get) => {
     commitCharacters(
       get().game.characters.map((c) => (c.id === memberId ? { ...c, noPortrait: true } : c)),
     );
+  },
+
+  async purgeImages(kind) {
+    const stored = imageKeysOfKind(await listImageKeys(), kind);
+    // Deleted through `db.deleteImage`, which stamps each key — that stamp is
+    // what tells a device that syncs later this was a deletion and not a blob
+    // it happens to be missing.
+    for (const key of stored) await deleteImage(key);
+
+    // The in-memory maps are swept by kind rather than by the list above: a key
+    // published in this session but already gone from IndexedDB would otherwise
+    // keep a dead object URL alive in `images`.
+    const images = { ...get().images };
+    const imgError = { ...get().imgError };
+    for (const key of [...Object.keys(images), ...Object.keys(imgError)]) {
+      if (imageKindOf(key) !== kind) continue;
+      const url = images[key];
+      if (url) URL.revokeObjectURL(url);
+      delete images[key];
+      delete imgError[key];
+    }
+    set({ images, imgError });
+
+    const summary: PurgeSummary = { local: stored.length, remote: 0, failed: 0, error: null };
+    const account = get().account;
+    if (!account || !get().settings.syncEnabled) return summary;
+    try {
+      const cloud = await purgeRemoteImages(
+        get().settings,
+        account,
+        (key) => imageKindOf(key) === kind,
+      );
+      summary.remote = cloud.removed;
+      summary.failed = cloud.failed;
+    } catch (err) {
+      summary.error = err instanceof Error && err.message ? err.message : "Could not reach the cloud.";
+    }
+    return summary;
   },
 
   async downloadPortrait(memberId) {

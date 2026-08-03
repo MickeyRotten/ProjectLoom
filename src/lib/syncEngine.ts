@@ -513,3 +513,43 @@ async function syncImages(settings: Settings, account: Account): Promise<void> {
     }
   }
 }
+
+/** What one purge managed to remove from the cloud. */
+export interface RemotePurge {
+  removed: number;
+  failed: number;
+}
+
+/**
+ * Delete every cloud image whose cache key `matches`, and forget its stamp —
+ * the remote half of Advanced → Images → Purge.
+ *
+ * A local purge already stamps each deletion, so an ordinary pass would
+ * propagate it — but only for keys this device HAD. A key that exists only in
+ * the cloud (drawn on the other phone and never pulled here) has no stamp and
+ * no local blob, and `planImages` would read it as an image this device is
+ * missing and download it straight back. So the purge asks the server what is
+ * there and removes it directly, rather than trusting the diff.
+ *
+ * Best-effort per key: a failure leaves both the object and its stamp alone,
+ * which means a local deletion still propagates on a later pass.
+ */
+export async function purgeRemoteImages(
+  settings: Settings,
+  account: Account,
+  matches: (key: string) => boolean,
+): Promise<RemotePurge> {
+  const remote = await listImages(settings, account.id);
+  const out: RemotePurge = { removed: 0, failed: 0 };
+  for (const image of remote) {
+    if (!matches(image.key)) continue;
+    try {
+      await removeImage(settings, account.id, image.key);
+      await deleteImageStamp(image.key);
+      out.removed++;
+    } catch {
+      out.failed++;
+    }
+  }
+  return out;
+}
