@@ -7,6 +7,7 @@ import {
   type GenField,
 } from "./generateField";
 import { defaultSettings, newCharacter, newGame } from "./defaults";
+import { builtinTemplates } from "./imageTemplates";
 import type { Character, GameState, Note, Settings } from "../types";
 
 function member(patch: Partial<Character> = {}): Character {
@@ -47,6 +48,15 @@ function joined(
     .join("\n");
 }
 
+/** Settings whose selected image template carries this appearance rule. */
+function appearanceRule(text: string): Partial<Settings> {
+  const [prose, ...rest] = builtinTemplates();
+  return {
+    imageTemplates: [{ ...prose, appearanceInstructions: text }, ...rest],
+    imageTemplateId: prose.id,
+  };
+}
+
 describe("buildFieldMessages — field isolation", () => {
   it("names only the requested field as the JSON key", () => {
     const text = joined("flaws");
@@ -62,15 +72,15 @@ describe("buildFieldMessages — field isolation", () => {
     expect(text).not.toContain('"drive" is the ONE thing');
   });
 
-  it("uses the player's appearance sentence as the Appearance rule", () => {
+  it("uses the SELECTED template's appearance sentence as the Appearance rule", () => {
     const text = joined("description", {
-      settings: { appearanceInstructions: "Appearance is a woodcut, four words." },
+      settings: appearanceRule("Appearance is a woodcut, four words."),
     });
     expect(text).toContain("Appearance is a woodcut, four words.");
   });
 
   it("falls a blanked appearance sentence back to the built-in", () => {
-    const text = joined("description", { settings: { appearanceInstructions: "   " } });
+    const text = joined("description", { settings: appearanceRule("   ") });
     expect(text).toContain('"description" is physical appearance only, concrete and visual.');
   });
 

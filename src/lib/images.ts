@@ -2,6 +2,8 @@ import type {
   Character,
   DitherMode,
   GenerateImageOptions,
+  ImagePromptTemplate,
+  PromptFormat,
   RefImage,
   Settings,
 } from "../types";
@@ -158,81 +160,93 @@ export function bannerOnCooldown(
 /* ---------------------------- prompt builders --------------------------- */
 
 /**
+ * Join a prompt's parts the way the target model reads them — the structural
+ * half of an `ImagePromptTemplate`, and the half no rewording could cover.
+ *
+ * `prose` keeps the paragraphs the Nano Banana formula wants. `tags` strips each
+ * part's trailing sentence punctuation and comma-joins, so a template whose
+ * fields are tag lists produces one tag list rather than a stack of paragraphs
+ * that happen to contain commas.
+ */
+export function joinPromptParts(parts: string[], format: PromptFormat): string {
+  const clean = parts.map((p) => p.trim()).filter(Boolean);
+  if (format !== "tags") return clean.join("\n\n");
+  return clean.map((p) => p.replace(/[\s.,;]+$/, "")).filter(Boolean).join(", ");
+}
+
+/**
  * Banner prompt: follows the Subject → Action → Location/context → Composition
  * → Style formula. The location name (Subject) and narration excerpt
- * (Location/context) lead, since they're per-scene; the (editable)
- * Action/Composition/Style instructions trail, so the 1-bit look stays fixed
- * last regardless of what the scene contains.
+ * (Location/context) lead, since they're per-scene; the (editable) instructions
+ * trail, so the 1-bit look stays fixed last regardless of what the scene
+ * contains. In `tags` format the `Location:`/`Scene:` labels are dropped —
+ * they'd be two tags describing nothing.
  */
 export function buildBannerPrompt(
   location: string,
   excerpt: string,
-  instructions: string,
+  template: ImagePromptTemplate,
 ): string {
-  const parts = [`Location: ${location.trim()}.`];
+  const tags = template.format === "tags";
+  const place = location.trim();
   const scene = excerpt.trim();
-  if (scene) parts.push(`Scene: ${scene}`);
-  parts.push(instructions.trim());
-  return parts.filter(Boolean).join("\n\n");
-}
-
-/** The Action/Location-context/Composition/Style clauses, editable per-game in Advanced. */
-export interface PortraitInstructions {
-  action: string;
-  context: string;
-  composition: string;
-  style: string;
-}
-
-/**
- * The trailing clauses as unlabeled narrative paragraphs, in the
- * Action → Context → Composition → Style order. The defaults are full
- * sentences, so no `Action:`-style labels — the assembled prompt must read as
- * one coherent visual description.
- */
-function formatPortraitInstructions(instructions: PortraitInstructions): string[] {
-  return [
-    instructions.action.trim(),
-    instructions.context.trim(),
-    instructions.composition.trim(),
-    instructions.style.trim(),
-  ].filter(Boolean);
+  return joinPromptParts(
+    [
+      tags ? place : `Location: ${place}.`,
+      scene && (tags ? scene : `Scene: ${scene}`),
+      template.bannerInstructions,
+    ].filter((p): p is string => Boolean(p)),
+    template.format,
+  );
 }
 
 /**
  * Portrait prompt: follows the Subject → Action → Location/context →
  * Composition → Style formula. The member's name/species/sex/description
- * (Subject) leads; the (editable) Action/Context/Composition/Style clauses
+ * (Subject) leads; the template's Action/Context/Composition/Style clauses
  * trail, so framing and style stay consistent across every party member
  * regardless of what the Subject describes. Subject is never a settings field
  * — it always comes from the character. When the character opts into a custom
  * prompt, that text replaces the auto-built Subject but the clauses still
- * trail it. `refInstruction` (set only when reference images ride along in the
- * request) lands as the final line.
+ * trail it. The template's reference line lands last, and only when reference
+ * images ride along in the request (`withRefs`).
+ *
+ * In `tags` format the labels go, and so does the NAME: a diffusion model's text
+ * encoder has no idea who Bran is, and the tokens it spends failing to find out
+ * come out of a 77-token budget the appearance needs.
  */
 export function buildPortraitPrompt(
   member: Pick<Character, "name" | "species" | "description"> &
     Partial<Pick<Character, "sex" | "useCustomPortraitPrompt" | "customPortraitPrompt">>,
-  instructions: PortraitInstructions,
-  refInstruction?: string,
+  template: ImagePromptTemplate,
+  withRefs = false,
 ): string {
-  const trailer = [...formatPortraitInstructions(instructions), refInstruction?.trim() ?? ""];
+  const trailer = [
+    template.portraitAction,
+    template.portraitContext,
+    template.portraitComposition,
+    template.portraitStyle,
+    withRefs ? template.portraitRefInstruction : "",
+  ];
   if (member.useCustomPortraitPrompt && member.customPortraitPrompt?.trim()) {
-    return [member.customPortraitPrompt.trim(), ...trailer].filter(Boolean).join("\n\n");
+    return joinPromptParts([member.customPortraitPrompt, ...trailer], template.format);
   }
-  const who = [
-    member.name.trim() && `Name: ${member.name.trim()}.`,
-    member.species.trim() && `Species: ${member.species.trim()}.`,
-    member.sex?.trim() && `Sex: ${member.sex.trim()}.`,
-  ]
-    .filter(Boolean)
-    .join(" ");
-  const parts: string[] = [];
-  if (who) parts.push(who);
-  const appearance = member.description.trim();
-  if (appearance) parts.push(`Appearance: ${appearance}`);
-  parts.push(...trailer);
-  return parts.filter(Boolean).join("\n\n");
+
+  const subject: string[] = [];
+  if (template.format === "tags") {
+    subject.push(member.species, member.sex ?? "", member.description);
+  } else {
+    const who = [
+      member.name.trim() && `Name: ${member.name.trim()}.`,
+      member.species.trim() && `Species: ${member.species.trim()}.`,
+      member.sex?.trim() && `Sex: ${member.sex.trim()}.`,
+    ]
+      .filter(Boolean)
+      .join(" ");
+    if (who) subject.push(who);
+    if (member.description.trim()) subject.push(`Appearance: ${member.description.trim()}`);
+  }
+  return joinPromptParts([...subject, ...trailer], template.format);
 }
 
 /**

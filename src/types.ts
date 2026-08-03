@@ -464,12 +464,62 @@ export interface ComfySettings {
   comfyDenoise: number;
   /** Positive as the player knows it; sent negative, as CLIPSetLastLayer wants. */
   comfyClipSkip: number;
+}
+
+/**
+ * How an image prompt's parts are joined into one string — the structural half
+ * of an `ImagePromptTemplate`, which no amount of rewording could cover.
+ *
+ * `prose` — the shipped Nano Banana formula: labelled paragraphs ("Appearance:
+ * …"), a blank line between them, full sentences. What a chat image model reads.
+ * `tags` — Danbooru style: each part stripped of trailing punctuation and
+ * comma-joined, with the labels dropped, and the character's NAME left out
+ * entirely (it means nothing to a diffusion model's text encoder and costs a
+ * scarce token budget). What an SD-family checkpoint reads.
+ */
+export const PROMPT_FORMATS = ["prose", "tags"] as const;
+
+export type PromptFormat = (typeof PROMPT_FORMATS)[number];
+
+/**
+ * One named bundle of image-prompt wording — see `lib/imageTemplates.ts`.
+ *
+ * Everything here decides how a prompt is WORDED, so it can all be swapped in
+ * one pick when the player changes image model. Machine config (backend, URL,
+ * checkpoint, sampler, size) and behaviour (`ditherMode`, `locationImages`,
+ * `bannerCooldown`, `portraitRefImages`) deliberately stay outside, so a
+ * template survives changing checkpoints and vice versa.
+ *
+ * `appearanceInstructions` is in here even though it steers the TEXT model:
+ * `Character.description` becomes the portrait's Subject verbatim, so a portrait
+ * prompt cannot be tags while the sentence that writes its Subject asks for
+ * prose.
+ */
+export interface ImagePromptTemplate {
+  id: string;
+  name: string;
+  format: PromptFormat;
+  /** Art direction for a location banner — everything after the place and scene. */
+  bannerInstructions: string;
+  /** The portrait Action/Location-context/Composition/Style clauses. Subject is auto-built from the character, never a settings field. */
+  portraitAction: string;
+  portraitContext: string;
+  portraitComposition: string;
+  portraitStyle: string;
+  /** Appended to portrait prompts only when reference images are present. */
+  portraitRefInstruction: string;
   /**
-   * What to keep OUT of the picture. The one field with no OpenRouter
-   * counterpart: a chat image model is told in prose, a diffusion model needs
-   * its own list.
+   * What to keep OUT of the picture. Reaches the ComfyUI path only — a chat
+   * image model is told in prose, a diffusion model needs its own list — but it
+   * is dialect, not machine config, so it rides here rather than beside the
+   * sampler.
    */
-  comfyNegativePrompt: string;
+  negativePrompt: string;
+  /**
+   * Narrator guidance for party "description" fields — the appearance text that
+   * later becomes the member's portrait Subject verbatim.
+   */
+  appearanceInstructions: string;
 }
 
 /**
@@ -667,7 +717,18 @@ export interface Settings extends DiceRules, ComfySettings {
   bannerSize: BannerSize;
   // Advanced (player-editable, Phase 4):
   customInstructions: string;
-  bannerInstructions: string;
+  /**
+   * The image-prompt dialects the player has (Advanced → Image Prompts). Never
+   * empty — `imageTemplates.ts → normalizeImageTemplates` guarantees at least
+   * the two shipped ones, since an empty picker would leave no way to word a
+   * prompt and no way back.
+   */
+  imageTemplates: ImagePromptTemplate[];
+  /**
+   * Which of them every image prompt is built from. A dangling id resolves to
+   * the first template rather than failing (`activeTemplate`).
+   */
+  imageTemplateId: string;
   /**
    * Turns to skip automatic location-banner generation for after one is
    * generated — a spend brake for location-heavy play. 0 = off (every new
@@ -675,22 +736,14 @@ export interface Settings extends DiceRules, ComfySettings {
    * regenerates.
    */
   bannerCooldown: number;
-  /** Portrait Action/Location-context/Composition/Style clauses (Nano Banana formula). Subject is auto-built from name/species/description, never a settings field. */
-  portraitAction: string;
-  portraitContext: string;
-  portraitComposition: string;
-  portraitStyle: string;
-  /** Style reference images (0–3, ordered) sent with every portrait generation. */
+  /**
+   * Style reference images (0–3, ordered) sent with every portrait generation.
+   * Not part of a template: they are files, and the same three references are
+   * what "our art style" means whichever dialect describes it.
+   */
   portraitRefImages: RefImage[];
-  /** Line appended to portrait prompts only when reference images are present. */
-  portraitRefInstruction: string;
   /** How generated images are quantized to true 1-bit on-device. */
   ditherMode: DitherMode;
-  /**
-   * Narrator guidance for party "description" fields — the appearance text
-   * that later becomes the member's portrait Subject verbatim.
-   */
-  appearanceInstructions: string;
   /**
    * What the narrator must write when it introduces a character (`add`) — the
    * one moment it authors a sheet, since everything below freezes afterwards.

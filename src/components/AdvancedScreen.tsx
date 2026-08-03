@@ -2,24 +2,25 @@ import { useEffect, useRef, useState } from "react";
 import { useStore } from "../store";
 import { OverlayHeader } from "./OverlayHeader";
 import { Field, ToggleRow, btnSmall } from "./fields";
-import type { Settings } from "../types";
+import type { ImagePromptTemplate, PromptFormat, Settings } from "../types";
 import {
-  DEFAULT_APPEARANCE_INSTRUCTIONS,
   DEFAULT_CHARACTER_CREATION_INSTRUCTIONS,
   DEFAULT_CHARACTER_UPDATE_INSTRUCTIONS,
   DEFAULT_CUSTOM_INSTRUCTIONS,
   DEFAULT_DEPARTURE_INSTRUCTIONS,
   DEFAULT_JOURNAL_INSTRUCTIONS,
   DEFAULT_OPTION_INSTRUCTIONS,
-  DEFAULT_BANNER_INSTRUCTIONS,
-  DEFAULT_PORTRAIT_ACTION,
-  DEFAULT_PORTRAIT_CONTEXT,
-  DEFAULT_PORTRAIT_COMPOSITION,
-  DEFAULT_PORTRAIT_STYLE,
-  DEFAULT_REFERENCE_INSTRUCTION,
   DEFAULT_SPOTLIGHT_RULE,
   DEFAULT_STANDING_INSTRUCTIONS,
 } from "../lib/defaults";
+import {
+  activeTemplate,
+  duplicateTemplate,
+  newTemplate,
+  TEMPLATE_TEXT,
+  type TemplateText,
+} from "../lib/imageTemplates";
+import { useConfirm } from "./useConfirm";
 import {
   blobToRefImage,
   clampBannerCooldown,
@@ -50,7 +51,7 @@ import {
  * models. Each field has a Reset to restore its ship default.
  *
  * One flat scroll of a dozen textareas was unreadable on a phone, so this is an
- * INDEX of sub-menus — Narrator · Characters · Images · Portraits — each opening
+ * INDEX of sub-menus — Narrator · Characters · Images · Image Prompts — each opening
  * its own panel. The depth is local state, not a `Screen`: the sub-menus are one
  * screen's internal structure, and routing them would put four more entries in
  * the store's navigation history for no gain.
@@ -66,16 +67,10 @@ type InstrKey = keyof Pick<
   | "optionInstructions"
   | "journalInstructions"
   | "spotlightRule"
-  | "appearanceInstructions"
   | "characterCreationInstructions"
   | "characterUpdateInstructions"
   | "standingInstructions"
   | "departureInstructions"
-  | "bannerInstructions"
-  | "portraitAction"
-  | "portraitContext"
-  | "portraitComposition"
-  | "portraitStyle"
 >;
 
 interface InstrSpec {
@@ -87,13 +82,17 @@ interface InstrSpec {
   hint?: string;
 }
 
-type SectionId = "narrator" | "characters" | "images" | "portraits";
+type SectionId = "narrator" | "characters" | "images" | "prompts";
 
 const SECTIONS: { id: SectionId; label: string; note: string }[] = [
   { id: "narrator", label: "Narrator", note: "Voice · tone · suggested actions" },
   { id: "characters", label: "Characters", note: "How the story writes your cast" },
   { id: "images", label: "Images", note: "1-bit shading · location art" },
-  { id: "portraits", label: "Portraits", note: "Portrait prompt · style references" },
+  {
+    id: "prompts",
+    label: "Image Prompts",
+    note: "Prompt templates · banner · portraits · references",
+  },
 ];
 
 const NARRATOR_FIELDS: InstrSpec[] = [
@@ -128,13 +127,6 @@ const JOURNAL_FIELD: InstrSpec = {
  * afterwards, where they sit, how they leave, and when they speak.
  */
 const CHARACTER_FIELDS: InstrSpec[] = [
-  {
-    key: "appearanceInstructions",
-    label: "Appearance Descriptions",
-    def: DEFAULT_APPEARANCE_INSTRUCTIONS,
-    rows: 3,
-    hint: "The appearance text a new character is written with — it becomes their portrait prompt verbatim.",
-  },
   {
     key: "characterCreationInstructions",
     label: "Character Creation",
@@ -172,30 +164,47 @@ const CHARACTER_FIELDS: InstrSpec[] = [
   },
 ];
 
-const BANNER_FIELD: InstrSpec = {
-  key: "bannerInstructions",
-  label: "Banner Style",
-  def: DEFAULT_BANNER_INSTRUCTIONS,
-  rows: 4,
-  hint: "The art style for location images.",
-};
+/**
+ * The template's own fields, in the order a prompt is assembled: the appearance
+ * rule that writes the Subject, then the banner, then the four portrait clauses,
+ * then the negative prompt.
+ */
+interface TemplateSpec {
+  key: keyof TemplateText;
+  label: string;
+  rows: number;
+  hint?: string;
+}
 
-const PORTRAIT_FIELDS: InstrSpec[] = [
-  { key: "portraitAction", label: "Portrait Action", def: DEFAULT_PORTRAIT_ACTION, rows: 3 },
+const TEMPLATE_FIELDS: TemplateSpec[] = [
   {
-    key: "portraitContext",
-    label: "Portrait Location/Context",
-    def: DEFAULT_PORTRAIT_CONTEXT,
-    rows: 2,
+    key: "appearanceInstructions",
+    label: "Appearance Descriptions",
+    rows: 4,
+    hint: "How the narrator writes a new character's appearance — it becomes their portrait prompt verbatim, which is why it belongs to the template. Existing characters keep the appearance they were written with.",
   },
   {
-    key: "portraitComposition",
-    label: "Portrait Composition",
-    def: DEFAULT_PORTRAIT_COMPOSITION,
-    rows: 2,
+    key: "bannerInstructions",
+    label: "Banner Style",
+    rows: 4,
+    hint: "The art style for location images.",
   },
-  { key: "portraitStyle", label: "Portrait Style", def: DEFAULT_PORTRAIT_STYLE, rows: 5 },
+  { key: "portraitAction", label: "Portrait Action", rows: 3 },
+  { key: "portraitContext", label: "Portrait Location/Context", rows: 2 },
+  { key: "portraitComposition", label: "Portrait Composition", rows: 2 },
+  { key: "portraitStyle", label: "Portrait Style", rows: 5 },
+  {
+    key: "negativePrompt",
+    label: "Negative Prompt",
+    rows: 3,
+    hint: "What to keep out of the picture. ComfyUI only — the OpenRouter image model takes no negative prompt.",
+  },
 ];
+
+const FORMAT_LABEL: Record<PromptFormat, string> = {
+  prose: "DESCRIPTIVE",
+  tags: "TAGS",
+};
 
 /** One instruction textarea + its Reset, driven straight off the store. */
 function InstrField({ spec }: { spec: InstrSpec }) {
@@ -364,6 +373,11 @@ function CharactersSection() {
         appearance, personality, drive, strengths, flaws and equipment stay yours. Use the member sheet's
         Auto-Update to re-read a sheet from the story on purpose.
       </p>
+      <p className="text-xs opacity-70">
+        How an appearance is written lives under Image Prompts — it becomes the
+        character's portrait prompt verbatim, so it belongs with the rest of the image
+        wording.
+      </p>
       {CHARACTER_FIELDS.map((f) => (
         <InstrField key={f.key} spec={f} />
       ))}
@@ -404,6 +418,276 @@ function ComfyRefNote() {
       prompt below still steers it, but build the art style into the workflow. These are
       kept for whenever OpenRouter is selected again.
     </p>
+  );
+}
+
+/** The selected template plus a writer for it — every image-prompt control needs both. */
+function useActiveTemplate() {
+  const templates = useStore((s) => s.settings.imageTemplates);
+  const imageTemplateId = useStore((s) => s.settings.imageTemplateId);
+  const update = useStore((s) => s.updateSettings);
+  const template = activeTemplate({ imageTemplates: templates, imageTemplateId });
+
+  /** Write fields onto the SELECTED template — edits land live, like every other setting. */
+  const patch = (fields: Partial<ImagePromptTemplate>) =>
+    update({
+      imageTemplates: templates.map((t) => (t.id === template.id ? { ...t, ...fields } : t)),
+    });
+
+  return { templates, template, patch, update };
+}
+
+/** One template textarea + its Reset, which restores the ship text for that DIALECT. */
+function TemplateField({ spec }: { spec: TemplateSpec }) {
+  const { template, patch } = useActiveTemplate();
+  const value = template[spec.key];
+  const def = TEMPLATE_TEXT[template.format][spec.key];
+  return (
+    <Field label={spec.label}>
+      <textarea
+        value={value}
+        rows={spec.rows}
+        onChange={(e) => patch({ [spec.key]: e.target.value })}
+        className="w-full resize-y border-2 border-ink bg-paper p-2 text-sm focus:outline-none"
+      />
+      {spec.hint && <p className="text-xs opacity-70">{spec.hint}</p>}
+      <button
+        type="button"
+        onClick={() => patch({ [spec.key]: def })}
+        disabled={value === def}
+        className={`mt-1 ${btnSmall}`}
+      >
+        Reset to default
+      </button>
+    </Field>
+  );
+}
+
+/**
+ * Pick / name / add / copy / delete a template. The name is a live field rather
+ * than a Rename button behind a dialog — the app has no text prompt, and a
+ * settings screen editing its own row is the same gesture as everything else
+ * here.
+ */
+function TemplateManager({ ask }: { ask: ReturnType<typeof useConfirm>["ask"] }) {
+  const { templates, template, patch, update } = useActiveTemplate();
+
+  function select(id: string) {
+    update({ imageTemplateId: id });
+  }
+
+  function add(made: ImagePromptTemplate) {
+    update({ imageTemplates: [...templates, made], imageTemplateId: made.id });
+  }
+
+  function remove() {
+    const rest = templates.filter((t) => t.id !== template.id);
+    if (!rest.length) return;
+    update({ imageTemplates: rest, imageTemplateId: rest[0].id });
+  }
+
+  return (
+    <section className="space-y-3 border-2 border-ink p-3">
+      <h2 className="uppercase tracking-widest">Prompt Template</h2>
+      <p className="text-sm">
+        Which wording every image prompt is built from. Descriptive templates suit chat
+        image models; tag templates suit the SD-family checkpoints ComfyUI runs.
+      </p>
+
+      <select
+        value={template.id}
+        onChange={(e) => select(e.target.value)}
+        aria-label="Prompt template"
+        className="w-full appearance-none border-2 border-ink bg-paper p-2 focus:outline-none"
+      >
+        {templates.map((t) => (
+          <option key={t.id} value={t.id}>
+            {t.name}
+          </option>
+        ))}
+      </select>
+
+      <Field label="Template Name">
+        <input
+          value={template.name}
+          onChange={(e) => patch({ name: e.target.value })}
+          className="w-full border-2 border-ink bg-paper p-2 focus:outline-none"
+        />
+      </Field>
+
+      {/* Structure, not wording: it decides whether the parts are joined as
+          paragraphs or comma-separated tags, and whether the character's name
+          and the field labels are emitted at all. */}
+      <ToggleRow
+        label="Prompt Format"
+        state={FORMAT_LABEL[template.format]}
+        onClick={() => patch({ format: template.format === "prose" ? "tags" : "prose" })}
+      />
+      <p className="text-xs opacity-70">
+        {template.format === "tags"
+          ? "Tags: the parts below are stripped of trailing punctuation and joined with commas. Labels are dropped, and a portrait leaves the character's NAME out — a diffusion model can't read it and the tokens are scarce."
+          : "Descriptive: the parts below are kept as labelled paragraphs, the way a chat image model reads a scene."}
+      </p>
+
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => add(newTemplate("New Template", template.format))}
+          className={btnSmall}
+        >
+          New
+        </button>
+        <button
+          type="button"
+          onClick={() => add(duplicateTemplate(template, `${template.name} copy`))}
+          className={btnSmall}
+        >
+          Duplicate
+        </button>
+        <button
+          type="button"
+          disabled={templates.length < 2}
+          onClick={() =>
+            ask(
+              {
+                title: `Delete "${template.name}"?`,
+                body: "The wording in it is lost. Images already generated are kept.",
+                confirmLabel: "Delete",
+              },
+              remove,
+            )
+          }
+          className={btnSmall}
+        >
+          Delete
+        </button>
+      </div>
+      <p className="text-xs opacity-70">
+        The two shipped templates can be edited freely — Reset to default under each
+        field restores the wording for the format it's set to. Duplicate first if you'd
+        rather keep the original around.
+      </p>
+    </section>
+  );
+}
+
+/** Portrait style references — files, so they belong to the app rather than to a template. */
+function ReferenceImages() {
+  const refs = useStore((s) => s.settings.portraitRefImages);
+  const update = useStore((s) => s.updateSettings);
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  async function addRef(file: File) {
+    if (refs.length >= MAX_REF_IMAGES) return;
+    try {
+      const ref = await blobToRefImage(file);
+      update({ portraitRefImages: [...useStore.getState().settings.portraitRefImages, ref] });
+    } catch {
+      // An unreadable file just doesn't get added — nothing to break.
+    }
+  }
+
+  function removeRef(index: number) {
+    update({ portraitRefImages: refs.filter((_, i) => i !== index) });
+  }
+
+  function moveRef(index: number, dir: -1 | 1) {
+    const to = index + dir;
+    if (to < 0 || to >= refs.length) return;
+    const next = [...refs];
+    [next[index], next[to]] = [next[to], next[index]];
+    update({ portraitRefImages: next });
+  }
+
+  return (
+    <section className="space-y-3 border-2 border-ink p-3">
+      <h2 className="uppercase tracking-widest">Portrait Style References</h2>
+      <p className="text-sm">
+        These images teach the art style used for all character portraits. They aren't
+        part of a template — the same references are what "our art style" means whichever
+        wording describes it.
+      </p>
+
+      {refs.length > 0 && (
+        <ul className="space-y-2">
+          {refs.map((ref, i) => (
+            <li key={i} className="flex items-center gap-2 border-2 border-ink p-2">
+              <img
+                src={refImageToDataUrl(ref)}
+                alt={`Style reference ${i + 1}`}
+                className="h-16 w-16 border-2 border-ink object-cover [image-rendering:pixelated]"
+              />
+              <span className="flex-1 text-sm uppercase tracking-widest">Ref {i + 1}</span>
+              <button type="button" onClick={() => moveRef(i, -1)} disabled={i === 0} className={btnSmall}>
+                ↑
+              </button>
+              <button
+                type="button"
+                onClick={() => moveRef(i, 1)}
+                disabled={i === refs.length - 1}
+                className={btnSmall}
+              >
+                ↓
+              </button>
+              <button type="button" onClick={() => removeRef(i)} className={btnSmall}>
+                ✕
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <input
+        ref={fileInput}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) void addRef(file);
+          e.target.value = "";
+        }}
+      />
+      <button
+        type="button"
+        onClick={() => fileInput.current?.click()}
+        disabled={refs.length >= MAX_REF_IMAGES}
+        className={btnSmall}
+      >
+        Add Reference Image ({refs.length}/{MAX_REF_IMAGES})
+      </button>
+      <p className="text-xs opacity-70">
+        Best with 2–3 visually varied references (e.g. a humanoid male, a humanoid
+        female, and a non-humanoid) rather than a single one — when they differ in
+        everything except the ink style, the model learns that the style is the
+        constant, so body types and gear don't bleed into your characters.
+      </p>
+
+      <TemplateField
+        spec={{
+          key: "portraitRefInstruction",
+          label: "Reference Instruction",
+          rows: 3,
+          hint: "Sent only when references ride along, so it belongs to the wording — a tag template says it in tags.",
+        }}
+      />
+    </section>
+  );
+}
+
+function ImagePromptsSection() {
+  const { ask, dialog } = useConfirm();
+  return (
+    <>
+      <GenerationOffNote />
+      <ComfyRefNote />
+      <TemplateManager ask={ask} />
+      {TEMPLATE_FIELDS.map((f) => (
+        <TemplateField key={f.key} spec={f} />
+      ))}
+      <ReferenceImages />
+      {dialog}
+    </>
   );
 }
 
@@ -457,7 +741,10 @@ function ImagesSection() {
             </p>
           </Field>
 
-          <InstrField spec={BANNER_FIELD} />
+          <p className="text-xs opacity-70">
+            The art style for a location image lives under Image Prompts, with the rest
+            of the wording.
+          </p>
         </>
       ) : (
         <p className="border-2 border-ink p-3 text-sm opacity-70">
@@ -470,130 +757,11 @@ function ImagesSection() {
   );
 }
 
-function PortraitsSection() {
-  const refs = useStore((s) => s.settings.portraitRefImages);
-  const refInstruction = useStore((s) => s.settings.portraitRefInstruction);
-  const update = useStore((s) => s.updateSettings);
-  const fileInput = useRef<HTMLInputElement>(null);
-
-  async function addRef(file: File) {
-    if (refs.length >= MAX_REF_IMAGES) return;
-    try {
-      const ref = await blobToRefImage(file);
-      update({ portraitRefImages: [...useStore.getState().settings.portraitRefImages, ref] });
-    } catch {
-      // An unreadable file just doesn't get added — nothing to break.
-    }
-  }
-
-  function removeRef(index: number) {
-    update({ portraitRefImages: refs.filter((_, i) => i !== index) });
-  }
-
-  function moveRef(index: number, dir: -1 | 1) {
-    const to = index + dir;
-    if (to < 0 || to >= refs.length) return;
-    const next = [...refs];
-    [next[index], next[to]] = [next[to], next[index]];
-    update({ portraitRefImages: next });
-  }
-
-  return (
-    <>
-      <GenerationOffNote />
-      <ComfyRefNote />
-
-      {PORTRAIT_FIELDS.map((f) => (
-        <InstrField key={f.key} spec={f} />
-      ))}
-
-      <section className="space-y-3 border-2 border-ink p-3">
-        <h2 className="uppercase tracking-widest">Portrait Style References</h2>
-        <p className="text-sm">
-          These images teach the art style used for all character portraits.
-        </p>
-
-        {refs.length > 0 && (
-          <ul className="space-y-2">
-            {refs.map((ref, i) => (
-              <li key={i} className="flex items-center gap-2 border-2 border-ink p-2">
-                <img
-                  src={refImageToDataUrl(ref)}
-                  alt={`Style reference ${i + 1}`}
-                  className="h-16 w-16 border-2 border-ink object-cover [image-rendering:pixelated]"
-                />
-                <span className="flex-1 text-sm uppercase tracking-widest">Ref {i + 1}</span>
-                <button type="button" onClick={() => moveRef(i, -1)} disabled={i === 0} className={btnSmall}>
-                  ↑
-                </button>
-                <button
-                  type="button"
-                  onClick={() => moveRef(i, 1)}
-                  disabled={i === refs.length - 1}
-                  className={btnSmall}
-                >
-                  ↓
-                </button>
-                <button type="button" onClick={() => removeRef(i)} className={btnSmall}>
-                  ✕
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        <input
-          ref={fileInput}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) void addRef(file);
-            e.target.value = "";
-          }}
-        />
-        <button
-          type="button"
-          onClick={() => fileInput.current?.click()}
-          disabled={refs.length >= MAX_REF_IMAGES}
-          className={btnSmall}
-        >
-          Add Reference Image ({refs.length}/{MAX_REF_IMAGES})
-        </button>
-        <p className="text-xs opacity-70">
-          Best with 2–3 visually varied references (e.g. a humanoid male, a humanoid
-          female, and a non-humanoid) rather than a single one — when they differ in
-          everything except the ink style, the model learns that the style is the
-          constant, so body types and gear don't bleed into your characters.
-        </p>
-
-        <Field label="Reference Instruction">
-          <textarea
-            value={refInstruction}
-            rows={3}
-            onChange={(e) => update({ portraitRefInstruction: e.target.value })}
-            className="w-full resize-y border-2 border-ink bg-paper p-2 text-sm focus:outline-none"
-          />
-          <button
-            type="button"
-            onClick={() => update({ portraitRefInstruction: DEFAULT_REFERENCE_INSTRUCTION })}
-            disabled={refInstruction === DEFAULT_REFERENCE_INSTRUCTION}
-            className={`mt-1 ${btnSmall}`}
-          >
-            Reset to default
-          </button>
-        </Field>
-      </section>
-    </>
-  );
-}
-
 const SECTION_BODY: Record<SectionId, () => React.ReactElement> = {
   narrator: NarratorSection,
   characters: CharactersSection,
   images: ImagesSection,
-  portraits: PortraitsSection,
+  prompts: ImagePromptsSection,
 };
 
 export function AdvancedScreen() {

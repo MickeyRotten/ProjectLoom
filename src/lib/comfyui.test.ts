@@ -60,9 +60,10 @@ describe("substituteWorkflow", () => {
   });
 
   it("fills the shipped workflow into valid JSON", () => {
-    const values = workflowValues(DEFAULT_COMFY, "a tower", { width: 1024, height: 1024 }, 5);
+    const values = workflowValues(DEFAULT_COMFY, "a tower", "blurry", { width: 1024, height: 1024 }, 5);
     const graph = JSON.parse(substituteWorkflow(DEFAULT_COMFY_WORKFLOW, values));
     expect(graph["6"].inputs.text).toBe("a tower");
+    expect(graph["7"].inputs.text).toBe("blurry");
     expect(graph["3"].inputs.seed).toBe(5);
     expect(graph["3"].inputs.steps).toBe(DEFAULT_COMFY.comfySteps);
     expect(graph["3"].inputs.cfg).toBe(DEFAULT_COMFY.comfyScale);
@@ -72,7 +73,7 @@ describe("substituteWorkflow", () => {
 
 describe("workflowValues", () => {
   it("sends clip skip negative, as CLIPSetLastLayer counts it", () => {
-    const values = workflowValues({ ...DEFAULT_COMFY, comfyClipSkip: 2 }, "x", {
+    const values = workflowValues({ ...DEFAULT_COMFY, comfyClipSkip: 2 }, "x", "", {
       width: 64,
       height: 64,
     });
@@ -80,7 +81,7 @@ describe("workflowValues", () => {
   });
 
   it("maps CFG onto %scale%, which is what SillyTavern workflows call it", () => {
-    const values = workflowValues({ ...DEFAULT_COMFY, comfyScale: 4.5 }, "x", {
+    const values = workflowValues({ ...DEFAULT_COMFY, comfyScale: 4.5 }, "x", "", {
       width: 64,
       height: 64,
     });
