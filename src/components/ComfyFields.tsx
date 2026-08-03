@@ -174,18 +174,13 @@ export function ComfyFields() {
         same number of pixels, so both cost about the same to render.
       </p>
 
-      <Field label="Negative Prompt">
-        <textarea
-          value={settings.comfyNegativePrompt}
-          rows={2}
-          onChange={(e) => update({ comfyNegativePrompt: e.target.value })}
-          className="w-full resize-y border-2 border-ink bg-paper p-2 text-sm focus:outline-none"
-        />
-        <p className="mt-1 text-xs opacity-60">
-          What to keep out of the picture. The defaults fight the things a 1-bit
-          conversion handles worst — colour, photographic blur, lettering.
-        </p>
-      </Field>
+      {/* The negative prompt moved to Advanced → Image Prompts, with the rest of
+          the wording: it is dialect, not machine config, and an SD-tag template
+          wants a different one from a descriptive template on the same server. */}
+      <p className="text-xs opacity-60">
+        The negative prompt lives with the rest of the wording, under Advanced → Image
+        Prompts — it changes with the prompt template rather than with the server.
+      </p>
 
       <Collapsible label="Advanced ComfyUI">
         <ComfyChoiceField
@@ -254,7 +249,7 @@ export function ComfyFields() {
       </Collapsible>
 
       <p className="border-2 border-ink p-3 text-sm opacity-70">
-        Portrait style reference images (Advanced → Portraits) are not sent to ComfyUI —
+        Portrait style reference images (Advanced → Image Prompts) are not sent to ComfyUI —
         build the look into the workflow instead. Editing a picture with ✎ is OpenRouter
         only, so that button is hidden while this backend is selected.
       </p>

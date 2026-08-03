@@ -111,6 +111,7 @@ import {
   toSourceBlob,
   type GenerateImageOptions,
 } from "./lib/images";
+import { activeTemplate } from "./lib/imageTemplates";
 import { imageFileName, saveBlobAsFile } from "./lib/download";
 
 /** Per-turn knobs — everything about a turn that isn't the player's action. */
@@ -700,16 +701,7 @@ export const useStore = create<LoomStore>((set, get) => {
         // is appended only then — zero references is a fully supported state.
         const refs = s.portraitRefImages.map(refImageToDataUrl);
         return {
-          prompt: buildPortraitPrompt(
-            member,
-            {
-              action: s.portraitAction,
-              context: s.portraitContext,
-              composition: s.portraitComposition,
-              style: s.portraitStyle,
-            },
-            refs.length ? s.portraitRefInstruction : undefined,
-          ),
+          prompt: buildPortraitPrompt(member, activeTemplate(s), refs.length > 0),
           images: refs.length ? refs : undefined,
           aspectRatio: "2:3",
         };
@@ -1678,7 +1670,7 @@ export const useStore = create<LoomStore>((set, get) => {
       void ensureImage(
         bannerKey(location),
         () => ({
-          prompt: buildBannerPrompt(location, excerpt, get().settings.bannerInstructions),
+          prompt: buildBannerPrompt(location, excerpt, activeTemplate(get().settings)),
         }),
         false,
         { cacheOnly, onGenerated: stampBannerTurn },
@@ -1706,7 +1698,7 @@ export const useStore = create<LoomStore>((set, get) => {
     void ensureImage(
       bannerKey(location),
       () => ({
-        prompt: buildBannerPrompt(location, excerpt, get().settings.bannerInstructions),
+        prompt: buildBannerPrompt(location, excerpt, activeTemplate(get().settings)),
       }),
       true,
       { onGenerated: stampBannerTurn },

@@ -2,6 +2,7 @@ import type { Character, GameState, Settings } from "../types";
 import { type ChatMessage, formatScenarioBlock } from "./prompt";
 import { extractFirstJsonObject, parseJsonTolerant } from "./loomBlock";
 import { formatSheet } from "./autoUpdate";
+import { activeTemplate } from "./imageTemplates";
 import { formatWorldNotesBlock, matchWorldNotes } from "./worldNotes";
 
 /**
@@ -55,9 +56,9 @@ export const GENERATE_FIELD_TEMPERATURE = 0.9;
  * Only the requested field's rule is sent, so the model is never told about a
  * field it must not write (same discipline as `autoUpdate.ts → FIELD_RULES`).
  *
- * `description` is the exception: its rule is the player's
- * `Settings.appearanceInstructions`, the same sentence the narrator gets in the
- * output protocol, so "Appearance" means one thing app-wide.
+ * `description` is the exception: its rule is the selected image template's
+ * `appearanceInstructions`, the same sentence the narrator gets in the output
+ * protocol, so "Appearance" means one thing app-wide.
  */
 const GEN_FIELD_RULES: Record<Exclude<GenField, "description">, string> = {
   personality: `"personality" is temperament and speech habits — how they come across and how they talk — in a phrase or two. No backstory, no appearance.`,
@@ -128,7 +129,7 @@ function fixedTraitsRule(character: Character): string {
 /** The rule for one field: the player's appearance sentence, or the built-in. */
 function fieldRule(field: GenField, settings: Settings): string {
   if (field !== "description") return GEN_FIELD_RULES[field];
-  return settings.appearanceInstructions.trim() || DEFAULT_APPEARANCE_RULE;
+  return activeTemplate(settings).appearanceInstructions.trim() || DEFAULT_APPEARANCE_RULE;
 }
 
 /**

@@ -14,6 +14,7 @@ import { PARTY_LIMIT, normalizeRoster, strengthsText } from "./roster";
 import { SCENE_TILT } from "./diceAnim";
 import { DEFAULT_DICE, RISK_KEYWORDS } from "./stakes";
 import { DEFAULT_COMFY } from "./comfyui";
+import { builtinTemplates, PROSE_TEMPLATE_ID } from "./imageTemplates";
 
 /**
  * Ship-time defaults. The pre-made scenario is intentionally minimal for
@@ -95,51 +96,14 @@ export const DEFAULT_QUICK_ACTIONS: QuickAction[] = [
 
 export const DEFAULT_OPTION_INSTRUCTIONS =`Offer 3–4 distinct, concrete next actions the player could take right now. Short imperative phrases ("Scan the treeline"), no numbering, no punctuation at the end.`;
 
-/*
- * Image prompt defaults. Written as full narrative sentences — Gemini image
- * models respond to descriptions, not keyword lists. Deliberate constraints:
- *
- * - "Pixel art" never appears, even as a negation. The model paints clean bold
- *   ink; the client pixelates via downscale + 1-bit quantize (onebit.ts). A
- *   model-drawn fake pixel grid would moiré against the real downscale grid.
- * - Fine hatching/stippling is ruled out: fine texture aliases to noise at
- *   128px, while bold shadow shapes survive the downscale.
- * - The style clause carries no anatomy, body-type, armor, or gear language —
- *   subject specifics come only from the character's own description, so the
- *   same template fits knights, mages, children, and beasts.
- */
-
-export const DEFAULT_BANNER_INSTRUCTIONS = `A wide establishing view of the location itself, empty of characters. Clean black-and-white ink illustration with bold ink lines and large, solid black shadow shapes with hard edges. The entire image uses strictly two tones, pure black and pure white, with no grey tones, no gradients, and no fine hatching. Sharp, high-contrast finish with no anti-aliasing.`;
-
 /**
  * Turns to suppress automatic location-banner generation for after one is
  * generated (Advanced → Location Image Cooldown). 0 = off.
+ *
+ * Every other image-prompt default moved into `imageTemplates.ts`, where the
+ * wording is one switchable bundle rather than a dozen loose fields.
  */
 export const DEFAULT_BANNER_COOLDOWN = 0;
-
-export const DEFAULT_PORTRAIT_ACTION =`The pose is perfectly neutral and still: arms relaxed at the sides, shoulders square to the camera, head level, mouth closed, eyes open, with a calm, expressionless face.`;
-
-export const DEFAULT_PORTRAIT_CONTEXT = `The background is flat, pure white and completely empty.`;
-
-export const DEFAULT_PORTRAIT_COMPOSITION = `A waist-up portrait, character centered and facing the viewer directly.`;
-
-export const DEFAULT_PORTRAIT_STYLE = `Clean black-and-white ink illustration in the style of a 1990s Western comic book with heavy anime influence. Bold, thick, confidently tapering ink lines define a strong graphic silhouette. Shadows are large, solid black shapes with hard edges, creating dramatic chiaroscuro. The entire image uses strictly two tones, pure black and pure white, with all shading done through bold shadow shapes rather than gradients, grey tones, or fine hatching. Sharp, high-contrast finish with no anti-aliasing.`;
-
-/**
- * Appended as the final prompt line only when reference images ride along.
- * Cost: references add roughly $0.0003 per generation against a ~$0.0017 base —
- * negligible, and the repeated reference content is a good candidate for
- * OpenRouter's prompt caching.
- */
-export const DEFAULT_REFERENCE_INSTRUCTION = `Match only the art style, line weight, ink density, and framing of the reference images. Do not copy the characters' faces, body types, clothing, or equipment.`;
-
-/**
- * How the narrator writes a party member's "description" delta field. It flows
- * verbatim into the member's portrait prompt as the Subject, so it must stay
- * concrete and visual — the whole portrait consistency chain starts here.
- * Interpolated into the output protocol's party line (prompt.ts).
- */
-export const DEFAULT_APPEARANCE_INSTRUCTIONS = `"description" is physical appearance ONLY — hair, eyes, build, clothing, notable features — used verbatim to generate the member's portrait, so keep it concrete and visual, never personality or backstory.`;
 
 /**
  * What the narrator must fill in the one time it authors a sheet. Everything
@@ -279,21 +243,19 @@ export function defaultSettings(): Settings {
     locationImages: false,
     bannerSize: "full",
     customInstructions: DEFAULT_CUSTOM_INSTRUCTIONS,
-    bannerInstructions: DEFAULT_BANNER_INSTRUCTIONS,
+    // Both shipped dialects, with the prose one selected — it is what every
+    // image prompt looked like before templates existed, and it is the one that
+    // matches the default (OpenRouter) backend.
+    imageTemplates: builtinTemplates(),
+    imageTemplateId: PROSE_TEMPLATE_ID,
     // Off by default: shipping a brake on a feature nobody asked to slow down
     // would just look like broken banners.
     bannerCooldown: DEFAULT_BANNER_COOLDOWN,
-    portraitAction: DEFAULT_PORTRAIT_ACTION,
-    portraitContext: DEFAULT_PORTRAIT_CONTEXT,
-    portraitComposition: DEFAULT_PORTRAIT_COMPOSITION,
-    portraitStyle: DEFAULT_PORTRAIT_STYLE,
     portraitRefImages: [],
-    portraitRefInstruction: DEFAULT_REFERENCE_INSTRUCTION,
     // Threshold by default: flat 50% keeps shapes and faces crisp. Dither is
     // the opt-in retro texture — its clamped band still speckles less, but any
     // texture costs legibility at portrait size.
     ditherMode: "threshold",
-    appearanceInstructions: DEFAULT_APPEARANCE_INSTRUCTIONS,
     characterCreationInstructions: DEFAULT_CHARACTER_CREATION_INSTRUCTIONS,
     characterUpdateInstructions: DEFAULT_CHARACTER_UPDATE_INSTRUCTIONS,
     standingInstructions: DEFAULT_STANDING_INSTRUCTIONS,

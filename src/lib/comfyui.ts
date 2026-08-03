@@ -2,6 +2,7 @@ import type { ComfySettings, GenerateImageOptions } from "../types";
 import { ImageError } from "./imageError";
 import { safeErrorText } from "./http";
 import { backoffMs, isRetryableStatus, MAX_ATTEMPTS, sleep } from "./retry";
+import { activeTemplate } from "./imageTemplates";
 
 /**
  * ComfyUI as a second image backend (DESIGN.md → Image Generation → Backends).
@@ -118,10 +119,8 @@ export const DEFAULT_COMFY_WORKFLOW = `{
  * ComfyUI defaults, spread into `defaultSettings()` the way `DEFAULT_DICE` is —
  * so "the default ComfyUI setup" has exactly one definition.
  *
- * The negative prompt is the one field with no OpenRouter counterpart: a
- * diffusion model needs telling what to leave out, and the things that ruin a
- * picture destined for a 50% threshold are colour, photographic blur and
- * lettering.
+ * The negative prompt is NOT here: it is wording rather than machine config, so
+ * it rides the selected `ImagePromptTemplate` and changes with the dialect.
  */
 export const DEFAULT_COMFY: ComfySettings = {
   imageBackend: "openrouter",
@@ -137,8 +136,6 @@ export const DEFAULT_COMFY: ComfySettings = {
   comfyHeight: 1024,
   comfyDenoise: 1,
   comfyClipSkip: 1,
-  comfyNegativePrompt:
-    "color, colour, photo, photorealistic, blurry, text, watermark, signature, jpeg artifacts",
 };
 
 /* ----------------------------- normalization ----------------------------- */
@@ -199,7 +196,6 @@ export function normalizeComfy(stored: Partial<ComfySettings> | undefined): Comf
     comfyHeight: side(s.comfyHeight, DEFAULT_COMFY.comfyHeight),
     comfyDenoise: clampNum(s.comfyDenoise, 0, 1, DEFAULT_COMFY.comfyDenoise),
     comfyClipSkip: clampInt(s.comfyClipSkip, 1, MAX_COMFY_CLIP_SKIP, DEFAULT_COMFY.comfyClipSkip),
-    comfyNegativePrompt: text(s.comfyNegativePrompt, DEFAULT_COMFY.comfyNegativePrompt),
   };
 }
 
@@ -275,17 +271,22 @@ export function randomSeed(): number {
 
 /**
  * Every placeholder value for one generation, read off the settings plus the
- * prompt and size this particular image wants.
+ * prompt, negative prompt and size this particular image wants.
+ *
+ * The negative prompt is passed in rather than read off `settings` because it
+ * belongs to the selected `ImagePromptTemplate`, not to the machine config —
+ * see `imageTemplates.ts`.
  */
 export function workflowValues(
   settings: ComfySettings,
   prompt: string,
+  negativePrompt: string,
   size: { width: number; height: number },
   seed = randomSeed(),
 ): Record<ComfyPlaceholder, string | number> {
   return {
     prompt,
-    negative_prompt: settings.comfyNegativePrompt,
+    negative_prompt: negativePrompt,
     model: settings.comfyModel,
     vae: settings.comfyVae,
     sampler: settings.comfySampler,
@@ -823,7 +824,7 @@ export async function generateComfyImage(opts: GenerateImageOptions): Promise<Bl
       // the identical image would be a pointless second minute of GPU time.
       const workflow = substituteWorkflow(
         settings.comfyWorkflow,
-        workflowValues(settings, prompt, size),
+        workflowValues(settings, prompt, activeTemplate(settings).negativePrompt, size),
       );
       const graph: unknown = JSON.parse(workflow);
 

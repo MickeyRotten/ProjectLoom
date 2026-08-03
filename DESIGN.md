@@ -253,9 +253,9 @@ One isolated function returning the OpenRouter `messages[]`, in order:
 - **Two kinds, deterministic triggers (not model-driven):**
   - **Location banner** — keyed by `banner:<location>`. On a scene change to an **uncached** location, generate from location name + a short narration excerpt + the **banner style instructions**. Gated by `Settings.locationImages`, see below.
   - **Party portrait** — keyed by `portrait:<memberId>`. When a member has no portrait, generate from their name/species/**sex**/description + the **portrait style instructions** — *unless* the player removed it (`Character.noPortrait`), see **Remove** below. Sex is in the Subject because an image model given only prose guesses, and guesses differently on every regenerate.
-- **Style baked in:** default banner/portrait instructions enforce **1-bit monochrome pixel/line art**. Player-editable under Advanced.
+- **Style baked in:** default banner/portrait instructions enforce **1-bit monochrome pixel/line art**. Player-editable under Advanced → Image Prompts, as one of several **templates**, see below.
 - **Master switch (Model & Key → Image Generation, `Settings.imagesEnabled`, ON by default):** one setting that stops *every* request to the image model — portraits, banners, ⟳ and ✎ alike. `locationImages` only ever governed half the spend, and the other half had no switch at all: a player who didn't want to buy pictures had to turn location images off and then *Remove Image* on every character, one at a time, forever, because the automatic trigger redraws whatever isn't cached. The gate is on **generation only** and reads the same as the banner cooldown does — `imagesAllowed`/`bannerAllowed` in `images.ts`, folded into the existing `cacheOnly` flag, so `syncImages` degrades to a cache probe and everything already drawn still shows. Uploads, downloads, *Remove Image* and the zoom view all keep working (none of them talks to a model); ⟳/✎ hide, `regenerateBanner`/`editImage`/forced portraits no-op, the banner's cooldown countdown stops being displayed (that wait would never end), and the Image API Key + Image Model fields hide under the switch that made them dead. Nothing stored is deleted. Ships **on** because portraits have always drawn themselves — shipping it off would read as a broken pipeline, not a saving.
-- **Location images off by default (Advanced → Images → `Settings.locationImages`):** the whole banner feature is opt-in. Portraits are drawn once per character and then reused forever; a location banner is a fresh generation every time the story moves somewhere new, which makes it the app's most expensive habit and the one furthest from the text the player came for. Off means **no generation and no UI**: `syncImages` skips the banner entirely (cached or not), `regenerateBanner` no-ops, `<Header>` falls back to the plain single-height ink strip (no art, no image controls), and the Menu's *Compact Location Image* toggle and the Advanced cooldown + banner-style fields are hidden rather than left as dead controls. Nothing is deleted — already-generated banners are still in IndexedDB and reappear the moment it's switched back on. Portraits are unaffected.
+- **Location images off by default (Advanced → Images → `Settings.locationImages`):** the whole banner feature is opt-in. Portraits are drawn once per character and then reused forever; a location banner is a fresh generation every time the story moves somewhere new, which makes it the app's most expensive habit and the one furthest from the text the player came for. Off means **no generation and no UI**: `syncImages` skips the banner entirely (cached or not), `regenerateBanner` no-ops, `<Header>` falls back to the plain single-height ink strip (no art, no image controls), and the Menu's *Compact Location Image* toggle and the Advanced cooldown field are hidden rather than left as dead controls (the banner *style* is part of a prompt template and stays editable — a template is a whole dialect, not a per-feature setting). Nothing is deleted — already-generated banners are still in IndexedDB and reappear the moment it's switched back on. Portraits are unaffected.
 - **Location image cooldown (Advanced → `Settings.bannerCooldown`, 0 = off):** turns to skip automatic banner generation for after one is drawn — `3` means the next 3 turns draw no new location image, the 4th does (`bannerOnCooldown` / `bannerCooldownLeft`, counted from `GameState.lastBannerTurn`). A location-hopping stretch otherwise bills one generation per turn, which is the single easiest way to burn image credit without noticing. Three deliberate limits: the gate is on **generation only**, so an already-cached location still shows its banner instantly; the stamp is written on a real generation only, never a cache hit, so re-treading known ground doesn't stall the next new one; and **`regenerateBanner` ignores the cooldown** (but restarts it — it *is* a generation; no longer reachable from the bar, see *Top bar*). While suppressed the banner placeholder says how many turns are left, so it never reads as a broken image. `lastBannerTurn` is deliberately outside `Reversal` — an undo can't un-spend a generation.
 - **Regenerate:** ⟳ on each member sheet (and `regenerateBanner` in the store) re-runs generation and **replaces the cached blob and its master** — generated, edited, or uploaded, whatever is there loses. A forced regeneration that fails flags `imgError` (an *image failed* badge) **with the reason** — "failed" alone is unactionable, and the causes are wildly different (no credit, a refused prompt, an unreadable file). ⟳ also clears `noPortrait`.
 - **Edit (✎):** instruction + the image back to the model; the result **becomes** the new image (display copy *and* master). The edit source is the master, never the display copy — handing a model a 192px 1-bit thumbnail comes back as mush or as a text-only reply that fails the edit outright.
@@ -265,6 +265,58 @@ One isolated function returning the OpenRouter `messages[]`, in order:
 - **Diagnostics:** a 200 that carries no image is soft-retried once, then fails with the model's **own text reply** quoted (`extractMessageText`) — a model answering in words is usually saying why ("I can't create images of real people", a policy line), and discarding it leaves the player with a bare badge and nothing to change.
 - Fire-and-forget with a visible placeholder while generating; a failed image never blocks the turn.
 
+### Prompt templates — `src/lib/imageTemplates.ts`
+
+Everything that decides *how an image prompt is worded* is one named, switchable
+bundle (`ImagePromptTemplate`), picked from a dropdown at the top of **Advanced →
+Image Prompts**. It exists because the two backends want different **languages**:
+a chat image model is told what to draw in prose, while an SD-family checkpoint
+behind ComfyUI reads a comma-separated Danbooru-style tag list — and writing
+prose at one wastes most of a 77-token encoder window. Two templates ship,
+*Descriptive (chat models)* and *Tags (SD / ComfyUI)*; **New** / **Duplicate** /
+**Delete** make more, and the name is a live field rather than a rename dialog.
+
+- **`format` is structure, not wording** (`prose | tags`), and it is the half no
+  amount of rewriting could cover. `images.ts → joinPromptParts` joins prose
+  parts as labelled paragraphs and tag parts as comma-separated fragments with
+  their trailing punctuation stripped; in `tags` the `Location:` / `Appearance:`
+  labels go, **and so does the character's name** — a diffusion model's text
+  encoder cannot read it, and the tokens come out of a budget the appearance
+  needs. Deliberately *not* inferred from `imageBackend`: a prose-friendly
+  checkpoint running locally is a perfectly normal setup, and the two choices are
+  the player's to combine.
+- **What's in a template:** the banner style, the four portrait clauses
+  (Action / Location-context / Composition / Style), the reference instruction,
+  the **negative prompt** (moved off `ComfySettings` — a negative list is dialect,
+  not machine config, and one server runs both dialects), and
+  **`appearanceInstructions`**.
+- **`appearanceInstructions` is in the template on purpose.** It steers the
+  *text* model, but `Character.description` becomes the portrait's Subject
+  **verbatim**, so a portrait prompt cannot be tags while the sentence that
+  writes its Subject asks for prose. It reaches the narrator through the output
+  protocol and `generateField.ts` exactly as before — only its home moved. The
+  cost is visible and is why this is a template the player picks rather than
+  something the backend switch does behind their back: sheets are **frozen at
+  creation**, so switching dialect mid-adventure leaves the existing cast with
+  the appearance they were written with (the member sheet's ✦ and Auto-Update are
+  the way to re-word one), and a tag-style appearance reads as tags on the sheet
+  too.
+- **What's outside:** `ditherMode`, `locationImages`, `bannerCooldown`,
+  `portraitRefImages`, and every ComfyUI connection field. Behaviour and machine
+  config — a template must survive changing checkpoints, and a checkpoint must
+  survive changing dialects. Reference *images* stay global for the same reason:
+  they are files, and the same three references are what "our art style" means
+  whichever wording describes it.
+- **Normalized at READ time** (`normalizeImageTemplates`), like `normalizeDice`
+  and `normalizeComfy`. A missing field takes its own dialect's ship text; a
+  **blank** one stays blank, because blanking is how a rule is removed. The list
+  is never empty and `activeTemplate` never fails — a dangling `imageTemplateId`
+  takes the first template — since there is no sane state in which an image
+  cannot be prompted. **Migration:** a save written before templates existed has
+  its flat `bannerInstructions` / `portrait*` / `appearanceInstructions` /
+  `comfyNegativePrompt` folded onto the *prose* built-in, so an edited style
+  clause survives verbatim and the tag dialect simply appears beside it.
+
 ### ComfyUI — `src/lib/comfyui.ts`
 
 - **The protocol:** `POST /prompt` with `{ prompt: <graph>, client_id }` → a `prompt_id`; poll `GET /history/<prompt_id>` (which answers with a map *keyed by prompt id* — `{}` means pending) until the entry appears; pull `{filename, subfolder, type}` out of the first output node carrying `images[]` and fetch `GET /view?…` for the bytes. `POST /interrupt` on abort or timeout. Polling rather than the websocket: a socket adds a second failure mode and a `clientId` handshake for a progress bar nothing renders, while history is the authoritative record either way. Unlike SillyTavern's loop this one has a **deadline** (`COMFY_TIMEOUT_MS`) — a phone that walked out of wifi range would otherwise sit on "rendering…" for the rest of the session.
@@ -273,7 +325,7 @@ One isolated function returning the OpenRouter `messages[]`, in order:
 - **Sizing:** `comfyWidth`/`comfyHeight` are the base, used verbatim for a banner. A portrait passes the same `aspectRatio: "2:3"` the OpenRouter path sends and is reshaped to that ratio **at the same pixel area**, snapped to multiples of 64 — so switching backends doesn't quietly change how much work a portrait is.
 - **Reaching it from the APK** is three separate blockers, and one answer. ComfyUI returns a hard **403** to any request carrying `Sec-Fetch-Site: cross-site` unless started with `--enable-cors-header`; the Capacitor WebView is served from `https://localhost`, so `http://192.168.x.x:8188` is **mixed content**; and Android blocks **cleartext** from targetSdk 28. Requests therefore go through **`CapacitorHttp` on native** and `fetch` on the web — a native request leaves from Java, where none of those three rules apply (the manifest's `usesCleartextTraffic` is patched in CI, since `android/` isn't committed). `server.androidScheme` is deliberately *not* changed: that moves the app's origin and would orphan every installed player's IndexedDB saves. On the web build there is no escape and `--enable-cors-header` is genuinely required, so a 403 is translated into that sentence rather than surfaced as a status — it is the one error every new user hits, and nothing inside the app can fix it. The web POST also sends **no `Content-Type`**, which keeps it a CORS simple request with no preflight; ComfyUI reads the body with `await request.json()` and doesn't check.
 - **Discovery:** *Connect* pings `/system_stats` and then reads `/object_info/{KSampler,CheckpointLoaderSimple,UNETLoader,VAELoader}` to fill the checkpoint / sampler / scheduler / VAE pickers (a combo input's options are `input.required.<field>[0]`). Every lookup is optional — a build without `UNETLoader` is normal. This exists because a wrong host and a mistyped checkpoint name fail *identically*, as a portrait that never appears, and neither is visible anywhere else in the app.
-- **What ComfyUI does not do:** ✎ **Edit** is OpenRouter-only (`imageEditAllowed`) and the button is hidden, not disabled — feeding an image into a workflow means a *different graph* with a LoadImage node, which is the player's to write and not something the app can substitute into one. **Portrait style reference images** are likewise not sent, for the same reason; the Portraits screen says so while the backend is selected. Uploads, downloads, *Remove Image* and the zoom view are unaffected — none of them talks to a model.
+- **What ComfyUI does not do:** ✎ **Edit** is OpenRouter-only (`imageEditAllowed`) and the button is hidden, not disabled — feeding an image into a workflow means a *different graph* with a LoadImage node, which is the player's to write and not something the app can substitute into one. **Portrait style reference images** are likewise not sent, for the same reason; the Image Prompts screen says so while the backend is selected. Uploads, downloads, *Remove Image* and the zoom view are unaffected — none of them talks to a model.
 
 ---
 
@@ -289,16 +341,23 @@ Settings {                    // global, edited in Settings
   comfyUrl, comfyWorkflow,                     //   ComfySettings (lib/comfyui.ts → DEFAULT_COMFY)
     comfyModel, comfyVae, comfySampler, comfyScheduler,
     comfySteps, comfyScale (CFG), comfyWidth, comfyHeight,
-    comfyDenoise, comfyClipSkip, comfyNegativePrompt
+    comfyDenoise, comfyClipSkip
   reasoningLevel: auto | off | minimal | low | medium | high                // Model & Key
-  // Advanced (grouped into sub-menus: Narrator · Characters · Images · Portraits):
+  // Advanced (grouped into sub-menus: Narrator · Characters · Images · Image Prompts):
   customInstructions, optionInstructions                                // Narrator
-  appearanceInstructions, characterCreationInstructions,                // Characters
-    characterUpdateInstructions, standingInstructions,
-    departureInstructions, spotlightRule
-  ditherMode, locationImages, bannerCooldown, bannerInstructions        // Images
-  portraitAction/Context/Composition/Style, portraitRefImages,          // Portraits
-    portraitRefInstruction
+  characterCreationInstructions, characterUpdateInstructions,           // Characters
+    standingInstructions, departureInstructions, spotlightRule
+  ditherMode, locationImages, bannerCooldown                            // Images
+  imageTemplates: ImagePromptTemplate[], imageTemplateId,               // Image Prompts
+    portraitRefImages
+}
+
+ImagePromptTemplate {         // one image dialect — lib/imageTemplates.ts
+  id, name, format: prose | tags
+  bannerInstructions
+  portraitAction, portraitContext, portraitComposition, portraitStyle
+  portraitRefInstruction, negativePrompt
+  appearanceInstructions      // steers the NARRATOR — the Subject must match the dialect
   // RPG System (its own screen — mechanics, not prompt text):
   stakesEnabled, stakesRule, riskKeywords, alwaysRoll, diceAnimation,
   dicePitch, diceYaw, dicePerspective,                                  // how the toss is drawn
@@ -503,7 +562,7 @@ Parsing is tolerant like the `<<<LOOM>>>` block (fences/preamble/trailing commas
 
 Auto-Update's sibling, and the difference is **where it reads from**. Auto-Update re-reads a character off the **story so far**, so it is a story change. This is **authoring**: a ✦ button beside **Appearance · Personality · Drive · Strengths · Flaws** opens a modal that writes that one field from the character's own sheet — **Species and Sex above all** — the scenario, and the World Notes those words trigger (`worldNotes.ts → matchWorldNotes`, the same keyword matcher, scanned over the sheet instead of the beats). It never reads the beats: a character who hasn't appeared yet is exactly who this is for.
 
-- **One field per call.** Only the requested field's rule is sent, so the model is never told about a field it must not write. Appearance's rule *is* `Settings.appearanceInstructions` — the same sentence the narrator gets — so "Appearance" means one thing app-wide.
+- **One field per call.** Only the requested field's rule is sent, so the model is never told about a field it must not write. Appearance's rule *is* the selected image template's `appearanceInstructions` — the same sentence the narrator gets — so "Appearance" means one thing app-wide.
 - **Preview, then accept.** The modal shows what came back with **Use This / Generate Again / Cancel**, at a looser temperature than a sheet update (authoring wants variety; a re-roll should differ). An optional guidance box rides last in the prompt, so it outranks the sheet it may deliberately contradict.
 - **✦ only in Edit mode.** An accepted generation lands in the sheet's **edit draft**, not the character — so **Discard Changes is the undo** and **Save Changes** is what commits it (through `updateCharacter`, which retires that field's story override). The generation reads the draft too, so a Flaws written right after the player typed a Personality reads that Personality.
 - The store action writes nothing and takes the character **by value**; it needs no `streaming` guard for that reason, only single-flight.
@@ -663,10 +722,11 @@ All secondary screens — **member sheet, Party, Inventory, Quests, and every Se
     Paper · Paper on Ink · Amber CRT · Green CRT). Generated banner and portrait
     art is a real 1-bit bitmap and stays black and white whatever is picked.
 - **Advanced screen** is an **index of sub-menus**, not one scroll: **Narrator**
-  (voice + suggested actions), **Characters** (appearance · creation · the freeze
-  rule · standings · departures · spotlight), **Images** (1-bit shading · location
-  images on/off · location cooldown · banner style), **Portraits** (the Action/Context/Composition/Style
-  clauses + style references). Every prompt rule the story writes characters by is
+  (voice + suggested actions), **Characters** (creation · the freeze rule ·
+  standings · departures · spotlight), **Images** (1-bit shading · location
+  images on/off · location cooldown — behaviour only), **Image Prompts** (the
+  template picker and everything a template holds: appearance rule · banner
+  style · the four portrait clauses · negative prompt · style references). Every prompt rule the story writes characters by is
   editable there, each with its own Reset; blanking one **drops that line** from the
   protocol rather than falling back to a built-in. The JSON *shape* around them is
   the parser's contract and is never editable. Sub-menu depth is local component

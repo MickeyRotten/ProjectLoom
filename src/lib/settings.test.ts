@@ -36,6 +36,7 @@ import {
   usableQuickActions,
 } from "./settings";
 import { DEFAULT_COMFY, MAX_COMFY_STEPS, MIN_COMFY_SIDE } from "./comfyui";
+import { activeTemplate, builtinTemplates, PROSE_TEMPLATE_ID } from "./imageTemplates";
 import { FONT_CHOICES } from "../types";
 
 function settingsWith(reasoningLevel: ReasoningLevel): Settings {
@@ -361,6 +362,37 @@ describe("loadSettings migrations", () => {
     expect(s.paper).toBe(DEFAULT_PAPER);
     expect(s.ink).toBe("#ff00aa");
     expect(s.textSize).toBe(MAX_TEXT_SIZE);
+  });
+
+  it("carries the old flat image-prompt fields onto the prose template", () => {
+    write({
+      bannerInstructions: "My banner style.",
+      portraitStyle: "My ink style.",
+      appearanceInstructions: "Three vivid clauses.",
+      comfyNegativePrompt: "blurry, lowres",
+    });
+    const s = loadSettings();
+    expect(s.imageTemplateId).toBe(PROSE_TEMPLATE_ID);
+    const prose = activeTemplate(s);
+    expect(prose.bannerInstructions).toBe("My banner style.");
+    expect(prose.portraitStyle).toBe("My ink style.");
+    expect(prose.appearanceInstructions).toBe("Three vivid clauses.");
+    expect(prose.negativePrompt).toBe("blurry, lowres");
+    // The tag dialect arrives alongside, so the migration ADDS a choice rather
+    // than replacing one.
+    expect(s.imageTemplates.map((t) => t.format)).toEqual(["prose", "tags"]);
+  });
+
+  it("gives a save with no image settings at all both shipped templates", () => {
+    write({ openRouterKey: "sk-old" });
+    expect(loadSettings().imageTemplates).toEqual(builtinTemplates());
+  });
+
+  it("falls a stored selection that no longer exists back to a real template", () => {
+    write({ imageTemplateId: "deleted" });
+    // The id is kept as stored — it is what the player picked — but nothing
+    // downstream can be handed a missing template.
+    expect(activeTemplate(loadSettings()).id).toBe(PROSE_TEMPLATE_ID);
   });
 
   it("round-trips a saved settings object", () => {

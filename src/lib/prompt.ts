@@ -26,6 +26,7 @@ import {
   presentMembers,
 } from "./roster";
 import { formatNpcBlock, matchNpcs } from "./cast";
+import { activeTemplate } from "./imageTemplates";
 import { matchWorldNotes, formatWorldNotesBlock } from "./worldNotes";
 import { formatConditionsBlock, formatStakesBlock, type StakeSignals } from "./stakes";
 
@@ -574,10 +575,12 @@ function buildOutputProtocol(settings: Settings): string {
     settings.optionInstructions.trim() ||
     "Offer 3–4 short, concrete next actions.";
 
-  // Player-editable (Advanced) — this sentence becomes portrait Subjects
-  // verbatim, so it's the head of the portrait consistency chain.
+  // Player-editable (Advanced → Image Prompts) — this sentence becomes portrait
+  // Subjects verbatim, so it's the head of the portrait consistency chain, and
+  // it rides the selected image template: a tag-dialect portrait needs a
+  // tag-dialect Subject to be built from.
   const appearanceRule =
-    settings.appearanceInstructions.trim() ||
+    activeTemplate(settings).appearanceInstructions.trim() ||
     '"description" is physical appearance only, concrete and visual.';
 
   const optionsLine = settings.showActionOptions

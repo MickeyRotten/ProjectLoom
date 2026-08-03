@@ -450,6 +450,25 @@ a player-authored graph needs a different graph — and the button is hidden rat
 than left to fail. `safeErrorText` moved to `http.ts` and `ImageError` to
 `imageError.ts` (breaking the `images.ts` ⟂ `comfyui.ts` cycle); `ImageError`
 gained `status`/`retryable`, since a queue-then-poll flow fails at three points.
+Post-MVP also: **image prompt templates** (`imageTemplates.ts`,
+`Settings.imageTemplates`/`imageTemplateId`, Advanced → **Image Prompts**) — a
+ComfyUI player runs SD-family checkpoints that read Danbooru tags, and one set of
+prose fields could not serve both backends. Every field that decides how an image
+prompt is *worded* is now one named, switchable `ImagePromptTemplate` — banner
+style, the four portrait clauses, the reference line, the negative prompt (off
+`ComfySettings`: a negative list is dialect, not machine config) and
+`appearanceInstructions`, which belongs there because `Character.description`
+becomes the portrait Subject verbatim, so a tags portrait needs a tags Subject.
+`format: prose | tags` is the structural half no rewording could cover
+(`images.ts → joinPromptParts`): tags comma-joins with trailing punctuation
+stripped, drops the labels, and leaves the character's NAME out entirely. Two
+built-ins ship; New/Duplicate/Delete make more, the name is a live field, and
+per-field Reset restores the ship text *for that format*. `normalizeImageTemplates`
+sanitizes at READ (blank stays blank — blanking removes a rule), never returns an
+empty list, and folds the old flat fields onto the prose built-in, so an edited
+style clause survives verbatim and the tag dialect just appears beside it.
+Advanced → Images keeps behaviour only (shading · location images · cooldown);
+reference *images* stay global, since they are files.
 Deferred (post-MVP): rolling LLM summarization of the beats themselves,
 NPC/item art, TTS, weather animation, multi-world. Track scope in
 `DESIGN.md → Build Phases`.

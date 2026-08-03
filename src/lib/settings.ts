@@ -18,6 +18,11 @@ import {
   defaultSettings,
 } from "./defaults";
 import { normalizeComfy } from "./comfyui";
+import {
+  normalizeImageTemplates,
+  PROSE_TEMPLATE_ID,
+  type TemplateText,
+} from "./imageTemplates";
 
 /**
  * Fields that existed in an earlier shape of the stored settings and no longer
@@ -29,6 +34,34 @@ interface LegacySettings {
   invert?: boolean;
   /** Pre-`textSize`: a four-step scale that resolved to Tailwind classes. */
   textScale?: "s" | "m" | "l" | "xl";
+  /**
+   * Pre-`imageTemplates`: the image-prompt wording as a handful of flat fields,
+   * with no way to hold a second dialect. Folded onto the shipped prose
+   * template — see `imageTemplates.ts → normalizeImageTemplates`.
+   */
+  bannerInstructions?: string;
+  portraitAction?: string;
+  portraitContext?: string;
+  portraitComposition?: string;
+  portraitStyle?: string;
+  portraitRefInstruction?: string;
+  appearanceInstructions?: string;
+  /** Pre-`imageTemplates`: the negative prompt sat with the ComfyUI machine config. */
+  comfyNegativePrompt?: string;
+}
+
+/** The old flat image-prompt fields, keyed the way a template holds them. */
+function legacyTemplateText(stored: LegacySettings): Partial<TemplateText> {
+  return {
+    bannerInstructions: stored.bannerInstructions,
+    portraitAction: stored.portraitAction,
+    portraitContext: stored.portraitContext,
+    portraitComposition: stored.portraitComposition,
+    portraitStyle: stored.portraitStyle,
+    portraitRefInstruction: stored.portraitRefInstruction,
+    negativePrompt: stored.comfyNegativePrompt,
+    appearanceInstructions: stored.appearanceInstructions,
+  };
 }
 
 /** The pixel size each old `textScale` step actually rendered at. */
@@ -87,6 +120,16 @@ export function loadSettings(): Settings {
           (stored.textScale ? LEGACY_SCALE_PX[stored.textScale] : DEFAULT_TEXT_SIZE),
       ),
       webFonts: normalizeWebFonts(stored.webFonts),
+      // Same discipline for the image-prompt dialects, which also carry the
+      // migration off the old flat fields: a save written before templates
+      // existed has its wording folded onto the prose built-in, so nobody's
+      // edited style clause is lost and the tag dialect simply appears beside
+      // it. Never empty, so the picker always has something to select.
+      imageTemplates: normalizeImageTemplates(stored.imageTemplates, legacyTemplateText(stored)),
+      imageTemplateId:
+        typeof stored.imageTemplateId === "string" && stored.imageTemplateId.trim()
+          ? stored.imageTemplateId
+          : PROSE_TEMPLATE_ID,
       // Same discipline for the ComfyUI numbers — a half-typed width must not
       // be able to persist a latent size that fails every later generation.
       ...normalizeComfy(stored),

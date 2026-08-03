@@ -10,7 +10,17 @@ import {
 import { defaultPC, newGame, defaultSettings } from "./defaults";
 import { PARTY_LIMIT } from "./roster";
 import { DEFAULT_DICE } from "./stakes";
+import { builtinTemplates } from "./imageTemplates";
 import type { Character, GameState, Message, RosterEntry, Settings } from "../types";
+
+/** Settings whose SELECTED image template carries this appearance rule. */
+function appearanceRule(text: string): Partial<Settings> {
+  const [prose, ...rest] = builtinTemplates();
+  return {
+    imageTemplates: [{ ...prose, appearanceInstructions: text }, ...rest],
+    imageTemplateId: prose.id,
+  };
+}
 
 const settings = defaultSettings();
 
@@ -74,16 +84,13 @@ describe("buildMessages — ordering", () => {
     expect(msgs[protocolIdx].role).toBe("system");
   });
 
-  it("folds the editable appearance rule into the protocol's party line", () => {
-    const custom = {
-      ...settings,
-      appearanceInstructions: 'Write "description" as three vivid clauses.',
-    };
+  it("folds the selected template's appearance rule into the protocol's party line", () => {
+    const custom = { ...settings, ...appearanceRule('Write "description" as three vivid clauses.') };
     const msgs = build({ settings: custom, game: newGame(), playerMessage: "go" });
     const protocol = msgs.find((m) => m.content.includes("<<<LOOM>>>"))!;
     expect(protocol.content).toContain('Write "description" as three vivid clauses.');
     // A blank rule falls back to a built-in minimal one, never an empty gap.
-    const blank = { ...settings, appearanceInstructions: "  " };
+    const blank = { ...settings, ...appearanceRule("  ") };
     const msgs2 = build({ settings: blank, game: newGame(), playerMessage: "go" });
     const protocol2 = msgs2.find((m) => m.content.includes("<<<LOOM>>>"))!;
     expect(protocol2.content).toContain('"description" is physical appearance only');

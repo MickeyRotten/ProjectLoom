@@ -21,6 +21,7 @@ import {
   imagesAllowed,
   imageEditAllowed,
   isModelSafeImage,
+  joinPromptParts,
   PORTRAIT_PIXEL_WIDTH,
   portraitKey,
   prepareUploadedImage,
@@ -32,11 +33,24 @@ import {
   uploadStoredWidth,
 } from "./images";
 import { DEFAULT_COMFY } from "./comfyui";
-import type { Settings } from "../types";
-import type { PortraitInstructions } from "./images";
+import type { ImagePromptTemplate, Settings } from "../types";
 
-function instr(overrides: Partial<PortraitInstructions> = {}): PortraitInstructions {
-  return { action: "", context: "", composition: "", style: "", ...overrides };
+/** A template with every field blank — each test fills only what it asserts on. */
+function tpl(overrides: Partial<ImagePromptTemplate> = {}): ImagePromptTemplate {
+  return {
+    id: "t",
+    name: "Test",
+    format: "prose",
+    bannerInstructions: "",
+    portraitAction: "",
+    portraitContext: "",
+    portraitComposition: "",
+    portraitStyle: "",
+    portraitRefInstruction: "",
+    negativePrompt: "",
+    appearanceInstructions: "",
+    ...overrides,
+  };
 }
 
 // Several suites stub globals (fetch, createImageBitmap) — never leak one.
@@ -100,25 +114,38 @@ describe("banner cooldown", () => {
 
 describe("prompt builders", () => {
   it("banner prompt folds in style, location, and excerpt", () => {
-    const p = buildBannerPrompt("The Dusty Path", "Grit stings your eyes.", "1-bit line art.");
+    const p = buildBannerPrompt(
+      "The Dusty Path",
+      "Grit stings your eyes.",
+      tpl({ bannerInstructions: "1-bit line art." }),
+    );
     expect(p).toContain("1-bit line art.");
     expect(p).toContain("Location: The Dusty Path.");
     expect(p).toContain("Scene: Grit stings your eyes.");
   });
 
   it("banner prompt omits an empty excerpt", () => {
-    const p = buildBannerPrompt("Ruins", "   ", "style");
+    const p = buildBannerPrompt("Ruins", "   ", tpl({ bannerInstructions: "style" }));
     expect(p).not.toContain("Scene:");
+  });
+
+  it("a tags banner drops the labels and comma-joins", () => {
+    const p = buildBannerPrompt(
+      "The Dusty Path",
+      "Grit stings your eyes.",
+      tpl({ format: "tags", bannerInstructions: "monochrome, lineart" }),
+    );
+    expect(p).toBe("The Dusty Path, Grit stings your eyes, monochrome, lineart");
   });
 
   it("portrait prompt puts Subject first, then action/context/composition/style in order", () => {
     const p = buildPortraitPrompt(
       { name: "Navi", species: "sprite", description: "A flickering mote of light." },
-      instr({
-        action: "The pose is neutral.",
-        context: "The background is white.",
-        composition: "A waist-up portrait.",
-        style: "Clean ink illustration.",
+      tpl({
+        portraitAction: "The pose is neutral.",
+        portraitContext: "The background is white.",
+        portraitComposition: "A waist-up portrait.",
+        portraitStyle: "Clean ink illustration.",
       }),
     );
     expect(p).toContain("Name: Navi.");
@@ -138,12 +165,12 @@ describe("prompt builders", () => {
   it("portrait prompt carries Sex after Species, and omits it when blank", () => {
     const withSex = buildPortraitPrompt(
       { name: "Navi", species: "sprite", sex: "female", description: "A mote." },
-      instr({ style: "Ink." }),
+      tpl({ portraitStyle: "Ink." }),
     );
     expect(withSex).toContain("Species: sprite. Sex: female.");
     const withoutSex = buildPortraitPrompt(
       { name: "Navi", species: "sprite", sex: "  ", description: "A mote." },
-      instr({ style: "Ink." }),
+      tpl({ portraitStyle: "Ink." }),
     );
     expect(withoutSex).not.toContain("Sex:");
   });
@@ -151,16 +178,17 @@ describe("prompt builders", () => {
   it("portrait prompt tolerates blank identity fields", () => {
     const p = buildPortraitPrompt(
       { name: "", species: "", description: "" },
-      instr({ style: "style" }),
+      tpl({ portraitStyle: "style" }),
     );
     expect(p).toBe("style");
   });
 
   it("appends the reference instruction as the final line only when given", () => {
     const member = { name: "Navi", species: "sprite", description: "A mote." };
-    const withRef = buildPortraitPrompt(member, instr({ style: "Ink." }), "Match the refs.");
+    const template = tpl({ portraitStyle: "Ink.", portraitRefInstruction: "Match the refs." });
+    const withRef = buildPortraitPrompt(member, template, true);
     expect(withRef.endsWith("Match the refs.")).toBe(true);
-    const withoutRef = buildPortraitPrompt(member, instr({ style: "Ink." }));
+    const withoutRef = buildPortraitPrompt(member, template);
     expect(withoutRef).not.toContain("Match the refs.");
   });
 
@@ -173,7 +201,7 @@ describe("prompt builders", () => {
         useCustomPortraitPrompt: true,
         customPortraitPrompt: "A neon fox in a trench coat.",
       },
-      instr({ style: "1-bit portrait." }),
+      tpl({ portraitStyle: "1-bit portrait." }),
     );
     expect(p).toBe("A neon fox in a trench coat.\n\n1-bit portrait.");
     expect(p).not.toContain("Name: Navi.");
@@ -189,8 +217,8 @@ describe("prompt builders", () => {
         useCustomPortraitPrompt: true,
         customPortraitPrompt: "A neon fox.",
       },
-      instr({ style: "Ink." }),
-      "Match the refs.",
+      tpl({ portraitStyle: "Ink.", portraitRefInstruction: "Match the refs." }),
+      true,
     );
     expect(p).toBe("A neon fox.\n\nInk.\n\nMatch the refs.");
   });
@@ -198,9 +226,54 @@ describe("prompt builders", () => {
   it("falls back to auto lines when the custom flag is on but the prompt is blank", () => {
     const p = buildPortraitPrompt(
       { name: "Navi", species: "sprite", description: "A mote.", useCustomPortraitPrompt: true, customPortraitPrompt: "  " },
-      instr({ style: "style" }),
+      tpl({ portraitStyle: "style" }),
     );
     expect(p).toContain("Name: Navi.");
+  });
+
+  it("a tags portrait comma-joins, drops the labels, and leaves the NAME out", () => {
+    const p = buildPortraitPrompt(
+      {
+        name: "Navi",
+        species: "sprite",
+        sex: "female",
+        description: "long white hair, red eyes.",
+      },
+      tpl({
+        format: "tags",
+        portraitAction: "standing, arms at sides",
+        portraitComposition: "solo, upper body",
+        portraitStyle: "monochrome, lineart",
+      }),
+    );
+    // The name would cost tokens a text encoder can do nothing with.
+    expect(p).not.toContain("Navi");
+    expect(p).not.toContain("Species:");
+    expect(p).toBe(
+      "sprite, female, long white hair, red eyes, standing, arms at sides, solo, upper body, monochrome, lineart",
+    );
+  });
+
+  it("a tags custom prompt is joined the same way", () => {
+    const p = buildPortraitPrompt(
+      {
+        name: "Navi",
+        species: "sprite",
+        description: "A mote.",
+        useCustomPortraitPrompt: true,
+        customPortraitPrompt: "1girl, neon fox,",
+      },
+      tpl({ format: "tags", portraitStyle: "monochrome" }),
+    );
+    expect(p).toBe("1girl, neon fox, monochrome");
+  });
+
+  it("joinPromptParts drops blanks in both formats", () => {
+    expect(joinPromptParts(["a", "  ", "b"], "prose")).toBe("a\n\nb");
+    expect(joinPromptParts(["a.", " ", "b;"], "tags")).toBe("a, b");
+    // A part that is nothing BUT punctuation disappears rather than leaving a
+    // stray separator behind.
+    expect(joinPromptParts(["a", ".", "b"], "tags")).toBe("a, b");
   });
 
   it("edit prompt folds in the instruction and a style-preservation line", () => {

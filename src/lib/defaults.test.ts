@@ -1,11 +1,5 @@
 import { describe, it, expect } from "vitest";
 import {
-  DEFAULT_BANNER_INSTRUCTIONS,
-  DEFAULT_PORTRAIT_ACTION,
-  DEFAULT_PORTRAIT_COMPOSITION,
-  DEFAULT_PORTRAIT_CONTEXT,
-  DEFAULT_PORTRAIT_STYLE,
-  DEFAULT_REFERENCE_INSTRUCTION,
   defaultPC,
   defaultSettings,
   ensureGold,
@@ -194,32 +188,13 @@ describe("splitLegacyGame", () => {
   });
 });
 
-describe("image prompt constants — hard constraints", () => {
-  const prompts = [
-    DEFAULT_BANNER_INSTRUCTIONS,
-    DEFAULT_PORTRAIT_ACTION,
-    DEFAULT_PORTRAIT_CONTEXT,
-    DEFAULT_PORTRAIT_COMPOSITION,
-    DEFAULT_PORTRAIT_STYLE,
-    DEFAULT_REFERENCE_INSTRUCTION,
-  ];
-
-  it("never mentions pixels — pixelation is client-side post-processing", () => {
-    for (const p of prompts) expect(p.toLowerCase()).not.toContain("pixel");
-  });
-
-  it("style clause carries no character-specific anatomy or gear language", () => {
-    const style = DEFAULT_PORTRAIT_STYLE.toLowerCase();
-    for (const word of ["heroic", "pauldron", "gauntlet", "jaw", "bust", "muscul", "armor"]) {
-      expect(style).not.toContain(word);
-    }
-  });
-
-  it("default settings ship clean threshold and zero reference images", () => {
+describe("default settings", () => {
+  it("ships clean threshold, no reference images, and both prompt templates", () => {
     const s = defaultSettings();
     expect(s.ditherMode).toBe("threshold");
     expect(s.portraitRefImages).toEqual([]);
-    expect(s.portraitRefInstruction).toBe(DEFAULT_REFERENCE_INSTRUCTION);
+    expect(s.imageTemplates.map((t) => t.format)).toEqual(["prose", "tags"]);
+    expect(s.imageTemplateId).toBe("prose");
   });
 });
 
