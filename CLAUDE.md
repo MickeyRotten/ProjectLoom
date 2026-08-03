@@ -492,7 +492,11 @@ than a lost document. `supabaseUrl`/`supabaseAnonKey`/`comfyUrl` are the fields
 that do **not** travel (`DEVICE_LOCAL_SETTINGS`); the OpenRouter key does, by
 the player's choice. Config is `VITE_SUPABASE_*` at build (CI secrets) with an
 in-app override, and `@supabase/supabase-js` is a lazy `import()` so an app that
-never syncs never carries it. Schema in `supabase/schema.sql`.
+never syncs never carries it. Server side is `supabase/` — one migration
+(`migrations/*_loom_cloud_sync.sql`, idempotent, guarded around the
+storage-owned objects) plus a trimmed `config.toml` declaring the bucket, so
+the Supabase GitHub integration can apply it and a hand-run in the SQL editor
+still works.
 Deferred (post-MVP): rolling LLM summarization of the beats themselves,
 NPC/item art, TTS, weather animation, multi-world. Track scope in
 `DESIGN.md → Build Phases`.

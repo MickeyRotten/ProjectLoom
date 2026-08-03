@@ -17,7 +17,7 @@ import type { Session, SupabaseClient } from "@supabase/supabase-js";
 import type { Settings } from "../types";
 import { encodeImageName, decodeImageName, type RemoteDoc, type RemoteImage } from "./sync";
 
-/** Storage bucket created by `supabase/schema.sql`. */
+/** Storage bucket created by `supabase/migrations/` + `supabase/config.toml`. */
 export const IMAGE_BUCKET = "loom-images";
 
 const DOCS_TABLE = "loom_docs";
