@@ -18,6 +18,8 @@ import {
   defaultSettings,
 } from "./defaults";
 import { normalizeComfy } from "./comfyui";
+import { touchDoc } from "./db";
+import { SETTINGS_DOC } from "./sync";
 import {
   normalizeImageTemplates,
   PROSE_TEMPLATE_ID,
@@ -133,10 +135,28 @@ export function loadSettings(): Settings {
       // Same discipline for the ComfyUI numbers — a half-typed width must not
       // be able to persist a latent size that fails every later generation.
       ...normalizeComfy(stored),
+      // Sync config: trimmed at READ, so a pasted URL with a stray space or a
+      // trailing slash still resolves — the alternative is an auth failure the
+      // player has no way to read as a typo.
+      supabaseUrl: normalizeSupabaseUrl(stored.supabaseUrl),
+      supabaseAnonKey: typeof stored.supabaseAnonKey === "string"
+        ? stored.supabaseAnonKey.trim()
+        : "",
+      syncEnabled: stored.syncEnabled === true,
     };
   } catch {
     return defaultSettings();
   }
+}
+
+/**
+ * A Supabase project URL as the client wants it: trimmed, no trailing slash.
+ * Anything that is not a string is blank, which means "fall back to the value
+ * the build was given" rather than "sync is broken".
+ */
+export function normalizeSupabaseUrl(stored: unknown): string {
+  if (typeof stored !== "string") return "";
+  return stored.trim().replace(/\/+$/, "");
 }
 
 /**
@@ -411,4 +431,9 @@ export function saveSettings(settings: Settings): void {
   } catch {
     // Storage unavailable (private mode etc.) — non-fatal.
   }
+  // Settings live in localStorage but their sync stamp lives in IndexedDB with
+  // every other stamp, so the write is async and deliberately not awaited — a
+  // preference toggle must stay instant. Losing the stamp to a crash costs one
+  // redundant push, nothing more.
+  void touchDoc(SETTINGS_DOC);
 }

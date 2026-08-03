@@ -16,6 +16,16 @@ import type {
 } from "./types";
 import { defaultPC, ensureGold, newCharacter, newGame } from "./lib/defaults";
 import { loadSettings, saveSettings } from "./lib/settings";
+import {
+  currentAccount,
+  signIn as authSignIn,
+  signOut as authSignOut,
+  signUp as authSignUp,
+  syncConfigured,
+  type Account,
+} from "./lib/supabaseClient";
+import { runSync, startSync, stopSync, type SyncPorts, type SyncStatus } from "./lib/syncEngine";
+import type { GameSummary } from "./lib/sync";
 import { downloadWebFont, mountWebFonts, unmountWebFont } from "./lib/webFonts";
 import {
   loadActiveGame,
@@ -37,6 +47,7 @@ import {
   dropEntry,
   getEntry,
   isInParty,
+  mergeLibrary,
   mergeOverrides,
   partyFull,
   partyMembers,
@@ -150,9 +161,21 @@ export type Screen =
   | "rpg"
   | "appearance"
   | "saves"
+  | "sync"
   | "party"
   | "inventory"
   | "member";
+
+/**
+ * Both devices played, both copies are real games. The prompt is the only place
+ * cloud sync ever interrupts the player, and it only ever appears with both
+ * games already snapshotted into save slots — so either answer is reversible.
+ */
+export interface SyncConflict {
+  local: GameSummary;
+  cloud: GameSummary;
+  choose: (keep: "local" | "cloud") => void;
+}
 
 export interface LoomStore {
   settings: Settings;
@@ -332,6 +355,27 @@ export interface LoomStore {
   /** The reverse — a kit row back into the shared pack, merging by label. */
   unequipItem: (characterId: string, index: number) => void;
 
+  /* --- Cloud sync (Menu → Cloud Sync) --- */
+  /** The signed-in account, or null when signed out / sync off. */
+  account: Account | null;
+  syncStatus: SyncStatus;
+  /** True while a sign-in / sign-up call is in flight. */
+  authPending: boolean;
+  /** Why the last auth attempt failed, in the player's words. */
+  authError: string | null;
+  /** Set after a sign-up that needs an email confirmation before it can sign in. */
+  authNotice: string | null;
+  /** The active-game conflict awaiting an answer — see `SyncConflict`. */
+  syncConflict: SyncConflict | null;
+  signIn: (email: string, password: string) => Promise<void>;
+  signUp: (email: string, password: string) => Promise<void>;
+  signOut: () => Promise<void>;
+  /** Sync now, from the button. No-op when signed out. */
+  syncNow: () => Promise<void>;
+  /** Turn sync on/off — off stops the engine and touches nothing stored. */
+  setSyncEnabled: (on: boolean) => void;
+  clearAuthError: () => void;
+
   // Save slots (Phase 4) — snapshot / restore / delete of the active game.
   refreshSlots: () => Promise<void>;
   snapshotSlot: (name: string) => Promise<void>;
@@ -430,16 +474,6 @@ function lastNarration(game: GameState): string {
     if (game.messages[i].role === "narrator") return game.messages[i].content;
   }
   return game.scenario.openingNarration;
-}
-
-/**
- * Fold characters recovered from a legacy save into the stored library.
- * Whoever is already in the library wins — the save may be older than an edit.
- */
-function mergeLibrary(library: Character[], recovered: Character[]): Character[] {
-  const known = new Set(library.map((c) => c.id));
-  const extra = recovered.filter((c) => !known.has(c.id));
-  return extra.length ? [...library, ...extra] : library;
 }
 
 export const uid = () =>
@@ -672,6 +706,96 @@ export const useStore = create<LoomStore>((set, get) => {
     );
   }
 
+  /**
+   * Everything cloud sync is allowed to touch, in one place (`syncEngine.ts →
+   * SyncPorts`). Built fresh on each start so the closures read live state.
+   *
+   * Adopting pulled data goes through the SAME writers a player edit does —
+   * `saveActiveGame`, `commitCharacters`, `saveSettings` — rather than poking
+   * `set` and leaving the disk copy behind. The engine suppresses its own
+   * notifications while adopting, so this cannot echo.
+   */
+  function syncPorts(): SyncPorts {
+    return {
+      settings: () => get().settings,
+      account: () => get().account,
+      busy: () => get().streaming,
+      game: () => get().game,
+      characters: () => get().characters,
+      async adoptGame(game, recovered) {
+        const library = mergeLibrary(get().characters, recovered);
+        if (library !== get().characters) commitCharacters(library);
+        const lastNarrator = [...game.messages].reverse().find((m) => m.role === "narrator");
+        set({
+          game,
+          options: lastNarrator?.appliedDeltas?.options ?? [],
+          streamText: "",
+          error: null,
+          failedInput: null,
+        });
+        await saveActiveGame(game);
+        // The pulled game names locations and companions this device may have
+        // no art for yet; the blobs arrive in the same pass, so this publishes
+        // whatever is already cached and leaves the rest to the next one.
+        get().syncImages();
+      },
+      async adoptCharacters(characters) {
+        set({ characters });
+        await saveCharacters(characters);
+        get().syncImages();
+      },
+      adoptSettings(settings) {
+        saveSettings(settings);
+        set({ settings });
+        void mountWebFonts(settings.webFonts);
+      },
+      askActiveConflict(local, cloud) {
+        return new Promise<"local" | "cloud">((resolve) => {
+          set({
+            syncConflict: {
+              local,
+              cloud,
+              choose: (keep) => {
+                set({ syncConflict: null });
+                resolve(keep);
+              },
+            },
+          });
+        });
+      },
+      slotsChanged() {
+        void get().refreshSlots();
+      },
+      onStatus(syncStatus) {
+        set({ syncStatus });
+      },
+    };
+  }
+
+  /**
+   * Pick up an existing session and start the engine. Called on hydrate and
+   * after a sign-in; silent when sync is off or unconfigured, since that is the
+   * shipped state and not a failure.
+   */
+  async function beginSync(): Promise<void> {
+    const settings = get().settings;
+    if (!settings.syncEnabled || !syncConfigured(settings)) return;
+    try {
+      const account = await currentAccount(settings);
+      set({ account });
+      if (!account) return;
+      startSync(syncPorts());
+    } catch (err) {
+      set({
+        syncStatus: {
+          ...get().syncStatus,
+          state: "error",
+          error: err instanceof Error ? err.message : "Cloud sync failed to start.",
+        },
+      });
+    }
+  }
+
   const portrait = (memberId: string, force: boolean) => {
     const base = get().characters.find((c) => c.id === memberId);
     if (!base) return;
@@ -735,6 +859,13 @@ export const useStore = create<LoomStore>((set, get) => {
 
   slots: [],
 
+  account: null,
+  syncStatus: { state: "idle", lastSyncedAt: 0, error: null },
+  authPending: false,
+  authError: null,
+  authNotice: null,
+  syncConflict: null,
+
   autoUpdating: false,
   autoUpdateError: null,
 
@@ -773,6 +904,10 @@ export const useStore = create<LoomStore>((set, get) => {
     // Added fonts live as blobs in IndexedDB, so their stylesheet has to be
     // rebuilt every launch — nothing else mounts them.
     void mountWebFonts(get().settings.webFonts);
+    // Cloud sync, if the player has signed in on this device. Deliberately
+    // last and deliberately not awaited: the game is playable before the
+    // network is, and a slow (or absent) connection must never delay hydrate.
+    void beginSync();
   },
 
   setScreen(screen) {
@@ -1288,6 +1423,82 @@ export const useStore = create<LoomStore>((set, get) => {
     set({ game, options: [], streamText: "", error: null, failedInput: null });
     void saveActiveGame(game);
     get().syncImages();
+  },
+
+  async signIn(email, password) {
+    if (get().authPending) return;
+    set({ authPending: true, authError: null, authNotice: null });
+    try {
+      const account = await authSignIn(get().settings, email.trim(), password);
+      // Signing in IS switching sync on: nobody types an email and a password
+      // into a screen called Cloud Sync to leave it off.
+      get().updateSettings({ syncEnabled: true });
+      set({ account });
+      startSync(syncPorts());
+    } catch (err) {
+      set({ authError: err instanceof Error ? err.message : "Sign in failed." });
+    } finally {
+      set({ authPending: false });
+    }
+  },
+
+  async signUp(email, password) {
+    if (get().authPending) return;
+    set({ authPending: true, authError: null, authNotice: null });
+    try {
+      const { account, needsConfirmation } = await authSignUp(
+        get().settings,
+        email.trim(),
+        password,
+      );
+      if (needsConfirmation) {
+        // Email confirmation is on for this project. Saying so is the whole
+        // point — the screen otherwise looks like the button did nothing.
+        set({ authNotice: "Account created. Confirm the email, then sign in." });
+        return;
+      }
+      get().updateSettings({ syncEnabled: true });
+      set({ account });
+      startSync(syncPorts());
+    } catch (err) {
+      set({ authError: err instanceof Error ? err.message : "Sign up failed." });
+    } finally {
+      set({ authPending: false });
+    }
+  },
+
+  async signOut() {
+    stopSync();
+    // A pending conflict prompt belongs to a session that no longer exists.
+    get().syncConflict?.choose("local");
+    try {
+      await authSignOut(get().settings);
+    } finally {
+      set({
+        account: null,
+        syncConflict: null,
+        syncStatus: { state: "idle", lastSyncedAt: 0, error: null },
+      });
+    }
+  },
+
+  async syncNow() {
+    if (!get().account) return;
+    await runSync();
+  },
+
+  setSyncEnabled(on) {
+    get().updateSettings({ syncEnabled: on });
+    if (!on) {
+      stopSync();
+      set({ syncStatus: { state: "idle", lastSyncedAt: 0, error: null } });
+      return;
+    }
+    void beginSync();
+  },
+
+  clearAuthError() {
+    set({ authError: null, authNotice: null });
   },
 
   async refreshSlots() {

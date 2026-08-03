@@ -52,7 +52,16 @@ jobs:
           npm run tsc
           npm test
 
+      # Cloud sync's default project. Both values are public by design (the
+      # anon key is what every Supabase client app ships with — row-level
+      # security is what protects the data), so baking them into the APK is
+      # exactly how they are meant to be distributed. Unset simply builds an
+      # APK where sync waits for the player to paste their own project on the
+      # Cloud Sync screen.
       - name: Build web app
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: npm run build
 
       - uses: actions/setup-java@v4

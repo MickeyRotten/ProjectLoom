@@ -219,6 +219,13 @@ export function defaultSettings(): Settings {
     openRouterKey: "",
     setupDone: false,
     imageKey: "",
+    // Cloud sync is opt-in: an app that has never asked for an account must not
+    // start talking to one, and the offline single-device game is still the
+    // shipped experience.
+    syncEnabled: false,
+    // Blank means "use whatever the build was given" — see `Settings`.
+    supabaseUrl: "",
+    supabaseAnonKey: "",
     textModelId: DEFAULT_TEXT_MODEL,
     imageModelId: DEFAULT_IMAGE_MODEL,
     // On by default — portraits have always drawn themselves, and shipping the

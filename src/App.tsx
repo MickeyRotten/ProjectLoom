@@ -17,6 +17,8 @@ import { AdvancedScreen } from "./components/AdvancedScreen";
 import { RpgSystemScreen } from "./components/RpgSystemScreen";
 import { AppearanceScreen } from "./components/AppearanceScreen";
 import { SavesScreen } from "./components/SavesScreen";
+import { SyncScreen } from "./components/SyncScreen";
+import { SyncConflictModal } from "./components/SyncConflictModal";
 import { MemberSheet } from "./components/MemberSheet";
 import { PartyScreen } from "./components/PartyScreen";
 import { InventoryScreen } from "./components/InventoryScreen";
@@ -131,7 +133,12 @@ export default function App() {
 
   // First run: the game cannot take a turn without a key, so ask for one
   // instead of opening on a scenario that fails the moment it is touched.
-  if (!setupDone) return <SetupScreen />;
+  //
+  // Cloud Sync is the one screen reachable THROUGH setup: on a second device
+  // the key being asked for is already in the account, so making the player
+  // type it in to reach the sign-in that would have supplied it is a wall with
+  // a door in it. Signing in pulls `setupDone` and dismisses this anyway.
+  if (!setupDone && screen !== "sync") return <SetupScreen />;
 
   const current = () => {
     if (screen === "menu") return <MenuScreen />;
@@ -145,6 +152,7 @@ export default function App() {
     if (screen === "rpg") return <RpgSystemScreen />;
     if (screen === "appearance") return <AppearanceScreen />;
     if (screen === "saves") return <SavesScreen />;
+    if (screen === "sync") return <SyncScreen />;
     if (screen === "member") return <MemberSheet />;
     if (screen === "party") return <PartyScreen />;
     if (screen === "inventory") return <InventoryScreen />;
@@ -161,11 +169,14 @@ export default function App() {
 
   // The dice toss sits OUTSIDE the screen switch: it is thrown the moment a turn
   // rolls, and lasts a couple of seconds, so hanging it off the play screen
-  // would leave a cast stranded if anything changed screens underneath it.
+  // would leave a cast stranded if anything changed screens underneath it. The
+  // sync conflict prompt is outside for the same reason — a sync lands whenever
+  // it lands, whatever the player has open.
   return (
     <>
       {current()}
       <DiceOverlay />
+      <SyncConflictModal />
     </>
   );
 }
