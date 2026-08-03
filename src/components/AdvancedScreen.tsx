@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useStore } from "../store";
+import { useStore, type PurgeSummary } from "../store";
 import { OverlayHeader } from "./OverlayHeader";
 import { Field, ToggleRow, btnSmall } from "./fields";
 import type { ImagePromptTemplate, PromptFormat, Settings } from "../types";
@@ -28,6 +28,7 @@ import {
   MAX_BANNER_COOLDOWN,
   MAX_REF_IMAGES,
   refImageToDataUrl,
+  type ImageKind,
 } from "../lib/images";
 import {
   clampHistoryBudget,
@@ -87,7 +88,7 @@ type SectionId = "narrator" | "characters" | "images" | "prompts";
 const SECTIONS: { id: SectionId; label: string; note: string }[] = [
   { id: "narrator", label: "Narrator", note: "Voice · tone · suggested actions" },
   { id: "characters", label: "Characters", note: "How the story writes your cast" },
-  { id: "images", label: "Images", note: "1-bit shading · location art" },
+  { id: "images", label: "Images", note: "1-bit shading · location art · purge stored art" },
   {
     id: "prompts",
     label: "Image Prompts",
@@ -691,6 +692,103 @@ function ImagePromptsSection() {
   );
 }
 
+/**
+ * Delete stored art wholesale — the two kinds separately, because they go stale
+ * for different reasons. Location art is the bulk (a banner per place visited,
+ * each with a master behind it) and is the thing to throw away to reclaim space;
+ * portraits are the thing to throw away after changing template, checkpoint or
+ * style, so the cast is redrawn in the new one.
+ *
+ * Not gated on the master switch: purging is exactly what a player does when
+ * they have just switched generation off.
+ */
+function PurgeImages() {
+  const purge = useStore((s) => s.purgeImages);
+  const syncing = useStore((s) => s.settings.syncEnabled && s.account !== null);
+  const [busy, setBusy] = useState<ImageKind | null>(null);
+  const [result, setResult] = useState<string | null>(null);
+  const { ask, dialog } = useConfirm();
+
+  function describe(r: PurgeSummary): string {
+    const parts = [`Deleted ${r.local} on this device`];
+    if (syncing) parts.push(`${r.remote} in the cloud`);
+    let line = parts.join(" · ") + ".";
+    if (r.failed) line += ` ${r.failed} cloud ${r.failed === 1 ? "copy" : "copies"} refused — the next sync retries.`;
+    if (r.error) line += ` The cloud could not be reached: ${r.error}`;
+    return line;
+  }
+
+  function run(kind: ImageKind) {
+    setResult(null);
+    setBusy(kind);
+    void purge(kind)
+      .then((r) => setResult(describe(r)))
+      .finally(() => setBusy(null));
+  }
+
+  const cloudLine = syncing
+    ? " They go from the cloud too, so they don't come back on the next sync."
+    : "";
+
+  return (
+    <section className="space-y-3 border-2 border-ink p-3">
+      <h2 className="uppercase tracking-widest">Purge Stored Images</h2>
+      <p className="text-sm">
+        Delete generated art from the app's storage — the picture and the full-size
+        master kept behind it for edits.
+        {syncing
+          ? " Both this device and the cloud."
+          : " This device only; sign in under Cloud Sync to clear the cloud copies too."}
+      </p>
+
+      <button
+        type="button"
+        disabled={busy !== null}
+        onClick={() =>
+          ask(
+            {
+              title: "Purge location images?",
+              body:
+                "Every location image and its master copy is deleted." +
+                cloudLine +
+                " A place is drawn again the next time you're there — the current location on your next turn, subject to the cooldown.",
+              confirmLabel: "Purge",
+            },
+            () => run("banner"),
+          )
+        }
+        className={btnSmall}
+      >
+        {busy === "banner" ? "Purging…" : "Purge Location Images"}
+      </button>
+
+      <button
+        type="button"
+        disabled={busy !== null}
+        onClick={() =>
+          ask(
+            {
+              title: "Purge character images?",
+              body:
+                "Every portrait and its master copy is deleted, uploaded art included." +
+                cloudLine +
+                " The player character and the party are drawn again on your next turn; everyone else when their sheet is opened. Characters you removed a picture from stay without one.",
+              confirmLabel: "Purge",
+            },
+            () => run("portrait"),
+          )
+        }
+        className={btnSmall}
+      >
+        {busy === "portrait" ? "Purging…" : "Purge Character Images"}
+      </button>
+
+      {result && <p className="text-xs opacity-70">{result}</p>}
+      {dialog}
+    </section>
+  );
+}
+
 function ImagesSection() {
   const ditherMode = useStore((s) => s.settings.ditherMode);
   const locationImages = useStore((s) => s.settings.locationImages);
@@ -753,6 +851,8 @@ function ImagesSection() {
           back on shows them again.
         </p>
       )}
+
+      <PurgeImages />
     </>
   );
 }
