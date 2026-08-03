@@ -45,6 +45,7 @@ import {
   deleteImage,
   saveSlot,
   loadSlot,
+  readSlot,
   deleteSlot,
   listSlots,
   type SaveSlot,
@@ -385,6 +386,8 @@ export interface LoomStore {
   // Save slots (Phase 4) — snapshot / restore / delete of the active game.
   refreshSlots: () => Promise<void>;
   snapshotSlot: (name: string) => Promise<void>;
+  /** Re-snapshot the active game into an existing slot, keeping its name. */
+  overwriteSlot: (id: string) => Promise<void>;
   restoreSlot: (id: string) => Promise<void>;
   dropSlot: (id: string) => Promise<void>;
 
@@ -1551,6 +1554,27 @@ export const useStore = create<LoomStore>((set, get) => {
       game: structuredClone(get().game),
     };
     await saveSlot(slot);
+    await get().refreshSlots();
+  },
+
+  async overwriteSlot(id) {
+    // Same id, same name, new bytes: `saveSlot` writes by id, so this replaces
+    // the stored snapshot in place (and re-stamps it for sync) rather than
+    // leaving the player a list of near-identical saves. Read the name back
+    // from the store instead of the in-memory list, so a rename on another
+    // device isn't clobbered by a stale row. A slot deleted meanwhile is not
+    // resurrected — no slot, no overwrite.
+    const existing = await readSlot(id);
+    if (!existing) {
+      await get().refreshSlots();
+      return;
+    }
+    await saveSlot({
+      id,
+      name: existing.name,
+      savedAt: Date.now(),
+      game: structuredClone(get().game),
+    });
     await get().refreshSlots();
   },
 
