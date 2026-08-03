@@ -89,9 +89,11 @@ import { captureReversal, applyReversal } from "./lib/reversal";
 import { detectSpeakers } from "./lib/spotlight";
 import {
   BANNER_PIXEL_WIDTH,
+  bannerAllowed,
   bannerKey,
   bannerOnCooldown,
   blobToDataUrl,
+  imagesAllowed,
   buildBannerPrompt,
   buildEditPrompt,
   buildPortraitPrompt,
@@ -569,6 +571,10 @@ export const useStore = create<LoomStore>((set, get) => {
    */
   async function editImage(key: string, instruction: string): Promise<void> {
     if (get().imgPending[key] || !instruction.trim()) return;
+    // Image generation off (Model & Key): an edit is a generation like any
+    // other. The ✎ button is hidden while it's off, so this is the belt to that
+    // braces — nothing reaches the image model behind the switch's back.
+    if (!imagesAllowed(get().settings)) return;
     const source = await loadEditSource(key);
     if (!source) {
       // Nothing cached at all is a plain no-op; a cached image we can't send is
@@ -651,6 +657,11 @@ export const useStore = create<LoomStore>((set, get) => {
   const portrait = (memberId: string, force: boolean) => {
     const base = get().characters.find((c) => c.id === memberId);
     if (!base) return;
+    // Image generation off (Model & Key): ⟳ has nothing to do, and the
+    // automatic pass degrades to a cache probe — a portrait drawn before the
+    // switch was flipped still shows, it just never draws a new one.
+    const allowed = imagesAllowed(get().settings);
+    if (force && !allowed) return;
     // A removed portrait stays removed: the automatic trigger is "no cached
     // image → draw one", so without this the next turn would silently undo the
     // player's removal. Only ⟳ (force) or an upload overrides it.
@@ -687,6 +698,7 @@ export const useStore = create<LoomStore>((set, get) => {
         };
       },
       force,
+      { cacheOnly: !allowed },
     );
   };
 
@@ -1602,11 +1614,11 @@ export const useStore = create<LoomStore>((set, get) => {
       const excerpt = lastNarration(g);
       // The cooldown gates GENERATION only: a location whose banner is already
       // cached still shows it immediately, however recently we drew something.
-      const cacheOnly = bannerOnCooldown(
-        get().settings.bannerCooldown,
-        g.lastBannerTurn,
-        g.turnNumber,
-      );
+      // Image generation being off reads the same way — cached art, no new
+      // requests — so the two reasons fold into one flag.
+      const cacheOnly =
+        !imagesAllowed(get().settings) ||
+        bannerOnCooldown(get().settings.bannerCooldown, g.lastBannerTurn, g.turnNumber);
       void ensureImage(
         bannerKey(location),
         () => ({
@@ -1632,7 +1644,7 @@ export const useStore = create<LoomStore>((set, get) => {
   regenerateBanner() {
     const g = get().game;
     const location = g.location.trim();
-    if (!location || !get().settings.locationImages) return;
+    if (!location || !bannerAllowed(get().settings)) return;
     const excerpt = lastNarration(g);
     // ⟳ ignores the cooldown — but it IS a generation, so it restarts the clock.
     void ensureImage(

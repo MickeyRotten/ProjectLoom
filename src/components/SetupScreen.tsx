@@ -55,6 +55,10 @@ export function SetupScreen() {
           hint="Writes the story. An uncensored or roleplay-tuned model suits Loom best."
         />
 
+        {/* Hidden if the player has already switched image generation off in
+            Model & Key — a returning setup (a cleared key) must not offer a
+            model for calls that can't happen. */}
+        {settings.imagesEnabled && (
         <ModelPicker
           label="Image Model — Optional"
           value={settings.imageModelId}
@@ -62,8 +66,9 @@ export function SetupScreen() {
           models={image}
           loading={loading}
           error={error}
-          hint="Draws character portraits — and location images, once you switch those on in Advanced → Images. Leave it be if you'd rather not spend on images — the game plays fine without them."
+          hint="Draws character portraits — and location images, once you switch those on in Advanced → Images. Leave it be if you'd rather not spend on images — the game plays fine without them, and Model & Key can switch image generation off entirely."
         />
+        )}
 
         {/* Dismissal is explicit. Gating the screen on "is there a key" instead
             would throw the player out of setup on the first character they

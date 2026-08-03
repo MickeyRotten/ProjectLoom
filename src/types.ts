@@ -511,6 +511,15 @@ export interface Settings extends DiceRules {
   imageKey: string;
   textModelId: string;
   imageModelId: string;
+  /**
+   * Master switch for image GENERATION (Model & Key). Off means no request ever
+   * reaches the image model — no automatic portrait, no location banner, no ⟳
+   * and no ✎ — while everything already drawn still shows, uploads still work,
+   * and nothing is deleted. `locationImages` only ever governed half of the
+   * spend; this is the one place to answer "stop buying pictures", and it lives
+   * beside the image key and model it switches off.
+   */
+  imagesEnabled: boolean;
   temperature: number;
   /**
    * Thinking effort for the text model — narration and side calls alike. See

@@ -241,6 +241,10 @@ export function defaultSettings(): Settings {
     imageKey: "",
     textModelId: DEFAULT_TEXT_MODEL,
     imageModelId: DEFAULT_IMAGE_MODEL,
+    // On by default — portraits have always drawn themselves, and shipping the
+    // switch OFF would read as the image pipeline having broken. Location
+    // images stay separately opt-in below.
+    imagesEnabled: true,
     temperature: 0.8,
     reasoningLevel: DEFAULT_REASONING_LEVEL,
     showActionOptions: true,

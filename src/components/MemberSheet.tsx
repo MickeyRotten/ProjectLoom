@@ -17,7 +17,7 @@ import { GenerateItemModal } from "./GenerateItemModal";
 import { GEN_FIELD_LABEL, type GenField } from "../lib/generateField";
 import { useEditBuffer } from "./useEditBuffer";
 import { useConfirm } from "./useConfirm";
-import { portraitKey } from "../lib/images";
+import { imagesAllowed, portraitKey } from "../lib/images";
 import { equipQuantity } from "../lib/equip";
 import {
   getEntry,
@@ -107,6 +107,7 @@ export function MemberSheet() {
   const portraitUrl = useStore((s) => (id ? s.images[portraitKey(id)] : undefined));
   const portraitPending = useStore((s) => (id ? s.imgPending[portraitKey(id)] : false));
   const imageError = useStore((s) => (id ? s.imgError[portraitKey(id)] : undefined));
+  const imagesOn = useStore((s) => imagesAllowed(s.settings));
   const [zoom, setZoom] = useState(false);
   const [autoUpdate, setAutoUpdate] = useState(false);
   const [genField, setGenField] = useState<GenField | null>(null);
@@ -236,16 +237,21 @@ export function MemberSheet() {
               )}
             </div>
           )}
-          <button
-            type="button"
-            aria-label="Regenerate portrait"
-            disabled={portraitPending}
-            onClick={() => regeneratePortrait(member.id)}
-            className="absolute right-1 top-1 border-2 border-ink bg-paper px-2 leading-none disabled:opacity-40 active:bg-ink active:text-paper"
-          >
-            ⟳
-          </button>
-          {portraitUrl && (
+          {/* Both controls are generations, so both go with the master switch
+              (Model & Key → Image Generation). Upload / download / remove stay:
+              none of them talks to a model. */}
+          {imagesOn && (
+            <button
+              type="button"
+              aria-label="Regenerate portrait"
+              disabled={portraitPending}
+              onClick={() => regeneratePortrait(member.id)}
+              className="absolute right-1 top-1 border-2 border-ink bg-paper px-2 leading-none disabled:opacity-40 active:bg-ink active:text-paper"
+            >
+              ⟳
+            </button>
+          )}
+          {imagesOn && portraitUrl && (
             <EditImageButton
               label="Edit portrait"
               disabled={portraitPending}
