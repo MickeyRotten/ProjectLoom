@@ -16,6 +16,7 @@ import type {
 } from "./types";
 import { defaultPC, ensureGold, newCharacter, newGame } from "./lib/defaults";
 import { loadSettings, saveSettings } from "./lib/settings";
+import { downloadWebFont, mountWebFonts, unmountWebFont } from "./lib/webFonts";
 import {
   loadActiveGame,
   loadCharacters,
@@ -223,6 +224,20 @@ export interface LoomStore {
   setBackHandler: (handler: (() => boolean) | null) => void;
   openMember: (id: string) => void;
   updateSettings: (patch: Partial<Settings>) => void;
+
+  /** True while a Google Web Font is downloading (Appearance → Font → Add). */
+  fontPending: boolean;
+  /** Why the last Add failed, in the player's words. Cleared on the next try. */
+  fontError: string | null;
+  /**
+   * Download a Google Web Font by name, store its files on device and select
+   * it. Single-flight on `fontPending`, like the ✦ generators — the screen has
+   * one Add button and one error line, so a second concurrent download would
+   * have nowhere to report.
+   */
+  addWebFont: (name: string) => Promise<void>;
+  /** Forget an added font, falling the selection back if it was the active one. */
+  removeWebFont: (id: string) => Promise<void>;
 
   // Authoring (Phase 4) — every edit mutates the active game, autosaved.
   updateScenario: (patch: Partial<Scenario>) => void;
@@ -761,6 +776,9 @@ export const useStore = create<LoomStore>((set, get) => {
     }
     void saveCharacters(library);
     get().syncImages();
+    // Added fonts live as blobs in IndexedDB, so their stylesheet has to be
+    // rebuilt every launch — nothing else mounts them.
+    void mountWebFonts(get().settings.webFonts);
   },
 
   setScreen(screen) {
@@ -798,6 +816,42 @@ export const useStore = create<LoomStore>((set, get) => {
     const settings = { ...get().settings, ...patch };
     saveSettings(settings);
     set({ settings });
+  },
+
+  fontPending: false,
+  fontError: null,
+
+  async addWebFont(name) {
+    if (get().fontPending) return;
+    set({ fontPending: true, fontError: null });
+    try {
+      const font = await downloadWebFont(name);
+      // Replace by id rather than appending: adding the same family twice is a
+      // re-download, not a second row.
+      const rest = get().settings.webFonts.filter((f) => f.id !== font.id);
+      const webFonts = [...rest, font];
+      // Selecting it is the point of adding it — nobody types a font name to
+      // leave it unused, and the alternative is a two-tap Add-then-pick.
+      get().updateSettings({ webFonts, font: font.id });
+      await mountWebFonts(webFonts);
+      set({ fontPending: false });
+    } catch (e) {
+      set({
+        fontPending: false,
+        fontError: e instanceof Error ? e.message : "Could not add that font.",
+      });
+    }
+  },
+
+  async removeWebFont(id) {
+    const webFonts = get().settings.webFonts.filter((f) => f.id !== id);
+    // The active font going away would leave `data-font` pointing at a rule
+    // that no longer exists, so the selection comes back to the platform stack
+    // in the same update rather than a frame later.
+    const patch: Partial<Settings> =
+      get().settings.font === id ? { webFonts, font: "system" } : { webFonts };
+    get().updateSettings(patch);
+    await unmountWebFont(id, webFonts);
   },
 
   updateScenario(patch) {

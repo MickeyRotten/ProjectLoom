@@ -12,10 +12,16 @@ import { migrateCharacter, splitLegacyGame, type LoadedGame } from "./defaults";
  * image blobs (Phase 3) reuse the same stores.
  */
 export const DB_NAME = "loom";
-export const DB_VERSION = 1;
+/**
+ * v2 adds `fonts` — the woff2 files behind player-added Google Web Fonts. They
+ * get a store of their own rather than a key prefix inside `images`, because
+ * `images.ts` enumerates that keyspace and a font file is not an image.
+ */
+export const DB_VERSION = 2;
 
 export const SAVES_STORE = "saves";
 export const IMAGES_STORE = "images";
+export const FONTS_STORE = "fonts";
 
 /** Reserved key for the continuously-autosaved active game. */
 export const ACTIVE_KEY = "__active__";
@@ -38,6 +44,9 @@ export function getDB(): Promise<IDBPDatabase> {
         }
         if (!db.objectStoreNames.contains(IMAGES_STORE)) {
           db.createObjectStore(IMAGES_STORE);
+        }
+        if (!db.objectStoreNames.contains(FONTS_STORE)) {
+          db.createObjectStore(FONTS_STORE);
         }
       },
     });
@@ -149,4 +158,48 @@ export async function loadImage(key: string): Promise<Blob | null> {
 export async function deleteImage(key: string): Promise<void> {
   const db = await getDB();
   await db.delete(IMAGES_STORE, key);
+}
+
+/* ------------------------------------------------------------------ *
+ * Downloaded web-font files. One added font is several woff2 subsets, stored
+ * under `font:<id>:<i>` and read back as object URLs by `webFonts.ts`. This is
+ * what makes an added font behave like a bundled one: downloaded once, then
+ * never a network request again, on a device that plays offline.
+ * ------------------------------------------------------------------ */
+
+const FONT_PREFIX = "font:";
+
+const fontKey = (id: string, index: number) => `${FONT_PREFIX}${id}:${index}`;
+
+/** Store one subset file of an added font. */
+export async function saveFontFile(id: string, index: number, blob: Blob): Promise<void> {
+  const db = await getDB();
+  await db.put(FONTS_STORE, blob, fontKey(id, index));
+}
+
+/**
+ * Every stored subset file for one added font, in the order they were written.
+ * An empty array means the font's files are gone — `webFonts.ts` skips such a
+ * font rather than injecting a rule with nothing behind it.
+ */
+export async function loadFontFiles(id: string): Promise<Blob[]> {
+  const db = await getDB();
+  const out: Blob[] = [];
+  for (let i = 0; ; i++) {
+    const blob = (await db.get(FONTS_STORE, fontKey(id, i))) as Blob | undefined;
+    if (!blob) return out;
+    out.push(blob);
+  }
+}
+
+/** Delete every stored subset file for one added font. */
+export async function deleteFontFiles(id: string): Promise<void> {
+  const db = await getDB();
+  const keys = (await db.getAllKeys(FONTS_STORE)) as IDBValidKey[];
+  const prefix = `${FONT_PREFIX}${id}:`;
+  await Promise.all(
+    keys
+      .filter((k) => typeof k === "string" && k.startsWith(prefix))
+      .map((k) => db.delete(FONTS_STORE, k)),
+  );
 }

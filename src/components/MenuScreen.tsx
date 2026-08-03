@@ -27,7 +27,7 @@ const ENTRIES: { screen: Screen; label: string; note: string }[] = [
   { screen: "characters", label: "Characters", note: "Full cast · add to party" },
   { screen: "scenario", label: "Scenario", note: "Title · premise · opening" },
   { screen: "modelkey", label: "Model & Key", note: "OpenRouter key · models" },
-  { screen: "appearance", label: "Appearance", note: "Text size · font · invert" },
+  { screen: "appearance", label: "Appearance", note: "Text size · font · colors" },
   { screen: "rpg", label: "RPG System", note: "Dice · outcomes · what counts as risky" },
   { screen: "advanced", label: "Advanced", note: "Narrator + image instructions" },
 ];

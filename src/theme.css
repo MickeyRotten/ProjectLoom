@@ -4,9 +4,13 @@
  * no color. Everything in the app references these tokens (directly or via the
  * Tailwind `ink`/`paper` aliases) so the visual system stays coherent.
  *
- * Default is the stark dark reading of 1-bit (ink glyphs on paper);
- * `[data-theme="dark"]` flips the two for the "black paper" look without
- * touching component code.
+ * The values below are the SHIPPED pair and the pre-hydration fallback. The
+ * player picks their own two colors in Settings → Appearance, and `App.tsx`
+ * writes them (plus the derived `--scrim`) straight onto <html> as inline
+ * custom properties — one place a color is chosen, one mechanism to override
+ * it. There is deliberately no second selector holding a second palette: the
+ * old `[data-theme="dark"]` block WAS that second palette, and every colour
+ * question then had two answers depending on a boolean.
  */
 :root {
   --ink: #000000;
@@ -27,30 +31,12 @@
 }
 
 /*
- * Flip ink/paper — a whole-app swap with no per-component changes.
- *
- * The hook is a data attribute, NOT a class named `invert`: `invert` is also a
- * Tailwind filter utility, and Tailwind generates it as soon as that word shows
- * up in any scanned file (it does — the store setting is called `invert`). The
- * generated `.invert { filter: invert(100%) }` sits in the utilities layer,
- * after this file, so putting that class on <html> stacked a whole-page pixel
- * inversion ON TOP of the token swap: the two cancelled out for every border,
- * background and glyph, while the generated banner/portrait bitmaps — real
- * pixels the tokens never touch — were the only thing that actually flipped.
- * Dark mode looked like an image-only inverter. Keep this selector attribute-
- * based so no utility name can ever collide with it again.
- */
-:root[data-theme="dark"] {
-  --ink: #ffffff;
-  --paper: #000000;
-  --scrim: rgb(255 255 255 / 0.6);
-}
-
-/*
  * Bundled display faces (Settings → Appearance → Font). Both are SIL OFL 1.1
  * and vendored under `src/fonts/` rather than linked from Google Fonts: the
  * packaged APK plays offline, and a webfont fetched over the network would
- * simply never arrive there.
+ * simply never arrive there. Fonts the player ADDS by name are held to the same
+ * standard — `webFonts.ts` downloads the files once and injects the equivalent
+ * of the rules below from IndexedDB blobs.
  *
  * `size-adjust` normalises them against the platform monospace stack. Both are
  * drawn small for their em box, so at the same `font-size` they read a size or

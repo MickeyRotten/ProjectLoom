@@ -408,22 +408,56 @@ export interface RefImage {
 }
 
 /**
- * Reading size for the narration log. Only the prose scales — buttons, labels
- * and every other control keep their size, so a large setting buys text and not
- * a blown-up interface.
- */
-export type TextScale = "s" | "m" | "l" | "xl";
-
-/**
  * The typeface the whole app renders in (Settings → Appearance). `system` is
  * the platform monospace stack Loom shipped with; the other two are bitmap-era
  * display faces bundled with the app (`src/fonts/`, SIL OFL) so the APK never
  * reaches the network for a glyph.
+ *
+ * These are the BUNDLED faces. `Settings.font` also accepts the `id` of any
+ * `WebFont` the player has added, which is why it is typed as a plain string —
+ * see `settings.ts → fontTheme`.
  */
 export type FontChoice = "system" | "vt323" | "jersey15";
 
-/** The fonts, in the order the picker shows them. */
+/** The bundled fonts, in the order the picker shows them. */
 export const FONT_CHOICES = ["system", "vt323", "jersey15"] as const;
+
+/**
+ * A Google Web Font the player added by name (Settings → Appearance → Font).
+ *
+ * Only the identity lives here; the actual woff2 files live in IndexedDB
+ * (`db.ts → FONTS_STORE`), downloaded once when the font is added. They are
+ * downloaded rather than linked because the packaged APK plays offline — a
+ * `<link>` to fonts.googleapis.com would give an added font the opposite
+ * property from the two bundled ones: present on wifi, gone on a train.
+ */
+export interface WebFont {
+  /** The family as Google spells it, e.g. "Silkscreen" — the CSS family name. */
+  family: string;
+  /** Slug of the family: the `data-font` value and the IndexedDB key prefix. */
+  id: string;
+  /**
+   * The `unicode-range` of each stored file, index-aligned with the IndexedDB
+   * keys (`font:<id>:0`, `:1`, …). It has to be persisted, not just used at
+   * download time: two subset files re-mounted WITHOUT their ranges both claim
+   * every character, the later one wins, and a font whose latin-ext file has no
+   * basic Latin in it renders the whole app blank.
+   */
+  ranges: string[];
+}
+
+/**
+ * One downloaded `@font-face` for an added font — a single subset's file plus
+ * the range it covers, parsed off the css2 stylesheet (`webFonts.ts`).
+ */
+export interface WebFontFace {
+  /** Subset label from the stylesheet's per-block comment ("latin"), if any. */
+  subset: string;
+  /** The `unicode-range` descriptor, verbatim. */
+  unicodeRange: string;
+  /** Absolute woff2 URL on fonts.gstatic.com. */
+  url: string;
+}
 
 /**
  * How much room the location banner takes. `compact` keeps the art reachable (a
@@ -535,12 +569,26 @@ export interface Settings extends DiceRules {
    * the editor can address them by index without ever growing the row.
    */
   quickActions: QuickAction[];
-  /** Flip ink/paper — the "black paper" reading of the 1-bit theme. */
-  invert: boolean;
-  /** Reading size for narration. Chrome (buttons, labels) never scales. */
-  textScale: TextScale;
-  /** Typeface for the whole app — see `FontChoice`. */
-  font: FontChoice;
+  /**
+   * The two colors the whole app is drawn in — `--paper` behind everything,
+   * `--ink` for every glyph, border and fill. They replace the old
+   * `invert: boolean`, which was one point in this space (and is still one tap
+   * away as a preset). Always `#rrggbb` after `settings.ts → normalizeHex`.
+   *
+   * `--scrim`, `color-scheme` and the browser chrome color are all derived from
+   * this pair in `App.tsx`, so there is exactly one place a color is chosen.
+   */
+  paper: string;
+  ink: string;
+  /**
+   * Reading size for narration, in pixels. Chrome (buttons, labels) never
+   * scales. Sanitized at READ time by `settings.ts → clampTextSize`.
+   */
+  textSize: number;
+  /** Typeface for the whole app — a `FontChoice` or an added `WebFont.id`. */
+  font: string;
+  /** Google Web Fonts the player added by name — see `WebFont`. */
+  webFonts: WebFont[];
   /**
    * Whether location images exist at all. Off by default: a banner is an image
    * generation on every new location, which is the app's most expensive habit
