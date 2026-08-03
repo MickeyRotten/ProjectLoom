@@ -1,14 +1,12 @@
 import { describe, it, expect } from "vitest";
 import {
-  ACTIVE_DOC,
+  LEGACY_ACTIVE_DOC,
   LEGACY_CHARACTERS_DOC,
   SETTINGS_DOC,
-  conflictPolicy,
-  conflictSlotName,
   decodeImageName,
   encodeImageName,
+  isSkippedDoc,
   isSlotDoc,
-  isUntouchedGame,
   mergeSettings,
   newStamp,
   newerSide,
@@ -17,9 +15,10 @@ import {
   slotDoc,
   slotIdOf,
   stripLocalSettings,
+  wakesSync,
   type DocStamp,
 } from "./sync";
-import { defaultSettings, newGame } from "./defaults";
+import { defaultSettings } from "./defaults";
 
 const stamp = (patch: Partial<DocStamp> = {}): DocStamp => ({
   localAt: 0,
@@ -80,21 +79,39 @@ describe("planDoc", () => {
   });
 });
 
-describe("conflictPolicy", () => {
-  it("asks only for the active game", () => {
-    expect(conflictPolicy(ACTIVE_DOC)).toBe("ask");
+describe("wakesSync", () => {
+  it("wakes on a snapshot and on a settings edit — the two things the cloud holds", () => {
+    expect(wakesSync(slotDoc("abc"))).toBe(true);
+    expect(wakesSync(SETTINGS_DOC)).toBe(true);
   });
 
-  it("takes the newest settings and defers on a slot", () => {
-    expect(conflictPolicy(SETTINGS_DOC)).toBe("newest");
-    expect(conflictPolicy(slotDoc("abc"))).toBe("remote");
+  it("stays asleep for the live game, so a turn costs no network", () => {
+    expect(wakesSync(LEGACY_ACTIVE_DOC)).toBe(false);
   });
 
-  it("has nothing to say about the retired cast document", () => {
-    // It is skipped by the pass entirely — no policy, because it never reaches
-    // one. Naming it here so the constant can't quietly change spelling.
+  it("stays asleep for generated art and anything else db.ts announces", () => {
+    // `touchImage` announces `image:<cache key>`; the art a save needs travels
+    // with the save, so a drawn portrait is not on its own worth a round trip.
+    expect(wakesSync("image:portrait:9f1c")).toBe(false);
+    expect(wakesSync("image:banner:Boars Head Tavern")).toBe(false);
+    expect(wakesSync(LEGACY_CHARACTERS_DOC)).toBe(false);
+  });
+});
+
+describe("skipped documents", () => {
+  it("names both retired keys, so neither can quietly change spelling", () => {
+    // Skipped by the pass entirely, in both directions: a stamp with nothing
+    // local behind it reads as a deletion, and pushing that tombstone would
+    // wipe the game (or the cast) out from under a device on an older build.
+    expect(LEGACY_ACTIVE_DOC).toBe("active");
     expect(LEGACY_CHARACTERS_DOC).toBe("characters");
-    expect(isSlotDoc(LEGACY_CHARACTERS_DOC)).toBe(false);
+    expect(isSkippedDoc(LEGACY_ACTIVE_DOC)).toBe(true);
+    expect(isSkippedDoc(LEGACY_CHARACTERS_DOC)).toBe(true);
+  });
+
+  it("does not skip a real key", () => {
+    expect(isSkippedDoc(SETTINGS_DOC)).toBe(false);
+    expect(isSkippedDoc(slotDoc("active"))).toBe(false);
   });
 });
 
@@ -118,8 +135,8 @@ describe("slot document keys", () => {
   });
 
   it("reports no id for a singleton key", () => {
-    expect(isSlotDoc(ACTIVE_DOC)).toBe(false);
-    expect(slotIdOf(ACTIVE_DOC)).toBe("");
+    expect(isSlotDoc(SETTINGS_DOC)).toBe(false);
+    expect(slotIdOf(SETTINGS_DOC)).toBe("");
   });
 });
 
@@ -151,8 +168,11 @@ describe("image object names", () => {
 });
 
 describe("planImages", () => {
+  /** Every key in the example is art some save needs, unless a test says not. */
+  const wants = (...keys: string[]) => new Set(keys);
+
   it("uploads a blob the server has never seen", () => {
-    expect(planImages(["portrait:a"], {}, [])).toEqual({
+    expect(planImages(["portrait:a"], {}, [], wants("portrait:a"))).toEqual({
       upload: ["portrait:a"],
       download: [],
       remove: [],
@@ -160,7 +180,12 @@ describe("planImages", () => {
   });
 
   it("downloads a blob this device has never had", () => {
-    const plan = planImages([], {}, [{ key: "portrait:b", updatedAt: "2026-08-01T10:00:00Z" }]);
+    const plan = planImages(
+      [],
+      {},
+      [{ key: "portrait:b", updatedAt: "2026-08-01T10:00:00Z" }],
+      wants("portrait:b"),
+    );
     expect(plan.download).toEqual(["portrait:b"]);
     expect(plan.remove).toEqual([]);
   });
@@ -169,9 +194,12 @@ describe("planImages", () => {
     const stamps = {
       "portrait:a": stamp({ localAt: 5, syncedAt: 5, remoteAt: "2026-08-01T10:00:00Z" }),
     };
-    const plan = planImages(["portrait:a"], stamps, [
-      { key: "portrait:a", updatedAt: "2026-08-01T10:00:00Z" },
-    ]);
+    const plan = planImages(
+      ["portrait:a"],
+      stamps,
+      [{ key: "portrait:a", updatedAt: "2026-08-01T10:00:00Z" }],
+      wants("portrait:a"),
+    );
     expect(plan).toEqual({ upload: [], download: [], remove: [] });
   });
 
@@ -179,7 +207,12 @@ describe("planImages", () => {
     const stamps = {
       "portrait:a": stamp({ localAt: 20, syncedAt: 5, remoteAt: "2026-08-01T10:00:00Z" }),
     };
-    const plan = planImages([], stamps, [{ key: "portrait:a", updatedAt: "2026-08-01T10:00:00Z" }]);
+    const plan = planImages(
+      [],
+      stamps,
+      [{ key: "portrait:a", updatedAt: "2026-08-01T10:00:00Z" }],
+      wants("portrait:a"),
+    );
     expect(plan.remove).toEqual(["portrait:a"]);
   });
 
@@ -189,7 +222,12 @@ describe("planImages", () => {
     const stamps = {
       "portrait:a": stamp({ localAt: 5, syncedAt: 5, remoteAt: "2026-08-01T10:00:00Z" }),
     };
-    const plan = planImages([], stamps, [{ key: "portrait:a", updatedAt: "2026-08-01T10:00:00Z" }]);
+    const plan = planImages(
+      [],
+      stamps,
+      [{ key: "portrait:a", updatedAt: "2026-08-01T10:00:00Z" }],
+      wants("portrait:a"),
+    );
     expect(plan).toEqual({ upload: [], download: ["portrait:a"], remove: [] });
   });
 
@@ -206,12 +244,54 @@ describe("planImages", () => {
         remoteAt: "2026-08-01T10:00:00Z",
       }),
     };
-    const plan = planImages(["portrait:a", "portrait:b"], stamps, [
-      { key: "portrait:a", updatedAt: "2026-08-01T11:00:00Z" },
-      { key: "portrait:b", updatedAt: "2026-08-01T11:00:00Z" },
-    ]);
+    const plan = planImages(
+      ["portrait:a", "portrait:b"],
+      stamps,
+      [
+        { key: "portrait:a", updatedAt: "2026-08-01T11:00:00Z" },
+        { key: "portrait:b", updatedAt: "2026-08-01T11:00:00Z" },
+      ],
+      wants("portrait:a", "portrait:b"),
+    );
     expect(plan.upload).toEqual(["portrait:a"]);
     expect(plan.download).toEqual(["portrait:b"]);
+  });
+
+  it("uploads nothing for art no save needs", () => {
+    // The banner of a place the story passed through and never saved at. It is
+    // in the cache, it is not in a snapshot, so it is not the cloud's problem.
+    const plan = planImages(
+      ["banner:a wayside shrine", "portrait:a"],
+      {},
+      [],
+      wants("portrait:a"),
+    );
+    expect(plan.upload).toEqual(["portrait:a"]);
+  });
+
+  it("does not download art no save needs", () => {
+    const plan = planImages(
+      [],
+      {},
+      [{ key: "banner:somewhere else", updatedAt: "2026-08-01T10:00:00Z" }],
+      wants(),
+    );
+    expect(plan).toEqual({ upload: [], download: [], remove: [] });
+  });
+
+  it("still propagates a deletion for a key no save needs", () => {
+    // Remove Image / Purge stamp the deletion; gating that on "wanted" would
+    // strand the object in the bucket the moment the key fell out of scope.
+    const stamps = {
+      "portrait:a": stamp({ localAt: 20, syncedAt: 5, remoteAt: "2026-08-01T10:00:00Z" }),
+    };
+    const plan = planImages(
+      [],
+      stamps,
+      [{ key: "portrait:a", updatedAt: "2026-08-01T10:00:00Z" }],
+      wants(),
+    );
+    expect(plan.remove).toEqual(["portrait:a"]);
   });
 });
 
@@ -252,34 +332,6 @@ describe("settings", () => {
     expect(merged.supabaseUrl).toBe("https://mine.supabase.co");
     expect(merged.supabaseAnonKey).toBe("mine");
     expect(merged.comfyUrl).toBe("http://192.168.1.9:8188");
-  });
-});
-
-describe("isUntouchedGame", () => {
-  it("counts a fresh game as no game at all", () => {
-    expect(isUntouchedGame(newGame())).toBe(true);
-  });
-
-  it("counts one taken turn as a game worth defending", () => {
-    const played = {
-      ...newGame(),
-      turnNumber: 1,
-      messages: [{ id: "m1", role: "player" as const, content: "look", turn: 1 }],
-    };
-    expect(isUntouchedGame(played)).toBe(false);
-  });
-
-  it("does not care that the scenario was edited before play started", () => {
-    const authored = { ...newGame(), scenario: { ...newGame().scenario, title: "My World" } };
-    expect(isUntouchedGame(authored)).toBe(true);
-  });
-});
-
-describe("conflictSlotName", () => {
-  it("names each side so the loser is findable in Saves", () => {
-    const when = Date.parse("2026-08-01T10:00:00Z");
-    expect(conflictSlotName("local", when)).toContain("local");
-    expect(conflictSlotName("cloud", when)).toContain("cloud");
   });
 });
 

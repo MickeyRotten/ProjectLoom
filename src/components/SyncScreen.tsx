@@ -6,14 +6,15 @@ import { syncConfig, syncConfigured } from "../lib/supabaseClient";
 import { useConfirm } from "./useConfirm";
 
 /**
- * Cloud Sync (DESIGN.md → Persistence). Sign in and the same adventure — the
- * game, the cast, the save slots, the settings and the generated art — resumes
- * on any other device signed into the same account.
+ * Cloud Saves (DESIGN.md → Cloud saves). Sign in and every snapshot taken from
+ * the Saves screen is kept in the cloud, so a save made on one device restores
+ * on another.
  *
- * Deliberately one screen with no options beyond the account: what syncs is not
- * a menu of checkboxes, because a half-synced save is worse than none. The only
- * choice offered is the one nobody else can make — which copy of a diverged
- * game to keep — and that is a prompt, not a setting.
+ * Deliberately one screen with no options beyond the account: what travels is
+ * not a menu of checkboxes, because a half-synced save is worse than none. What
+ * does NOT travel is the game currently being played — that is the difference
+ * between this and a live mirror, and it is why nothing here can interrupt a
+ * turn or ask which of two games to keep.
  */
 export function SyncScreen() {
   const settings = useStore((s) => s.settings);
@@ -39,14 +40,15 @@ export function SyncScreen() {
 
   return (
     <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
-      <OverlayHeader title="Cloud Sync" />
+      <OverlayHeader title="Cloud Saves" />
 
       <div className="flex-1 space-y-4 overflow-y-auto p-3">
         {!account && (
           <p className="text-sm opacity-70">
-            Sign in and this device keeps the same adventure as every other one you sign
-            into — the game, the cast, saved slots, settings and generated art. Off, Loom
-            plays exactly as before: everything stays on this device and nothing is sent.
+            Sign in and every snapshot you take is kept in the cloud, so a save made on
+            one device can be restored on another. The game you are playing now stays
+            here until you save it. Off, Loom plays exactly as before: everything stays
+            on this device and nothing is sent.
           </p>
         )}
 
@@ -81,7 +83,7 @@ export function SyncScreen() {
                 onClick={() =>
                   ask(
                     {
-                      title: "Sign out of cloud sync?",
+                      title: "Sign out of cloud saves?",
                       body: "This device keeps everything it already has and stops syncing. Nothing in the cloud is deleted.",
                       confirmLabel: "Sign out",
                     },
@@ -95,7 +97,7 @@ export function SyncScreen() {
             </div>
 
             <ToggleRow
-              label="Sync"
+              label="Cloud Saves"
               state={settings.syncEnabled ? "On" : "Off"}
               onClick={() => setSyncEnabled(!settings.syncEnabled)}
             />
@@ -188,10 +190,11 @@ export function SyncScreen() {
         <div className="space-y-2 border-2 border-ink p-3">
           <span className="block uppercase tracking-widest text-sm">What travels</span>
           <p className="text-sm opacity-70">
-            The active game, the character library, save slots, generated portraits and
-            location images, and your settings — including the OpenRouter key, so a new
-            device is playable at once. Your Supabase details and the ComfyUI address
-            stay on this device. Added web fonts are re-added per device.
+            Your named snapshots — each with its cast, its portraits and the location it
+            was saved at — and your settings, including the OpenRouter key, so a new
+            device is playable at once. A snapshot uploads when you take it. The game in
+            progress, your Supabase details and the ComfyUI address stay on this device;
+            added web fonts are re-added per device.
           </p>
           <button
             type="button"

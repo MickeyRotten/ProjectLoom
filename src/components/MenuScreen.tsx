@@ -49,7 +49,7 @@ const ENTRIES: { screen: Screen; label: string; note: string; group: Group }[] =
   { group: "settings", screen: "images", label: "Images", note: "Portraits · location art · prompts" },
   { group: "settings", screen: "rpg", label: "RPG System", note: "Dice · outcomes · what counts as risky" },
   { group: "settings", screen: "appearance", label: "Appearance", note: "Text size · font · colors" },
-  { group: "settings", screen: "sync", label: "Cloud Sync", note: "Play the same game on another device" },
+  { group: "settings", screen: "sync", label: "Cloud Saves", note: "Keep your snapshots on another device" },
 ];
 
 const GROUPS: Group[] = ["adventure", "settings"];

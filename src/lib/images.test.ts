@@ -27,6 +27,7 @@ import {
   PORTRAIT_PIXEL_WIDTH,
   portraitKey,
   prepareUploadedImage,
+  slotImageKeys,
   sourceKey,
   toExportBlob,
   toOneBitBlob,
@@ -35,7 +36,8 @@ import {
   uploadStoredWidth,
 } from "./images";
 import { DEFAULT_COMFY } from "./comfyui";
-import type { ImagePromptTemplate, Settings } from "../types";
+import { newGame } from "./defaults";
+import type { Character, GameState, ImagePromptTemplate, Settings } from "../types";
 
 /** A template with every field blank — each test fills only what it asserts on. */
 function tpl(overrides: Partial<ImagePromptTemplate> = {}): ImagePromptTemplate {
@@ -116,6 +118,34 @@ describe("image kinds (purge)", () => {
     expect(imageKeysOfKind(keys, "banner").concat(imageKeysOfKind(keys, "portrait"))).toHaveLength(
       keys.length - 1,
     );
+  });
+});
+
+describe("slotImageKeys", () => {
+  const cast = (...ids: string[]) => ids.map((id) => ({ id, name: id }) as Character);
+  const saved = (patch: Partial<GameState>): GameState => ({ ...newGame(), ...patch });
+
+  it("names the cast's portraits and the banner of where the save was taken", () => {
+    const game = saved({ characters: cast("pc", "m-navi"), location: "Boars Head Tavern" });
+    expect(slotImageKeys(game).sort()).toEqual(
+      ["banner:boars head tavern", "portrait:m-navi", "portrait:pc"].sort(),
+    );
+  });
+
+  it("leaves the masters out — a restore needs the picture, not the negative", () => {
+    const game = saved({ characters: cast("pc"), location: "Ruins" });
+    expect(slotImageKeys(game).some((k) => k.startsWith("src:"))).toBe(false);
+  });
+
+  it("asks for no banner when the save has nowhere to draw", () => {
+    const game = saved({ characters: cast("pc"), location: "   " });
+    expect(slotImageKeys(game)).toEqual(["portrait:pc"]);
+  });
+
+  it("survives a slot written before the cast lived in the game", () => {
+    // Pulled from the cloud, so the shape is whatever an older build wrote.
+    const legacy = { location: "Ruins" } as unknown as GameState;
+    expect(slotImageKeys(legacy)).toEqual(["banner:ruins"]);
   });
 });
 

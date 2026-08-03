@@ -35,7 +35,7 @@ moves, generates **1-bit pixel-art portraits and location banners** via an image
 | Styling | **Tailwind** + a tiny 1-bit token set | pure `--ink`/`--paper`, monospace |
 | State | **Zustand** | mirrors Wayward |
 | Persistence | **IndexedDB** (via `idb`) | saves + generated image blobs (too big for localStorage) |
-| Cloud sync | **Supabase** (Postgres + Storage), opt-in | mirror of the same documents, so a game resumes on another device |
+| Cloud saves | **Supabase** (Postgres + Storage), opt-in | named snapshots + settings, so a save restores on another device |
 | AI | **OpenRouter** (OpenAI-compatible), text + image | direct `fetch`, no SDK |
 | Packaging | **Capacitor** → Android APK | wraps the built web app; no embedded server |
 
@@ -263,7 +263,7 @@ One isolated function returning the OpenRouter `messages[]`, in order:
 - **Remove (member sheet):** *Remove Image* deletes a member's portrait **and its master**, revokes the object URL, and sets `Character.noPortrait` on the global character. The flag is the whole point: the automatic trigger is "no cached portrait → draw one", so without it the next turn's `syncImages` would silently undo the removal. It's a character-level choice (a portrait is shared across adventures), and only ⟳ or an upload clears it.
 - **Upload / download (member sheet):** *Upload Image* replaces a member's portrait with a file from the device — put through the same downscale + 1-bit pass as a generated portrait, so custom art lands in the same visual system and stays small in IndexedDB (with shading **off** it keeps `UPLOAD_PLAIN_WIDTH` instead of the 1-bit pixel width: no pixel grid to snap to, so crushing it that far only loses the photo); ⟳ still regenerates over it. Unlike the generated path, the upload pass is **strict**: a file the browser can't decode (HEIC straight off an iPhone, a renamed non-image) fails the upload loudly instead of being stored verbatim — storing it "succeeds" and then shows a broken portrait that no later edit can repair. *Download Image* saves the stored portrait out, **nearest-neighbor upscaled to ≥ `EXPORT_MIN_WIDTH`** by `toExportBlob` — the display copy is a ~192px sliver that only reads as art because every `<img>` renders `image-rendering: pixelated`, and a file has no such CSS, so the upscale is baked into the exported pixels (integer factor: each stored pixel becomes an exact square). Delivery is `lib/download.ts`, three paths in order: on the **APK**, `@capacitor/filesystem` writes the bytes to the app cache and `@capacitor/share` opens the native save/share sheet — the Android System WebView implements neither `navigator.share` nor blob `<a download>`, so this is the only route that reaches the device; then browser **Web Share** with files; then an `<a download>` click on desktop. A dismissed sheet counts as done; any other failure surfaces as a note under the button.
 - **Storage:** image blobs in IndexedDB, referenced by key; UI reads via object URLs. Each key also carries a **master copy** under `src:<key>` (`sourceKey`) — the pixels before the downscale + 1-bit pass, bounded to `SOURCE_MAX_SIDE` as JPEG. Masters exist for edit round-trips only; losing one is never fatal (edits fall back to the display copy). A master is only ever kept in a **model-safe format** (`isModelSafeImage`: PNG/JPEG/WebP) — anything else is re-encoded, and when it can't be, **no master is stored at all**. An unconvertible master (HEIC from a phone gallery) posted back as an edit source is rejected by the API *every single time*, which reads as "this uploaded picture can never be edited"; no master at all is strictly better, since the display copy is always canvas-encoded PNG.
-- **Purge (Images → Stored Images):** two buttons — *Purge Location Images* and *Purge Character Images* — deleting **every** stored blob of one kind, display copies **and** their `src:` masters, from IndexedDB and, when signed in, from Supabase Storage as well. The per-item controls were never enough: *Remove Image* is one character at a time and there is no per-location control at all, so a long game's banner cache (one image plus a ~1024px master per place ever visited) could only be reclaimed by clearing app data, and re-tuning a template or a checkpoint meant redrawing a cast one sheet at a time. Two buttons rather than one because the two kinds go stale for different reasons — banners are the bulk, portraits are the style. `images.ts → imageKindOf`/`imageKeysOfKind` are the pure classifier (a master counts as its subject: `src:banner:…` is a banner — skipping masters would free almost none of the bytes and leave ✎ able to edit art the player deleted); the store deletes through `db.deleteImage`, which stamps each key, so an ordinary sync pass propagates the deletion. That is **not** enough on its own, though: a key that exists only in the cloud — drawn on the other phone and never pulled here — has no stamp and no local blob, and `planImages` would read it as an image this device is missing and download it straight back. So `syncEngine.purgeRemoteImages` lists the bucket and removes the matching objects directly, best-effort per key (a failure leaves the object *and* its stamp, so the local deletion still propagates later). Deliberately leaves **no** `noPortrait` flag: this is a cache purge, not a per-character "no picture", so the deterministic triggers redraw the PC and the party on the next turn — the confirmation says so. Not hidden when generation is off, since purging is exactly what a player does having just switched it off.
+- **Purge (Images → Stored Images):** two buttons — *Purge Location Images* and *Purge Character Images* — deleting **every** stored blob of one kind, display copies **and** their `src:` masters, from IndexedDB and, when signed in, from Supabase Storage as well. The per-item controls were never enough: *Remove Image* is one character at a time and there is no per-location control at all, so a long game's banner cache (one image plus a ~1024px master per place ever visited) could only be reclaimed by clearing app data, and re-tuning a template or a checkpoint meant redrawing a cast one sheet at a time. Two buttons rather than one because the two kinds go stale for different reasons — banners are the bulk, portraits are the style. `images.ts → imageKindOf`/`imageKeysOfKind` are the pure classifier (a master counts as its subject: `src:banner:…` is a banner — skipping masters would free almost none of the bytes and leave ✎ able to edit art the player deleted); the store deletes through `db.deleteImage`, which stamps each key, so an ordinary sync pass propagates the deletion. That is **not** enough on its own, though: a key that exists only in the cloud — drawn on the other phone and never pulled here — has no stamp and no local blob, so if any save still names it `planImages` would read it as an image this device is missing and download it straight back. So `syncEngine.purgeRemoteImages` lists the bucket and removes the matching objects directly, best-effort per key (a failure leaves the object *and* its stamp, so the local deletion still propagates later). Deliberately leaves **no** `noPortrait` flag: this is a cache purge, not a per-character "no picture", so the deterministic triggers redraw the PC and the party on the next turn — the confirmation says so. Not hidden when generation is off, since purging is exactly what a player does having just switched it off.
 - **Diagnostics:** a 200 that carries no image is soft-retried once, then fails with the model's **own text reply** quoted (`extractMessageText`) — a model answering in words is usually saying why ("I can't create images of real people", a policy line), and discarding it leaves the player with a bare badge and nothing to change.
 - Fire-and-forget with a visible placeholder while generating; a failed image never blocks the turn.
 
@@ -695,7 +695,7 @@ All secondary screens — **member sheet, Party, Inventory, Quests, and every Se
   first. *This Adventure*: **Party**, **Inventory**, **Quests**, **World Notes**,
   **Journal**, **Saves**, **Characters** (the whole cast), the **Scenario**
   editor. *Settings*: **Narrator**, **Images**, **RPG System**, **Appearance**,
-  **Cloud Sync**. Then, below a rule, **New Adventure**. Party / Inventory /
+  **Cloud Saves**. Then, below a rule, **New Adventure**. Party / Inventory /
   Quests / World Notes / Saves are also on the ⋯ shortcut beside GO.
 
   The captions are the fix for a list that had grown to thirteen identical
@@ -717,7 +717,7 @@ All secondary screens — **member sheet, Party, Inventory, Quests, and every Se
   buttons now. `SUBMENU_INDEX` is the link that means "this screen's index",
   and an id matching no section resolves there too, so a stale link can never
   land on nothing.
-- **Cloud Sync screen** is the account and nothing else: email + password, sign in / create account, last-sync line, **Sync Now**, **Sign Out**, and a closed **Supabase Project** section for a player running their own project (blank = the build's own, from `VITE_SUPABASE_*`). No checkboxes for *what* syncs — a half-synced save is worse than none.
+- **Cloud Saves screen** is the account and nothing else: email + password, sign in / create account, last-sync line, **Sync Now**, **Sign Out**, and a closed **Supabase Project** section for a player running their own project (blank = the build's own, from `VITE_SUPABASE_*`). No checkboxes for *what* travels — a half-synced save is worse than none. The **Saves** screen is where the feature is actually used: a snapshot uploads when it is taken, and opening Saves pulls, so cloud saves simply appear in the list.
 - **RPG System screen** owns the dice and nothing else: **Stakes** on/off, the
   dice (`diceCount` × `diceSides`), what Strengths and Flaws are worth, where the
   STRONG/MIXED bands sit, **when to roll** (`alwaysRoll`, or the editable risk-word
@@ -973,65 +973,100 @@ of those stay inspectable, which a rolling summary never is.
 
 ---
 
-## Cloud sync — `src/lib/sync.ts` · `syncEngine.ts` · `supabaseClient.ts`
+## Cloud saves — `src/lib/sync.ts` · `syncEngine.ts` · `supabaseClient.ts`
 
 The device *is* the database (IndexedDB + localStorage), which means an
-adventure is stuck on the device it started on. Sync mirrors the same documents
-into a Supabase project the player owns, so signing in on a second device
-resumes the same game. **Opt-in** (`Settings.syncEnabled`, off by default) and
-additive: with it off, nothing about the app changes and no request is made —
-the SDK is a lazy `import()`, so its ~130 KB is not even in the main bundle.
+adventure is stuck on the device it started on. The cloud is where the player's
+**named snapshots** live: take a save on one device, restore it on another.
+**Opt-in** (`Settings.syncEnabled`, off by default) and additive — with it off,
+nothing about the app changes and no request is made, and the SDK is a lazy
+`import()`, so its ~130 KB is not even in the main bundle.
+
+**Cloud SAVES, not a live mirror.** This started as a mirror of the whole device
+— the active game pushed on a 5s debounce after every write — and that was the
+wrong shape for a single-player text game. It re-sent the entire transcript on
+every beat (there is no delta protocol), uploaded every generated portrait and
+banner whether anything needed them or not, ran a pass each time the app came
+back to the foreground, and needed a conflict prompt, two rescue snapshots and
+an "is this game untouched?" heuristic purely to cope with two devices playing
+the same live game. The app already had the primitive that answers all of it:
+**Saves**. So the live game stays on the device it is being played on, and what
+travels is what the player deliberately saved. A snapshot is an explicit,
+legible act — "Save Snapshot" *is* "back it up".
+
+What that removes: the `active` document, the conflict prompt and its modal, the
+rescue slots, the `busy()` port that kept a pass off a streaming turn, and the
+per-turn network cost, which is now **zero**.
 
 **The remote shape is deliberately dumb** (`supabase/migrations/`): one
 key/value table `loom_docs (user_id, key, doc jsonb, deleted, device,
 updated_at)` and one private Storage bucket `loom-images`. The keys are
-`active` · `settings` · `slot:<id>`; images are objects at
-`<user_id>/<base64url(cache key)>`, encoded because a cache key is free text
-("banner:Boars Head Tavern"). Every policy is `auth.uid() = user_id` — the
-anon key ships in the app, as it is meant to, and RLS is what protects the data.
-`updated_at` is stamped by a trigger, never by the client: it is the merge
-clock, and two phones disagree about what time it is.
+`settings` · `slot:<id>`; images are objects at `<user_id>/<base64url(cache
+key)>`, encoded because a cache key is free text ("banner:Boars Head Tavern").
+Every policy is `auth.uid() = user_id` — the anon key ships in the app, as it is
+meant to, and RLS is what protects the data. `updated_at` is stamped by a
+trigger, never by the client: it is the merge clock, and two phones disagree
+about what time it is.
 
 **Merging is a watermark, not a clock comparison.** Each key carries a
-`DocStamp { localAt, syncedAt, remoteAt }` in a new IndexedDB `meta` store —
+`DocStamp { localAt, syncedAt, remoteAt }` in a `meta` store (DB v3) —
 `localAt > syncedAt` means "changed here since the last sync",
 `remote.updated_at !== remoteAt` means "changed there". `planDoc` turns that
 into `push | pull | conflict | none`, and it is pure and unit-tested, because a
-wrong answer here loses a game. `localAt` is written on every save (inside
-`db.ts`/`settings.ts`, not at the ~40 `saveActiveGame` call sites — see
-`dirty.ts`) so a game played on a plane still looks changed after a restart.
+wrong answer here loses a save. `localAt` is written inside `db.ts`/`settings.ts`
+rather than at the call sites, so a snapshot taken on a plane still looks changed
+after a restart. **`saveActiveGame` is deliberately unstamped** — the live game
+has no cloud copy to be newer or older than.
 
-**Only the active game can ask.** `conflictPolicy` per key: settings take the
-**newest**, a save slot is an immutable snapshot so the server's copy stands,
-and the active game **asks**
-(`SyncConflictModal`, in the story's terms: title · day · turn · location).
-Both copies are snapshotted into save slots *before* the question is asked, so
-either answer is undoable from Saves and a sync can never destroy a game.
-Images never ask — two versions of a portrait are not two stories, so the newer
-one wins silently (`planImages`), and a local deletion propagates as a delete
-rather than being undone by the other device's copy.
+**Nothing asks.** A `conflict` settles on the newer write in both directions
+(`newerSide`), because there is no longer a document where both answers are real
+games somebody played. A slot used to take the server's copy on the grounds that
+a snapshot is immutable; **Overwrite** made that false, and "I saved over this on
+both devices" has an obvious answer. Images settle the same way, silently — two
+versions of a portrait are not two stories — and a local deletion propagates as a
+delete rather than being undone by the other device's copy.
 
-The cast used to be a document of its own with a **merge** policy (a set union).
-It has neither now: it rides inside `active`, so it is covered by the one prompt
-— which is the only correct answer once the cast is per-adventure, since a union
-would quietly refill a New Adventure's empty cast from the other device. The old
-`characters` key is **skipped**, not tombstoned (`sync.ts →
-LEGACY_CHARACTERS_DOC`): a stamp with nothing local behind it reads as a
-deletion, and pushing that would wipe the cast out from under a device still
-running the older build.
+**A pass is provoked by four things and no others**: a snapshot being taken,
+replaced or deleted; a settings edit; app launch / sign-in; and **Sync Now**.
+That is `sync.ts → wakesSync` — `dirty.ts` announces every local write with its
+key, and only `settings` and `slot:*` wake the engine. Turns, journal entries and
+generated art announce themselves and are ignored. There is no
+`visibilitychange` pass any more: foregrounding was worth a round trip when the
+cloud held a game that might have advanced elsewhere, and is not worth one when
+the cloud holds snapshots that only change when somebody presses Save. Passes
+stay single-flight, debounced 5s, with backed-off retries on failure.
 
-**Ordering rule:** a stamp is written only after the bytes land. A crash
-mid-pass leaves a key looking dirty and costs one redundant transfer; the
-opposite order would mark a document synced that never left the device. Passes
-are single-flight, debounced 5s after the last write, and re-run when the app
-comes back to the foreground — which on a phone is the moment that matters.
+**Images are scoped to the saves.** `images.ts → slotImageKeys` names the art one
+saved game needs — its cast's portraits and the banner of the place it was saved
+at — and `planImages` gates upload and download on the union of those keys across
+the slots on **both** sides (a cloud slot's body is already in hand from
+`pullDocs`, so knowing what to download costs nothing). The blob store also holds
+the banner of every location a long game ever passed through, and nobody restores
+to those. Display copies only, **no `src:` masters**: a master is the big copy,
+kept so ✎ and the download upscale have real pixels, and neither is something a
+restored save needs. Deletions are **not** gated, or *Remove Image* and the purge
+buttons would stop reaching the cloud the moment a key fell out of scope. No
+remote garbage collection — an object no slot names is left alone rather than
+deleted on an inference, and Images → Stored Images → Purge is how the player
+says it out loud.
 
-**What does not travel:** `supabaseUrl` / `supabaseAnonKey` (this device's way
-in — a blank override pushed from one device would lock out the other) and
-`comfyUrl` (a LAN address that means a different machine elsewhere). The
-OpenRouter key *does*, by choice, so a new device is playable the moment it
-signs in. Added web fonts are re-added per device — the `webFonts` list syncs,
-the woff2 files do not.
+**Retired keys are skipped, not tombstoned** (`sync.ts → SKIPPED_DOCS`): `active`
+(the live game) and `characters` (the cast, from when the library was global). A
+stamp with nothing local behind it reads as a deletion, and pushing that tombstone
+would wipe the game — or the cast — out from under a device still running an older
+build. Both rows are left exactly where they are, forever. There is no migration:
+`loom_docs` is a dumb key/value store and the server side is unchanged.
+
+**Ordering rule:** a stamp is written only after the bytes land. A crash mid-pass
+leaves a key looking dirty and costs one redundant transfer; the opposite order
+would mark a document synced that never left the device.
+
+**What does not travel:** the game in progress; `supabaseUrl` / `supabaseAnonKey`
+(this device's way in — a blank override pushed from one device would lock out the
+other); and `comfyUrl` (a LAN address that means a different machine elsewhere).
+The OpenRouter key *does*, by choice, so a new device is playable the moment it
+signs in. Added web fonts are re-added per device — the `webFonts` list syncs, the
+woff2 files do not.
 
 ---
 
