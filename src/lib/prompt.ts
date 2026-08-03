@@ -74,7 +74,7 @@ export interface BuildOptions {
  */
 const DEFAULT_HISTORY_BUDGET = 3000;
 
-/** Bounds for the player-set history budget (Advanced → Narrator). */
+/** Bounds for the player-set history budget (Narrator → Memory). */
 export const MIN_HISTORY_BUDGET = 500;
 export const MAX_HISTORY_BUDGET = 60000;
 
@@ -575,7 +575,7 @@ function buildOutputProtocol(settings: Settings): string {
     settings.optionInstructions.trim() ||
     "Offer 3–4 short, concrete next actions.";
 
-  // Player-editable (Advanced → Image Prompts) — this sentence becomes portrait
+  // Player-editable (Images → Prompt Templates) — this sentence becomes portrait
   // Subjects verbatim, so it's the head of the portrait consistency chain, and
   // it rides the selected image template: a tag-dialect portrait needs a
   // tag-dialect Subject to be built from.
@@ -587,7 +587,7 @@ function buildOutputProtocol(settings: Settings): string {
     ? '- "options": array of 3–4 action strings. ' + optionRule
     : '- "options": OMIT this field entirely — do not suggest actions this turn.';
 
-  // The character-authoring rules (Advanced → Characters). Each is a whole
+  // The character-authoring rules (Narrator → Writing Characters). Each is a whole
   // bullet the player owns: blanking one drops the line rather than falling
   // back to a built-in, so "I don't want the model told this" is expressible.
   // The JSON SHAPE around them stays fixed — that half is the parser's

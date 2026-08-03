@@ -721,7 +721,7 @@ export interface Settings extends DiceRules, ComfySettings {
   textModelId: string;
   imageModelId: string;
   /**
-   * Master switch for image GENERATION (Model & Key). Off means no request ever
+   * Master switch for image GENERATION (Images). Off means no request ever
    * reaches the image model — no automatic portrait, no location banner, no ⟳
    * and no ✎ — while everything already drawn still shows, uploads still work,
    * and nothing is deleted. `locationImages` only ever governed half of the
@@ -769,7 +769,7 @@ export interface Settings extends DiceRules, ComfySettings {
    * generation on every new location, which is the app's most expensive habit
    * and the one least tied to play. Off means no generation, no cached-image
    * display, and none of the banner UI — the banner itself, its Menu size
-   * toggle, and the Advanced → Images banner settings all disappear rather than
+   * toggle, and the Images → Location Images settings all disappear rather than
    * sitting there doing nothing.
    */
   locationImages: boolean;
@@ -778,7 +778,7 @@ export interface Settings extends DiceRules, ComfySettings {
   // Advanced (player-editable, Phase 4):
   customInstructions: string;
   /**
-   * The image-prompt dialects the player has (Advanced → Image Prompts). Never
+   * The image-prompt dialects the player has (Images → Prompt Templates). Never
    * empty — `imageTemplates.ts → normalizeImageTemplates` guarantees at least
    * the two shipped ones, since an empty picker would leave no way to word a
    * prompt and no way back.

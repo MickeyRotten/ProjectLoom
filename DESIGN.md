@@ -250,28 +250,28 @@ One isolated function returning the OpenRouter `messages[]`, in order:
 ## Image Generation — `src/lib/images.ts`
 
 - **Access:** OpenRouter chat-completions with an image-output model (Nano Banana 2 Lite), reading the returned image (base64 data URL) from the response. *(Exact request/response shape for image output over OpenRouter must be verified against current OpenRouter docs at implementation time — flag, don't assume.)*
-- **Two backends, one seam (`Settings.imageBackend`, Model & Key):** `generateImage` is the only function in the app that turns a prompt into pixels, so a second backend is a dispatch inside it and nothing else changes — the 1-bit pass, the `src:` master, the IndexedDB cache, the placeholder and the failure badge never learn which machine drew the picture. **OpenRouter** is the default and is untouched. **ComfyUI** (`src/lib/comfyui.ts`) points the same two deterministic triggers at a server the player runs themselves: free to render, their own checkpoints, and no network round-trip to a vendor. See **ComfyUI** below.
+- **Two backends, one seam (`Settings.imageBackend`, Images → Model):** `generateImage` is the only function in the app that turns a prompt into pixels, so a second backend is a dispatch inside it and nothing else changes — the 1-bit pass, the `src:` master, the IndexedDB cache, the placeholder and the failure badge never learn which machine drew the picture. **OpenRouter** is the default and is untouched. **ComfyUI** (`src/lib/comfyui.ts`) points the same two deterministic triggers at a server the player runs themselves: free to render, their own checkpoints, and no network round-trip to a vendor. See **ComfyUI** below.
 - **Two kinds, deterministic triggers (not model-driven):**
   - **Location banner** — keyed by `banner:<location>`. On a scene change to an **uncached** location, generate from location name + a short narration excerpt + the **banner style instructions**. Gated by `Settings.locationImages`, see below.
   - **Party portrait** — keyed by `portrait:<memberId>`. When a member has no portrait, generate from their name/species/**sex**/description + the **portrait style instructions** — *unless* the player removed it (`Character.noPortrait`), see **Remove** below. Sex is in the Subject because an image model given only prose guesses, and guesses differently on every regenerate.
-- **Style baked in:** default banner/portrait instructions enforce **1-bit monochrome pixel/line art**. Player-editable under Advanced → Image Prompts, as one of several **templates**, see below.
-- **Master switch (Model & Key → Image Generation, `Settings.imagesEnabled`, ON by default):** one setting that stops *every* request to the image model — portraits, banners, ⟳ and ✎ alike. `locationImages` only ever governed half the spend, and the other half had no switch at all: a player who didn't want to buy pictures had to turn location images off and then *Remove Image* on every character, one at a time, forever, because the automatic trigger redraws whatever isn't cached. The gate is on **generation only** and reads the same as the banner cooldown does — `imagesAllowed`/`bannerAllowed` in `images.ts`, folded into the existing `cacheOnly` flag, so `syncImages` degrades to a cache probe and everything already drawn still shows. Uploads, downloads, *Remove Image* and the zoom view all keep working (none of them talks to a model); ⟳/✎ hide, `regenerateBanner`/`editImage`/forced portraits no-op, the banner's cooldown countdown stops being displayed (that wait would never end), and the Image API Key + Image Model fields hide under the switch that made them dead. Nothing stored is deleted. Ships **on** because portraits have always drawn themselves — shipping it off would read as a broken pipeline, not a saving.
-- **Location images off by default (Advanced → Images → `Settings.locationImages`):** the whole banner feature is opt-in. Portraits are drawn once per character and then reused forever; a location banner is a fresh generation every time the story moves somewhere new, which makes it the app's most expensive habit and the one furthest from the text the player came for. Off means **no generation and no UI**: `syncImages` skips the banner entirely (cached or not), `regenerateBanner` no-ops, `<Header>` falls back to the plain single-height ink strip (no art, no image controls), and the Menu's *Compact Location Image* toggle and the Advanced cooldown field are hidden rather than left as dead controls (the banner *style* is part of a prompt template and stays editable — a template is a whole dialect, not a per-feature setting). Nothing is deleted — already-generated banners are still in IndexedDB and reappear the moment it's switched back on. Portraits are unaffected.
-- **Location image cooldown (Advanced → `Settings.bannerCooldown`, 0 = off):** turns to skip automatic banner generation for after one is drawn — `3` means the next 3 turns draw no new location image, the 4th does (`bannerOnCooldown` / `bannerCooldownLeft`, counted from `GameState.lastBannerTurn`). A location-hopping stretch otherwise bills one generation per turn, which is the single easiest way to burn image credit without noticing. Three deliberate limits: the gate is on **generation only**, so an already-cached location still shows its banner instantly; the stamp is written on a real generation only, never a cache hit, so re-treading known ground doesn't stall the next new one; and **`regenerateBanner` ignores the cooldown** (but restarts it — it *is* a generation; no longer reachable from the bar, see *Top bar*). While suppressed the banner placeholder says how many turns are left, so it never reads as a broken image. `lastBannerTurn` is deliberately outside `Reversal` — an undo can't un-spend a generation.
+- **Style baked in:** default banner/portrait instructions enforce **1-bit monochrome pixel/line art**. Player-editable under Images → Prompt Templates, as one of several **templates**, see below.
+- **Master switch (Images → Image Generation, `Settings.imagesEnabled`, ON by default):** one setting that stops *every* request to the image model — portraits, banners, ⟳ and ✎ alike. `locationImages` only ever governed half the spend, and the other half had no switch at all: a player who didn't want to buy pictures had to turn location images off and then *Remove Image* on every character, one at a time, forever, because the automatic trigger redraws whatever isn't cached. The gate is on **generation only** and reads the same as the banner cooldown does — `imagesAllowed`/`bannerAllowed` in `images.ts`, folded into the existing `cacheOnly` flag, so `syncImages` degrades to a cache probe and everything already drawn still shows. Uploads, downloads, *Remove Image* and the zoom view all keep working (none of them talks to a model); ⟳/✎ hide, `regenerateBanner`/`editImage`/forced portraits no-op, the banner's cooldown countdown stops being displayed (that wait would never end), and the Image API Key + Image Model fields hide under the switch that made them dead. Nothing stored is deleted. Ships **on** because portraits have always drawn themselves — shipping it off would read as a broken pipeline, not a saving.
+- **Location images off by default (Images → Location Images → `Settings.locationImages`):** the whole banner feature is opt-in. Portraits are drawn once per character and then reused forever; a location banner is a fresh generation every time the story moves somewhere new, which makes it the app's most expensive habit and the one furthest from the text the player came for. Off means **no generation and no UI**: `syncImages` skips the banner entirely (cached or not), `regenerateBanner` no-ops, `<Header>` falls back to the plain single-height ink strip (no art, no image controls), and the *Compact Location Image* toggle and the cooldown field beneath it are hidden rather than left as dead controls (the banner *style* is part of a prompt template and stays editable — a template is a whole dialect, not a per-feature setting). Nothing is deleted — already-generated banners are still in IndexedDB and reappear the moment it's switched back on. Portraits are unaffected.
+- **Location image cooldown (Images → Location Images → `Settings.bannerCooldown`, 0 = off):** turns to skip automatic banner generation for after one is drawn — `3` means the next 3 turns draw no new location image, the 4th does (`bannerOnCooldown` / `bannerCooldownLeft`, counted from `GameState.lastBannerTurn`). A location-hopping stretch otherwise bills one generation per turn, which is the single easiest way to burn image credit without noticing. Three deliberate limits: the gate is on **generation only**, so an already-cached location still shows its banner instantly; the stamp is written on a real generation only, never a cache hit, so re-treading known ground doesn't stall the next new one; and **`regenerateBanner` ignores the cooldown** (but restarts it — it *is* a generation; no longer reachable from the bar, see *Top bar*). While suppressed the banner placeholder says how many turns are left, so it never reads as a broken image. `lastBannerTurn` is deliberately outside `Reversal` — an undo can't un-spend a generation.
 - **Regenerate:** ⟳ on each member sheet (and `regenerateBanner` in the store) re-runs generation and **replaces the cached blob and its master** — generated, edited, or uploaded, whatever is there loses. A forced regeneration that fails flags `imgError` (an *image failed* badge) **with the reason** — "failed" alone is unactionable, and the causes are wildly different (no credit, a refused prompt, an unreadable file). ⟳ also clears `noPortrait`.
 - **Edit (✎):** instruction + the image back to the model; the result **becomes** the new image (display copy *and* master). The edit source is the master, never the display copy — handing a model a 192px 1-bit thumbnail comes back as mush or as a text-only reply that fails the edit outright.
 - **Remove (member sheet):** *Remove Image* deletes a member's portrait **and its master**, revokes the object URL, and sets `Character.noPortrait` on the global character. The flag is the whole point: the automatic trigger is "no cached portrait → draw one", so without it the next turn's `syncImages` would silently undo the removal. It's a character-level choice (a portrait is shared across adventures), and only ⟳ or an upload clears it.
 - **Upload / download (member sheet):** *Upload Image* replaces a member's portrait with a file from the device — put through the same downscale + 1-bit pass as a generated portrait, so custom art lands in the same visual system and stays small in IndexedDB (with shading **off** it keeps `UPLOAD_PLAIN_WIDTH` instead of the 1-bit pixel width: no pixel grid to snap to, so crushing it that far only loses the photo); ⟳ still regenerates over it. Unlike the generated path, the upload pass is **strict**: a file the browser can't decode (HEIC straight off an iPhone, a renamed non-image) fails the upload loudly instead of being stored verbatim — storing it "succeeds" and then shows a broken portrait that no later edit can repair. *Download Image* saves the stored portrait out, **nearest-neighbor upscaled to ≥ `EXPORT_MIN_WIDTH`** by `toExportBlob` — the display copy is a ~192px sliver that only reads as art because every `<img>` renders `image-rendering: pixelated`, and a file has no such CSS, so the upscale is baked into the exported pixels (integer factor: each stored pixel becomes an exact square). Delivery is `lib/download.ts`, three paths in order: on the **APK**, `@capacitor/filesystem` writes the bytes to the app cache and `@capacitor/share` opens the native save/share sheet — the Android System WebView implements neither `navigator.share` nor blob `<a download>`, so this is the only route that reaches the device; then browser **Web Share** with files; then an `<a download>` click on desktop. A dismissed sheet counts as done; any other failure surfaces as a note under the button.
 - **Storage:** image blobs in IndexedDB, referenced by key; UI reads via object URLs. Each key also carries a **master copy** under `src:<key>` (`sourceKey`) — the pixels before the downscale + 1-bit pass, bounded to `SOURCE_MAX_SIDE` as JPEG. Masters exist for edit round-trips only; losing one is never fatal (edits fall back to the display copy). A master is only ever kept in a **model-safe format** (`isModelSafeImage`: PNG/JPEG/WebP) — anything else is re-encoded, and when it can't be, **no master is stored at all**. An unconvertible master (HEIC from a phone gallery) posted back as an edit source is rejected by the API *every single time*, which reads as "this uploaded picture can never be edited"; no master at all is strictly better, since the display copy is always canvas-encoded PNG.
-- **Purge (Advanced → Images):** two buttons — *Purge Location Images* and *Purge Character Images* — deleting **every** stored blob of one kind, display copies **and** their `src:` masters, from IndexedDB and, when signed in, from Supabase Storage as well. The per-item controls were never enough: *Remove Image* is one character at a time and there is no per-location control at all, so a long game's banner cache (one image plus a ~1024px master per place ever visited) could only be reclaimed by clearing app data, and re-tuning a template or a checkpoint meant redrawing a cast one sheet at a time. Two buttons rather than one because the two kinds go stale for different reasons — banners are the bulk, portraits are the style. `images.ts → imageKindOf`/`imageKeysOfKind` are the pure classifier (a master counts as its subject: `src:banner:…` is a banner — skipping masters would free almost none of the bytes and leave ✎ able to edit art the player deleted); the store deletes through `db.deleteImage`, which stamps each key, so an ordinary sync pass propagates the deletion. That is **not** enough on its own, though: a key that exists only in the cloud — drawn on the other phone and never pulled here — has no stamp and no local blob, and `planImages` would read it as an image this device is missing and download it straight back. So `syncEngine.purgeRemoteImages` lists the bucket and removes the matching objects directly, best-effort per key (a failure leaves the object *and* its stamp, so the local deletion still propagates later). Deliberately leaves **no** `noPortrait` flag: this is a cache purge, not a per-character "no picture", so the deterministic triggers redraw the PC and the party on the next turn — the confirmation says so. Not hidden when generation is off, since purging is exactly what a player does having just switched it off.
+- **Purge (Images → Stored Images):** two buttons — *Purge Location Images* and *Purge Character Images* — deleting **every** stored blob of one kind, display copies **and** their `src:` masters, from IndexedDB and, when signed in, from Supabase Storage as well. The per-item controls were never enough: *Remove Image* is one character at a time and there is no per-location control at all, so a long game's banner cache (one image plus a ~1024px master per place ever visited) could only be reclaimed by clearing app data, and re-tuning a template or a checkpoint meant redrawing a cast one sheet at a time. Two buttons rather than one because the two kinds go stale for different reasons — banners are the bulk, portraits are the style. `images.ts → imageKindOf`/`imageKeysOfKind` are the pure classifier (a master counts as its subject: `src:banner:…` is a banner — skipping masters would free almost none of the bytes and leave ✎ able to edit art the player deleted); the store deletes through `db.deleteImage`, which stamps each key, so an ordinary sync pass propagates the deletion. That is **not** enough on its own, though: a key that exists only in the cloud — drawn on the other phone and never pulled here — has no stamp and no local blob, and `planImages` would read it as an image this device is missing and download it straight back. So `syncEngine.purgeRemoteImages` lists the bucket and removes the matching objects directly, best-effort per key (a failure leaves the object *and* its stamp, so the local deletion still propagates later). Deliberately leaves **no** `noPortrait` flag: this is a cache purge, not a per-character "no picture", so the deterministic triggers redraw the PC and the party on the next turn — the confirmation says so. Not hidden when generation is off, since purging is exactly what a player does having just switched it off.
 - **Diagnostics:** a 200 that carries no image is soft-retried once, then fails with the model's **own text reply** quoted (`extractMessageText`) — a model answering in words is usually saying why ("I can't create images of real people", a policy line), and discarding it leaves the player with a bare badge and nothing to change.
 - Fire-and-forget with a visible placeholder while generating; a failed image never blocks the turn.
 
 ### Prompt templates — `src/lib/imageTemplates.ts`
 
 Everything that decides *how an image prompt is worded* is one named, switchable
-bundle (`ImagePromptTemplate`), picked from a dropdown at the top of **Advanced →
-Image Prompts**. It exists because the two backends want different **languages**:
+bundle (`ImagePromptTemplate`), picked from a dropdown at the top of **Images →
+Prompt Templates**. It exists because the two backends want different **languages**:
 a chat image model is told what to draw in prose, while an SD-family checkpoint
 behind ComfyUI reads a comma-separated Danbooru-style tag list — and writing
 prose at one wastes most of a 77-token encoder window. Two templates ship,
@@ -338,19 +338,23 @@ One **active game state**, autosaved continuously; **named save slots** are full
 ```ts
 Settings {                    // global, edited in Settings
   openRouterKey, textModelId, imageModelId (default: nano-banana-2-lite), temperature
-  imageKey, imagesEnabled                      // Model & Key — the image master switch
-  imageBackend: openrouter | comfyui           // Model & Key — which machine draws
+  imageKey, imagesEnabled                      // Images — the image master switch
+  imageBackend: openrouter | comfyui           // Images → Model — which machine draws
   comfyUrl, comfyWorkflow,                     //   ComfySettings (lib/comfyui.ts → DEFAULT_COMFY)
     comfyModel, comfyVae, comfySampler, comfyScheduler,
     comfySteps, comfyScale (CFG), comfyWidth, comfyHeight,
     comfyDenoise, comfyClipSkip
-  reasoningLevel: auto | off | minimal | low | medium | high                // Model & Key
-  // Advanced (grouped into sub-menus: Narrator · Characters · Images · Image Prompts):
-  customInstructions, optionInstructions                                // Narrator
-  characterCreationInstructions, characterUpdateInstructions,           // Characters
+  reasoningLevel: auto | off | minimal | low | medium | high            // Narrator → Model
+  // Narrator (sub-menus: Model · Voice & Actions · Memory · Writing Characters):
+  customInstructions, optionInstructions                                // Voice & Actions
+  historyBudget, maxTokens, journalEnabled, journalBudget,              // Memory (maxTokens: Model)
+    journalMaxTurns, journalMinTurns, journalInstructions
+  characterCreationInstructions, characterUpdateInstructions,           // Writing Characters
     standingInstructions, departureInstructions, spotlightRule
-  ditherMode, locationImages, bannerCooldown                            // Images
-  imageTemplates: ImagePromptTemplate[], imageTemplateId,               // Image Prompts
+  // Images (sub-menus: Model · Location Images · Prompt Templates · Stored Images):
+  ditherMode                                                            // Images (index)
+  locationImages, bannerSize, bannerCooldown                            // Location Images
+  imageTemplates: ImagePromptTemplate[], imageTemplateId,               // Prompt Templates
     portraitRefImages
 }
 
@@ -605,8 +609,8 @@ The third ✦, and the only one that writes a **whole row**. The two places a pl
   spare history entry, kept alive for as long as any overlay is open: back pops
   it, the app closes one level, and re-pushes a spare if a screen is still
   open. At the play screen there is no spare, so back leaves — correctly.
-  Screens with internal depth register `setBackHandler` on the store (Advanced's
-  sub-menus) rather than taking an `onBack` prop, because a prop can never reach
+  Screens with internal depth register `setBackHandler` on the store (the
+  `SubMenuScreen` sub-menus) rather than taking an `onBack` prop, because a prop can never reach
   the hardware button. The popstate handler re-arms the spare **itself** — a
   handled back may not change `screen` at all, so an effect keyed on `screen`
   would miss it and the next back would exit.
@@ -664,7 +668,7 @@ optional image model — shown while `Settings.setupDone` is false.
   wrong key otherwise stays invisible until the first turn fails.
 - **`ModelPicker`** replaces the bare `<select>` over several hundred models
   with a filter box. `KeyField` / `ModelPicker` / `useModelCatalog` are shared
-  with Model & Key so the two screens can't drift.
+  with Narrator → Model and Images → Model so the three can't drift.
   - **The whole catalog, by default.** It used to render only the first 60 rows
     and ask the player to keep typing, which made an alphabetical accident look
     like a curated shortlist and hid most of the catalog behind a search that
@@ -687,7 +691,32 @@ optional image model — shown while `Settings.setupDone` is false.
 ### Secondary screens
 All secondary screens — **member sheet, Party, Inventory, Quests, and every Settings sub-screen** — are **full-screen overlays with a Back button** in a top header (the mobile pattern; no split panes). They open over the chat and return to it on Back. Same store/components regardless.
 
-- **Menu (gear)** → full-screen screens, play-facing first: **Party**, **Inventory**, **Quests**, **World Notes**, **Saves**, then **Characters** (the whole cast), the **Scenario** editor, **Model & Key**, **Cloud Sync**, **Appearance**, **RPG System**, **Advanced instructions**. The first five are also on the ⋯ shortcut beside GO.
+- **Menu (gear)** → full-screen screens in **two captioned groups**, play-facing
+  first. *This Adventure*: **Party**, **Inventory**, **Quests**, **World Notes**,
+  **Journal**, **Saves**, **Characters** (the whole cast), the **Scenario**
+  editor. *Settings*: **Narrator**, **Images**, **RPG System**, **Appearance**,
+  **Cloud Sync**. Then, below a rule, **New Adventure**. Party / Inventory /
+  Quests / World Notes / Saves are also on the ⋯ shortcut beside GO.
+
+  The captions are the fix for a list that had grown to thirteen identical
+  buttons holding two unlike kinds of thing with nothing to chunk them by. The
+  split is the one already load-bearing in the data model — the first group lives
+  in `GameState` and is replaced by the next New Adventure, the second lives in
+  `Settings` and outlives every adventure — which is also why New Adventure sits
+  under both rather than inside either. Captions rather than a nested *Settings*
+  screen: the depth would cost a tap on every visit and buy nothing the caption
+  doesn't. The one `Settings` key that used to be edited *from* the navigation
+  list — *Compact Location Image* — moved to Images → Location Images, beside the
+  switch that decides whether the banner exists at all; it had been the more
+  discoverable of the two, which was backwards.
+- **Deep links, not paths in prose.** `setScreen(screen, section?)` carries an
+  optional sub-menu, held as a one-shot `section` on the store and consumed by
+  the arriving `SubMenuScreen`. Six copy strings used to *name* a path
+  ("switched off under Menu → Model & Key", "counts against Advanced → Narrator →
+  Beat Length Limit") and leave the player to walk it; they are `MenuLink`
+  buttons now. `SUBMENU_INDEX` is the link that means "this screen's index",
+  and an id matching no section resolves there too, so a stale link can never
+  land on nothing.
 - **Cloud Sync screen** is the account and nothing else: email + password, sign in / create account, last-sync line, **Sync Now**, **Sign Out**, and a closed **Supabase Project** section for a player running their own project (blank = the build's own, from `VITE_SUPABASE_*`). No checkboxes for *what* syncs — a half-synced save is worse than none.
 - **RPG System screen** owns the dice and nothing else: **Stakes** on/off, the
   dice (`diceCount` × `diceSides`), what Strengths and Flaws are worth, where the
@@ -698,8 +727,8 @@ All secondary screens — **member sheet, Party, Inventory, Quests, and every Se
   45° the neighbouring face would out-face the rolled one), and the **Outcome
   Rule** — with a live preview reading through
   `normalizeDice`, so what it shows is what will be rolled. Its own screen rather
-  than a fifth Advanced sub-menu: Advanced is *prompt text handed to a model*,
-  and this is mechanics the app resolves on-device before the model sees the turn.
+  than a sub-menu of Narrator: Narrator is *prompt text handed to a model*, and
+  this is mechanics the app resolves on-device before the model sees the turn.
 - **Appearance screen** holds everything that changes how Loom *looks* and
   nothing that changes how it plays: **Text Size**, **Font**, **Colors**. All
   three started as closed lists — a four-step scale, three faces, and an Invert
@@ -734,16 +763,49 @@ All secondary screens — **member sheet, Party, Inventory, Quests, and every Se
     was one point in this space, and it is the first two of four presets (Ink on
     Paper · Paper on Ink · Amber CRT · Green CRT). Generated banner and portrait
     art is a real 1-bit bitmap and stays black and white whatever is picked.
-- **Advanced screen** is an **index of sub-menus**, not one scroll: **Narrator**
-  (voice + suggested actions), **Characters** (creation · the freeze rule ·
-  standings · departures · spotlight), **Images** (1-bit shading · location
-  images on/off · location cooldown · **purge stored art** — behaviour only), **Image Prompts** (the
+- **Narrator screen** is everything that steers the **text** model, as an
+  **index of sub-menus** (`SubMenuScreen`): **Model** (OpenRouter API Key · Text
+  Model · Reasoning · Temperature · Beat Length Limit), **Voice & Actions**
+  (narrator instructions · AI suggested actions and their wording), **Memory**
+  (`historyBudget` · the journal on/off with its budget, gap, floor and
+  instructions), **Writing Characters** (creation · the freeze rule · standings ·
+  departures · spotlight). Every prompt rule the story writes characters by is
+  editable there, each with its own Reset; blanking one **drops that line** from
+  the protocol rather than falling back to a built-in. The JSON *shape* around
+  them is the parser's contract and is never editable.
+
+  It is the text half of the retired *Model & Key* screen plus two of retired
+  *Advanced*'s four sub-menus, and the join is the point: reasoning effort and
+  the beat cap are billed against each other, and while they lived on different
+  screens one of them had to explain the other in prose. Temperature likewise
+  rejoins Text Model — it used to render *below* the entire image section.
+  *Writing Characters*, not *Characters*, because the root menu already has a
+  screen by that name holding the actual cast. `Memory — Turns Kept` became
+  **Memory — Story**: it is a token budget, its own hint said so, and it now
+  pairs with **Memory — Journal**.
+- **Images screen** is everything that draws a picture, in one place — the four
+  destinations this used to take (the master switch and backend under *Model &
+  Key*, behaviour under *Advanced → Images*, wording under *Advanced → Image
+  Prompts*, and banner size loose on the root menu) meant "why is there no
+  picture?" had four possible answers and no route between them. Its **index**
+  carries the two settings that apply to every image — **Image Generation**
+  (`imagesEnabled`) and **1-Bit Shading** — above four sub-menus: **Model**
+  (backend, then key + model or the whole ComfyUI block), **Location Images**
+  (on/off · **Compact Location Image** · cooldown), **Prompt Templates** (the
   template picker and everything a template holds: appearance rule · banner
-  style · the four portrait clauses · negative prompt · style references). Every prompt rule the story writes characters by is
-  editable there, each with its own Reset; blanking one **drops that line** from the
-  protocol rather than falling back to a built-in. The JSON *shape* around them is
-  the parser's contract and is never editable. Sub-menu depth is local component
-  state — Back pops to the index first, then out of Advanced.
+  style · the four portrait clauses · negative prompt · style references),
+  **Stored Images** (the two purges).
+
+  1-Bit Shading is a **segmented three-button row**, not the cycling `ToggleRow`
+  it was: a toggle can only say what the value is *now*, so a third state
+  (`threshold → bayer4 → off`) was unreachable without tapping blind. It shares
+  `fields.tsx → SegmentedRow` with Reasoning and Image Backend, which had each
+  hand-rolled the same grid.
+- **Sub-menu depth** (`SubMenuScreen`) is local component state, not a `Screen` —
+  routing it would put a dozen more entries in the navigation history for no
+  gain. What the store owns is the Back claim (`setBackHandler`, so the Android
+  hardware button behaves like the on-screen one) and the one-shot `section` deep
+  link. Back pops to the index first, then out of the screen.
 - **Characters screen** lists the global cast grouped by this adventure's standing — PC, then *In Party n/3*, *Benched*, *NPCs & Allies*, *Gone*, and *Everyone Else* — each row opening the sheet and carrying one-tap moves (**Add to Party** / **Bench** / **Kick** / **Make NPC**). **+ New Character** creates someone in the library only. A filter box appears once the cast grows past 8.
 - **Party screen** lists the company in two halves — *In the scene n/3* (**Bench** / **Kick**) and *Benched* (**Activate** / **Kick**) — with a route to Characters when both are empty. The member sheet carries the same Kick/Add control, the adventure **standing** (active / benched / npc / departed / fallen) with a one-line explanation of what the current one means, **Revert Story Changes** when the story has diverged, and **Delete Character** (library-wide, player-only).
 - **Member sheet order:** portrait → **Image Options** (a closed disclosure: upload · download · remove · the custom portrait prompt) → **Edit** → the sheet → **Story** (Auto-Update, and Revert Story Changes when the story has diverged) → **Condition** → **Standing** → leave/delete. Who the character *is* comes first and everything you can *do* to them follows: the sheet used to open with six buttons and an image-prompt fieldset, so a screen whose entire purpose is the prose underneath them made the player scroll past all of it to reach a name. Nothing was removed — the once-a-character controls fold away, the rest moved below the text they act on.
@@ -794,7 +856,7 @@ all about handing that space back:
 - **Phase 1 — Core loop.** Settings (key + model). `prompt.ts` + streaming call + `<<<LOOM>>>` parse + truncate-at-`<<<`. Narration renders; options work; day/location/weather apply; autosave. (PC only, no party, no images yet.)
 - **Phase 2 — Party + Spotlight.** Port `spotlight.ts`; party roster, portrait strip, member sheets, inventory view, fixed buttons, `detectSpeakers` → `lastSpokeTurn`. Dialogue segmenter (`Name: "…"`).
 - **Phase 3 — Images.** `images.ts`; deterministic banner/portrait triggers, IndexedDB blob store, regenerate buttons. Verify OpenRouter image-output shape first.
-- **Phase 4 — Authoring + Saves.** Scenario editor, World Notes CRUD + keyword injection, Advanced instructions, save slots (snapshot/restore/new). The pre-made scenario ships as the default.
+- **Phase 4 — Authoring + Saves.** Scenario editor, World Notes CRUD + keyword injection, narrator instructions, save slots (snapshot/restore/new). The pre-made scenario ships as the default.
 - **Phase 5 — Polish + APK.** ✅ Reversal (`reversal.ts` pre-turn slice snapshot; `undoLastTurn`/`regenerateLastTurn`; `TurnControls`), error auto-retry (`retry.ts` policy + `streamChat` whole-stream restart, ported from Wayward), APK signing/CI (`android.yml`), mobile polish (overscroll lock, safe-area insets).
 
 ---
@@ -817,13 +879,13 @@ none of them a hidden summarizer:
   an always-injected note taxes every turn, so that stays the player's call.
   `applyNotes` copies lazily, because `captureReversal` reference-diffs the
   slice.
-- **`Settings.historyBudget`** (Advanced → Narrator) — the 3000-token budget was
+- **`Settings.historyBudget`** (Narrator → Memory) — the 3000-token budget was
   hardcoded and never passed by the store. It ships unchanged, but a
   large-context model can now be given far more.
 - **`Settings.maxTokens`** — no `max_tokens` was ever sent, so "short and punchy"
   was a sentence in the prompt and nothing else. 0 restores no cap.
 
-### Reasoning level (Model & Key)
+### Reasoning level (Narrator → Model)
 
 `Settings.reasoningLevel` drives OpenRouter's unified `reasoning` field
 (`settings.ts → reasoningParam`/`reasoningBody`), on the narration stream and the

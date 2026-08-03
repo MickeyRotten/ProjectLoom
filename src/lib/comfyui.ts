@@ -617,7 +617,7 @@ function networkError(err: unknown): ImageError {
   if (err instanceof ImageError) return err;
   const why = err instanceof Error ? err.message : "request failed";
   return new ImageError(
-    `Could not reach ComfyUI — ${why}. Check the URL under Model & Key.`,
+    `Could not reach ComfyUI — ${why}. Check the URL under Images → Model.`,
     { retryable: true },
   );
 }
@@ -729,7 +729,7 @@ async function queuePrompt(base: string, graph: unknown, clientId: string): Prom
     const why = comfyPromptError(res.data) ?? res.detail;
     if (res.status === 400) {
       throw new ImageError(
-        `ComfyUI rejected the workflow${why ? ` — ${why}` : ""}. Check the model name and the workflow under Model & Key.`,
+        `ComfyUI rejected the workflow${why ? ` — ${why}` : ""}. Check the model name and the workflow under Images → Model.`,
         { status: 400 },
       );
     }

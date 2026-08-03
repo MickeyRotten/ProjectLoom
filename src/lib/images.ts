@@ -94,7 +94,7 @@ export function imageKeysOfKind(keys: Iterable<string>, kind: ImageKind): string
 
 /**
  * Whether a request may be sent to the image model at all
- * (`Settings.imagesEnabled`, Model & Key).
+ * (`Settings.imagesEnabled`, Images).
  *
  * Written as `!== false` rather than a bare read: a save from before the switch
  * existed carries no field, and the only sane reading of "absent" is the
@@ -430,7 +430,7 @@ export async function generateOpenRouterImage(opts: GenerateImageOptions): Promi
 
   const key = imageRequestKey(settings);
   if (!key) {
-    throw new ImageError("No OpenRouter API key set. Add one in Model & Key.");
+    throw new ImageError("No OpenRouter API key set. Add one in Images → Model.");
   }
 
   const content = images?.length
@@ -471,7 +471,7 @@ export async function generateOpenRouterImage(opts: GenerateImageOptions): Promi
       const detail = await safeErrorText(res);
       if (images?.length && isPayloadError(res.status, detail)) {
         throw new ImageError(
-          "Image request too large — remove a reference image or use smaller ones (Advanced → Portrait Style).",
+          "Image request too large — remove a reference image or use smaller ones (Images → Prompt Templates).",
         );
       }
       throw new ImageError(

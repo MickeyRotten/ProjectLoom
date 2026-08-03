@@ -93,6 +93,63 @@ export function ToggleRow({
   );
 }
 
+/** Static so Tailwind sees the class names; only these two shapes are used. */
+const SEGMENT_COLS: Record<number, string> = {
+  2: "grid-cols-2",
+  3: "grid-cols-3",
+};
+
+/**
+ * A row of mutually exclusive choices, one pressed. The honest control for a
+ * setting with more than two values: `ToggleRow` can only say what the value is
+ * NOW, so using it for a three-state setting (1-Bit Shading cycled
+ * threshold → bayer4 → off) gave no hint that tapping cycles rather than flips,
+ * and no way to learn the third value existed without tapping twice.
+ *
+ * Extracted from the two hand-rolled grids that already did this — Reasoning and
+ * Image Backend — so the three of them can't drift.
+ */
+export function SegmentedRow<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+  columns = 3,
+  note,
+}: {
+  label: string;
+  value: T;
+  options: readonly { value: T; label: string }[];
+  onChange: (value: T) => void;
+  columns?: 2 | 3;
+  note?: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-2">
+      <span className="block text-sm uppercase tracking-widest">{label}</span>
+      <div className={`grid gap-2 ${SEGMENT_COLS[columns]}`}>
+        {options.map((o) => {
+          const current = value === o.value;
+          return (
+            <button
+              key={o.value}
+              type="button"
+              aria-pressed={current}
+              onClick={() => onChange(o.value)}
+              className={`min-h-11 border-2 border-ink px-2 py-2 text-sm uppercase tracking-widest ${
+                current ? "bg-ink text-paper" : "active:bg-ink active:text-paper"
+              }`}
+            >
+              {o.label}
+            </button>
+          );
+        })}
+      </div>
+      {note}
+    </div>
+  );
+}
+
 /**
  * A labelled control. `action` puts a control of its own on the label row — the
  * member sheet's ✦ generate buttons. It changes the markup rather than sliding

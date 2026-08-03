@@ -99,7 +99,7 @@ export const DEFAULT_OPTION_INSTRUCTIONS =`Offer 3–4 distinct, concrete next a
 
 /**
  * Turns to suppress automatic location-banner generation for after one is
- * generated (Advanced → Location Image Cooldown). 0 = off.
+ * generated (Images → Location Images → Cooldown). 0 = off.
  *
  * Every other image-prompt default moved into `imageTemplates.ts`, where the
  * wording is one switchable bundle rather than a dozen loose fields.
@@ -245,7 +245,7 @@ export function defaultSettings(): Settings {
     textSize: DEFAULT_TEXT_SIZE,
     font: "system",
     webFonts: [],
-    // Off by default (Advanced → Images): the story reads fine without a
+    // Off by default (Images → Location Images): the story reads fine without a
     // banner, and every new location would otherwise bill an image generation
     // before the player has decided they want any.
     locationImages: false,

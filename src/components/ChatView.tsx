@@ -232,10 +232,10 @@ export function ChatView() {
             {!hasKey && (
               <button
                 type="button"
-                onClick={() => setScreen("modelkey")}
+                onClick={() => setScreen("narrator", "model")}
                 className="min-h-11 w-full border-2 border-ink uppercase tracking-widest active:bg-ink active:text-paper"
               >
-                ☰ Model &amp; Key
+                ☰ Add a key
               </button>
             )}
           </div>

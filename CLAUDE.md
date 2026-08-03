@@ -527,6 +527,37 @@ would download it straight back. Best-effort per key: a failed remove leaves the
 object and its stamp, so the local deletion still propagates. Sets no
 `noPortrait` — it is a cache purge, so the deterministic triggers redraw the PC
 and party next turn.
+Post-MVP also: **settings reorganised by domain** — the gear menu had grown to
+thirteen identical buttons plus one orphan toggle, routing to five screens
+holding ~60 `Settings` keys, and one of them was named **Advanced**, which is
+the canonical name for "we didn't know where to put this". `Advanced` and
+`Model & Key` are both retired. The root menu is now **two captioned groups**
+(`MenuScreen → GROUPS`) splitting on the seam already load-bearing in the data
+model: *This Adventure* is `GameState` and dies with the next New Adventure,
+*Settings* is `Settings` and outlives it — with **New Adventure** below a rule,
+under both. Their contents became two domain screens: **Narrator** (Model ·
+Voice & Actions · Memory · Writing Characters) and **Images** (Image Generation
++ 1-Bit Shading on the index, then Model · Location Images · Prompt Templates ·
+Stored Images). Images existed in four places before — master switch and backend
+under Model & Key, behaviour under Advanced → Images, wording under Advanced →
+Image Prompts, and `bannerSize` loose on the root menu — so "why is there no
+picture?" had four answers and no route between them; *Compact Location Image*
+now sits beside the switch deciding whether a banner exists at all, which had
+been the *less* discoverable of the two. `AdvancedScreen`'s index/depth/
+back-handler pattern is extracted as **`SubMenuScreen.tsx`** (depth stays local
+component state; the store owns only the `setBackHandler` claim, so the Android
+button matches, and the one-shot `section` deep link). `setScreen(screen,
+section?)` + **`MenuLink`** turn six copy strings that *named* a path
+("counts against Advanced → Narrator → Beat Length Limit") into buttons;
+`SUBMENU_INDEX`, and any id matching no section, resolves to the screen's index,
+so a stale link never lands on nothing. Reasoning and Beat Length Limit are now
+one screen apart from nothing, Temperature rejoins Text Model instead of
+rendering below the whole image block, `Memory — Turns Kept` → **Memory — Story**
+(it is a token budget, and now pairs with Memory — Journal), and *1-Bit Shading*
+stopped being a three-state cycler drawn as a binary `ToggleRow` — it, Reasoning
+and Image Backend all read through the new `fields.tsx → SegmentedRow`.
+Navigation only: **no `Settings` key is added, removed or retyped**, so there is
+no migration and every stored document loads unchanged.
 Deferred (post-MVP): rolling LLM summarization of the beats themselves,
 NPC/item art, TTS, weather animation, multi-world. Track scope in
 `DESIGN.md → Build Phases`.
