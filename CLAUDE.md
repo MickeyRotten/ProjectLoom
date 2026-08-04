@@ -609,6 +609,34 @@ names (`earlier "…"`), so the model connects the beats to the sheet. Preventio
 rides beside the cure as the player-editable **Names & Renames** rule (add
 nobody the player can't yet call something; someone nameless is prose) — only
 prevention, since an alias revealed as a real name is the same event.
+Post-MVP also: **the prompt in tiers** (`prompt.ts`, `roster.ts → formatTraits`)
+— eleven blocks had accreted into eleven positions with no stated order, and the
+seams showed. **Conditions shipped twice every turn**: `formatPartyRoster` and
+the PC block each printed a `Condition:` line *and* `formatConditionsBlock` ran
+over `presentMembers`, which is exactly PC + `active` — a comment claiming the
+mark was "not in the roster block" while the roster block printed it. A fact
+shown twice is a fact the narrator re-states, and a re-statement is an op, a
+`toasts.ts` chip and a line of transcript. Now a mark is printed **once**, in
+`CONDITIONS`, which is also the only place that says how to clear one.
+`INVENTORY` and `ACTIVE QUESTS` moved out of the standing context to sit
+**after** the history with the roll call and the scene: the protocol's rules
+point straight at them ("use the label already in INVENTORY, exactly as
+written") and up top the rule and its referent were a whole history window
+apart. The scan windows were unified — the notes gate read 3 turns while the
+NPC, spotlight and gear gates read 4, three matchers sharing `keywordHits` *so
+that "mentioned" means one thing* and then disagreeing about how much text to
+look at; one `CONTEXT_TURNS`, scanned once and passed down. The result is five
+tiers, oldest-and-general → newest-and-specific: **standing context** (narrator ·
+scenario · sheets, one stable prefix) → **turn context** (the four keyword-gated
+blocks, one message, skipped whole on a quiet turn) → **history** → **journal**
+→ **STATE OF PLAY** (scene · roll call · conditions · pack · board) → the turn's
+own facts (outcome · regen note) → protocol → action. The state tier carries
+**one** authority line for all five blocks, replacing three separate claims to
+override the beats. `formatTraits` is `formatIdentity`'s sibling — the sheet
+lines every character block prints, in one order, so the PC block, the party
+roster and the NPC block stop being three drifting copies; `condition` is
+deliberately not among them. Two rules hold it: **every fact is stated once**,
+and **anything the history can contradict is stated after the history**.
 Deferred (post-MVP): rolling LLM summarization of the beats themselves,
 NPC/item art, TTS, weather animation, multi-world. Track scope in
 `DESIGN.md → Build Phases`.

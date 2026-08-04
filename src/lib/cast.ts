@@ -1,10 +1,10 @@
 import type { PartyMember } from "../types";
 import { nameForms } from "./names";
-import { formatIdentity } from "./roster";
+import { formatIdentity, formatTraits } from "./roster";
 import { keywordHits } from "./worldNotes";
 
 /**
- * The NPC half of the cast in the prompt (DESIGN.md → Prompt assembly #7b).
+ * The NPC half of the cast in the prompt (DESIGN.md → Prompt assembly, tier 2).
  *
  * Important NPCs and allies are known to the adventure but do not travel with
  * the player: no party slot, no spotlight, never a `Name: "…"` line the
@@ -61,7 +61,7 @@ export function matchNpcs(
 }
 
 /**
- * The `KNOWN CHARACTERS` block (#7b) for the matched NPCs, or "" if none.
+ * The `KNOWN CHARACTERS` block for the matched NPCs, or "" if none.
  * Ends on an explicit negative: without it the model reads a full sheet
  * mid-prompt and starts walking that person alongside the player.
  */
@@ -70,12 +70,8 @@ export function formatNpcBlock(npcs: PartyMember[]): string {
   const entries = npcs.map((n) => {
     const lines = [
       `- ${formatIdentity(n)}${n.description ? ` — ${n.description}` : ""}`,
-      n.personality ? `  Personality: ${n.personality}` : "",
-      n.drive ? `  Drive: ${n.drive}` : "",
-      n.strengths ? `  Strengths: ${n.strengths}` : "",
-      n.flaws ? `  Flaws: ${n.flaws}` : "",
-      n.notes ? `  Notes: ${n.notes}` : "",
-    ].filter(Boolean);
+      ...formatTraits(n).map((l) => `  ${l}`),
+    ];
     return lines.join("\n");
   });
   return [

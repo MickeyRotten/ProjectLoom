@@ -20,6 +20,7 @@ import {
   activeMembers,
   benchedMembers,
   formatIdentity,
+  formatTraits,
   npcMembers,
   partedMembers,
   playerCharacter,
@@ -33,9 +34,19 @@ import { formatConditionsBlock, formatStakesBlock, type StakeSignals } from "./s
 /**
  * Prompt assembly (DESIGN.md → Prompt assembly, trimmed port of
  * prompt_builder.py::build_prompt). One isolated function returning the
- * OpenRouter messages[]. Phase 1 covers the PC-only subset; party roster,
- * World Notes, and the spotlight block wire in at Phase 2/4 at the marked
- * insertion points.
+ * OpenRouter messages[] — see `buildMessages` for the tier order and why it is
+ * that order.
+ *
+ * Two rules hold the shape together, and both are easy to break by adding "one
+ * more block":
+ *
+ *  • Every fact is stated ONCE. A mark is in CONDITIONS, not also on the sheet;
+ *    a sheet is in the standing context, not also in the roll call. The model
+ *    re-states what it is shown twice, and a re-statement is an op, a chip and
+ *    a line of transcript.
+ *  • Anything the history can contradict is stated AFTER the history. That is
+ *    the whole reason the state tier exists, and the reason the pack and the
+ *    quest board live there rather than up top with the scenario.
  */
 
 export interface ChatMessage {
@@ -83,11 +94,15 @@ export function clampHistoryBudget(value: number): number {
   return Math.min(MAX_HISTORY_BUDGET, Math.max(MIN_HISTORY_BUDGET, Math.round(value)));
 }
 
-/** How many recent beats fold into the spotlight relevance/context scan. */
-const SPOTLIGHT_CONTEXT_TURNS = 4;
-
-/** How many recent beats fold into the World Notes keyword scan (#7). */
-const WORLD_NOTES_CONTEXT_TURNS = 3;
+/**
+ * How many recent beats every keyword scan folds in alongside the new message
+ * — World Notes, NPC sheets, the spotlight and the gear block alike.
+ *
+ * ONE constant on purpose. All four gates run through `keywordHits` so that
+ * "mentioned" means the same thing everywhere; scanning different amounts of
+ * text would have given the word two meanings again by the back door.
+ */
+const CONTEXT_TURNS = 4;
 
 /** Cheap token estimate (~4 chars/token), enough for windowing. */
 export function approxTokens(text: string): number {
@@ -126,175 +141,204 @@ export function formatRegenerateNote(note: string): string {
   ].join("\n");
 }
 
+/** Join blocks into one message, dropping the empty ones. */
+function join(blocks: string[]): string {
+  return blocks.filter((b) => b.trim()).join("\n\n");
+}
+
+/**
+ * The prompt, in four tiers plus the turn's own material.
+ *
+ *  1. STANDING CONTEXT — the narrator, the setting, the sheets. Slow-changing,
+ *     and first so it stays a stable prefix from one turn to the next.
+ *  2. TURN CONTEXT — the keyword-gated material this action pulled in. Four
+ *     derivations of one scan text, so they travel as one message.
+ *  3. HISTORY — the opening narration, then a budget-trimmed tail of beats.
+ *  4. STATE OF PLAY — what is true right now, stated AFTER the history because
+ *     that is what it has to outrank: the beats remember a party that has since
+ *     split up, a purse that has since been spent, a place already left.
+ *  5. This turn's own facts — the outcome roll, a regeneration note — then the
+ *     output protocol, then the action.
+ *
+ * The tiers run oldest-and-most-general to newest-and-most-specific, so nothing
+ * the model reads is ever contradicted by something it read earlier.
+ */
 export function buildMessages(opts: BuildOptions): ChatMessage[] {
   const { settings, game, characters, playerMessage } = opts;
   const budget = opts.historyBudgetTokens ?? DEFAULT_HISTORY_BUDGET;
   const currentTurn = opts.currentTurn ?? game.turnNumber + 1;
+  // Scanned once, read by all four keyword gates below.
+  const recent = recentBeats(game, CONTEXT_TURNS);
+  const scan = `${playerMessage}\n${recent}`;
 
   const messages: ChatMessage[] = [];
 
-  // 1–6. Core role + scenario + PC + party + inventory + quests, one block.
-  messages.push({ role: "system", content: buildSystemContext(settings, game, characters) });
+  // 1. Standing context.
+  messages.push({ role: "system", content: buildStandingContext(settings, game, characters) });
 
-  // 7. World Notes — lore matched by keyword against the new message + last
-  //    few beats (single-category lorebook, titles are implicit keywords).
-  const worldNotes = buildWorldNotesBlock(game, playerMessage);
-  if (worldNotes) messages.push({ role: "system", content: worldNotes });
+  // 2. Turn context: lore the action mentions, the sheets of NPCs it named, the
+  //    spotlight, the equipped gear that bears on it. All four are absent on a
+  //    quiet turn, and then the message is skipped entirely.
+  const turnContext = join([
+    formatWorldNotesBlock(matchWorldNotes(game.worldNotes, scan)),
+    buildNpcBlock(game, characters, scan),
+    buildSpotlightBlock(settings, game, characters, playerMessage, recent, currentTurn),
+    buildGearBlock(game, characters, playerMessage, recent),
+  ]);
+  if (turnContext) messages.push({ role: "system", content: turnContext });
 
-  // 7b. Known characters — the sheets of important NPCs / allies the scene has
-  //     just named. Keyword-gated like the notes above, so an adventure can
-  //     know fifty people without any of them costing a turn they're absent
-  //     from. The roll call (#9b) still names them all, every turn.
-  const npcs = buildNpcBlock(game, characters, playerMessage);
-  if (npcs) messages.push({ role: "system", content: npcs });
-
-  // 8. Spotlight block — deterministic per-member signals + the rule.
-  const spotlight = buildSpotlightBlock(settings, game, characters, playerMessage, currentTurn);
-  if (spotlight) messages.push({ role: "system", content: spotlight });
-
-  // 8b. Relevant gear — equipped items (PC + party) whose keywords surface in
-  //     the action, spotlighted with full name + description so the narrator
-  //     uses them. Same keyword machinery + context window as the spotlight.
-  const gear = buildGearBlock(game, characters, playerMessage);
-  if (gear) messages.push({ role: "system", content: gear });
-
-  // 8c. Conditions — the marks this adventure has left on people. Placed with
-  //     the other per-turn signals, not in the roster block, because a mark is
-  //     adventure state the sheet never carries.
-  const conditions = formatConditionsBlock(presentMembers(characters, game.roster));
-  if (conditions) messages.push({ role: "system", content: conditions });
-
-  // 9. History window: opening narration as the first assistant turn, then a
+  // 3. History window: opening narration as the first assistant turn, then a
   //    budget-trimmed tail of recent turns.
   messages.push(...buildHistory(game, budget));
 
-  // 9a. The journal — what already happened, as terse dated lists. Placed
-  //     AFTER the history because it is the older material: the window holds
-  //     the last few beats verbatim, and this is the stretch behind them that
-  //     the window has already dropped.
+  // 4a. The journal — what already happened, as terse dated lists. Placed after
+  //     the history and before the state because it is the older material: the
+  //     window holds the last few beats verbatim, and this is the stretch
+  //     behind them that the window has already dropped.
   if (settings.journalEnabled) {
     const journal = formatJournalBlock(game.journal, settings.journalBudget);
     if (journal) messages.push({ role: "system", content: journal });
   }
 
-  // 9b. Active-party roll call — the authoritative composition, re-read from
-  //     the roster every turn and placed AFTER the history on purpose: the
-  //     history outlives membership, so the last thing the model reads before
-  //     the action must be who is actually here. Always emitted, even for an
-  //     empty party — "you travel alone" is exactly the case history drifts on.
-  messages.push({ role: "system", content: buildPartyCompositionBlock(game, characters) });
+  // 4b. State of play — scene, party, marks, pack, quests. Every one of them is
+  //     re-read from the game each turn and every one is something the history
+  //     drifts on, so they carry ONE authority claim between them rather than
+  //     five competing ones.
+  messages.push({ role: "system", content: buildStateOfPlay(game, characters) });
 
-  // 9c. This turn's outcome band, if the action was a gamble. Sits beside the
-  //     roll call for the same reason: it is a fact about THIS action, and the
-  //     history is full of turns that went differently. Gated on the setting so
-  //     switching stakes off restores the pure-sandbox behaviour exactly.
+  // 5a. This turn's outcome band, if the action was a gamble. Its own message:
+  //     it is a fact about THIS action and nothing else, and the history is
+  //     full of turns that went differently. Gated on the setting so switching
+  //     stakes off restores the pure-sandbox behaviour exactly.
   if (settings.stakesEnabled && opts.stakes) {
     const stakes = formatStakesBlock(opts.stakes, settings.stakesRule);
     if (stakes) messages.push({ role: "system", content: stakes });
   }
 
-  // 9d. The player's note on a regeneration. Placed here — after the history,
-  //     beside the roll call and the outcome — because it is a fact about THIS
-  //     retelling and nothing else, and the beat it replaces is not in the
-  //     history to be compared against: the turn was unwound before this call.
+  // 5b. The player's note on a regeneration. Last of the per-turn facts, and
+  //     kept apart from the state above because it is direction to the narrator
+  //     rather than something true in the world. The beat it replaces is not in
+  //     the history to be compared against: the turn was unwound before this
+  //     call.
   const regen = formatRegenerateNote(opts.regenerateNote ?? "");
   if (regen) messages.push({ role: "system", content: regen });
 
-  // 10. Output-protocol instruction (how to emit prose + the <<<LOOM>>> block).
+  // 5c. Output-protocol instruction (how to emit prose + the <<<LOOM>>> block).
+  //     Directly before the action, so the shape is the last thing read.
   messages.push({ role: "system", content: buildOutputProtocol(settings) });
 
-  // 11. The player's new message.
+  // 5d. The player's new message.
   messages.push({ role: "user", content: playerMessage });
 
   return messages;
 }
 
-function buildSystemContext(
+/**
+ * Tier 1 — the standing context: who is narrating, the setting they are
+ * narrating, and the sheets of the people in the scene.
+ *
+ * Everything here changes slowly (a sheet freezes at creation; the scenario
+ * never changes) which is why the volatile halves — the pack, the quest board,
+ * the scene, the marks — moved out to `buildStateOfPlay`. They belong after the
+ * history, and taking them out leaves this message a stable prefix.
+ */
+function buildStandingContext(
   settings: Settings,
   game: GameState,
   characters: Character[],
 ): string {
-  const parts: string[] = [];
-
-  // 1. Core narrator instructions + player custom instructions.
-  if (settings.customInstructions.trim()) parts.push(settings.customInstructions.trim());
-
-  // 2. Scenario / premise.
-  const scenario = formatScenarioBlock(game.scenario);
-  if (scenario) parts.push(scenario);
-
-  // 3. PC summary + equipment.
   const pc = playerCharacter(characters, game.roster);
-  if (pc) {
-    const lines = [
-      `PLAYER CHARACTER — ${formatIdentity(pc)}`,
-      pc.description,
-      pc.personality ? `Personality: ${pc.personality}` : "",
-      pc.drive ? `Drive: ${pc.drive}` : "",
-      pc.strengths ? `Strengths: ${pc.strengths}` : "",
-      pc.flaws ? `Flaws: ${pc.flaws}` : "",
-      pc.notes ? `Notes: ${pc.notes}` : "",
-      pc.condition ? `Condition: ${pc.condition}` : "",
-      formatEquipment(pc.equipment),
-    ].filter(Boolean);
-    parts.push(lines.join("\n"));
-  }
-
-  // 4. Party roster — the members actually in the scene, with skill +
-  //    equipment. Benched members get no sheet anywhere: they are the player's,
-  //    but they are not here, and a sheet is an invitation to write them in.
-  const roster = formatPartyRoster(activeMembers(characters, game.roster));
-  if (roster) parts.push(roster);
-
-  // 5. Inventory (compact).
-  if (game.inventory.length) {
-    const inv = game.inventory
-      .map((it) => `- ${it.label} ×${it.quantity}${it.description ? ` — ${it.description}` : ""}`)
-      .join("\n");
-    parts.push(`INVENTORY\n${inv}`);
-  }
-
-  // 6. Active quests (done omitted).
-  const active = game.quests.filter((q) => q.status === "active");
-  if (active.length) {
-    const qs = active
-      .map(
-        (q) =>
-          `- ${q.label}${q.description ? ` — ${q.description}` : ""}${
-            q.reward ? ` (reward: ${q.reward})` : ""
-          }`,
-      )
-      .join("\n");
-    parts.push(`ACTIVE QUESTS\n${qs}`);
-  }
-
-  // Current scene, so the model stays anchored. Time is a PHASE, never a clock
-  // face: a model told "14:30" writes "at half past two" into the prose, which
-  // leaks an exact time to a player who is only ever shown the phase — and
-  // implies clocks exist in a setting that may not have them.
-  parts.push(
-    `CURRENT SCENE — location: ${game.location}; day: ${game.day}; time: ${phaseOf(game.minutes)}; weather: ${game.weather}`,
-  );
-
-  return parts.join("\n\n");
+  return join([
+    // The narrator's own instructions, in their own voice — the one block here
+    // with no header, because it is not a block of data.
+    settings.customInstructions.trim(),
+    formatScenarioBlock(game.scenario),
+    pc
+      ? [
+          `PLAYER CHARACTER — ${formatIdentity(pc)}`,
+          ...(pc.description ? [pc.description] : []),
+          ...formatTraits(pc),
+          formatEquipment(pc.equipment),
+        ]
+          .filter(Boolean)
+          .join("\n")
+      : "",
+    // The members actually in the scene. Benched members get no sheet anywhere:
+    // they are the player's, but they are not here, and a sheet is an
+    // invitation to write them in.
+    formatPartyRoster(activeMembers(characters, game.roster)),
+  ]);
 }
 
 /**
- * Party roster block (#4). One entry per in-company member: identity,
- * personality, drive, Strengths, Flaws, equipment. Compact but complete enough for
- * the narrator to voice them in character.
+ * Tier 4 — the state of play: where the scene is, who is standing in it, what
+ * marks they carry, what is in the pack, what is still open.
+ *
+ * All five are re-read from the game every turn, and all five are things the
+ * history actively misremembers — a companion who has since left, a purse
+ * already spent, a room already walked out of. So they sit together, after the
+ * history, under ONE authority line: three blocks each claiming to override the
+ * beats read as three arguments, and the model picks one.
+ */
+function buildStateOfPlay(game: GameState, characters: Character[]): string {
+  return join([
+    "STATE OF PLAY — true as of this moment, and authoritative. Where anything below disagrees with an earlier beat, what is written here is what is true now.",
+    // Time is a PHASE, never a clock face: a model told "14:30" writes "at half
+    // past two" into the prose, which leaks an exact time to a player who is
+    // only ever shown the phase — and implies clocks exist in a setting that
+    // may not have them.
+    `CURRENT SCENE — location: ${game.location}; day: ${game.day}; time: ${phaseOf(game.minutes)}; weather: ${game.weather}`,
+    buildPartyCompositionBlock(game, characters),
+    // The one place a mark is printed. It used to be here AND on every sheet
+    // above, which is how a narrator re-stating a condition it had already been
+    // shown twice ended up stamping the same chip on four beats in a row.
+    formatConditionsBlock(presentMembers(characters, game.roster)),
+    formatInventoryBlock(game),
+    formatQuestBoardBlock(game),
+  ]);
+}
+
+/**
+ * The pack. Sits in the state tier rather than the standing context because the
+ * output protocol's inventory rules point straight at it — "use the label
+ * already in INVENTORY, exactly as written" — and those rules were the whole
+ * history window away from the list they name.
+ */
+function formatInventoryBlock(game: GameState): string {
+  if (!game.inventory.length) return "";
+  const items = game.inventory.map(
+    (it) => `- ${it.label} ×${it.quantity}${it.description ? ` — ${it.description}` : ""}`,
+  );
+  return ["INVENTORY — what the player is carrying", ...items].join("\n");
+}
+
+/** The quest board, open quests only — a finished quest is not a standing fact. */
+function formatQuestBoardBlock(game: GameState): string {
+  const open = game.quests.filter((q) => q.status === "active");
+  if (!open.length) return "";
+  const quests = open.map(
+    (q) =>
+      `- ${q.label}${q.description ? ` — ${q.description}` : ""}${
+        q.reward ? ` (reward: ${q.reward})` : ""
+      }`,
+  );
+  return ["ACTIVE QUESTS — open and unfinished", ...quests].join("\n");
+}
+
+/**
+ * The party roster. One entry per in-company member: identity, the sheet lines
+ * `formatTraits` prints for everyone, and their kit. Compact but complete
+ * enough for the narrator to voice them in character.
+ *
+ * No `Condition:` line — a mark is printed once, in the CONDITIONS block down
+ * in the state tier, which is also the only place that says how to clear one.
  */
 export function formatPartyRoster(members: PartyMember[]): string {
   if (!members.length) return "";
   const entries = members.map((m) => {
     const lines = [
       `- ${formatIdentity(m)}${m.description ? ` — ${m.description}` : ""}`,
-      m.personality ? `  Personality: ${m.personality}` : "",
-      m.drive ? `  Drive: ${m.drive}` : "",
-      m.strengths ? `  Strengths: ${m.strengths}` : "",
-      m.flaws ? `  Flaws: ${m.flaws}` : "",
-      m.notes ? `  Notes: ${m.notes}` : "",
-      m.condition ? `  Condition: ${m.condition}` : "",
+      ...formatTraits(m).map((l) => `  ${l}`),
       m.equipment.length ? indent(formatEquipment(m.equipment)) : "",
     ].filter(Boolean);
     return lines.join("\n");
@@ -314,7 +358,7 @@ function indent(block: string): string {
 const PARTED_LIMIT = 6;
 
 /**
- * Active-party roll call (#9b). One compact, deterministic block naming who is
+ * The active-party roll call. One compact, deterministic block naming who is
  * travelling with the player RIGHT NOW, plus the companions who left and why.
  */
 function buildPartyCompositionBlock(game: GameState, characters: Character[]): string {
@@ -333,11 +377,14 @@ const NPC_ROLL_CALL_LIMIT = 12;
 
 /**
  * The ACTIVE PARTY block. Deliberately short — the full sheets already rode in
- * the roster block (#4); this one is a membership fact, stated last. Every
- * standing that is NOT "in the scene" gets its own explicit negative, because
- * the failure mode is always the same: the history remembers someone the
- * roster has moved on from, and the model keeps walking them alongside the
+ * the roster block up in the standing context; this one is a membership fact.
+ * Every standing that is NOT "in the scene" gets its own explicit negative,
+ * because the failure mode is always the same: the history remembers someone
+ * the roster has moved on from, and the model keeps walking them alongside the
  * player.
+ *
+ * It states no authority of its own — the STATE OF PLAY header it sits under
+ * carries that for every block in the tier.
  */
 export function formatPartyComposition(
   active: PartyMember[],
@@ -347,7 +394,7 @@ export function formatPartyComposition(
 ): string {
   const names = (members: PartyMember[]) => members.map((m) => m.name).join(", ");
   const lines = [
-    "ACTIVE PARTY — THIS TURN (authoritative: it overrides anything earlier beats imply about who is present)",
+    "ACTIVE PARTY — THIS TURN",
     active.length
       ? `Travelling with the player (${active.length}/${PARTY_LIMIT}): ${names(active)}`
       : "Travelling with the player (0): nobody — the player is ALONE this turn.",
@@ -386,86 +433,63 @@ export function formatPartyComposition(
 }
 
 /**
- * World Notes block (#7) — the notes whose title/keywords appear in the new
- * message or the last few beats. Simplified `match_entries`: single category,
- * scan window is the freshest context (where lore is most likely referenced).
+ * The last `turns` beats as one string — the recent-context half of every
+ * keyword scan. Built once per turn and passed down, so the four gates read
+ * exactly the same text and no caller can quietly widen its own window.
  */
-function buildWorldNotesBlock(game: GameState, playerMessage: string): string {
-  if (!game.worldNotes.length) return "";
-  const recent = game.messages
-    // ×2: a turn is a player + narrator message pair.
-    .slice(-WORLD_NOTES_CONTEXT_TURNS * 2)
-    .map((m) => m.content)
-    .join("\n");
-  const scanText = `${playerMessage}\n${recent}`;
-  return formatWorldNotesBlock(matchWorldNotes(game.worldNotes, scanText));
-}
-
-/**
- * Known-characters block (#7b) — the sheets of NPCs the new message or the
- * recent beats name. Same scan window as the spotlight: the people the scene
- * is actually about.
- */
-function buildNpcBlock(
-  game: GameState,
-  characters: Character[],
-  playerMessage: string,
-): string {
-  const npcs = npcMembers(characters, game.roster);
-  if (!npcs.length) return "";
-  return formatNpcBlock(matchNpcs(npcs, scanText(game, playerMessage, SPOTLIGHT_CONTEXT_TURNS)));
-}
-
-/** The new message plus the last `turns` beats — the freshest context. */
-function scanText(game: GameState, playerMessage: string, turns: number): string {
+function recentBeats(game: GameState, turns: number): string {
   // ×2: a turn is a player + narrator message pair.
-  const recent = game.messages
+  return game.messages
     .slice(-turns * 2)
     .map((m) => m.content)
     .join("\n");
-  return `${playerMessage}\n${recent}`;
 }
 
 /**
- * Spotlight block (#8) — deterministic per-member signals + the editable rule.
- * Relevance/context folds in the last few beats alongside the new message.
+ * The KNOWN CHARACTERS block — the sheets of NPCs the new message or the recent
+ * beats name.
+ */
+function buildNpcBlock(game: GameState, characters: Character[], scan: string): string {
+  const npcs = npcMembers(characters, game.roster);
+  if (!npcs.length) return "";
+  return formatNpcBlock(matchNpcs(npcs, scan));
+}
+
+/**
+ * The spotlight block — deterministic per-member signals + the editable rule.
+ * Takes the new message and the recent beats separately: the signals weigh
+ * being addressed directly more heavily than being relevant to the scene.
  */
 function buildSpotlightBlock(
   settings: Settings,
   game: GameState,
   characters: Character[],
   playerMessage: string,
+  recent: string,
   currentTurn: number,
 ): string {
   // Active members only — a benched member owes nobody a line this turn.
   const party = activeMembers(characters, game.roster);
   if (!party.length) return "";
-  const recentContext = game.messages
-    // ×2: a turn is a player + narrator message pair.
-    .slice(-SPOTLIGHT_CONTEXT_TURNS * 2)
-    .map((m) => m.content)
-    .join("\n");
-  const signals = computeSpotlightSignals(playerMessage, recentContext, party, currentTurn);
-  return formatSpotlightBlock(signals, settings.spotlightRule);
+  return formatSpotlightBlock(
+    computeSpotlightSignals(playerMessage, recent, party, currentTurn),
+    settings.spotlightRule,
+  );
 }
 
 /**
- * Relevant-gear block (#8b) — equipped items on the PC + in-party members
- * whose keywords overlap the new message or the recent beats.
+ * The RELEVANT GEAR block — equipped items on the PC + in-party members whose
+ * keywords overlap the new message or the recent beats.
  */
 function buildGearBlock(
   game: GameState,
   characters: Character[],
   playerMessage: string,
+  recent: string,
 ): string {
   const carriers = presentMembers(characters, game.roster);
   if (!carriers.some((c) => c.equipment.length)) return "";
-  const recentContext = game.messages
-    // ×2: a turn is a player + narrator message pair.
-    .slice(-SPOTLIGHT_CONTEXT_TURNS * 2)
-    .map((m) => m.content)
-    .join("\n");
-  return formatGearBlock(computeRelevantGear(playerMessage, recentContext, carriers));
+  return formatGearBlock(computeRelevantGear(playerMessage, recent, carriers));
 }
 
 /** Port of _format_equipment, simplified to {label, description} — no catalog. */
