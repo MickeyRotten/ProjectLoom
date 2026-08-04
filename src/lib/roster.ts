@@ -98,6 +98,36 @@ export function formatIdentity(
   return traits ? `${name} (${traits})` : name;
 }
 
+/** The sheet fields `formatTraits` prints, on anything shaped like a sheet. */
+type SheetTraits = Partial<
+  Pick<Character, "personality" | "drive" | "strengths" | "flaws" | "notes">
+>;
+
+/**
+ * The sheet lines every character block prints, in one order — Personality,
+ * Drive, Strengths, Flaws, Notes — with blank fields dropping out. Callers
+ * join and indent them; only the list and its order live here.
+ *
+ * Shared for the same reason `formatIdentity` is: the PC block, the party
+ * roster and the NPC block are three views of one sheet and used to hold three
+ * copies of this list, so a field added to one was silently missing from the
+ * others.
+ *
+ * `condition` is deliberately NOT here. A mark is per-adventure state, not a
+ * sheet field, and it is printed exactly once — in its own CONDITIONS block,
+ * which is also the only place that says how to clear one.
+ */
+export function formatTraits(c: SheetTraits): string[] {
+  return [
+    c.personality ? `Personality: ${c.personality}` : "",
+    c.drive ? `Drive: ${c.drive}` : "",
+    c.strengths ? `Strengths: ${c.strengths}` : "",
+    c.flaws ? `Flaws: ${c.flaws}` : "",
+    // The player's own field. Read by the narrator, written by nobody but them.
+    c.notes ? `Notes: ${c.notes}` : "",
+  ].filter(Boolean);
+}
+
 /**
  * Fold a stored override onto the current field shapes. Returns the SAME
  * object when nothing needed changing — `normalizeRoster` reference-diffs it.

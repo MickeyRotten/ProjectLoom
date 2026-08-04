@@ -108,12 +108,49 @@ describe("buildMessages — ordering", () => {
     expect(protocol.content).toContain('On every party "add", ALWAYS write');
   });
 
-  it("includes PC summary and inventory in the system context", () => {
+  it("puts the PC sheet in the standing context and the pack in the state block", () => {
     const g = newGame();
     g.inventory = [{ label: "Compass", description: "spins", quantity: 2 }];
     const msgs = build({ settings, game: g, playerMessage: "go" });
     expect(msgs[0].content).toContain("PLAYER CHARACTER");
-    expect(msgs[0].content).toContain("Compass ×2");
+    // The pack rides AFTER the history, with the rest of the state: the
+    // protocol's "use the label already in INVENTORY" rule points at it, and up
+    // in the standing context the two were a whole history window apart.
+    const state = msgs.find((m) => m.content.includes("STATE OF PLAY"))!;
+    expect(state.content).toContain("Compass ×2");
+    expect(msgs[0].content).not.toContain("Compass");
+  });
+
+  it("states the pack, the board and the scene after the history, never before", () => {
+    const g = newGame();
+    g.inventory = [{ label: "Compass", description: "spins", quantity: 2 }];
+    g.quests = [
+      { id: "q1", label: "Find the well", description: "", reward: "", status: "active" },
+    ];
+    g.messages = [play(1, "go"), narr(1, "You go.")];
+    const msgs = build({ settings, game: g, playerMessage: "walk on" });
+    const historyAt = msgs.findIndex((m) => m.content === "You go.");
+    const stateAt = msgs.findIndex((m) => m.content.includes("STATE OF PLAY"));
+    expect(historyAt).toBeGreaterThan(0);
+    expect(stateAt).toBeGreaterThan(historyAt);
+    const state = msgs[stateAt].content;
+    expect(state).toContain("CURRENT SCENE");
+    expect(state).toContain("ACTIVE PARTY — THIS TURN");
+    expect(state).toContain("INVENTORY — what the player is carrying");
+    expect(state).toContain("ACTIVE QUESTS — open and unfinished");
+  });
+
+  it("omits an empty pack and an empty board rather than printing headers", () => {
+    // A new game ships with Gold and no quests, so empty the pack explicitly.
+    const g: GameState = { ...newGame(), inventory: [], quests: [] };
+    const state = build({ settings, game: g, playerMessage: "go" }).find((m) =>
+      m.content.includes("STATE OF PLAY"),
+    )!;
+    expect(state.content).not.toContain("INVENTORY");
+    expect(state.content).not.toContain("ACTIVE QUESTS");
+    // The roll call is the exception, and stays emitted: "you travel alone" is
+    // exactly the case the history drifts on.
+    expect(state.content).toContain("ACTIVE PARTY — THIS TURN");
   });
 
   it("names the PC's species and sex on the identity line", () => {
@@ -462,6 +499,96 @@ describe("world notes injection", () => {
   });
 });
 
+describe("the keyword scan window is one window", () => {
+  // Every gate reads the new message + the last CONTEXT_TURNS beats. The notes
+  // used to scan 3 turns while the NPC/spotlight/gear gates scanned 4 — three
+  // matchers sharing `keywordHits` so that "mentioned" means one thing, and
+  // then disagreeing about how much text to look at.
+  const beats = (keyword: string) => {
+    // Eight messages: the keyword sits in the oldest, exactly 4 turns back.
+    const rest = Array.from({ length: 7 }, (_, i) => narr(i + 2, "The road goes on."));
+    return [narr(1, keyword), ...rest];
+  };
+
+  const mira = member({ id: "m-mira", name: "Mira Aldgate", description: "soot-streaked" });
+
+  it("matches a world note on a beat four turns back", () => {
+    const g = newGame();
+    g.worldNotes = [{ id: "n1", title: "Ash Cult", keywords: ["ashers"], content: "zealots" }];
+    g.messages = beats("The ashers block the gate.");
+    const msgs = build({ settings, game: g, playerMessage: "I step forward" });
+    expect(msgs.some((m) => m.content.includes("WORLD NOTES"))).toBe(true);
+  });
+
+  it("matches an NPC sheet over that same window, not a wider one", () => {
+    const g: GameState = {
+      ...newGame(),
+      roster: [{ id: "m-mira", standing: "npc", lastSpokeTurn: 0 }],
+      messages: beats("Mira Aldgate waves from the forge."),
+    };
+    const msgs = build({
+      settings,
+      game: g,
+      characters: [defaultPC(), mira],
+      playerMessage: "I step forward",
+    });
+    expect(msgs.some((m) => m.content.includes("KNOWN CHARACTERS"))).toBe(true);
+
+    // One beat older — outside the window for BOTH gates, not just one of them.
+    const older: GameState = {
+      ...g,
+      messages: [narr(0, "Mira Aldgate waves from the forge."), ...beats("nothing here")],
+    };
+    const out = build({
+      settings,
+      game: older,
+      characters: [defaultPC(), mira],
+      playerMessage: "I step forward",
+    });
+    expect(out.some((m) => m.content.includes("KNOWN CHARACTERS"))).toBe(false);
+  });
+});
+
+describe("turn context travels as one message", () => {
+  const navi = member({
+    id: "m-navi",
+    name: "Navi",
+    equipment: [{ label: "Bent Pick", description: "worn thin" }],
+  });
+
+  it("folds notes, NPC sheets, the spotlight and gear into a single system block", () => {
+    const g = withParty(newGame(), "m-navi");
+    g.worldNotes = [
+      { id: "n1", title: "The Old Well", keywords: ["well"], content: "the last working well" },
+    ];
+    const msgs = build({
+      settings,
+      game: g,
+      characters: [defaultPC(), navi],
+      playerMessage: "Navi, pick the lock on the well",
+    });
+    // Match the block HEADERS, not the words — the roster's own header names
+    // the spotlight ("use the PARTY SPOTLIGHT rules below") one message up.
+    const turnContext = msgs.filter(
+      (m) =>
+        m.content.includes("WORLD NOTES — ") ||
+        m.content.includes("PARTY SPOTLIGHT — THIS TURN") ||
+        m.content.includes("RELEVANT GEAR — THIS TURN"),
+    );
+    expect(turnContext).toHaveLength(1);
+    expect(turnContext[0].role).toBe("system");
+    // …and it sits between the standing context and the history.
+    expect(msgs.indexOf(turnContext[0])).toBe(1);
+  });
+
+  it("is skipped entirely on a turn that matched nothing", () => {
+    const msgs = build({ settings, game: newGame(), playerMessage: "I wave hello" });
+    // Standing context, then straight into the history.
+    expect(msgs[1].role).toBe("assistant");
+    expect(msgs[1].content).toBe(newGame().scenario.openingNarration);
+  });
+});
+
 describe("output protocol — action options toggle", () => {
   it("asks for options by default", () => {
     const msgs = build({ settings, game: newGame(), playerMessage: "go" });
@@ -794,7 +921,7 @@ describe("stakes + conditions blocks", () => {
     expect(msgs[msgs.length - 1].role).toBe("user");
   });
 
-  it("names marked characters, and puts the mark on their sheet", () => {
+  it("names a marked character exactly once, in CONDITIONS and not on the sheet", () => {
     const navi = member({ id: "m-navi", name: "Navi" });
     const g = withParty(newGame(), "m-navi");
     g.roster = [{ id: "m-navi", standing: "active", lastSpokeTurn: 0, condition: "Winded" }];
@@ -804,9 +931,29 @@ describe("stakes + conditions blocks", () => {
       characters: [defaultPC(), navi],
       playerMessage: "go on",
     });
-    const conditions = msgs.find((m) => m.content.startsWith("CONDITIONS —"));
-    expect(conditions!.content).toContain("- Navi: Winded");
-    expect(msgs[0].content).toContain("Condition: Winded");
+    const text = msgs.map((m) => m.content).join("\n");
+    expect(text).toContain("CONDITIONS —");
+    expect(text).toContain("- Navi: Winded");
+    // Once. The party roster used to carry a `Condition:` line too, so every
+    // mark was shown twice a turn — and a narrator shown a fact twice re-states
+    // it, which costs an op, a chip and a line of transcript.
+    expect(text.match(/Winded/g)).toHaveLength(1);
+    expect(msgs[0].content).not.toContain("Condition:");
+  });
+
+  it("marks the PC without repeating it on the PC sheet either", () => {
+    const g = newGame();
+    g.roster = [{ id: defaultPC().id, standing: "active", lastSpokeTurn: 0, condition: "Limping" }];
+    const text = buildMessages({
+      settings,
+      game: g,
+      characters: [defaultPC()],
+      playerMessage: "go on",
+    })
+      .map((m) => m.content)
+      .join("\n");
+    expect(text).toContain("- Hiro: Limping");
+    expect(text.match(/Limping/g)).toHaveLength(1);
   });
 
   it("documents the conditions field only while stakes are on", () => {

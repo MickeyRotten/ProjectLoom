@@ -229,22 +229,41 @@ The single most valuable carry-over. Port faithfully:
 - **Same dialogue convention** (`Name: "…"`) drives both the client display segmenter and speaker detection — one convention, wired once.
 
 ### 2. Prompt assembly — `src/lib/prompt.ts` (trimmed port of `prompt_builder.py::build_prompt`)
-One isolated function returning the OpenRouter `messages[]`, in order:
-1. **Core narrator instructions** (Loom role: short punchy second-person shonen adventure, uncensored, sandbox) + player **custom instructions** appended.
-2. **Scenario / premise** (the editable pre-made scenario).
-3. **PC summary** + equipment text fields.
-   Every character block — PC, party roster, NPC sheet, and the side-call sheets — leads with the same identity line, `Name (species, sex)`, from `roster.ts → formatIdentity`; blank traits drop out.
-4. **Party roster** — the `active` members only: description, personality, drive, Strengths, Flaws, equipment (port `_format_equipment`, simplified to `{label, description}` — no catalog lookup). Benched members get no sheet; they are not in the scene.
-5. **Inventory** (compact `label ×qty — description` list).
-6. **Active quests** (compact `label — description (reward: …)` list; done quests omitted).
-7. **World Notes** matched by keyword (single-category, simplified `match_entries`; titles are implicit keywords; scan the new message + last few turns). Notes flagged **permanent** skip matching and inject every turn.
-7b. **Known characters** (`cast.ts`) — the sheets of `npc`-standing allies the scene just named, matched with the same `keywordHits` as the notes and capped at `NPC_LIMIT`. Gated, not always-on: an adventure can know fifty people without any of them costing a turn they're absent from.
-8. **Spotlight block** (from `spotlight.ts`) — over the `active` members only.
-9. **Chat history** window (trim to a token budget; prepend the opening narration as the first assistant turn — port `_trim_to_budget`).
-9b. **Journal** (`formatJournalBlock`) — what already happened, newest first, under its own budget. Placed *after* the history because it is the older material: the window holds the last few beats verbatim, and this is the stretch behind them the window has already dropped. Not keyword-gated (a journal is chronological, not topical); bounded by construction instead, with entries past `JOURNAL_PROSE_ENTRIES` decaying to their client-derived facts before dropping out.
-10. **Active-party roll call** (`formatPartyComposition`) — the *authoritative* composition, re-read from the roster **every turn** and placed **after** the history on purpose: history outlives membership, so the last thing the model reads before the action is who is actually here. Names the `active` members `n/PARTY_LIMIT`, the `benched` ones under an explicit "NOT in this scene", the most recent departures with their `standing` (`partedMembers`) so the narrator stops writing them in — and never resurrects a `fallen` one — and every `npc` by name, so an ally is never forgotten between the turns that reach them. **Always emitted, even for an empty party** ("the player is ALONE") — the empty case is exactly where the history drifts.
-11. **Output-protocol instruction** — how to emit prose + the `<<<LOOM>>>` block, and the `option` instruction (player-editable).
-12. **Player's new message.**
+One isolated function returning the OpenRouter `messages[]`. It is built in **tiers**, running from the oldest and most general material to the newest and most specific, so nothing the model reads is contradicted by something it read earlier.
+
+**Two rules hold the shape together**, and both are easy to break by adding "one more block":
+- **Every fact is stated once.** A mark is in `CONDITIONS`, not also on the sheet; a sheet is in the standing context, not also in the roll call. A model shown the same fact twice re-states it, and a re-statement costs an op, a toast chip and a line of transcript.
+- **Anything the history can contradict is stated *after* the history.** That is the whole reason the state tier exists.
+
+**Tier 1 — standing context** (one `system` message; the slow-changing half, and first so it stays a stable prefix between turns):
+1. **Core narrator instructions** (Loom role: short punchy second-person shonen adventure, uncensored, sandbox) + player **custom instructions**. The one block with no header — it is not a block of data.
+2. **Scenario / premise** (the editable pre-made scenario), via `formatScenarioBlock`, which the side calls share.
+3. **PC sheet** + equipment.
+4. **Party roster** — the `active` members only. Benched members get no sheet; they are not in the scene.
+   Every character block — PC, party roster, NPC sheet — leads with the same identity line, `Name (species, sex)`, from `roster.ts → formatIdentity`, and prints the same sheet lines in the same order from `roster.ts → formatTraits` (Personality · Drive · Strengths · Flaws · Notes; blanks drop out). Both are shared so three views of one sheet cannot drift; `formatTraits` deliberately excludes `condition`, which is per-adventure state and belongs to tier 4.
+
+**Tier 2 — turn context** (one `system` message, skipped entirely when nothing matched): the keyword-gated material *this* action pulled in. Four derivations of one scan text — the new message plus the last `CONTEXT_TURNS` beats — so they travel together. All four gate through `worldNotes.ts → keywordHits` and share **one** window constant, because "mentioned" has to mean the same thing in all four.
+- **World Notes** (single-category, simplified `match_entries`; titles are implicit keywords). Notes flagged **permanent** skip matching and inject every turn.
+- **Known characters** (`cast.ts`) — the sheets of `npc`-standing allies the scene just named, capped at `NPC_LIMIT`. Gated, not always-on: an adventure can know fifty people without any of them costing a turn they're absent from.
+- **Spotlight block** (`spotlight.ts`) — over the `active` members only.
+- **Relevant gear** — equipped items of the PC + `active` members whose keywords surface in the action.
+
+**Tier 3 — history**: the rolling window (trim to a token budget; prepend the opening narration as the first assistant turn — port `_trim_to_budget`).
+
+**Tier 3b — journal** (`formatJournalBlock`): what already happened, newest first, under its own budget. Placed *after* the history and *before* the state because it is the older material: the window holds the last few beats verbatim, and this is the stretch behind them the window has already dropped. Not keyword-gated (a journal is chronological, not topical); bounded by construction instead, with entries past `JOURNAL_PROSE_ENTRIES` decaying to their client-derived facts before dropping out.
+
+**Tier 4 — state of play** (one `system` message, always emitted): what is true *right now*. Everything here is re-read from `GameState` each turn, and everything here is something the history actively misremembers — a companion who has since left, a purse already spent, a room already walked out of. They sit under **one** authority line; three blocks each claiming to override the beats read as three arguments, and the model picks one.
+- **Current scene** — location · day · **phase** · weather. Time reaches the model as a phase word only, never a clock face (`clock.ts → phaseOf`).
+- **Active-party roll call** (`formatPartyComposition`) — the composition, re-read from the roster **every turn**. Names the `active` members `n/PARTY_LIMIT`, the `benched` ones under an explicit "NOT in this scene", the most recent departures with their `standing` (`partedMembers`) so the narrator stops writing them in — and never resurrects a `fallen` one — and every `npc` by name, so an ally is never forgotten between the turns that reach them. **Always emitted, even for an empty party** ("the player is ALONE") — the empty case is exactly where the history drifts.
+- **Conditions** (`stakes.ts → formatConditionsBlock`) — the marks this adventure has left on the PC + `active` members, and the only place a mark is printed or explained.
+- **Inventory** (compact `label ×qty — description` list) — here rather than in tier 1 because the output protocol's inventory rules point straight at it ("use the label already in INVENTORY, exactly as written"), and up top the rule and the list it names were a whole history window apart.
+- **Active quests** (compact `label — description (reward: …)` list; done quests omitted).
+
+**Tier 5 — this turn, then the ask** (each its own `system` message):
+- **Outcome band** (`formatStakesBlock`), when the action was a gamble and stakes are on — a fact about *this* action, kept out of the state block because the history is full of turns that went differently.
+- **Regeneration note** (`formatRegenerateNote`), when ↻ Regen carried one — direction to the narrator rather than something true in the world, and never folded into the player's message (which is also the stakes seed).
+- **Output-protocol instruction** — how to emit prose + the `<<<LOOM>>>` block, and the `option` instruction (player-editable). Directly before the action, so the shape is the last thing read.
+- **Player's new message.**
 
 ---
 
