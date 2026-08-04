@@ -16,6 +16,7 @@ import type {
 } from "../types";
 import { advanceClock, normalizeDuration } from "./clock";
 import { isGold } from "./defaults";
+import { findByName, slug, withRename } from "./names";
 import {
   getEntry,
   partyFull,
@@ -64,17 +65,11 @@ export interface AppliedScene {
 }
 
 /**
- * How a name or a label is matched everywhere in this app — case, punctuation
- * and spacing folded away. Exported so gear moving between the pack and a
- * character's kit (`equip.ts`) matches rows the SAME way the narrator's deltas
- * do; two spellings of "match" is how an item ends up listed twice.
+ * The name/label matcher lives in `names.ts` (a leaf, since `roster.ts` and
+ * `equip.ts` both need it and this module imports the former). Re-exported
+ * here because every op in this file is keyed by it.
  */
-export const slug = (s: string) =>
-  s
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+export { slug };
 
 /**
  * Separators a model uses to staple a parent place onto the actual one —
@@ -198,6 +193,18 @@ function dropRepeats<T>(rows: T[] | undefined): T[] | undefined {
     return true;
   });
   return kept.length === rows.length ? rows : kept;
+}
+
+/**
+ * One row with a key taken off it. Used where part of a row is a no-op and the
+ * rest is not — a party op that renames somebody to the name they already have
+ * still moves their standing, and the transcript should report the seat without
+ * claiming a rename that never happened.
+ */
+function stripKey<T extends object, K extends keyof T>(row: T, key: K): T {
+  const out = { ...row };
+  delete out[key];
+  return out;
 }
 
 /** Content key for one delta row — field order normalized away. */
@@ -376,8 +383,7 @@ function reconcileConditions(
 
   return foldRows(deltas, (d) => {
     if (!d?.name || typeof d.condition !== "string") return d;
-    const key = slug(d.name);
-    const found = characters.find((c) => slug(c.name) === key);
+    const found = findByName(characters, d.name);
     // Nobody by that name — `applyConditions` ignores the row, so a chip for it
     // would mark a person the game has never heard of.
     if (!found) return null;
@@ -476,38 +482,57 @@ function reconcileParty(
   const seats = new Map<string, Standing>();
   const seatOf = (id: string) => seats.get(id) ?? standingOf(roster, id);
 
+  // Renames applied earlier in this same block, so a later row naming somebody
+  // by their NEW name still resolves — `applyParty` will have renamed them by
+  // the time it reaches that row.
+  let cast = characters;
+
   return foldRows(deltas, (d) => {
     if (!d?.name) return d;
-    const key = slug(d.name);
-    const found = characters.find((c) => c.role === "member" && slug(c.name) === key);
+    const found = findByName(cast, d.name, { members: true });
 
     if (d.op === "remove") {
       if (!found) return null;
       const want = exitStanding(d);
       if (want === seatOf(found.id)) return null;
       seats.set(found.id, want);
-      return d;
+      // `applyParty` does not rename on the way out, so neither does the chip.
+      return d.newName === undefined ? d : stripKey(d, "newName");
     }
 
+    // A real rename makes the row a change whatever else it carries; one that
+    // renames somebody to the name they already have, or to a name already
+    // taken, is dropped from the row rather than the row from the block.
+    const renaming = found ? renameTarget(cast, found, d) : false;
+    if (renaming && found) {
+      const renamed = withRename(found, d.newName as string);
+      cast = cast.map((c) => (c.id === found.id ? renamed : c));
+    }
+    const row = renaming ? d : d.newName === undefined ? d : stripKey(d, "newName");
+
     if (d.op === "update") {
-      // Standing is the whole of an update; without one `applyParty` skips the
-      // row outright.
-      if (!found || !d.standing) return null;
-      if (d.standing === seatOf(found.id)) return null;
+      // Standing is the rest of an update; with neither it asks for nothing,
+      // and `applyParty` skips the row outright.
+      if (!found) return null;
+      if (!d.standing || d.standing === seatOf(found.id)) return renaming ? row : null;
       seats.set(found.id, d.standing);
-      return d;
+      return row;
     }
 
     // add — creation is always a change; seating someone is one only if it
     // moves them. The dead are never re-recruited, so an `add` naming them is
     // skipped by `applyParty` and must not chip either.
-    if (!found) return d;
+    //
+    // A `newName` on the op that CREATES somebody renames nobody: they are
+    // written under `name` and the extra field would only put a rename chip on
+    // the beat that introduced them.
+    if (!found) return d.newName === undefined ? d : stripKey(d, "newName");
     const here = seatOf(found.id);
     if (here === "fallen") return null;
     const want = d.standing ?? "active";
-    if (want === here) return null;
+    if (want === here) return renaming ? row : null;
     seats.set(found.id, want);
-    return d;
+    return row;
   });
 }
 
@@ -572,16 +597,25 @@ function applyParty(
   for (const d of block.party) {
     if (!d?.name) continue;
     const key = slug(d.name);
-    const found = nextChars.find((c) => c.role === "member" && slug(c.name) === key);
+    let found = findByName(nextChars, d.name, { members: true });
 
     if (d.op === "remove") {
       if (found) nextRoster = setStanding(nextRoster, found.id, exitStanding(d));
       continue;
     }
 
+    // A rename, on the op that found somebody. The id, the roster entry and the
+    // portrait are untouched — only the name the model calls them by moves, and
+    // the old one becomes an alias so the ops and prose still using it resolve.
+    if (found && renameTarget(nextChars, found, d)) {
+      const renamed = withRename(found, d.newName as string);
+      nextChars = nextChars.map((c) => (c.id === found?.id ? renamed : c));
+      found = renamed;
+    }
+
     if (d.op === "update") {
-      // Standing is all an update can say now: every sheet field it carries is
-      // dropped on the floor, whatever the model wrote.
+      // Standing is all an update can say now besides a rename: every sheet
+      // field it carries is dropped on the floor, whatever the model wrote.
       if (!found || !d.standing) continue;
       nextRoster = setStanding(
         nextRoster,
@@ -634,13 +668,28 @@ function applyConditions(
 
   for (const d of block.conditions) {
     if (!d?.name || typeof d.condition !== "string") continue;
-    const key = slug(d.name);
-    const found = characters.find((c) => slug(c.name) === key);
+    const found = findByName(characters, d.name);
     if (!found) continue;
     next = setCondition(next, found.id, d.condition);
   }
 
   return next;
+}
+
+/**
+ * Is this op a rename that should actually happen? False for a missing or
+ * unchanged `newName`, and false when the new name already belongs to someone
+ * ELSE — that op is the narrator conflating two characters rather than
+ * renaming one, and merging two sheets (two portraits, two kits, two
+ * standings) is a decision only the player can make. Renaming BACK to a name
+ * this character already carried as an alias is fine: they resolve to
+ * themselves.
+ */
+function renameTarget(characters: Character[], found: Character, d: PartyDelta): boolean {
+  const name = (d.newName ?? "").trim();
+  if (!slug(name) || slug(name) === slug(found.name)) return false;
+  const other = findByName(characters, name);
+  return !other || other.id === found.id;
 }
 
 /** Standings a `remove` may leave someone in — never a party seat. */

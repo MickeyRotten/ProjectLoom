@@ -569,14 +569,21 @@ describe("output protocol — editable character rules", () => {
   it("folds each Advanced character rule into the protocol verbatim", () => {
     const content = proto({
       characterCreationInstructions: "CREATION-RULE",
+      namingInstructions: "NAMING-RULE",
       characterUpdateInstructions: "UPDATE-RULE",
       standingInstructions: "STANDING-RULE",
       departureInstructions: "DEPARTURE-RULE",
     });
     expect(content).toContain("- CREATION-RULE");
+    expect(content).toContain("- NAMING-RULE");
     expect(content).toContain("- UPDATE-RULE");
     expect(content).toContain("- STANDING-RULE");
     expect(content).toContain("- DEPARTURE-RULE");
+  });
+
+  it("keeps the rename shape in the protocol whatever the rules say", () => {
+    // The rules are the player's; the field the parser reads is not.
+    expect(proto({ namingInstructions: "  " })).toContain('"newName"');
   });
 
   it("drops a rule the player blanked instead of falling back to a default", () => {

@@ -32,12 +32,14 @@ One player action = one OpenRouter chat completion (streamed). No on-device tool
 All block fields optional except when state changed. `op`: `add` | `update` | `remove`.
 A party `add` for a NEW name MUST carry `personality`, `drive`, `strengths`, `flaws` and `equipment` (the gear implied by the appearance it just wrote) — the output protocol demands them so a new member never lands blank or empty-handed. That `add` is the ONLY op that writes a sheet: once a character exists, `species`/`description`/`personality`/`drive`/`strengths`/`flaws`/`equipment` are frozen and dropped from every later op — gear is the player's to curate.
 A party `add`/`update` MAY carry `"standing": "active" | "benched" | "npc"` (default `active` on add); a `remove` MAY carry `"standing": "departed" | "fallen"` (default `departed`). Pre-rename blocks spell that last one `"status"` — still read, because reversal replays old blocks.
+A party `add`/`update` MAY also carry `"newName"` — a RENAME of whoever `name` resolves to. `standing` and `newName` are the only two things a post-creation op can move.
 
 ## Party ops span two stores
 
 Characters are GLOBAL (`Character[]`, outlives every adventure); party membership is per-adventure (`GameState.roster`). `applyDeltas(game, characters, block)` returns both halves; `lib/roster.ts` is the only place they join.
 
-- Match `name` (slugged) against the WHOLE character library, `role === "member"` — that's what re-uses a companion from an earlier adventure instead of duplicating them. The PC is never matched.
+- Match `name` (slugged) against the WHOLE character library, `role === "member"` — that's what re-uses a companion from an earlier adventure instead of duplicating them. The PC is never matched. Go through `names.ts → findByName`/`nameForms`, never a hand-rolled `slug(c.name) === key`: a renamed character answers to their FORMER names too, and the history the model is reading still uses them.
+- `newName` renames in place (`names.ts → withRename`): the id, the roster entry and `portrait:<id>` are untouched, the old name moves to `Character.aliases`. Refused when the new name already resolves to somebody ELSE (that op is a merge, and merging is the player's call), and ignored on the op that CREATES a character and on `remove`.
 - `add` on a KNOWN character: seat them at the requested `standing` and NOTHING else — their sheet is already authored, so every field in the delta is ignored. `add` on an unknown name: create a `Character` in the library, fields → the character itself. This is the only write.
 - `update`: a `standing` move, nothing more. Never creates, never writes a sheet field, never writes `overrides` (only `autoUpdate.ts` does that now).
 - `remove`: `standing` becomes `departed`/`fallen`. NEVER deletes, and never leaves them in a party seat.

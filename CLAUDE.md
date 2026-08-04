@@ -58,7 +58,8 @@ Stack: **React + TS + Vite · Tailwind (1-bit tokens) · Zustand · idb · Capac
 - `npm run dev` — Vite dev server.
 
 Layout: pure logic in `src/lib/` (`loomBlock.ts` parse/truncate · `deltas.ts` op-apply ·
-`roster.ts` cast ⟂ party join · `prompt.ts` message assembly ·
+`roster.ts` cast ⟂ party join · `names.ts` name matching + renames ·
+`prompt.ts` message assembly ·
 `openrouter.ts` streaming + `completeChat` side calls ·
 `autoUpdate.ts` sheet auto-update · `spotlight.ts` **Phase 2** ·
 `stakes.ts` outcome rolls + conditions ·
@@ -585,6 +586,29 @@ purge buttons still reach the cloud. No remote GC. Saves is the cloud's only
 surface: a slot uploads when taken, opening the screen pulls, and pulled slots
 just appear. **No migration** — `loom_docs` is dumb key/value and `supabase/` is
 untouched.
+Post-MVP also: **renameable characters** (`names.ts`, `Character.aliases`,
+`PartyDelta.newName`, `Settings.namingInstructions`) — the narrator introduces
+someone before the scene has a name for them ("Unnamed Goblin"), and when the
+name lands two beats later its only way to say *that was this person* was a
+second `add`, so the party held both. Party ops match by name because a name is
+all the model knows, and that is also why an in-place rename broke everything
+quietly: the id, the roster entry and `portrait:<id>` survive, but the history,
+the journal and the model's next few ops keep saying the OLD name, so
+`detectSpeakers`, `directlyAddressed`, `cast.ts` NPC gating, `journal.ts` and
+Auto-Update's mention scan all stopped matching until the window rolled over.
+So a rename **keeps the old name**: `nameForms` — not `c.name` — is what every
+matcher now takes, `findByName` resolves an op through it, and `withRename` is
+the single writer, shared by the narrator's `newName` op and the player's Name
+edit in `store.updateCharacter` (with an *Also known as* field beside it). The
+sheet stays frozen through a rename, a `newName` on a creating `add` renames
+nobody, and a rename onto a name already held by someone **else** is refused —
+that is a merge, and merging two sheets/portraits/standings is the player's
+call. `reconcileBlock` folds a rename that renames nothing while keeping the
+seat move on the same row, and `formatIdentity` carries the last two former
+names (`earlier "…"`), so the model connects the beats to the sheet. Prevention
+rides beside the cure as the player-editable **Names & Renames** rule (add
+nobody the player can't yet call something; someone nameless is prose) — only
+prevention, since an alias revealed as a real name is the same event.
 Deferred (post-MVP): rolling LLM summarization of the beats themselves,
 NPC/item art, TTS, weather animation, multi-world. Track scope in
 `DESIGN.md → Build Phases`.

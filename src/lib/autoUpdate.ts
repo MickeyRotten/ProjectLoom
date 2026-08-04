@@ -1,6 +1,7 @@
 import type { Character, GameState, Message } from "../types";
 import { type ChatMessage, formatScenarioBlock } from "./prompt";
 import { extractFirstJsonObject, parseJsonTolerant } from "./loomBlock";
+import { nameForms } from "./names";
 import { formatIdentity } from "./roster";
 import { equipLine } from "./equip";
 
@@ -55,16 +56,21 @@ function mentionsName(text: string, name: string): boolean {
  * The latest `limit` messages whose text mentions `name`, scanned newest-first
  * but returned in story order (oldest → newest). A blank name matches nothing —
  * an unnamed character has no beats to learn from.
+ *
+ * Takes a LIST of names as well as one: the beats worth reading about a
+ * renamed character are mostly the ones written before the rename, and those
+ * say the old name (`names.ts → nameForms`).
  */
 export function recentMentions(
   messages: Message[],
-  name: string,
+  name: string | string[],
   limit = MENTION_SCAN_LIMIT,
 ): Message[] {
-  if (!name.trim() || limit <= 0) return [];
+  const names = (Array.isArray(name) ? name : [name]).filter((n) => n?.trim());
+  if (!names.length || limit <= 0) return [];
   const hits: Message[] = [];
   for (let i = messages.length - 1; i >= 0 && hits.length < limit; i--) {
-    if (mentionsName(messages[i].content, name)) hits.unshift(messages[i]);
+    if (names.some((n) => mentionsName(messages[i].content, n))) hits.unshift(messages[i]);
   }
   return hits;
 }
@@ -137,7 +143,7 @@ export function buildAutoUpdateMessages(opts: AutoUpdateOptions): ChatMessage[] 
     messages.push({
       role: "system",
       content: formatStoryContext(
-        recentMentions(game.messages, character.name, opts.mentionLimit ?? MENTION_SCAN_LIMIT),
+        recentMentions(game.messages, nameForms(character), opts.mentionLimit ?? MENTION_SCAN_LIMIT),
         character.name,
       ),
     });

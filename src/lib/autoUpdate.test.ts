@@ -44,6 +44,14 @@ describe("recentMentions", () => {
 
   it("returns nothing for a blank name", () => {
     expect(recentMentions(beats, "  ")).toEqual([]);
+    expect(recentMentions(beats, [])).toEqual([]);
+  });
+
+  it("reads the beats written under a former name too", () => {
+    // The beats worth learning a renamed character's personality from are the
+    // ones from before the rename, and they all say the old name.
+    const renamed = [...beats, msg({ content: "Sela draws the map.", turn: 6 })];
+    expect(recentMentions(renamed, ["Sela", "Elara"]).map((m) => m.turn)).toEqual([1, 3, 5, 6]);
   });
 });
 

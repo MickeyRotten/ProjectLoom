@@ -18,6 +18,7 @@ import { GEN_FIELD_LABEL, type GenField } from "../lib/generateField";
 import { useEditBuffer } from "./useEditBuffer";
 import { useConfirm } from "./useConfirm";
 import { imageEditAllowed, imagesAllowed, portraitKey } from "../lib/images";
+import { parseAliases } from "../lib/names";
 import { equipQuantity } from "../lib/equip";
 import {
   getEntry,
@@ -55,6 +56,7 @@ const STANDING_HINT: Record<Standing, string> = {
 type MemberDraft = Pick<
   Character,
   | "name"
+  | "aliases"
   | "species"
   | "sex"
   | "description"
@@ -121,6 +123,10 @@ export function MemberSheet() {
   // Saving hands off to the OS (share sheet / download) and leaves no trace in
   // the app, so the sheet says what happened for a few seconds. `at` makes each
   // note a fresh object, so a second save restarts the timer.
+  // The alias field is a list edited as one comma-separated line, so the raw
+  // text has to survive parsing: reflecting the parsed list straight back would
+  // eat the comma the moment it is typed.
+  const [aliasText, setAliasText] = useState("");
   const [saveNote, setSaveNote] = useState<{ text: string; at: number } | null>(null);
   const [saving, setSaving] = useState(false);
   const { ask, dialog } = useConfirm();
@@ -136,6 +142,7 @@ export function MemberSheet() {
   const source = useMemo<MemberDraft>(
     () => ({
       name: member?.name ?? "",
+      aliases: member?.aliases ?? [],
       species: member?.species ?? "",
       sex: member?.sex ?? "",
       description: member?.description ?? "",
@@ -158,6 +165,12 @@ export function MemberSheet() {
   useEffect(() => {
     if (id) ensurePortrait(id);
   }, [id, ensurePortrait]);
+
+  // Re-seed the raw alias line whenever the edit buffer opens or the character
+  // changes — including after a save, so a rename's new alias shows up.
+  useEffect(() => {
+    if (!editing) setAliasText((source.aliases ?? []).join(", "));
+  }, [editing, source.aliases]);
 
   useEffect(() => {
     if (!saveNote) return;
@@ -374,6 +387,22 @@ export function MemberSheet() {
 
         <div className="space-y-4">
           <TextField label="Name" value={v.name} editing={editing} onChange={(x) => setField("name", x)} />
+          {/* Former names. Written by a rename — the narrator's or the player's
+              own edit above — and kept because the transcript, the journal and
+              the next few narrator ops all still say them. Editable, and empty
+              in read mode it stays out of the way. */}
+          {(editing || !!v.aliases?.length) && (
+            <TextField
+              label="Also known as"
+              value={editing ? aliasText : (v.aliases ?? []).join(", ")}
+              editing={editing}
+              placeholder="former names, comma separated"
+              onChange={(x) => {
+                setAliasText(x);
+                setField("aliases", parseAliases(x, v.name));
+              }}
+            />
+          )}
           <TextField
             label="Species"
             value={v.species}

@@ -39,6 +39,8 @@ name + description. Soft signal only — never forces anyone to speak, never an 
 
 Party dialogue line: `Name: "…"` where Name resolves to an in-party member. SAME convention drives the display segmenter AND speaker detection — wire once.
 
+Every name match here — `directlyAddressed`, `memberSpoke`/`detectSpeakers`, the segmenter's canonical lookup — goes through `namePattern(nameForms(m))`, never `m.name` alone. A renamed character answers to their former names (`names.ts`), and the beats the detector reads were written before the rename: reading only the current name silently stops bumping `lastSpokeTurn`, so the spotlight reports them overdue forever.
+
 `detectSpeakers(responseText, party)` bumps `lastSpokeTurn` ONLY for members actually attributed a line — name adjacent to a quote or a said-verb (`Name: "…"`, `Name … said`, `said … Name`, `…" Name`). A bare mention ("Tifa was asleep") does NOT count. Port `_member_spoke` faithfully; it's the anti-drift backstop.
 
 ## Do not

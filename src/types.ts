@@ -49,6 +49,16 @@ export interface Character {
   id: string;
   role: CharacterRole;
   name: string;
+  /**
+   * Names this character has answered to before, most recent last. Written
+   * only by a rename (`names.ts → withRename`) — the narrator's `"newName"`
+   * party op, or the player editing the sheet — and read by every matcher that
+   * resolves a name back to a character. The history window and the journal
+   * keep saying whatever the scene said at the time, so without this a rename
+   * silently breaks speaker detection, NPC gating and Auto-Update's story scan
+   * until the transcript rolls over.
+   */
+  aliases?: string[];
   species: string;
   /**
    * Sex / gender, free text like `species` — the vocabulary is the setting's,
@@ -810,6 +820,12 @@ export interface Settings extends DiceRules, ComfySettings {
    */
   characterCreationInstructions: string;
   /**
+   * When a character earns a NAME, and what to do when the name changes —
+   * rename the one who exists rather than adding a second. The rule that stops
+   * "Unnamed Goblin" and "Grik" from being two members of the same party.
+   */
+  namingInstructions: string;
+  /**
    * The freeze rule: a created character's sheet is no longer the narrator's to
    * rewrite. `deltas.ts` enforces it regardless; this is what stops the model
    * spending tokens trying.
@@ -912,6 +928,16 @@ export interface Settings extends DiceRules, ComfySettings {
 export interface PartyDelta {
   op: Op;
   name: string;
+  /**
+   * A RENAME: `name` is who they have been so far, `newName` is who they are
+   * from now on. The one field a post-creation op may write besides
+   * `standing` — a character introduced before the scene knew their name, or
+   * under an alias, is the same person once the name lands, and without this
+   * the narrator's only way to say so was a second `add`. The old name is kept
+   * on `Character.aliases`, so ops and prose still naming them the old way keep
+   * resolving. Ignored when it names somebody else who already exists.
+   */
+  newName?: string;
   species?: string;
   sex?: string;
   description?: string;
