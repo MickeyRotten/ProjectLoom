@@ -37,6 +37,20 @@ describe("deriveToasts — party standings", () => {
     ).toEqual(["Navi stayed behind"]);
   });
 
+  it("reports a rename — the one party change nothing else in the beat shows", () => {
+    expect(
+      deriveToasts(narr({ party: [{ op: "update", name: "Unnamed Goblin", newName: "Grik" }] })),
+    ).toEqual(["Unnamed Goblin is now called Grik"]);
+  });
+
+  it("reports a rename and a seat move as the two changes they are", () => {
+    expect(
+      deriveToasts(
+        narr({ party: [{ op: "add", name: "Stranger", newName: "Vex", standing: "benched" }] }),
+      ),
+    ).toEqual(["Stranger is now called Vex", "Vex stayed behind"]);
+  });
+
   it("stays silent for an update that only rewrote a sheet", () => {
     expect(deriveToasts(narr({ party: [{ op: "update", name: "Navi", drive: "revenge" }] }))).toEqual(
       [],

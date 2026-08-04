@@ -1,4 +1,5 @@
 import type { PartyMember } from "../types";
+import { nameForms } from "./names";
 import { formatIdentity } from "./roster";
 import { keywordHits } from "./worldNotes";
 
@@ -24,13 +25,20 @@ const MIN_TOKEN = 3;
 
 /**
  * The name forms an NPC answers to: their full name, plus each name token long
- * enough to stand alone ("Mira Aldgate" also answers to "Mira" and "Aldgate").
+ * enough to stand alone ("Mira Aldgate" also answers to "Mira" and "Aldgate") —
+ * and the same again for every name they have been called before, since a scene
+ * that still says "the Hooded Stranger" is exactly the scene whose sheet the
+ * narrator needs.
  */
 function nameKeys(npc: PartyMember): string[] {
-  const full = npc.name.trim();
-  if (!full) return [];
-  const tokens = full.split(/\s+/).filter((t) => t.length >= MIN_TOKEN);
-  return [full, ...tokens.filter((t) => t !== full)];
+  const keys: string[] = [];
+  for (const full of nameForms(npc)) {
+    keys.push(full);
+    for (const token of full.split(/\s+/)) {
+      if (token.length >= MIN_TOKEN && token !== full) keys.push(token);
+    }
+  }
+  return Array.from(new Set(keys));
 }
 
 /**

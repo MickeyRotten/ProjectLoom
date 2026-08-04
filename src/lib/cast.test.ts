@@ -59,6 +59,14 @@ describe("matchNpcs", () => {
     expect(matched[0].name).toBe("Name0");
   });
 
+  it("matches a former name — the scene calling them the old way needs the sheet", () => {
+    const grik = npc("Grik", { aliases: ["the Hooded Stranger"] });
+    expect(matchNpcs([grik], "the Hooded Stranger blocks the road").map((n) => n.name)).toEqual([
+      "Grik",
+    ]);
+    expect(matchNpcs([grik], "you ask Stranger for passage").map((n) => n.name)).toEqual(["Grik"]);
+  });
+
   it("ignores name tokens too short to stand alone", () => {
     // "Al" would otherwise hit every "al" in the prose.
     expect(matchNpcs([npc("Al Ferrow")], "the metal gate")).toEqual([]);

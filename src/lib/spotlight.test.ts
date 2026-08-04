@@ -54,6 +54,12 @@ describe("isDirectlyAddressed", () => {
     expect(isDirectlyAddressed("we push forward", "Riley Vance")).toBe(true);
   });
 
+  it("matches any name the character answers to", () => {
+    expect(isDirectlyAddressed("goblin, get the door", ["Grik", "Goblin"])).toBe(true);
+    // The stopword rule holds across former names too.
+    expect(isDirectlyAddressed("the door is locked", ["Grik", "The Stranger"])).toBe(false);
+  });
+
   it("does not treat a stopword first token as an address", () => {
     // "The Butcher" — the first token "the" must not make every "the" an address.
     expect(isDirectlyAddressed("the door is locked", "The Butcher")).toBe(false);
@@ -154,6 +160,15 @@ describe("memberSpoke / detectSpeakers", () => {
     expect(memberSpoke('"Run," Bob urged.', "Bob")).toBe(true);
   });
 
+  it("still hears a renamed member under the name the beat uses", () => {
+    // The turn after a rename, the model writes what the history taught it. A
+    // detector reading only the current name never bumps `lastSpokeTurn`, and
+    // the spotlight reports them overdue forever.
+    const grik = member({ id: "m-1", name: "Grik", aliases: ["Unnamed Goblin"] });
+    expect(detectSpeakers('Unnamed Goblin: "Mine now."', [grik])).toEqual(["m-1"]);
+    expect(detectSpeakers('Grik: "Mine now."', [grik])).toEqual(["m-1"]);
+  });
+
   it("detectSpeakers returns ids only for members with an attributed line", () => {
     const text = 'Navi: "Left path." You glance at Riley Vance, who only nods.';
     const ids = detectSpeakers(text, [navi, riley]);
@@ -176,6 +191,13 @@ describe("segmentDialogue", () => {
   it("resolves a first-token match to the canonical full name", () => {
     const segs = segmentDialogue('Riley: "On it."', [riley]);
     expect(segs).toEqual([{ speaker: "Riley Vance", text: "On it." }]);
+  });
+
+  it("styles a former name's line, credited to who they are now", () => {
+    const grik = member({ id: "m-1", name: "Grik", aliases: ["the Hooded Stranger"] });
+    expect(segmentDialogue('the Hooded Stranger: "Later."', [grik])).toEqual([
+      { speaker: "Grik", text: "Later." },
+    ]);
   });
 
   it("returns a single prose segment when there is no dialogue", () => {

@@ -594,6 +594,7 @@ function buildOutputProtocol(settings: Settings): string {
   // contract, not guidance.
   const characterLines = [
     settings.characterCreationInstructions,
+    settings.namingInstructions,
     settings.characterUpdateInstructions,
     settings.standingInstructions,
     settings.departureInstructions,
@@ -614,7 +615,8 @@ function buildOutputProtocol(settings: Settings): string {
     '- "duration": how much time your prose just took, as ONE of these words — "moment" (a blow lands, a door opens), "brief" (a short exchange), "scene" (a conversation, a search of one room), "hour", "hours" (a thorough search, a long negotiation), "halfday" (a journey across the region), "day" (a long haul), "night" (the player sleeps until morning). Always send it. The day and the time of day are counted from this, so guess honestly — never send a number, and never try to set the day yourself.',
     '- "location": the name of the place the scene is in, and NOTHING else — one name, the most specific one. Never join two place names: "Damp Cellar", not "Boars Head Tavern - Damp Cellar"; "Market Square", not "Rodstroke: Market Square". No dash, colon, slash or parent place, and no description.',
     optionsLine,
-    '- "party": array of character ops, each { "op": "add|update|remove", "name", "standing" }. Add a character when they enter the player\'s story; remove when they leave it.',
+    '- "party": array of character ops, each { "op": "add|update|remove", "name", "standing" }. Add a character when they enter the player\'s story; remove when they leave it. "name" is always the name you have been calling them — an op naming somebody new creates them.',
+    '- An op may also carry "newName" to RENAME the character "name" resolves to. Their sheet, portrait and standing all stay; only what you call them changes, and the old name keeps working.',
     `- A NEW character's "add" also carries "species", "sex", "description", "personality", "drive", "strengths", "flaws" (all strings) and "equipment": [ { "label", "description" } ] — this is the only op that writes them. ${appearanceRule}`,
     ...characterLines,
     ...conditionLines(settings),

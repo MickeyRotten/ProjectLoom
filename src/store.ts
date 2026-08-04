@@ -98,6 +98,7 @@ import {
 } from "./lib/generateItem";
 import { parseLoomResponse, truncateForDisplay } from "./lib/loomBlock";
 import { applyDeltas, reconcileBlock } from "./lib/deltas";
+import { withRename } from "./lib/names";
 import {
   JOURNAL_TEMPERATURE,
   appendModelLines,
@@ -1026,7 +1027,20 @@ export const useStore = create<LoomStore>((set, get) => {
   },
 
   updateCharacter(id, patch) {
-    const characters = get().game.characters.map((c) => (c.id === id ? { ...c, ...patch } : c));
+    // A name edit is a RENAME, not a field write: the old name goes to
+    // `aliases` so every name-keyed matcher — speaker detection, NPC gating,
+    // Auto-Update's story scan, the narrator's own party ops — keeps resolving
+    // a transcript that still says it. `withRename` is the same helper the
+    // narrator's "newName" op goes through, so both mean one thing. An edit
+    // that also types the alias list wins: the player is being explicit.
+    const characters = get().game.characters.map((c) => {
+      if (c.id !== id) return c;
+      const next = { ...c, ...patch };
+      // The patch is applied first and the OLD name put back, so `withRename`
+      // folds it onto whatever alias list the edit itself carries — a sheet
+      // save always sends both fields. An unchanged name renames nobody.
+      return patch.name === undefined ? next : withRename({ ...next, name: c.name }, patch.name);
+    });
     commitCharacters(characters);
 
     // A player edit is the authored truth, so it also retires the story's

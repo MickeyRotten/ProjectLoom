@@ -1,4 +1,5 @@
 import type { Character, PartyMember } from "../types";
+import { nameForms } from "./names";
 
 /**
  * Party spotlight — deterministic, single-call (see
@@ -59,15 +60,24 @@ function escapeRegExp(s: string): string {
 /**
  * Regex-source alternation matching a member's full name OR first token,
  * both escaped. Used everywhere a name is matched, word-bounded elsewhere.
+ *
+ * Takes a LIST of names as well as one, because a renamed character answers to
+ * their old names too (`names.ts → nameForms`): the history window and the
+ * player's own message keep saying whatever the scene said at the time, so a
+ * detector reading only the current name goes silently blind the turn someone
+ * is renamed.
  */
-export function namePattern(name: string): string {
-  const full = name.trim();
-  const first = full.split(/\s+/)[0] ?? "";
-  // Keep the full name always; add the first-token alias only when it isn't a
-  // stopword — "The Butcher" would otherwise make every "the" read as
-  // addressing them.
-  const forms = [full];
-  if (first && !STOPWORDS.has(first.toLowerCase())) forms.push(first);
+export function namePattern(name: string | string[]): string {
+  const forms: string[] = [];
+  for (const raw of Array.isArray(name) ? name : [name]) {
+    const full = (raw ?? "").trim();
+    if (!full) continue;
+    forms.push(full);
+    // Add the first-token short form only when it isn't a stopword — "The
+    // Butcher" would otherwise make every "the" read as addressing them.
+    const first = full.split(/\s+/)[0] ?? "";
+    if (first && !STOPWORDS.has(first.toLowerCase())) forms.push(first);
+  }
   return Array.from(new Set(forms)).filter(Boolean).map(escapeRegExp).join("|");
 }
 
@@ -111,7 +121,7 @@ function leadClause(text: string): string {
  * directlyAddressed — the player named the member (full name or first token,
  * word-boundary, case-insensitive) OR used a group address. HARD override.
  */
-export function isDirectlyAddressed(message: string, name: string): boolean {
+export function isDirectlyAddressed(message: string, name: string | string[]): boolean {
   if (GROUP_ADDRESS_RE.test(message)) return true;
   const re = new RegExp(`\\b(?:${namePattern(name)})\\b`, "i");
   return re.test(message);
@@ -138,7 +148,7 @@ export function computeSpotlightSignals(
     return {
       id: m.id,
       name: m.name,
-      directlyAddressed: isDirectlyAddressed(playerMsg, m.name),
+      directlyAddressed: isDirectlyAddressed(playerMsg, nameForms(m)),
       strengthsRelevant,
       turnsSinceLastSpoke: Math.max(0, currentTurn - (m.lastSpokeTurn ?? 0)),
     };
@@ -240,7 +250,7 @@ export function formatGearBlock(matches: GearSignal[]): string {
  *   • `"…" Name`          (quote close then name attribution)
  * A bare mention ("Tifa was asleep") does NOT count.
  */
-export function memberSpoke(text: string, name: string): boolean {
+export function memberSpoke(text: string, name: string | string[]): boolean {
   const n = namePattern(name);
   const verbs = SAID_VERBS.join("|");
   const q = QUOTE_CLASS;
@@ -269,7 +279,7 @@ export function memberSpoke(text: string, name: string): boolean {
 export function detectSpeakers(responseText: string, party: Character[]): string[] {
   const ids: string[] = [];
   for (const m of party) {
-    if (m.name && memberSpoke(responseText, m.name)) ids.push(m.id);
+    if (m.name && memberSpoke(responseText, nameForms(m))) ids.push(m.id);
   }
   return ids;
 }
@@ -291,15 +301,19 @@ export function segmentDialogue(text: string, party: Character[]): Segment[] {
   const named = party.filter((m) => m.name);
   if (!named.length) return text ? [{ speaker: null, text }] : [];
 
-  // Resolve a matched token (full name or first) back to the canonical name.
+  // Resolve a matched token (full name or first, current or former) back to the
+  // canonical name — a beat still writing `OldName: "…"` is styled as that
+  // character speaking, under the name they go by now.
   const lookup = new Map<string, string>();
   for (const m of named) {
-    lookup.set(m.name.toLowerCase(), m.name);
-    const first = m.name.trim().split(/\s+/)[0];
-    if (first) lookup.set(first.toLowerCase(), m.name);
+    for (const form of nameForms(m)) {
+      lookup.set(form.toLowerCase(), m.name);
+      const first = form.trim().split(/\s+/)[0];
+      if (first) lookup.set(first.toLowerCase(), m.name);
+    }
   }
 
-  const alt = named.map((m) => namePattern(m.name)).join("|");
+  const alt = named.map((m) => namePattern(nameForms(m))).join("|");
   const q = QUOTE_CLASS;
   const re = new RegExp(`\\b(${alt})\\s*:\\s*[${q}]([^${q}]*)[${q}]`, "gi");
 

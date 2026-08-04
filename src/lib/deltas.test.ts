@@ -545,6 +545,158 @@ describe("applyDeltas — party ops", () => {
   });
 });
 
+describe("applyDeltas — renames", () => {
+  const seated = (extra: Character[], standing: "active" | "npc" = "active") => ({
+    ...game(),
+    roster: extra.map((c) => ({ id: c.id, standing, lastSpokeTurn: 0 })),
+  });
+
+  it("renames in place instead of creating a second character", () => {
+    const goblin = member("m-unnamed-goblin", "Unnamed Goblin");
+    const scene = applyDeltas(seated([goblin]), lib(goblin), {
+      party: [{ op: "update", name: "Unnamed Goblin", newName: "Grik" }],
+    });
+
+    expect(scene.characters.filter((c) => c.role === "member")).toHaveLength(1);
+    const renamed = scene.characters[1];
+    expect(renamed.name).toBe("Grik");
+    expect(renamed.aliases).toEqual(["Unnamed Goblin"]);
+    // The id is what the roster, the portrait cache and reversal are keyed on.
+    expect(renamed.id).toBe("m-unnamed-goblin");
+    expect(getEntry(scene.roster, "m-unnamed-goblin").standing).toBe("active");
+  });
+
+  it("keeps the sheet frozen — a rename is not a way back in", () => {
+    const goblin = member("m-1", "Unnamed Goblin", { personality: "Wary." });
+    const scene = applyDeltas(seated([goblin]), lib(goblin), {
+      party: [
+        { op: "update", name: "Unnamed Goblin", newName: "Grik", personality: "Bold.", drive: "Gold." },
+      ],
+    });
+    expect(scene.characters[1]).toMatchObject({ name: "Grik", personality: "Wary.", drive: "" });
+  });
+
+  it("resolves a later op that still uses the old name", () => {
+    const goblin = member("m-1", "Unnamed Goblin");
+    const scene = applyDeltas(seated([goblin]), lib(goblin), {
+      party: [
+        { op: "update", name: "Unnamed Goblin", newName: "Grik" },
+        { op: "update", name: "Unnamed Goblin", standing: "benched" },
+      ],
+    });
+    expect(scene.characters.filter((c) => c.role === "member")).toHaveLength(1);
+    expect(getEntry(scene.roster, "m-1").standing).toBe("benched");
+  });
+
+  it("marks a condition on a character named the old way", () => {
+    const goblin = member("m-1", "Unnamed Goblin");
+    const scene = applyDeltas(seated([goblin]), lib(goblin), {
+      party: [{ op: "update", name: "Unnamed Goblin", newName: "Grik" }],
+      conditions: [{ name: "Unnamed Goblin", condition: "Bleeding" }],
+    });
+    expect(getEntry(scene.roster, "m-1").condition).toBe("Bleeding");
+  });
+
+  it("renames on an add too — the op the narrator reaches for", () => {
+    const goblin = member("m-1", "Unnamed Goblin");
+    const scene = applyDeltas(seated([goblin]), lib(goblin), {
+      party: [{ op: "add", name: "Unnamed Goblin", newName: "Grik", standing: "benched" }],
+    });
+    expect(scene.characters[1].name).toBe("Grik");
+    expect(getEntry(scene.roster, "m-1").standing).toBe("benched");
+  });
+
+  it("refuses a rename onto somebody else — that is a merge, and the player's call", () => {
+    const goblin = member("m-1", "Unnamed Goblin");
+    const grik = member("m-2", "Grik");
+    const scene = applyDeltas(seated([goblin, grik]), lib(goblin, grik), {
+      party: [{ op: "update", name: "Unnamed Goblin", newName: "Grik" }],
+    });
+    expect(scene.characters[1].name).toBe("Unnamed Goblin");
+    expect(scene.characters[2].name).toBe("Grik");
+  });
+
+  it("writes no alias on the op that CREATES a character", () => {
+    const scene = applyDeltas(game(), lib(), {
+      party: [{ op: "add", name: "Grik", newName: "Something Else" }],
+    });
+    expect(scene.characters[1]).toMatchObject({ name: "Grik" });
+    expect(scene.characters[1].aliases).toBeUndefined();
+  });
+
+  it("does not rename on the way out", () => {
+    const goblin = member("m-1", "Grik");
+    const scene = applyDeltas(seated([goblin]), lib(goblin), {
+      party: [{ op: "remove", name: "Grik", newName: "Vex" }],
+    });
+    expect(scene.characters[1].name).toBe("Grik");
+    expect(getEntry(scene.roster, "m-1").standing).toBe("departed");
+  });
+});
+
+describe("reconcileBlock — renames", () => {
+  const seated = (extra: Character[]) => ({
+    ...game(),
+    roster: extra.map((c) => ({ id: c.id, standing: "active" as const, lastSpokeTurn: 0 })),
+  });
+
+  it("keeps an update whose ONLY change is the rename", () => {
+    const goblin = member("m-1", "Unnamed Goblin");
+    const g = seated([goblin]);
+    const block = { party: [{ op: "update" as const, name: "Unnamed Goblin", newName: "Grik" }] };
+    expect(reconcileBlock(g, lib(goblin), block)).toBe(block);
+  });
+
+  it("drops a rename to the name they already have", () => {
+    const grik = member("m-1", "Grik");
+    const g = seated([grik]);
+    const folded = reconcileBlock(g, lib(grik), {
+      party: [{ op: "update", name: "Grik", newName: "grik " }],
+    });
+    expect(folded.party).toEqual([]);
+  });
+
+  it("keeps the seat change but strips a rename that renames nothing", () => {
+    const grik = member("m-1", "Grik");
+    const g = seated([grik]);
+    const folded = reconcileBlock(g, lib(grik), {
+      party: [{ op: "update", name: "Grik", newName: "Grik", standing: "benched" }],
+    });
+    expect(folded.party).toEqual([{ op: "update", name: "Grik", standing: "benched" }]);
+  });
+
+  it("strips a rename onto somebody else, since applyParty refuses it", () => {
+    const goblin = member("m-1", "Unnamed Goblin");
+    const grik = member("m-2", "Grik");
+    const g = seated([goblin, grik]);
+    const folded = reconcileBlock(g, lib(goblin, grik), {
+      party: [{ op: "update", name: "Unnamed Goblin", newName: "Grik", standing: "benched" }],
+    });
+    expect(folded.party).toEqual([
+      { op: "update", name: "Unnamed Goblin", standing: "benched" },
+    ]);
+  });
+
+  it("resolves a later row by the name the rename just gave them", () => {
+    const goblin = member("m-1", "Unnamed Goblin");
+    const g = seated([goblin]);
+    const folded = reconcileBlock(g, lib(goblin), {
+      party: [
+        { op: "update", name: "Unnamed Goblin", newName: "Grik" },
+        { op: "update", name: "Grik", standing: "benched" },
+      ],
+    });
+    expect(folded.party).toHaveLength(2);
+  });
+
+  it("strips a rename off the op that creates somebody", () => {
+    const folded = reconcileBlock(game(), lib(), {
+      party: [{ op: "add", name: "Grik", newName: "Vex" }],
+    });
+    expect(folded.party).toEqual([{ op: "add", name: "Grik" }]);
+  });
+});
+
 describe("applyDeltas — quest ops", () => {
   it("adds an active quest with reward", () => {
     const scene = applyDeltas(game(), lib(), {

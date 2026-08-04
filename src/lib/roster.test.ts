@@ -363,6 +363,16 @@ describe("formatIdentity", () => {
     expect(formatIdentity({ name: "  ", species: "elf", sex: "" })).toBe("(unnamed) (elf)");
   });
 
+  it("carries former names, so the model can connect the history to the sheet", () => {
+    expect(
+      formatIdentity({ name: "Grik", species: "goblin", sex: "male", aliases: ["Unnamed Goblin"] }),
+    ).toBe('Grik (goblin, male, earlier "Unnamed Goblin")');
+    // …and still reads cleanly with no traits to lead with.
+    expect(formatIdentity({ name: "Grik", species: "", sex: "", aliases: ["the Stranger"] })).toBe(
+      'Grik (earlier "the Stranger")',
+    );
+  });
+
   it("tolerates a stored character with no sex at all", () => {
     const legacy = { name: "Elara", species: "elf" } as { name: string; species: string; sex: string };
     expect(formatIdentity(legacy)).toBe("Elara (elf)");

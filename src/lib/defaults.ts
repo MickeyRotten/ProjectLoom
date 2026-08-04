@@ -114,6 +114,18 @@ export const DEFAULT_BANNER_COOLDOWN = 0;
 export const DEFAULT_CHARACTER_CREATION_INSTRUCTIONS = `On every party "add", ALWAYS write "sex", "personality", "drive", "strengths", "flaws" and "equipment" — never omit them and never leave them blank. "sex" is their sex or gender in a word, whatever the setting's vocabulary is — the pronouns you use for them from now on. "personality" is temperament and speech habits in a phrase or two; "drive" is the one thing they want; "strengths" is what they are good at in a sentence or two; "flaws" is what they are bad at, in the same breath. "equipment" is the gear they carry RIGHT NOW, read straight off the appearance you just wrote — every garment, weapon, and tool you described, each as { "label", "description" }. Never leave out something visible in the description, and never add gear nobody can see.`;
 
 /**
+ * The naming rule — both halves of the same problem. A narrator asked to add
+ * "a character who enters the player's story" adds one the moment a goblin
+ * swings a club, before anybody has a name for it; when the name lands two
+ * beats later it has no way to say *that was this person*, so it emits a
+ * second `add` and the party holds "Unnamed Goblin" and "Grik" side by side.
+ * The first sentence stops most of it (a character with no name is prose, not
+ * a party op); the rename is what covers the rest, since an alias revealed as
+ * a real name is the same event and no naming discipline can prevent it.
+ */
+export const DEFAULT_NAMING_INSTRUCTIONS = `Only add a character to "party" once the player has something to CALL them — a name, an alias, or the title they are known by ("the Hooded Stranger", "the Ferryman" are all fine; "Unnamed Goblin", "Unknown Woman", "Mysterious Figure" are not). Someone nameless is prose: write them in the narration and add them the turn they are named. When a character you already added is given a new name — they introduce themselves, an alias turns out to be false, the player learns who they really are — RENAME them: { "op": "update", "name": "<what you called them before>", "newName": "<what you call them now>" }. NEVER add a second character for somebody who already exists under another name.`;
+
+/**
  * The freeze rule. `deltas.ts` drops post-creation sheet fields whatever the
  * model sends, so this exists to stop it wasting tokens writing them — and to
  * tell it where character change belongs instead (the prose).
@@ -265,6 +277,7 @@ export function defaultSettings(): Settings {
     // texture costs legibility at portrait size.
     ditherMode: "threshold",
     characterCreationInstructions: DEFAULT_CHARACTER_CREATION_INSTRUCTIONS,
+    namingInstructions: DEFAULT_NAMING_INSTRUCTIONS,
     characterUpdateInstructions: DEFAULT_CHARACTER_UPDATE_INSTRUCTIONS,
     standingInstructions: DEFAULT_STANDING_INSTRUCTIONS,
     departureInstructions: DEFAULT_DEPARTURE_INSTRUCTIONS,

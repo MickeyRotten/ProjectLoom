@@ -7,6 +7,7 @@ import { splitModels, useModelCatalog } from "./useModelCatalog";
 import { REASONING_LEVELS, type ReasoningLevel, type Settings } from "../types";
 import {
   DEFAULT_CHARACTER_CREATION_INSTRUCTIONS,
+  DEFAULT_NAMING_INSTRUCTIONS,
   DEFAULT_CHARACTER_UPDATE_INSTRUCTIONS,
   DEFAULT_CUSTOM_INSTRUCTIONS,
   DEFAULT_DEPARTURE_INSTRUCTIONS,
@@ -52,6 +53,7 @@ type InstrKey = keyof Pick<
   | "journalInstructions"
   | "spotlightRule"
   | "characterCreationInstructions"
+  | "namingInstructions"
   | "characterUpdateInstructions"
   | "standingInstructions"
   | "departureInstructions"
@@ -102,6 +104,13 @@ const CHARACTER_FIELDS: InstrSpec[] = [
     def: DEFAULT_CHARACTER_CREATION_INSTRUCTIONS,
     rows: 4,
     hint: "What the narrator must fill in when it introduces someone — sheet fields and their starting gear. This is its only chance; sheets freeze afterwards.",
+  },
+  {
+    key: "namingInstructions",
+    label: "Names & Renames",
+    def: DEFAULT_NAMING_INSTRUCTIONS,
+    rows: 5,
+    hint: "When somebody is character enough to add, and how the narrator renames one it already added — the rule that stops “Unnamed Goblin” and “Grik” being two people.",
   },
   {
     key: "characterUpdateInstructions",

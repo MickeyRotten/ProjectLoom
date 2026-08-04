@@ -32,12 +32,18 @@ export function deriveToasts(msg: Message): string[] {
       toasts.push(`${d.name} left the party`);
       continue;
     }
+    // A rename survives reconciliation only when it actually renamed somebody,
+    // so the chip is safe to report — and it is the one party change the player
+    // cannot see anywhere else in the beat.
+    const renamed = d.newName?.trim();
+    if (renamed) toasts.push(`${d.name} is now called ${renamed}`);
     // An `add` that isn't a join, and an `update` that moves someone along the
     // ladder, are both real state changes — reporting either as "joined the
-    // party" would be a lie the transcript keeps forever.
-    const moved = standingToast(d.name, d.standing);
+    // party" would be a lie the transcript keeps forever. A seat move on the
+    // same op names them by the name they now go by.
+    const moved = standingToast(renamed || d.name, d.standing);
     if (moved) toasts.push(moved);
-    else if (d.op === "add") toasts.push(`${d.name} joined the party`);
+    else if (d.op === "add" && !d.newName) toasts.push(`${d.name} joined the party`);
   }
 
   // Conditions — the marks a COST outcome leaves. Reported as a change, not as

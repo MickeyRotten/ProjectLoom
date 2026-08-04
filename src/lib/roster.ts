@@ -8,6 +8,7 @@ import type {
   Standing,
 } from "../types";
 import { PARTED_STANDINGS, PARTY_STANDINGS } from "../types";
+import { formatAka } from "./names";
 
 /**
  * Max companions in the scene at once (PC + 3). The BENCH is uncapped — it is
@@ -82,8 +83,14 @@ export function strengthsText(value: unknown): string {
  * differently from each other. Lives here rather than in `prompt.ts` because
  * `cast.ts` needs it too and `prompt.ts` already imports `cast.ts`.
  */
-export function formatIdentity(c: Pick<Character, "name" | "species" | "sex">): string {
-  const traits = [c.species, c.sex]
+export function formatIdentity(
+  c: Pick<Character, "name" | "species" | "sex"> & { aliases?: Character["aliases"] },
+): string {
+  // Former names ride in the same parentheses as species and sex rather than a
+  // clause of their own: the roster line already ends in a dash and the
+  // description, and the job here is only to connect the name the history keeps
+  // saying to the name the roll call says.
+  const traits = [c.species, c.sex, formatAka(c)]
     .map((t) => (t ?? "").trim())
     .filter(Boolean)
     .join(", ");

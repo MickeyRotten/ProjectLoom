@@ -8,6 +8,7 @@ import type {
 } from "../types";
 import { type ChatMessage, formatScenarioBlock } from "./prompt";
 import { extractFirstJsonObject, parseJsonTolerant } from "./loomBlock";
+import { findByName } from "./names";
 
 /**
  * The journal — what happened, as a short list.
@@ -162,9 +163,10 @@ export function milestoneLines(
   const push = (text: string) => {
     if (!out.includes(text)) out.push(text);
   };
-  const named = (name: string) =>
-    characters.find((c) => c.name.toLowerCase() === name.trim().toLowerCase())?.name ??
-    name.trim();
+  // Recorded blocks name whoever the narrator was calling them at the time, so
+  // this resolves through former names too — a journal written after a rename
+  // should say who the character is now, not who they were called then.
+  const named = (name: string) => findByName(characters, name)?.name ?? name.trim();
 
   let location: string | undefined;
   for (const msg of messages) {
