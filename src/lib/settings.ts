@@ -7,7 +7,9 @@ import type {
   Settings,
   WebFont,
 } from "../types";
+import { MAX_CLOCK, MIN_CLOCK } from "./fronts";
 import {
+  DEFAULT_ARC_STEPS,
   DEFAULT_FRONT_NEGLECT_DAYS,
   DEFAULT_INK,
   DEFAULT_INTERLUDE_TURNS,
@@ -152,6 +154,11 @@ export function loadSettings(): Settings {
       frontNeglectDays: clampNeglectDays(stored.frontNeglectDays),
       promiseTurns: clampPromiseTurns(stored.promiseTurns),
       interludeTurns: clampInterludeTurns(stored.interludeTurns),
+      // The clock length a generated arc is written to — pinned to what the
+      // front machinery can actually spend, so a typed 40 cannot reach the
+      // prompt as a demand for forty steps that `normalizeFront` then throws
+      // most of away.
+      arcSteps: clampArcSteps(stored.arcSteps),
     };
   } catch {
     return defaultSettings();
@@ -407,7 +414,7 @@ function clampForesightTurns(value: unknown, fallback: number): number {
 
 /**
  * Days of neglect before a front ticks itself. Unlike the turn intervals, 0 is
- * a legitimate value — it means "fronts only move when the dice move them",
+ * a legitimate value — it means "the front only moves when the dice move it",
  * which is a table, not a mistake.
  */
 export function clampNeglectDays(value: unknown): number {
@@ -427,6 +434,16 @@ export function clampPromiseTurns(value: unknown): number {
 
 export function clampInterludeTurns(value: unknown): number {
   return clampForesightTurns(value, DEFAULT_INTERLUDE_TURNS);
+}
+
+/**
+ * Steps the arc call is told to write. Bounded by the clock `fronts.ts` can
+ * spend rather than by a number of its own: asking for ten and storing eight is
+ * how the two would drift.
+ */
+export function clampArcSteps(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return DEFAULT_ARC_STEPS;
+  return Math.min(MAX_CLOCK, Math.max(MIN_CLOCK, Math.round(value)));
 }
 
 /**

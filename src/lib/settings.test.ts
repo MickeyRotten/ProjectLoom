@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ReasoningLevel, Settings } from "../types";
 import {
+  DEFAULT_ARC_STEPS,
   DEFAULT_FRONT_NEGLECT_DAYS,
   DEFAULT_INK,
   DEFAULT_INTERLUDE_TURNS,
@@ -30,6 +31,7 @@ import {
   clampInterludeTurns,
   clampJournalMinTurns,
   clampMaxTokens,
+  clampArcSteps,
   clampNeglectDays,
   clampPromiseTurns,
   clampSceneBoundaryTurns,
@@ -47,6 +49,7 @@ import {
   usableQuickActions,
 } from "./settings";
 import { DEFAULT_COMFY, MAX_COMFY_STEPS, MIN_COMFY_SIDE } from "./comfyui";
+import { MAX_CLOCK, MIN_CLOCK } from "./fronts";
 import { activeTemplate, builtinTemplates, PROSE_TEMPLATE_ID } from "./imageTemplates";
 import { FONT_CHOICES } from "../types";
 
@@ -428,10 +431,20 @@ describe("foresight numbers, sanitized at READ", () => {
     expect(clampNeglectDays(9999)).toBe(MAX_NEGLECT_DAYS);
   });
 
+  it("pins the arc's step count to the clock the front machinery can spend", () => {
+    expect(clampArcSteps(1)).toBe(MIN_CLOCK);
+    expect(clampArcSteps(40)).toBe(MAX_CLOCK);
+    expect(clampArcSteps(4.4)).toBe(4);
+    expect(clampArcSteps("lots")).toBe(DEFAULT_ARC_STEPS);
+  });
+
   it("ships Foresight on, with a cost — but not a mixed result — moving the world", () => {
     const s = defaultSettings();
     expect(s.foresightEnabled).toBe(true);
     expect(s.costTicksFront).toBe(true);
     expect(s.mixedTicksFront).toBe(false);
+    // The arc call's two player inputs: blank direction, a four-step chapter.
+    expect(s.arcGuidance).toBe("");
+    expect(s.arcSteps).toBe(DEFAULT_ARC_STEPS);
   });
 });

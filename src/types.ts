@@ -394,26 +394,33 @@ export interface Coord {
 }
 
 /**
- * One thing closing in on the player, written in ADVANCE as a list of steps.
- * The length of `steps` IS the clock: a front with four steps fires on its
- * fourth tick. Authored (in a scenario, or by the handoff call); the instance
+ * The ONE thing closing in on the player, written in ADVANCE as a list of
+ * steps. The length of `steps` IS the clock: a front with four steps fires on
+ * its fourth tick. Authored (in a scenario, or by the arc call); the instance
  * below is what ticks.
+ *
+ * One per arc, and **global** — it is not attached to a region, so anything
+ * that earns a tick anywhere ticks it. An arc used to carry up to four fronts,
+ * each served by the areas that named it; that made a clock the player could
+ * not see stop moving because the story wandered two regions over.
  */
 export interface FrontTemplate {
-  id: string;
   /** "the mine floods" — how the front is named on the Arc screen and in the prompt. */
   label: string;
   /** Written in advance, in order. 2–8 of them (`fronts.ts → normalizeFront`). */
   steps: string[];
 }
 
-/** The authored arc: the story's question, its fronts, and which one ends it. */
+/**
+ * The authored arc: the story's question and the one thing closing in while it
+ * runs. No `spine` — with a single front there is nothing to choose between, so
+ * that front's arrival IS the end of the chapter.
+ */
 export interface ArcTemplate {
   /** What this story is about, one line. */
   question: string;
-  fronts: FrontTemplate[];
-  /** `FrontTemplate.id` — the front whose firing resolves the arc. */
-  spine: string;
+  /** Absent is legal: a question with no clock under it still shapes the play. */
+  front?: FrontTemplate;
 }
 
 /**
@@ -429,7 +436,7 @@ export interface Front extends FrontTemplate {
 
 /**
  * Where an arc stands. `interlude` is a STATE, not a scene: while it holds,
- * every front stops ticking, the prep block is replaced by breathing room, and
+ * the front stops ticking, the prep block is replaced by breathing room, and
  * the handoff to the next arc is staged for the player to look at.
  */
 export type ArcStatus = "running" | "interlude" | "done";
@@ -441,13 +448,13 @@ export type ArcStatus = "running" | "interlude" | "done";
 export interface Arc extends ArcTemplate {
   id: string;
   /**
-   * Bumped when a front fires or retires, or when a handoff rewrites the
+   * Bumped when the front fires or retires, or when a handoff rewrites the
    * question. Half of the area-card staleness stamp; the other half is `id`,
    * because every arc counts epochs from zero and the number alone collides.
    */
   epoch: number;
   status: ArcStatus;
-  fronts: Front[];
+  front?: Front;
   /** AreaKeys this arc has touched — map shading, and nothing else. */
   areas: string[];
   openedTurn: number;
@@ -498,8 +505,7 @@ export interface RoomCard {
 }
 
 /**
- * A region's pressure — `GameState.areas`, keyed by AreaKey. Rooms inherit its
- * `front`, rather than each room picking one and drifting.
+ * A region's pressure — `GameState.areas`, keyed by AreaKey.
  */
 export interface AreaCard {
   key: string;
@@ -517,8 +523,6 @@ export interface AreaCard {
   texture: string;
   /** What applies ANYWHERE in it. `AREA_MAX_THREATS` of them. */
   threats: string[];
-  /** `Front.id` this area serves. Rooms inherit it. */
-  front?: string;
   /** Keyed by room slug — one room per spelling family. */
   rooms: Record<string, RoomSlot>;
 }
@@ -544,14 +548,14 @@ export interface PromiseDelta {
 }
 
 /**
- * What the CLIENT did after the block applied — front ticks, a front firing,
+ * What the CLIENT did after the block applied — a front tick, the front firing,
  * promises planted. Deliberately not folded into `Message.appliedDeltas`: that
  * array is a record of what the MODEL said, and `toasts.ts` reads both.
  */
 export interface Reckoning {
   /** `Front.label` of the front this turn advanced. */
   frontTicked?: string;
-  /** `Front.label` of a front that reached the end of its clock. */
+  /** `Front.label` of the front, when it reached the end of its clock. */
   frontFired?: string;
   promisesPlanted?: string[];
 }
@@ -1134,8 +1138,23 @@ export interface Settings extends DiceRules, ComfySettings {
   scenePrepInstructions: string;
   /** What an AREA card must contain — region texture and standing threats. */
   areaPrepInstructions: string;
-  /** What the handoff call writes when one arc ends and the next is authored. */
+  /** What the arc call writes when one is asked for, or one chapter hands off to the next. */
   arcInstructions: string;
+  /**
+   * The player's own direction for the NEXT arc written — "keep it in the city",
+   * "I want the guild to come after us". Blank is the shipped behaviour: no
+   * block is added and the prompt is byte-identical to one built without it.
+   *
+   * Unlike `arcInstructions` (a standing rule about what an arc IS) this is
+   * about the story in hand, which is why it is edited on the Arc screen beside
+   * the button that spends it rather than in the Foresight settings.
+   */
+  arcGuidance: string;
+  /**
+   * How many steps the front of a generated arc gets — its clock length, and so
+   * how long the chapter runs. Pinned to `MIN_CLOCK…MAX_CLOCK` on read.
+   */
+  arcSteps: number;
   /** How the narrator plants and pays off a promise. */
   promiseInstructions: string;
   /**
@@ -1150,7 +1169,7 @@ export interface Settings extends DiceRules, ComfySettings {
   promiseTurns: number;
   /** How long an interlude runs before the staged next arc applies itself. */
   interludeTurns: number;
-  /** A COST outcome ticks the front its area serves. */
+  /** A COST outcome ticks the arc's front, wherever it was rolled. */
   costTicksFront: boolean;
   /** A MIXED outcome does too. Off by default — mixed is not a setback. */
   mixedTicksFront: boolean;

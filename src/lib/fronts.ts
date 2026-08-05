@@ -1,17 +1,22 @@
 import type { Arc, Front, FrontTemplate } from "../types";
 
 /**
- * Fronts and their clocks — the half of Foresight the CLIENT owns outright.
+ * The front and its clock — the half of Foresight the CLIENT owns outright.
  *
- * A front is one thing closing in on the player, written in advance as a list
- * of steps. The length of that list IS the clock; a tick advances it; reaching
- * the end fires it. The model authors the steps at a boundary and never touches
- * the count, for exactly the reason it no longer writes the day: two writers for
- * one number is how the day came to freeze, jump and run backwards.
+ * A front is the ONE thing closing in on the player, written in advance as a
+ * list of steps. The length of that list IS the clock; a tick advances it;
+ * reaching the end fires it. The model authors the steps at a boundary and never
+ * touches the count, for exactly the reason it no longer writes the day: two
+ * writers for one number is how the day came to freeze, jump and run backwards.
+ *
+ * **One front, and it is global.** An arc used to carry up to four, each served
+ * by whichever regions named it — so a clock only moved while the player stood
+ * in the right part of the map, and three of the four were usually invisible.
+ * Now every tick lands on the same clock wherever it was earned, which is what
+ * makes the pressure legible: one label, one row of pips.
  *
  * Ticks come from two places, and the second is the interesting one:
- *  - a COST outcome rolled in a room whose area serves this front (and a MIXED
- *    one, if the table wants that);
+ *  - a COST outcome (and a MIXED one, if the table wants that);
  *  - **neglect** — a front nobody has touched for `frontNeglectDays` in-game
  *    days ticks on its own. That is what makes the world move while the player
  *    does something else, and it hangs off `clock.ts`, which the client also
@@ -24,9 +29,6 @@ import type { Arc, Front, FrontTemplate } from "../types";
 export const MIN_CLOCK = 2;
 export const MAX_CLOCK = 8;
 
-/** How many steps of a front the prompt ever shows: the next one. The rest is spoiler. */
-export const STEPS_SHOWN = 1;
-
 /**
  * One front onto the shape the app can actually spend, sanitized at READ.
  *
@@ -34,7 +36,7 @@ export const STEPS_SHOWN = 1;
  * inside `0..steps.length`, so a hand-edited or model-authored front is
  * unrepresentable rather than merely out of range — the `normalizeDice` stance.
  */
-export function normalizeFront(raw: Partial<Front> & { id?: string }, index = 0): Front {
+export function normalizeFront(raw: Partial<Front>): Front {
   const steps = (Array.isArray(raw.steps) ? raw.steps : [])
     .filter((s): s is string => typeof s === "string")
     .map((s) => s.trim())
@@ -49,7 +51,6 @@ export function normalizeFront(raw: Partial<Front> & { id?: string }, index = 0)
     raw.status === "fired" || raw.status === "retired" ? raw.status : "open";
 
   return {
-    id: (raw.id ?? "").trim() || `front-${index + 1}`,
     label: (raw.label ?? "").trim() || "something is coming",
     steps,
     ticks: Math.min(steps.length, Math.max(0, ticks)),
@@ -58,16 +59,15 @@ export function normalizeFront(raw: Partial<Front> & { id?: string }, index = 0)
   };
 }
 
-/** A template's fronts, opened for play on `day`. */
-export function openFronts(templates: FrontTemplate[], day: number): Front[] {
-  return templates.map((t, i) =>
-    normalizeFront({ ...t, ticks: 0, lastTickDay: day, status: "open" }, i),
-  );
+/** A template's front, opened for play on `day`. Nothing authored, nothing opened. */
+export function openFront(template: FrontTemplate | undefined, day: number): Front | undefined {
+  if (!template) return undefined;
+  return normalizeFront({ ...template, ticks: 0, lastTickDay: day, status: "open" });
 }
 
-/** The fronts still capable of firing. */
-export function liveFronts(arc: Arc | undefined): Front[] {
-  return (arc?.fronts ?? []).filter((f) => f.status === "open");
+/** The front if it can still fire — what every prompt block and tick reads. */
+export function liveFront(arc: Arc | undefined): Front | undefined {
+  return arc?.front?.status === "open" ? arc.front : undefined;
 }
 
 /** How the clock reads: `●●○○`. Rendered for the player and for the narrator alike. */
@@ -81,46 +81,40 @@ export function nextStep(front: Front): string {
 }
 
 export interface TickResult {
-  fronts: Front[];
-  /** Labels of the fronts that moved. */
-  ticked: string[];
-  /** Labels of the fronts that reached the end of their clock this time. */
-  fired: string[];
+  /** The front after the pass — the same reference when nothing moved. */
+  front: Front | undefined;
+  /** Its label, when it moved. */
+  ticked: string | null;
+  /** Its label, when this pass is the one that ran the clock out. */
+  fired: string | null;
 }
 
-/** Nothing moved — the shape every no-op tick returns, references intact. */
-function unchanged(fronts: Front[]): TickResult {
-  return { fronts, ticked: [], fired: [] };
+/** Nothing moved — the shape every no-op tick returns, reference intact. */
+function unchanged(front: Front | undefined): TickResult {
+  return { front, ticked: null, fired: null };
 }
 
 /**
- * Advance one front by one step. A front that reaches the end of its clock goes
+ * Advance the front by one step. A front that reaches the end of its clock goes
  * `fired`, which is what the next turn's mandatory block and the arc's
  * completion check both read.
  *
- * Reference-stable: an id naming nothing, or a front that is not open, comes
- * back untouched.
+ * Reference-stable: a front that is absent, or not open, comes back untouched.
  */
-export function tickFront(fronts: Front[], id: string, day: number): TickResult {
-  const i = fronts.findIndex((f) => f.id === id && f.status === "open");
-  if (i < 0) return unchanged(fronts);
+export function tickFront(front: Front | undefined, day: number): TickResult {
+  if (!front || front.status !== "open") return unchanged(front);
 
-  const front = fronts[i];
   const ticks = Math.min(front.steps.length, front.ticks + 1);
   const fired = ticks >= front.steps.length;
-  const next: Front = {
-    ...front,
-    ticks,
-    lastTickDay: day,
-    status: fired ? "fired" : front.status,
+  return {
+    front: { ...front, ticks, lastTickDay: day, status: fired ? "fired" : front.status },
+    ticked: front.label,
+    fired: fired ? front.label : null,
   };
-  const out = [...fronts];
-  out[i] = next;
-  return { fronts: out, ticked: [front.label], fired: fired ? [front.label] : [] };
 }
 
 /**
- * The neglect pass: every open front untouched for `neglectDays` in-game days
+ * The neglect pass: an open front untouched for `neglectDays` in-game days
  * ticks once. One tick per pass, however many days have piled up — a front is a
  * clock, not an interest rate, and a player returning from a week away should
  * find the world moved on, not ended.
@@ -128,37 +122,26 @@ export function tickFront(fronts: Front[], id: string, day: number): TickResult 
  * Never runs while an arc is in interlude; the caller advances `lastTickDay` on
  * resume so the suspended days don't arrive at once as a burst.
  */
-export function tickNeglect(fronts: Front[], day: number, neglectDays: number): TickResult {
-  if (neglectDays <= 0) return unchanged(fronts);
-
-  let out = fronts;
-  const ticked: string[] = [];
-  const fired: string[] = [];
-  for (const front of fronts) {
-    if (front.status !== "open") continue;
-    if (day - front.lastTickDay < neglectDays) continue;
-    const result = tickFront(out, front.id, day);
-    out = result.fronts;
-    ticked.push(...result.ticked);
-    fired.push(...result.fired);
-  }
-  return out === fronts ? unchanged(fronts) : { fronts: out, ticked, fired };
+export function tickNeglect(
+  front: Front | undefined,
+  day: number,
+  neglectDays: number,
+): TickResult {
+  if (neglectDays <= 0) return unchanged(front);
+  if (!front || front.status !== "open") return unchanged(front);
+  if (day - front.lastTickDay < neglectDays) return unchanged(front);
+  return tickFront(front, day);
 }
 
 /**
- * Move every open front's clock reference forward without ticking it — what an
+ * Move an open front's clock reference forward without ticking it — what an
  * interlude's END does. Without it, the days an interlude suspended would all
  * arrive on the first turn back as a neglect burst, which is the exact opposite
  * of the pressure release the interlude exists to be.
  */
-export function restFronts(fronts: Front[], day: number): Front[] {
-  let changed = false;
-  const out = fronts.map((f) => {
-    if (f.status !== "open" || f.lastTickDay >= day) return f;
-    changed = true;
-    return { ...f, lastTickDay: day };
-  });
-  return changed ? out : fronts;
+export function restFront(front: Front | undefined, day: number): Front | undefined {
+  if (!front || front.status !== "open" || front.lastTickDay >= day) return front;
+  return { ...front, lastTickDay: day };
 }
 
 /**
@@ -166,8 +149,9 @@ export function restFronts(fronts: Front[], day: number): Front[] {
  * and the ONE step it is about to reach. The steps after that are spoiler for
  * the narrator and noise in the budget.
  */
-export function formatFrontLines(fronts: Front[]): string[] {
-  return fronts.map((f) => `  ${f.label}  ${clockFace(f)}  next: ${nextStep(f)}`);
+export function formatFrontLine(front: Front | undefined): string {
+  if (!front) return "";
+  return `  ${front.label}  ${clockFace(front)}  next: ${nextStep(front)}`;
 }
 
 /**

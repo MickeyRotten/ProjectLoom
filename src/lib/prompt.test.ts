@@ -1087,8 +1087,7 @@ describe("buildMessages — regeneration note", () => {
 
 const ARC = {
   question: "the consortium is buying the valley",
-  spine: "flood",
-  fronts: [{ id: "flood", label: "the mine floods", steps: ["the sump fills", "the gallery is cut off"] }],
+  front: { label: "the mine floods", steps: ["the sump fills", "the gallery is cut off"] },
 };
 
 function foresightGame(): GameState {
@@ -1108,7 +1107,6 @@ function foresightGame(): GameState {
         neighbours: [],
         texture: "old growth, wet",
         threats: ["anything loud brings a patrol"],
-        front: "flood",
         rooms: {
           "forest-entrance": {
             name: "Forest Entrance",
@@ -1136,7 +1134,7 @@ function foresightGame(): GameState {
       {
         id: "arc-1",
         ...ARC,
-        fronts: ARC.fronts.map((f) => ({ ...f, ticks: 1, lastTickDay: 1, status: "open" as const })),
+        front: { ...ARC.front, ticks: 1, lastTickDay: 1, status: "open" as const },
         epoch: 0,
         status: "running" as const,
         areas: [],
@@ -1273,7 +1271,7 @@ describe("foresight injection", () => {
         arcs: [
           {
             ...game.arcs![0],
-            fronts: game.arcs![0].fronts.map((f) => ({ ...f, ticks: 2, status: "fired" as const })),
+            front: { ...game.arcs![0].front!, ticks: 2, status: "fired" as const },
           },
         ],
       },

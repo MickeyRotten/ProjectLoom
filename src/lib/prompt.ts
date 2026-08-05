@@ -31,7 +31,7 @@ import { formatNpcBlock, matchNpcs } from "./cast";
 import { activeTemplate } from "./imageTemplates";
 import { matchWorldNotes, formatWorldNotesBlock } from "./worldNotes";
 import { formatConditionsBlock, formatStakesBlock, type StakeSignals } from "./stakes";
-import { formatFrontLines, formatLoomingBlock, liveFronts } from "./fronts";
+import { formatFrontLine, formatLoomingBlock, liveFront } from "./fronts";
 import { formatOptionNote, formatPromisesBlock } from "./promises";
 import {
   currentArea,
@@ -625,16 +625,16 @@ export function formatJournalBlock(entries: JournalEntry[], budgetTokens: number
  * ------------------------------------------------------------------ */
 
 /**
- * The `ARC` tier: the story's question, then one line per live front — label,
- * clock, and the ONE step it is about to reach. Only the next step, never the
- * remaining ones: the rest is spoiler for the narrator and noise in the budget.
+ * The `ARC` tier: the story's question, then the front — label, clock, and the
+ * ONE step it is about to reach. Only the next step, never the remaining ones:
+ * the rest is spoiler for the narrator and noise in the budget.
  */
 export function formatArcBlock(arc: Arc | undefined): string {
   if (!arc || arc.status === "done") return "";
-  const fronts = liveFronts(arc);
-  if (!arc.question.trim() && !fronts.length) return "";
+  const line = formatFrontLine(liveFront(arc));
+  if (!arc.question.trim() && !line) return "";
   const head = arc.question.trim() ? `ARC — ${arc.question.trim()}` : "ARC";
-  return [head, ...formatFrontLines(fronts)].join("\n");
+  return [head, line].filter(Boolean).join("\n");
 }
 
 /**
@@ -705,7 +705,7 @@ const HEADER =
  */
 export function formatFrontArrival(game: GameState): string {
   const arc = (game.arcs ?? []).find((a) => a.status === "running");
-  const fired = arc?.fronts.find((f) => f.status === "fired");
+  const fired = arc?.front?.status === "fired" ? arc.front : undefined;
   return fired ? formatLoomingBlock(fired) : "";
 }
 

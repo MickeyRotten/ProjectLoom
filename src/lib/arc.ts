@@ -9,14 +9,8 @@ import type {
 } from "../types";
 import { type ChatMessage, formatScenarioBlock, formatJournalBlock } from "./prompt";
 import { extractFirstJsonObject, parseJsonTolerant } from "./loomBlock";
-import {
-  MAX_CLOCK,
-  clockFace,
-  nextStep,
-  normalizeFront,
-  openFronts,
-  restFronts,
-} from "./fronts";
+import { clockFace, nextStep, normalizeFront, openFront, restFront } from "./fronts";
+import { clampArcSteps } from "./settings";
 import { formatIdentity } from "./roster";
 
 /**
@@ -29,15 +23,17 @@ import { formatIdentity } from "./roster";
  * ticks, status, what actually happened — as a list that is appended to and
  * never replaced, so a finished arc is campaign history rather than a deletion.
  *
- * **Completion is client-owned and deterministic.** The arc names one front as
- * its spine; the others are texture. When the spine fires, the arc resolves. The
- * model never declares a story over, for the same reason it never ticks a clock.
+ * **One question, one front.** The arc used to carry up to four fronts and name
+ * one of them its spine; the rest were texture nobody could see moving. Now the
+ * arc is a question and the one thing closing in while it is answered, so
+ * `spine` is not a field anybody has to choose — that front's arrival IS the end
+ * of the chapter.
+ *
+ * **Completion is client-owned and deterministic.** The model never declares a
+ * story over, for the same reason it never ticks a clock.
  *
  * Pure + tested; only the store touches the network.
  */
-
-/** How many fronts one arc may carry. Beyond this nothing is looming, it is weather. */
-export const MAX_FRONTS = 4;
 
 /**
  * Cooler than the authoring calls (`generateField.ts` runs at 0.9) and warmer
@@ -50,26 +46,44 @@ export const ARC_TEMPERATURE = 0.7;
  * Reading and sanitizing
  * ------------------------------------------------------------------ */
 
+/**
+ * The front out of any shape an arc has ever been written in — this one's
+ * `front`, or the `fronts[]`/`spine` pair every arc stored before the collapse
+ * carries. The spine is the one that ended the chapter, so it is the one that
+ * survives; with no spine naming anything, the first.
+ *
+ * Also the tolerant half of `parseArc`: a model handed the new contract still
+ * reaches for the old plural often enough to be worth reading.
+ */
+function pickFront(raw: unknown): Partial<Front> | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const rec = raw as Record<string, unknown>;
+
+  if (rec.front && typeof rec.front === "object") return rec.front as Partial<Front>;
+  // A bare label with no clock: kept, since a named front with placeholder steps
+  // is editable and a dropped one is not.
+  if (typeof rec.front === "string" && rec.front.trim()) return { label: rec.front };
+
+  if (Array.isArray(rec.fronts)) {
+    const fronts = rec.fronts.filter((f): f is Record<string, unknown> => Boolean(f) && typeof f === "object");
+    const spine = typeof rec.spine === "string" ? rec.spine : "";
+    const chosen = fronts.find((f) => f.id === spine) ?? fronts[0];
+    return chosen as Partial<Front> | undefined;
+  }
+  return undefined;
+}
+
 /** One arc onto the shape the app can spend, sanitized at READ. */
 export function normalizeArc(raw: Partial<Arc> | undefined, index = 0): Arc {
-  const fronts = (Array.isArray(raw?.fronts) ? raw!.fronts : [])
-    .slice(0, MAX_FRONTS)
-    .map((f, i) => normalizeFront(f ?? {}, i));
+  const front = pickFront(raw);
 
   const status: Arc["status"] =
     raw?.status === "interlude" || raw?.status === "done" ? raw.status : "running";
 
-  // A spine naming no front would make the arc uncompletable, so it falls back
-  // to the first front — an arc that can never end is worse than one that ends
-  // on the wrong beat.
-  const spine =
-    fronts.find((f) => f.id === raw?.spine)?.id ?? fronts[0]?.id ?? "";
-
   return {
     id: (raw?.id ?? "").trim() || `arc-${index + 1}`,
     question: (raw?.question ?? "").trim(),
-    spine,
-    fronts,
+    ...(front ? { front: normalizeFront(front) } : {}),
     epoch: Number.isFinite(raw?.epoch) ? Math.max(0, Math.round(raw!.epoch as number)) : 0,
     status,
     areas: (Array.isArray(raw?.areas) ? raw!.areas : []).filter(
@@ -91,16 +105,13 @@ export function normalizeArcs(raw: unknown): Arc[] {
 
 /** An authored template onto a shape `openArc` can instantiate. */
 export function normalizeTemplate(raw: Partial<ArcTemplate> | undefined): ArcTemplate {
-  const fronts: FrontTemplate[] = (Array.isArray(raw?.fronts) ? raw!.fronts : [])
-    .slice(0, MAX_FRONTS)
-    .map((f, i) => {
-      const front = normalizeFront((f ?? {}) as Partial<Front>, i);
-      return { id: front.id, label: front.label, steps: front.steps };
-    });
+  const picked = pickFront(raw);
+  const front: FrontTemplate | undefined = picked
+    ? (({ label, steps }) => ({ label, steps }))(normalizeFront(picked))
+    : undefined;
   return {
     question: (raw?.question ?? "").trim(),
-    fronts,
-    spine: fronts.find((f) => f.id === raw?.spine)?.id ?? fronts[0]?.id ?? "",
+    ...(front ? { front } : {}),
   };
 }
 
@@ -111,7 +122,7 @@ export function runningArc(arcs: Arc[] | undefined): Arc | undefined {
 
 /** Does this template say anything at all? A blank one is not worth opening. */
 export function hasArc(template: ArcTemplate | undefined): boolean {
-  return Boolean(template && (template.question.trim() || template.fronts.length));
+  return Boolean(template && (template.question.trim() || template.front));
 }
 
 /* ------------------------------------------------------------------ *
@@ -129,8 +140,7 @@ export function openArc(
   return normalizeArc({
     id,
     question: clean.question,
-    spine: clean.spine,
-    fronts: openFronts(clean.fronts, day),
+    front: openFront(clean.front, day),
     epoch: 0,
     status: "running",
     areas: [],
@@ -140,7 +150,7 @@ export function openArc(
 
 /**
  * Bump the arc's epoch — the staleness signal every area prepped under it
- * reads. Fired when a front fires or retires, or when a handoff rewrites the
+ * reads. Fired when the front fires or retires, or when a handoff rewrites the
  * question: all three mean the areas around the player now describe a world
  * that has moved.
  */
@@ -148,9 +158,9 @@ export function bumpEpoch(arc: Arc): Arc {
   return { ...arc, epoch: arc.epoch + 1 };
 }
 
-/** Has the spine fired? The one test for "this story is over". */
-export function spineFired(arc: Arc): boolean {
-  return arc.fronts.some((f) => f.id === arc.spine && f.status === "fired");
+/** Has the front fired? The one test for "this story is over". */
+export function frontFired(arc: Arc): boolean {
+  return arc.front?.status === "fired";
 }
 
 /**
@@ -208,8 +218,8 @@ export function handOff(
 /**
  * End an interlude with no staged arc to open — the player chose *move on* and
  * the handoff call never landed. The arc resumes rather than the campaign
- * stalling, and every open front's clock reference moves to today so the
- * suspended days don't arrive at once as a neglect burst.
+ * stalling, and the front's clock reference moves to today so the suspended
+ * days don't arrive at once as a neglect burst.
  */
 export function resumeArc(arc: Arc, day: number): Arc {
   if (arc.status !== "interlude") return arc;
@@ -217,12 +227,12 @@ export function resumeArc(arc: Arc, day: number): Arc {
     ...arc,
     status: "running",
     interludeFrom: undefined,
-    fronts: restFronts(arc.fronts, day),
+    front: restFront(arc.front, day),
   };
 }
 
 /* ------------------------------------------------------------------ *
- * The handoff call
+ * The arc call
  *
  * The arc's PROMPT blocks deliberately live in `prompt.ts` beside every other
  * block formatter, not here: this module builds a side call, so it imports
@@ -230,13 +240,19 @@ export function resumeArc(arc: Arc, day: number): Arc {
  * ------------------------------------------------------------------ */
 
 /**
- * The messages for the handoff — the highest-stakes call in the system, since
+ * The messages for the arc call — the highest-stakes call in the system, since
  * it writes the next several hours of play off a summary. That is exactly why
  * its result is STAGED rather than applied (see `Arc.staged`).
  *
  * Reads the journal, the arc that just closed, the cast and the world — never
  * the raw beats, which is the same discipline as every other authoring call
  * here: the beats are what the journal already compressed.
+ *
+ * Two of its inputs are the player's, taken straight off the Arc screen:
+ * `Settings.arcSteps` is the clock length it must write to (a number the client
+ * owns, so the model is told the count rather than asked for one), and
+ * `Settings.arcGuidance` is free-text direction, injected as its own block —
+ * blank adds nothing, exactly the way a blank instruction field removes a rule.
  */
 export function buildArcMessages(
   settings: Settings,
@@ -245,24 +261,34 @@ export function buildArcMessages(
   closing: Arc | undefined,
 ): ChatMessage[] {
   const messages: ChatMessage[] = [];
+  const steps = clampArcSteps(settings.arcSteps);
 
   messages.push({
     role: "system",
     content: [
       "NEXT ARC — you are writing the shape of the next chapter of an ongoing text adventure, not narrating it.",
       'Reply with a single JSON object and nothing else — no prose, no commentary, no code fences:',
-      '{ "question": "…", "fronts": [ { "id": "…", "label": "…", "steps": ["…", "…"] } ], "spine": "<one front id>" }',
+      '{ "question": "…", "front": { "label": "…", "steps": ["…", "…"] } }',
       "",
       "THE SHAPE",
       `- "question" is what this chapter is ABOUT, in one line. Not a task the player is given — a question the play answers.`,
-      `- "fronts" are the things closing in, at most ${MAX_FRONTS} of them. Each has a short "label" ("the mine floods") and "steps": what happens as it advances, worst last, 2 to ${MAX_CLOCK} of them. Write the steps in ADVANCE and in order.`,
-      `- "spine" is the id of the ONE front whose arrival ends this chapter. The others are texture.`,
+      `- "front" is the ONE thing closing in while that question is answered. "label" names it short ("the mine floods"). Its arrival ends the chapter, so make it worth arriving.`,
+      `- "steps" is what happens as it advances, in order, worst last. Write EXACTLY ${steps} of them, in advance.`,
+      "- The front is not tied to any one place: it closes in wherever the player is.",
       "- Nothing here is a number the player sees, and none of it is narrated at you. Do not write ticks, counters, days or scene directions.",
       settings.arcInstructions.trim(),
     ]
       .filter(Boolean)
       .join("\n"),
   });
+
+  const guidance = settings.arcGuidance.trim();
+  if (guidance) {
+    messages.push({
+      role: "system",
+      content: `WHAT THE PLAYER WANTS FROM THIS CHAPTER — authoritative. Write the arc they asked for.\n${guidance}`,
+    });
+  }
 
   const scenario = formatScenarioBlock(game.scenario);
   if (scenario) messages.push({ role: "system", content: scenario });
@@ -273,9 +299,13 @@ export function buildArcMessages(
       content: [
         "THE CHAPTER THAT JUST CLOSED — do not repeat it. The next one grows out of what it left behind.",
         closing.question.trim() ? `Question: ${closing.question.trim()}` : "",
-        ...closing.fronts.map(
-          (f) => `- ${f.label} — ${f.status}${f.status === "fired" ? ` (${nextStep(f)})` : ` ${clockFace(f)}`}`,
-        ),
+        closing.front
+          ? `- ${closing.front.label} — ${closing.front.status}${
+              closing.front.status === "fired"
+                ? ` (${nextStep(closing.front)})`
+                : ` ${clockFace(closing.front)}`
+            }`
+          : "",
       ]
         .filter(Boolean)
         .join("\n"),
@@ -306,9 +336,9 @@ export function buildArcMessages(
 /**
  * Pull an arc template out of a model reply. Tolerant about the wrapper (the
  * same `extractFirstJsonObject` the turn block uses), strict about the contents
- * — `normalizeTemplate` drops what it can't use, and a reply with no usable
- * front at all returns null so the caller can leave the arc alone rather than
- * staging an empty chapter.
+ * — `normalizeTemplate` drops what it can't use, and a reply with nothing usable
+ * in it returns null so the caller can leave the arc alone rather than staging
+ * an empty chapter.
  */
 export function parseArc(raw: string): ArcTemplate | null {
   const json = extractFirstJsonObject(raw);

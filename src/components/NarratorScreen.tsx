@@ -181,7 +181,7 @@ const FORESIGHT_FIELDS: InstrSpec[] = [
     label: "Arc Handoff",
     def: DEFAULT_ARC_INSTRUCTIONS,
     rows: 4,
-    hint: "How the next chapter is written when one ends. You always get to read it — and change it — before it starts.",
+    hint: "The standing rule for how a chapter is written. What you want from the next one in particular — and how long it runs — is on the Foresight → Arc screen.",
   },
   {
     key: "promiseInstructions",
@@ -537,8 +537,8 @@ function ForesightSection() {
             onClick={() => update({ costTicksFront: !s.costTicksFront })}
           />
           <p className="text-xs opacity-70">
-            A roll that costs you advances whatever is closing in on this region by one
-            step. Off leaves the clocks to time alone.
+            A roll that costs you advances whatever is closing in by one step, wherever
+            you rolled it. Off leaves the clock to time alone.
           </p>
 
           <ToggleRow

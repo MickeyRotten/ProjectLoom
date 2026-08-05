@@ -6,11 +6,7 @@ import { anchorClocks, closeInterlude, normalizeForesight, reckonTurn, seedArcs 
 
 const template = {
   question: "the consortium is buying the valley",
-  spine: "flood",
-  fronts: [
-    { id: "flood", label: "the mine floods", steps: ["a", "b"] },
-    { id: "warden", label: "the warden turns", steps: ["c", "d"] },
-  ],
+  front: { label: "the mine floods", steps: ["a", "b"] },
 };
 
 const area = (patch: Partial<AreaCard> = {}): AreaCard => ({
@@ -23,7 +19,6 @@ const area = (patch: Partial<AreaCard> = {}): AreaCard => ({
   neighbours: [],
   texture: "wet",
   threats: [],
-  front: "flood",
   rooms: {},
   ...patch,
 });
@@ -80,10 +75,17 @@ describe("the room → area join", () => {
 });
 
 describe("front ticking", () => {
-  it("ticks the front this region serves on a COST", () => {
+  it("ticks the front on a COST", () => {
     const out = run(game(), { outcome: "cost" });
-    expect(runningArc(out.arcs)?.fronts[0].ticks).toBe(1);
+    expect(runningArc(out.arcs)?.front?.ticks).toBe(1);
     expect(out.reckoning?.frontTicked).toBe("the mine floods");
+  });
+
+  it("ticks it wherever the roll happened — the front is global", () => {
+    // No area card at all: the region used to be the join, and a cost rolled
+    // outside it moved nothing.
+    const g = game({ areas: {}, areaKey: null });
+    expect(runningArc(run(g, { outcome: "cost" }).arcs)?.front?.ticks).toBe(1);
   });
 
   it("leaves everything alone on a STRONG", () => {
@@ -103,18 +105,17 @@ describe("front ticking", () => {
       block: null,
       outcome: "mixed",
     });
-    expect(runningArc(harsh.arcs)?.fronts[0].ticks).toBe(1);
-  });
-
-  it("does not tick when the region serves no front", () => {
-    const g = game({ areas: { murkwood: area({ front: undefined }) } });
-    expect(run(g, { outcome: "cost" }).arcs).toBe(g.arcs);
+    expect(runningArc(harsh.arcs)?.front?.ticks).toBe(1);
   });
 
   it("ticks a neglected front even on a quiet turn", () => {
     const out = run(game(), { day: 9 });
-    // Both fronts were last touched on day 1, so both move.
-    expect(runningArc(out.arcs)?.fronts.map((f) => f.ticks)).toEqual([1, 1]);
+    expect(runningArc(out.arcs)?.front?.ticks).toBe(1);
+  });
+
+  it("leaves an arc with no front alone", () => {
+    const g = game({ arcs: [{ ...openArc(template, "arc-1", 0, 1), front: undefined }] });
+    expect(run(g, { outcome: "cost", day: 99 }).arcs).toBe(g.arcs);
   });
 
   it("suspends every clock during an interlude", () => {
@@ -129,7 +130,7 @@ describe("firing, arrival and the interlude", () => {
     const once = run(g, { outcome: "cost" });
     const twice = run({ ...g, arcs: once.arcs }, { outcome: "cost" });
     const arc = runningArc(twice.arcs)!;
-    expect(arc.fronts[0].status).toBe("fired");
+    expect(arc.front?.status).toBe("fired");
     expect(arc.epoch).toBe(1);
     expect(twice.reckoning?.frontFired).toBe("the mine floods");
     // Still running: the arrival has to be NARRATED before the story can end on
@@ -141,30 +142,14 @@ describe("firing, arrival and the interlude", () => {
     let g = game();
     g = { ...g, arcs: run(g, { outcome: "cost" }).arcs };
     g = { ...g, arcs: run(g, { outcome: "cost" }).arcs };
-    expect(runningArc(g.arcs)!.fronts[0].status).toBe("fired");
+    expect(runningArc(g.arcs)!.front?.status).toBe("fired");
 
     const after = run(g);
     const arc = runningArc(after.arcs)!;
-    expect(arc.fronts[0].status).toBe("retired");
-    // It was the spine, so now the story closes.
+    expect(arc.front?.status).toBe("retired");
+    // The front arriving IS the end of the chapter.
     expect(arc.status).toBe("interlude");
     expect(arc.interludeFrom).toBe(5);
-  });
-
-  it("does not end the story when a non-spine front is spent", () => {
-    const g = game({
-      arcs: [
-        {
-          ...openArc(template, "arc-1", 0, 1),
-          fronts: openArc(template, "arc-1", 0, 1).fronts.map((f) =>
-            f.id === "warden" ? { ...f, status: "fired" as const, ticks: 2 } : f,
-          ),
-        },
-      ],
-    });
-    const arc = runningArc(run(g).arcs)!;
-    expect(arc.status).toBe("running");
-    expect(arc.fronts[1].status).toBe("retired");
   });
 
   it("applies a staged handoff when the interlude runs out", () => {
@@ -181,7 +166,7 @@ describe("firing, arrival and the interlude", () => {
     const back = runningArc(out.arcs)!;
     expect(back.status).toBe("running");
     // …with the clocks re-anchored, so the suspended days don't arrive at once.
-    expect(back.fronts.every((f) => f.lastTickDay === 40)).toBe(true);
+    expect(back.front?.lastTickDay).toBe(40);
   });
 });
 
@@ -237,7 +222,7 @@ describe("normalizeForesight / anchorClocks", () => {
   it("moves the clocks forward without ticking anything", () => {
     const g = game();
     const arcs = anchorClocks(g.arcs!, 12);
-    expect(arcs[0].fronts.every((f) => f.lastTickDay === 12 && f.ticks === 0)).toBe(true);
+    expect(arcs[0].front).toMatchObject({ lastTickDay: 12, ticks: 0 });
     expect(anchorClocks(arcs, 12)).toBe(arcs);
   });
 });

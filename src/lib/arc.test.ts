@@ -2,9 +2,9 @@ import { describe, it, expect } from "vitest";
 import type { Arc, ArcTemplate } from "../types";
 import { newGame, defaultSettings } from "./defaults";
 import {
-  MAX_FRONTS,
   buildArcMessages,
   bumpEpoch,
+  frontFired,
   handOff,
   hasArc,
   interludeOver,
@@ -15,35 +15,46 @@ import {
   parseArc,
   resumeArc,
   runningArc,
-  spineFired,
   toInterlude,
 } from "./arc";
 
 const template: ArcTemplate = {
   question: "the consortium is buying the valley",
-  spine: "flood",
-  fronts: [
-    { id: "flood", label: "the mine floods", steps: ["a", "b"] },
-    { id: "warden", label: "the warden turns", steps: ["c", "d", "e"] },
-  ],
+  front: { label: "the mine floods", steps: ["a", "b"] },
 };
 
 const opened = (day = 1) => openArc(template, "arc-1", 0, day);
 
 describe("normalizeTemplate", () => {
-  it("keeps the authored shape and caps the fronts", () => {
-    const many = normalizeTemplate({
-      question: "q",
-      spine: "f0",
-      fronts: Array.from({ length: 9 }, (_, i) => ({ id: `f${i}`, label: `l${i}`, steps: ["x", "y"] })),
-    });
-    expect(many.fronts).toHaveLength(MAX_FRONTS);
+  it("keeps the authored shape", () => {
+    const clean = normalizeTemplate(template);
+    expect(clean.question).toBe("the consortium is buying the valley");
+    expect(clean.front?.steps).toEqual(["a", "b"]);
+    // A template carries no clock: ticks and status belong to the instance.
+    expect(clean.front).toEqual({ label: "the mine floods", steps: ["a", "b"] });
   });
 
-  it("falls a spine naming nothing back to the first front", () => {
-    // An arc that can never complete is worse than one that ends on the wrong beat.
-    expect(normalizeTemplate({ ...template, spine: "nobody" }).spine).toBe("flood");
-    expect(normalizeTemplate({ fronts: [] }).spine).toBe("");
+  it("folds the old fronts[] + spine pair onto the one front", () => {
+    // Every arc stored before the collapse. The spine is the front that ended
+    // the chapter, so it is the one that survives.
+    const legacy = normalizeTemplate({
+      question: "q",
+      spine: "warden",
+      fronts: [
+        { id: "flood", label: "the mine floods", steps: ["a", "b"] },
+        { id: "warden", label: "the warden turns", steps: ["c", "d"] },
+      ],
+    } as unknown as Partial<ArcTemplate>);
+    expect(legacy.front?.label).toBe("the warden turns");
+
+    // A spine naming nothing falls back to the first, rather than to no front
+    // at all — an arc that can never complete is worse than a wrong one.
+    const orphan = normalizeTemplate({
+      question: "q",
+      spine: "nobody",
+      fronts: [{ id: "flood", label: "the mine floods", steps: ["a", "b"] }],
+    } as unknown as Partial<ArcTemplate>);
+    expect(orphan.front?.label).toBe("the mine floods");
   });
 
   it("reads a blank template as no arc at all", () => {
@@ -58,8 +69,7 @@ describe("normalizeArc", () => {
     const arc = normalizeArc({
       id: "",
       question: " q ",
-      spine: "flood",
-      fronts: [{ id: "flood", label: "l", steps: ["a", "b"], ticks: 99 }] as Arc["fronts"],
+      front: { label: "l", steps: ["a", "b"], ticks: 99 } as Arc["front"],
       epoch: -3,
       status: "melted" as Arc["status"],
     });
@@ -67,29 +77,39 @@ describe("normalizeArc", () => {
     expect(arc.question).toBe("q");
     expect(arc.epoch).toBe(0);
     expect(arc.status).toBe("running");
-    expect(arc.fronts[0].ticks).toBe(2);
+    expect(arc.front?.ticks).toBe(2);
+  });
+
+  it("keeps a stored instance's ticks through the fronts[] fold", () => {
+    const arc = normalizeArc({
+      id: "arc-1",
+      question: "q",
+      spine: "flood",
+      fronts: [{ id: "flood", label: "l", steps: ["a", "b", "c"], ticks: 2, lastTickDay: 4, status: "open" }],
+    } as unknown as Partial<Arc>);
+    expect(arc.front?.ticks).toBe(2);
+    expect(arc.front?.lastTickDay).toBe(4);
+  });
+
+  it("leaves an arc with no front frontless rather than inventing one", () => {
+    expect(normalizeArc({ id: "a", question: "q" }).front).toBeUndefined();
   });
 });
 
 describe("the arc's life", () => {
-  it("opens every front on the day it starts", () => {
+  it("opens the front on the day it starts", () => {
     const arc = opened(4);
     expect(arc.status).toBe("running");
-    expect(arc.fronts.every((f) => f.lastTickDay === 4 && f.ticks === 0)).toBe(true);
+    expect(arc.front?.lastTickDay).toBe(4);
+    expect(arc.front?.ticks).toBe(0);
   });
 
-  it("resolves when the SPINE fires, and not when anything else does", () => {
+  it("resolves when the front fires", () => {
     const arc = opened();
-    const other = {
-      ...arc,
-      fronts: arc.fronts.map((f) => (f.id === "warden" ? { ...f, status: "fired" as const } : f)),
-    };
-    expect(spineFired(other)).toBe(false);
-    const spine = {
-      ...arc,
-      fronts: arc.fronts.map((f) => (f.id === "flood" ? { ...f, status: "fired" as const } : f)),
-    };
-    expect(spineFired(spine)).toBe(true);
+    expect(frontFired(arc)).toBe(false);
+    expect(frontFired({ ...arc, front: { ...arc.front!, status: "fired" } })).toBe(true);
+    // Retired is spent, not arriving: the interlude has already begun.
+    expect(frontFired({ ...arc, front: { ...arc.front!, status: "retired" } })).toBe(false);
   });
 
   it("counts an interlude from the turn it began", () => {
@@ -102,12 +122,12 @@ describe("the arc's life", () => {
     expect(interludeOver(opened(), 999, 6)).toBe(false);
   });
 
-  it("re-anchors every clock when an interlude resumes without a handoff", () => {
+  it("re-anchors the clock when an interlude resumes without a handoff", () => {
     const arc = toInterlude(opened(1), 10);
     const back = resumeArc(arc, 9);
     expect(back.status).toBe("running");
     expect(back.interludeFrom).toBeUndefined();
-    expect(back.fronts.every((f) => f.lastTickDay === 9)).toBe(true);
+    expect(back.front?.lastTickDay).toBe(9);
   });
 
   it("bumps the epoch, which is what makes every area under it stale", () => {
@@ -122,7 +142,7 @@ describe("handOff", () => {
     expect(arcs[0].status).toBe("done");
     expect(arcs[1].id).toBe("arc-2");
     expect(arcs[1].openedTurn).toBe(40);
-    expect(arcs[1].fronts.every((f) => f.lastTickDay === 6)).toBe(true);
+    expect(arcs[1].front?.lastTickDay).toBe(6);
   });
 
   it("drops the staged template off the arc it closes", () => {
@@ -145,10 +165,15 @@ describe("handOff", () => {
 describe("parseArc", () => {
   it("reads a fenced, chatty reply", () => {
     const arc = parseArc(
-      'Sure!\n```json\n{ "question": "who owns the water", "fronts": [ { "id": "a", "label": "the well dries", "steps": ["x", "y"] } ], "spine": "a" }\n```',
+      'Sure!\n```json\n{ "question": "who owns the water", "front": { "label": "the well dries", "steps": ["x", "y"] } }\n```',
     );
     expect(arc?.question).toBe("who owns the water");
-    expect(arc?.spine).toBe("a");
+    expect(arc?.front?.label).toBe("the well dries");
+  });
+
+  it("still reads a model that reaches for the old plural", () => {
+    const arc = parseArc('{ "question": "q", "fronts": [ { "label": "the well dries", "steps": ["x"] } ] }');
+    expect(arc?.front?.label).toBe("the well dries");
   });
 
   it("returns null when there is nothing usable, so the arc is left alone", () => {
@@ -178,6 +203,27 @@ describe("buildArcMessages", () => {
     expect(text).toContain("the consortium is buying the valley");
     expect(text).toContain("Crossed the marsh.");
     expect(text).not.toContain("A VERY DISTINCTIVE BEAT");
+  });
+
+  it("asks for exactly the number of steps the player set", () => {
+    const settings = { ...defaultSettings(), arcSteps: 7 };
+    const text = buildArcMessages(settings, newGame(), [], undefined)
+      .map((m) => m.content)
+      .join("\n");
+    expect(text).toContain("EXACTLY 7 of them");
+  });
+
+  it("injects the player's guidance, and nothing at all when it is blank", () => {
+    const game = newGame();
+    const blank = buildArcMessages(defaultSettings(), game, [], undefined);
+    const guided = buildArcMessages(
+      { ...defaultSettings(), arcGuidance: "  keep it inside the city  " },
+      game,
+      [],
+      undefined,
+    );
+    expect(guided).toHaveLength(blank.length + 1);
+    expect(guided.map((m) => m.content).join("\n")).toContain("keep it inside the city");
   });
 
   it("works with no arc closing — the first handoff of a campaign", () => {

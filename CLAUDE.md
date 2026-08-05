@@ -754,6 +754,31 @@ a cache, so undo puts the player back in a room whose card is still there.
 `Message.reckoning` carries what the client did, apart from `appliedDeltas`,
 which is a record of what the model said. Off is total: no call, no block, no
 tick, nothing deleted.
+Post-MVP also: **one front, and it is the player's brief** — the arc shipped
+carrying up to four fronts with one of them named the **spine**; the other three
+were texture, each served by whichever areas named it, so a clock only moved
+while the player stood in the right part of the map and three of the four were
+invisible. Now an arc is a question and the ONE thing closing in while it is
+answered: `ArcTemplate.front?` / `Arc.front?` replace `fronts[]`, `spine` and
+`FrontTemplate.id` are gone, `AreaCard.front` is gone (a region cannot be the
+reason a clock stopped), and every `fronts.ts` export went singular
+(`normalizeFront`/`openFront`/`liveFront`/`tickFront`/`tickNeglect`/`restFront`/
+`formatFrontLine`, `TickResult` carrying one front and two nullable labels).
+`reckonTurn` ticks on the band alone — the room→area join no longer gates it —
+and the front's arrival IS the end of the chapter, so `spineFired` is
+`frontFired`. **Migration is at READ**: `arc.ts → pickFront` folds the stored
+`fronts[]`+`spine` pair onto the one front (spine first, else the first), which
+also makes `parseArc` tolerant of a model still reaching for the plural.
+Alongside it the arc call became **AI-assisted authoring the player briefs**:
+`Settings.arcGuidance` (free text, its own authoritative block, blank injects
+nothing so the prompt is byte-identical to before) and `Settings.arcSteps`
+(`clampArcSteps`, bounded by `MIN_CLOCK`…`MAX_CLOCK` rather than a number of its
+own, so asking for ten and storing eight cannot happen) are both fed to
+`buildArcMessages`, which now TELLS the model the step count instead of asking
+for one. Both are edited on **Foresight → Arc** beside the ✦ button that spends
+them — `arcInstructions` is the standing rule about what an arc is, this is the
+story in hand — and being `Settings` keys they also brief the interlude's
+automatic handoff.
 
 Deferred (post-MVP): rolling LLM summarization of the beats themselves,
 NPC/item art, TTS, weather animation, multi-world. Track scope in

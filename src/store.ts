@@ -511,7 +511,7 @@ export interface LoomStore {
   applyStagedArc: () => void;
   /** *Move on* — end the interlude by hand rather than waiting it out. */
   endInterlude: () => void;
-  /** Edit the running arc (question, spine, fronts, manual ticks). */
+  /** Edit the running arc (question, the front's steps, manual ticks). */
   updateArc: (patch: Partial<Arc>) => void;
   /** Drop one outstanding promise — the player closing it off by hand. */
   closePromise: (id: string) => void;
@@ -755,7 +755,7 @@ export const useStore = create<LoomStore>((set, get) => {
       messages: buildAreaMessages(settings, game, name, arc, game.promises ?? []),
       temperature: AREA_PREP_TEMPERATURE,
     });
-    const parsed = parseAreaCard(raw, arc);
+    const parsed = parseAreaCard(raw);
     if (!parsed) return;
 
     const now = get().game;
@@ -1412,7 +1412,7 @@ export const useStore = create<LoomStore>((set, get) => {
     // never authored one, or the player deleted theirs — so the same call opens
     // one directly. Without this the arc scope is unreachable: an interlude is
     // the only other thing that writes an arc, and an interlude can only begin
-    // when an arc's spine fires.
+    // when an arc's front fires.
     if (!arc) {
       set({ foresightPending: true, foresightError: null });
       try {

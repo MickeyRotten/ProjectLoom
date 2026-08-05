@@ -1,9 +1,10 @@
 import type { Arc, Front } from "../types";
 import { useStore } from "../store";
 import { SubMenuScreen, MenuLink, type SubMenuSection } from "./SubMenuScreen";
-import { AreaField, Section, TextField, btn, btnSmall } from "./fields";
+import { AreaField, Field, Section, TextField, btn, btnSmall } from "./fields";
 import { useConfirm } from "./useConfirm";
-import { clockFace, nextStep } from "../lib/fronts";
+import { MAX_CLOCK, MIN_CLOCK, clockFace, nextStep } from "../lib/fronts";
+import { clampArcSteps } from "../lib/settings";
 import { runningArc } from "../lib/arc";
 import { areaIsStale, currentArea, currentRoom, roomIsStale } from "../lib/gazetteer";
 
@@ -16,8 +17,9 @@ import { areaIsStale, currentArea, currentRoom, roomIsStale } from "../lib/gazet
  * model has to be readable and editable, or a fact it quietly got wrong is
  * unfixable.
  *
- * Four sub-menus, widest scope first — **Arc** (the question, the fronts, and
- * their clocks), **Region**, **Room**, **Promises**.
+ * Four sub-menus, widest scope first — **Arc** (the question, the one front and
+ * its clock, and the ✦ controls that write both), **Region**, **Room**,
+ * **Promises**.
  */
 
 /** Blank when Foresight is switched off — the one thing worth saying then. */
@@ -61,21 +63,17 @@ function PrepStatus() {
  * ------------------------------------------------------------------ */
 
 /**
- * One front: its label, its clock, the step it is about to reach, and manual
+ * The front: its label, its clock, the step it is about to reach, and manual
  * ± on the ticks.
  *
  * The manual ticks are deliberate. Every clock in this app is client-owned
  * precisely so nothing can move one behind the player's back — which makes the
  * player the one party who is allowed to.
  */
-function FrontRow({ arc, front }: { arc: Arc; front: Front }) {
+function FrontRow({ front }: { front: Front }) {
   const updateArc = useStore((s) => s.updateArc);
-  const spine = arc.spine === front.id;
 
-  const write = (patch: Partial<Front>) =>
-    updateArc({
-      fronts: arc.fronts.map((f) => (f.id === front.id ? { ...f, ...patch } : f)),
-    });
+  const write = (patch: Partial<Front>) => updateArc({ front: { ...front, ...patch } });
 
   const setTicks = (ticks: number) =>
     write({
@@ -87,14 +85,15 @@ function FrontRow({ arc, front }: { arc: Arc; front: Front }) {
 
   return (
     <div className="space-y-2 border-2 border-ink p-3">
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="font-bold">{front.label}</span>
-        <span className="text-xs uppercase tracking-widest opacity-60">
-          {spine ? "spine" : front.status}
-        </span>
-      </div>
+      <TextField
+        label="What Is Closing In"
+        value={front.label}
+        onChange={(v) => write({ label: v })}
+        placeholder="the mine floods"
+      />
 
       <div className="flex items-center gap-2">
+        <span className="text-xs uppercase tracking-widest opacity-60">{front.status}</span>
         <span className="tracking-widest" aria-label={`${front.ticks} of ${front.steps.length}`}>
           {clockFace(front)}
         </span>
@@ -125,9 +124,68 @@ function FrontRow({ arc, front }: { arc: Arc; front: Front }) {
   );
 }
 
+/**
+ * The two inputs to every arc the model writes, edited where they are spent
+ * rather than in the Foresight settings: free-text direction, and how many steps
+ * the front gets — which is how long the chapter runs.
+ *
+ * Both are `Settings` keys, so they persist and the interlude's automatic
+ * handoff writes to them too. Blank guidance adds no block at all, exactly the
+ * way a blank instruction field removes a rule.
+ */
+function ArcGeneration({ label }: { label: string }) {
+  const s = useStore((st) => st.settings);
+  const update = useStore((st) => st.updateSettings);
+  const write = useStore((st) => st.stageNextArc);
+  const pending = useStore((st) => st.foresightPending);
+  const enabled = useStore((st) => st.settings.foresightEnabled);
+
+  return (
+    <>
+      <AreaField
+        label="Guidance"
+        value={s.arcGuidance}
+        rows={2}
+        onChange={(v) => update({ arcGuidance: v })}
+        placeholder="Anything you want from the next chapter — leave blank and it decides"
+      />
+
+      <Field label="Steps">
+        <input
+          type="number"
+          inputMode="numeric"
+          min={MIN_CLOCK}
+          max={MAX_CLOCK}
+          step={1}
+          value={s.arcSteps}
+          onChange={(e) => update({ arcSteps: clampArcSteps(e.target.valueAsNumber) })}
+          className="w-full border-2 border-ink bg-paper p-2 focus:outline-none"
+        />
+        <p className="text-xs opacity-70">
+          How many steps the threat takes before it arrives — the length of the chapter.
+          {" "}
+          {MIN_CLOCK}–{MAX_CLOCK}.
+        </p>
+      </Field>
+
+      <button
+        type="button"
+        onClick={() => void write(true)}
+        disabled={pending || !enabled}
+        className={`w-full ${btn}`}
+      >
+        ✦ {label}
+      </button>
+      <p className="text-xs opacity-70">
+        Written from the scenario, your cast and what has happened so far. Everything it
+        writes is editable here afterwards.
+      </p>
+    </>
+  );
+}
+
 /** The staged next arc — Use / Regenerate, the `GenerateModal` shape one level up. */
 function StagedArc({ arc }: { arc: Arc }) {
-  const stage = useStore((s) => s.stageNextArc);
   const apply = useStore((s) => s.applyStagedArc);
   const pending = useStore((s) => s.foresightPending);
   const staged = arc.staged;
@@ -138,77 +196,23 @@ function StagedArc({ arc }: { arc: Arc }) {
       {staged ? (
         <>
           <p className="text-sm">{staged.question || "—"}</p>
-          <ul className="space-y-1 text-sm opacity-70">
-            {staged.fronts.map((f) => (
-              <li key={f.id}>
-                · {f.label}
-                {f.id === staged.spine ? " (spine)" : ""}
-              </li>
-            ))}
-          </ul>
-          <div className="flex gap-2">
-            <button type="button" onClick={apply} disabled={pending} className={`flex-1 ${btn}`}>
-              Use This
-            </button>
-            <button
-              type="button"
-              onClick={() => void stage(true)}
-              disabled={pending}
-              className={`flex-1 ${btn}`}
-            >
-              Generate Again
-            </button>
-          </div>
-        </>
-      ) : (
-        <>
-          <p className="text-sm opacity-70">
-            Nothing written yet. It arrives on its own during the interlude — or ask for
-            it now.
-          </p>
-          <button
-            type="button"
-            onClick={() => void stage(true)}
-            disabled={pending}
-            className={`w-full ${btn}`}
-          >
-            Write The Next Arc
+          {staged.front && <p className="text-sm opacity-70">· {staged.front.label}</p>}
+          <button type="button" onClick={apply} disabled={pending} className={`w-full ${btn}`}>
+            Use This
           </button>
         </>
+      ) : (
+        <p className="text-sm opacity-70">
+          Nothing written yet. It arrives on its own during the interlude — or ask for it
+          now.
+        </p>
       )}
+      <ArcGeneration label={staged ? "Generate Again" : "Write The Next Arc"} />
       <p className="text-xs opacity-70">
         If you never open this, whatever is written here starts by itself when the
         interlude runs out.
       </p>
     </div>
-  );
-}
-
-/**
- * Write an arc from where the story already is — the scenario, the cast and the
- * journal. Offered when there is none, since otherwise the only thing that ever
- * writes one is a chapter ending, and a chapter cannot end without an arc to end
- * it.
- */
-function WriteArcButton() {
-  const write = useStore((s) => s.stageNextArc);
-  const pending = useStore((s) => s.foresightPending);
-  const enabled = useStore((s) => s.settings.foresightEnabled);
-  return (
-    <>
-      <button
-        type="button"
-        onClick={() => void write(true)}
-        disabled={pending || !enabled}
-        className={`w-full ${btn}`}
-      >
-        Write An Arc
-      </button>
-      <p className="text-xs opacity-70">
-        Written from the scenario, your cast and what has happened so far. Everything it
-        writes is editable here afterwards.
-      </p>
-    </>
   );
 }
 
@@ -226,12 +230,12 @@ function ArcSection() {
         <PrepStatus />
         <p className="uppercase tracking-widest opacity-60">No arc yet.</p>
         <p className="text-xs opacity-70">
-          An arc is what this chapter of the story is about, plus the things closing in on
-          you while it runs. Regions and rooms are still prepared without one — this is the
-          layer above them, and it is what makes a threat get closer while you are
+          An arc is what this chapter of the story is about, plus the one thing closing in
+          on you while it runs. Regions and rooms are still prepared without one — this is
+          the layer above them, and it is what makes a threat get closer while you are
           elsewhere.
         </p>
-        <WriteArcButton />
+        <ArcGeneration label="Write An Arc" />
       </>
     );
   }
@@ -262,17 +266,16 @@ function ArcSection() {
         </>
       )}
 
-      <Section label="Fronts" />
-      {arc.fronts.length === 0 && (
+      <Section label="The Front" />
+      {arc.front ? (
+        <FrontRow front={arc.front} />
+      ) : (
         <p className="text-xs uppercase tracking-widest opacity-60">None.</p>
       )}
-      {arc.fronts.map((front) => (
-        <FrontRow key={front.id} arc={arc} front={front} />
-      ))}
       <p className="text-xs opacity-70">
-        A front advances when a roll costs you something in the region it is attached to,
-        and on its own if it is left alone too long. The one marked <em>spine</em> ends
-        the chapter when it arrives.
+        The front advances when a roll costs you something — anywhere, it is not tied to
+        one place — and on its own if it is left alone too long. When it arrives, the
+        chapter ends.
       </p>
 
       {past.length > 0 && (

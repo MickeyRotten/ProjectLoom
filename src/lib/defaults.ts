@@ -219,7 +219,7 @@ export const DEFAULT_SCENE_PREP_INSTRUCTIONS = `Write what this PLACE does, neve
 export const DEFAULT_AREA_PREP_INSTRUCTIONS = `Write the region's standing pressure — what is true anywhere inside it, all the time. Threats are conditions with teeth ("anything loud brings a patrol within the hour"), not incidents. Room names are places somebody who lived here would name: short, concrete, and no two alike.`;
 
 /** What the handoff call writes when one chapter closes and the next opens. */
-export const DEFAULT_ARC_INSTRUCTIONS = `The next chapter grows out of what the last one left behind — a consequence, a debt, a person who survived. Write fronts that move whether or not the player touches them, and whose steps escalate in a way the player could see coming if they were paying attention. The question is what the play answers, not a task the player is handed.`;
+export const DEFAULT_ARC_INSTRUCTIONS = `The next chapter grows out of what the last one left behind — a consequence, a debt, a person who survived. Write a front that moves whether or not the player touches it, and whose steps escalate in a way the player could see coming if they were paying attention. The question is what the play answers, not a task the player is handed.`;
 
 /** How the narrator plants and pays off a promise. */
 export const DEFAULT_PROMISE_INSTRUCTIONS = `Plant a promise when your prose commits to something you have not yet delivered — a sound with no source, a name nobody explains, a look that means something. Pay it off within a few turns and remove it, or let the story drop it. Never plant one you have no intention of returning to.`;
@@ -243,6 +243,13 @@ export const DEFAULT_PROMISE_TURNS = 8;
 
 /** How long an interlude runs before the staged next arc applies itself. */
 export const DEFAULT_INTERLUDE_TURNS = 6;
+
+/**
+ * Steps on a generated arc's front — its clock, and so how long the chapter
+ * runs. Four: long enough that the player watches it come, short enough that a
+ * chapter ends inside a session or two.
+ */
+export const DEFAULT_ARC_STEPS = 4;
 
 /**
  * Thinking effort for the text model. `auto` ships because it is the only value
@@ -342,6 +349,10 @@ export function defaultSettings(): Settings {
     scenePrepInstructions: DEFAULT_SCENE_PREP_INSTRUCTIONS,
     areaPrepInstructions: DEFAULT_AREA_PREP_INSTRUCTIONS,
     arcInstructions: DEFAULT_ARC_INSTRUCTIONS,
+    // Blank: the arc call is byte-identical to one built before the field
+    // existed until the player writes something into it.
+    arcGuidance: "",
+    arcSteps: DEFAULT_ARC_STEPS,
     promiseInstructions: DEFAULT_PROMISE_INSTRUCTIONS,
     sceneBoundaryTurns: DEFAULT_SCENE_BOUNDARY_TURNS,
     frontNeglectDays: DEFAULT_FRONT_NEGLECT_DAYS,
