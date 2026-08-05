@@ -6,7 +6,7 @@ import { activeTemplate } from "./imageTemplates";
 
 /**
  * ComfyUI as a second image backend (DESIGN.md → Image Generation → Backends).
- * A local ComfyUI instance draws the same portraits and location banners the
+ * A local ComfyUI instance draws the same portraits the
  * OpenRouter path does; `images.ts → generateImage` picks between them on
  * `Settings.imageBackend`, and everything downstream — the 1-bit pass, the
  * `src:` master, IndexedDB, the failure badge — only ever sees a Blob.
@@ -309,10 +309,10 @@ function snap64(n: number): number {
 }
 
 /**
- * The pixel size for one image. Banners take the configured size verbatim;
- * portraits pass `aspectRatio: "2:3"` (the same string the OpenRouter path
- * sends as `image_config.aspect_ratio`) and get that shape at the same pixel
- * AREA, so switching backends doesn't change how much work a portrait is.
+ * The pixel size for one image. With no ratio it is the configured size
+ * verbatim; portraits pass `aspectRatio: "2:3"` (the same string the OpenRouter
+ * path sends as `image_config.aspect_ratio`) and get that shape at the same
+ * pixel AREA, so switching backends doesn't change how much work a portrait is.
  *
  * An unparseable ratio falls back to the configured size rather than guessing —
  * a wrong shape is recoverable, a zero-width latent is not.

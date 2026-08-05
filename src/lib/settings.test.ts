@@ -366,7 +366,6 @@ describe("loadSettings migrations", () => {
 
   it("carries the old flat image-prompt fields onto the prose template", () => {
     write({
-      bannerInstructions: "My banner style.",
       portraitStyle: "My ink style.",
       appearanceInstructions: "Three vivid clauses.",
       comfyNegativePrompt: "blurry, lowres",
@@ -374,7 +373,6 @@ describe("loadSettings migrations", () => {
     const s = loadSettings();
     expect(s.imageTemplateId).toBe(PROSE_TEMPLATE_ID);
     const prose = activeTemplate(s);
-    expect(prose.bannerInstructions).toBe("My banner style.");
     expect(prose.portraitStyle).toBe("My ink style.");
     expect(prose.appearanceInstructions).toBe("Three vivid clauses.");
     expect(prose.negativePrompt).toBe("blurry, lowres");

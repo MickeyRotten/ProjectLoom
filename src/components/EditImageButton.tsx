@@ -3,7 +3,7 @@ import { useState } from "react";
 /**
  * ✎ button for images: opens a modal text box, submits the instruction to an
  * image-edit action (image + text → image). Shown next to the ⟳ regenerate
- * button on the banner and portraits.
+ * button on a portrait.
  */
 export function EditImageButton({
   label,

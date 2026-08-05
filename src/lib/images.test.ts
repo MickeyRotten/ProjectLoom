@@ -1,12 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  bannerCooldownLeft,
-  bannerKey,
-  bannerOnCooldown,
   blobToDataUrl,
-  clampBannerCooldown,
-  MAX_BANNER_COOLDOWN,
-  buildBannerPrompt,
   buildEditPrompt,
   buildPortraitPrompt,
   dataUrlToBlob,
@@ -14,11 +8,8 @@ import {
   exportScale,
   extractImageDataUrl,
   extractMessageText,
-  bannerAllowed,
   generateImage,
   ImageError,
-  imageKeysOfKind,
-  imageKindOf,
   imageRequestKey,
   imagesAllowed,
   imageEditAllowed,
@@ -45,7 +36,6 @@ function tpl(overrides: Partial<ImagePromptTemplate> = {}): ImagePromptTemplate 
     id: "t",
     name: "Test",
     format: "prose",
-    bannerInstructions: "",
     portraitAction: "",
     portraitContext: "",
     portraitComposition: "",
@@ -63,61 +53,14 @@ afterEach(() => {
 });
 
 describe("cache keys", () => {
-  it("banner key is case/whitespace-insensitive", () => {
-    expect(bannerKey("The Dusty Path")).toBe("banner:the dusty path");
-    expect(bannerKey("  THE DUSTY PATH  ")).toBe(bannerKey("the dusty path"));
-  });
-
   it("portrait key is the raw member id", () => {
     expect(portraitKey("m-navi")).toBe("portrait:m-navi");
   });
 
   it("source key namespaces the master copy under its display key", () => {
     expect(sourceKey(portraitKey("m-navi"))).toBe("src:portrait:m-navi");
-    expect(sourceKey(bannerKey("Ruins"))).toBe("src:banner:ruins");
     // Never collides with a display key — that would overwrite the art itself.
     expect(sourceKey(portraitKey("m-navi"))).not.toBe(portraitKey("m-navi"));
-  });
-});
-
-describe("image kinds (purge)", () => {
-  it("reads a kind off a display key", () => {
-    expect(imageKindOf(bannerKey("Ruins"))).toBe("banner");
-    expect(imageKindOf(portraitKey("m-navi"))).toBe("portrait");
-  });
-
-  it("counts a master as its subject", () => {
-    // The master is the BIG copy, so a purge that skipped it would free nothing
-    // and leave ✎ able to edit art the player deleted.
-    expect(imageKindOf(sourceKey(bannerKey("Ruins")))).toBe("banner");
-    expect(imageKindOf(sourceKey(portraitKey("m-navi")))).toBe("portrait");
-  });
-
-  it("claims nothing it doesn't recognise", () => {
-    expect(imageKindOf("font:vt323:0")).toBeNull();
-    expect(imageKindOf("src:font:vt323:0")).toBeNull();
-    expect(imageKindOf("")).toBeNull();
-    // A location merely CONTAINING the word is not a key of ours.
-    expect(imageKindOf("banner")).toBeNull();
-  });
-
-  it("filters a keyspace down to one kind, masters included", () => {
-    const keys = [
-      bannerKey("Ruins"),
-      sourceKey(bannerKey("Ruins")),
-      portraitKey("m-navi"),
-      sourceKey(portraitKey("m-navi")),
-      "font:vt323:0",
-    ];
-    expect(imageKeysOfKind(keys, "banner")).toEqual(["banner:ruins", "src:banner:ruins"]);
-    expect(imageKeysOfKind(keys, "portrait")).toEqual([
-      "portrait:m-navi",
-      "src:portrait:m-navi",
-    ]);
-    // Every key of ours belongs to exactly one purge.
-    expect(imageKeysOfKind(keys, "banner").concat(imageKeysOfKind(keys, "portrait"))).toHaveLength(
-      keys.length - 1,
-    );
   });
 });
 
@@ -125,92 +68,24 @@ describe("slotImageKeys", () => {
   const cast = (...ids: string[]) => ids.map((id) => ({ id, name: id }) as Character);
   const saved = (patch: Partial<GameState>): GameState => ({ ...newGame(), ...patch });
 
-  it("names the cast's portraits and the banner of where the save was taken", () => {
-    const game = saved({ characters: cast("pc", "m-navi"), location: "Boars Head Tavern" });
-    expect(slotImageKeys(game).sort()).toEqual(
-      ["banner:boars head tavern", "portrait:m-navi", "portrait:pc"].sort(),
-    );
+  it("names the cast's portraits", () => {
+    const game = saved({ characters: cast("pc", "m-navi") });
+    expect(slotImageKeys(game).sort()).toEqual(["portrait:m-navi", "portrait:pc"].sort());
   });
 
   it("leaves the masters out — a restore needs the picture, not the negative", () => {
-    const game = saved({ characters: cast("pc"), location: "Ruins" });
+    const game = saved({ characters: cast("pc") });
     expect(slotImageKeys(game).some((k) => k.startsWith("src:"))).toBe(false);
-  });
-
-  it("asks for no banner when the save has nowhere to draw", () => {
-    const game = saved({ characters: cast("pc"), location: "   " });
-    expect(slotImageKeys(game)).toEqual(["portrait:pc"]);
   });
 
   it("survives a slot written before the cast lived in the game", () => {
     // Pulled from the cloud, so the shape is whatever an older build wrote.
     const legacy = { location: "Ruins" } as unknown as GameState;
-    expect(slotImageKeys(legacy)).toEqual(["banner:ruins"]);
-  });
-});
-
-describe("banner cooldown", () => {
-  it("clamps a typed cooldown to whole turns in range", () => {
-    expect(clampBannerCooldown(3)).toBe(3);
-    expect(clampBannerCooldown(2.7)).toBe(2);
-    expect(clampBannerCooldown(-5)).toBe(0);
-    expect(clampBannerCooldown(NaN)).toBe(0);
-    expect(clampBannerCooldown(1e6)).toBe(MAX_BANNER_COOLDOWN);
-  });
-
-  it("is off at 0, and off when nothing has ever been generated", () => {
-    expect(bannerOnCooldown(0, 5, 6)).toBe(false);
-    expect(bannerOnCooldown(3, undefined, 9)).toBe(false);
-  });
-
-  it("blocks exactly the N turns after the generating turn", () => {
-    // Generated on turn 10 with cooldown 3 → 11, 12, 13 blocked; 14 draws.
-    expect(bannerOnCooldown(3, 10, 10)).toBe(true);
-    expect(bannerOnCooldown(3, 10, 11)).toBe(true);
-    expect(bannerOnCooldown(3, 10, 13)).toBe(true);
-    expect(bannerOnCooldown(3, 10, 14)).toBe(false);
-    expect(bannerOnCooldown(3, 10, 40)).toBe(false);
-  });
-
-  it("counts down the turns left to wait", () => {
-    expect(bannerCooldownLeft(3, 10, 11)).toBe(3);
-    expect(bannerCooldownLeft(3, 10, 12)).toBe(2);
-    expect(bannerCooldownLeft(3, 10, 13)).toBe(1);
-    expect(bannerCooldownLeft(3, 10, 14)).toBe(0);
-  });
-
-  it("holds the wait when undo walks the turn number back past the stamp", () => {
-    expect(bannerOnCooldown(3, 10, 8)).toBe(true);
-    expect(bannerCooldownLeft(3, 10, 8)).toBe(4);
+    expect(slotImageKeys(legacy)).toEqual([]);
   });
 });
 
 describe("prompt builders", () => {
-  it("banner prompt folds in style, location, and excerpt", () => {
-    const p = buildBannerPrompt(
-      "The Dusty Path",
-      "Grit stings your eyes.",
-      tpl({ bannerInstructions: "1-bit line art." }),
-    );
-    expect(p).toContain("1-bit line art.");
-    expect(p).toContain("Location: The Dusty Path.");
-    expect(p).toContain("Scene: Grit stings your eyes.");
-  });
-
-  it("banner prompt omits an empty excerpt", () => {
-    const p = buildBannerPrompt("Ruins", "   ", tpl({ bannerInstructions: "style" }));
-    expect(p).not.toContain("Scene:");
-  });
-
-  it("a tags banner drops the labels and comma-joins", () => {
-    const p = buildBannerPrompt(
-      "The Dusty Path",
-      "Grit stings your eyes.",
-      tpl({ format: "tags", bannerInstructions: "monochrome, lineart" }),
-    );
-    expect(p).toBe("The Dusty Path, Grit stings your eyes, monochrome, lineart");
-  });
-
   it("portrait prompt puts Subject first, then action/context/composition/style in order", () => {
     const p = buildPortraitPrompt(
       { name: "Navi", species: "sprite", description: "A flickering mote of light." },
@@ -491,7 +366,7 @@ describe("uploadStoredWidth", () => {
 describe("exportScale", () => {
   it("blows a stored display copy up to at least the export width", () => {
     expect(exportScale(PORTRAIT_PIXEL_WIDTH)).toBe(6); // 192 → 1152
-    expect(exportScale(256)).toBe(4); // banner 256 → 1024
+    expect(exportScale(256)).toBe(4); // 256 → 1024
     expect(PORTRAIT_PIXEL_WIDTH * exportScale(PORTRAIT_PIXEL_WIDTH)).toBeGreaterThanOrEqual(
       EXPORT_MIN_WIDTH,
     );
@@ -569,13 +444,6 @@ describe("generation gate", () => {
     // Absent means "played with images on" — the only reading that doesn't
     // silently switch a feature off under an existing game.
     expect(imagesAllowed({} as { imagesEnabled: boolean })).toBe(true);
-  });
-
-  it("a banner needs BOTH the master switch and the location-images opt-in", () => {
-    expect(bannerAllowed({ imagesEnabled: true, locationImages: true })).toBe(true);
-    expect(bannerAllowed({ imagesEnabled: true, locationImages: false })).toBe(false);
-    expect(bannerAllowed({ imagesEnabled: false, locationImages: true })).toBe(false);
-    expect(bannerAllowed({ imagesEnabled: false, locationImages: false })).toBe(false);
   });
 
   it("an edit needs the master switch AND a backend that can edit", () => {

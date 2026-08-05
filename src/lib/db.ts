@@ -8,7 +8,7 @@ import { notifyLocalWrite } from "./dirty";
  * IndexedDB handle for on-device persistence (DESIGN.md → Persistence).
  * Two stores: `saves` for named GameState snapshots + the autosaved active
  * game, and `images` for generated 1-bit blobs (too big for localStorage),
- * keyed by `banner:<location>` / `portrait:<memberId>`.
+ * keyed by `portrait:<memberId>`.
  *
  * Phase 1 adds the active-game autosave helpers; named slots (Phase 4) and
  * image blobs (Phase 3) reuse the same stores.
@@ -174,8 +174,8 @@ export async function listSlots(): Promise<SaveSlot[]> {
 }
 
 /* ------------------------------------------------------------------ *
- * Generated image blobs (Phase 3). Keyed by `banner:<location>` /
- * `portrait:<memberId>`; the UI reads them back as object URLs.
+ * Generated image blobs (Phase 3). Keyed by `portrait:<memberId>`; the UI
+ * reads them back as object URLs.
  * ------------------------------------------------------------------ */
 
 /** Store (or replace) a generated image blob under its cache key. */

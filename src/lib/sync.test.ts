@@ -93,7 +93,7 @@ describe("wakesSync", () => {
     // `touchImage` announces `image:<cache key>`; the art a save needs travels
     // with the save, so a drawn portrait is not on its own worth a round trip.
     expect(wakesSync("image:portrait:9f1c")).toBe(false);
-    expect(wakesSync("image:banner:Boars Head Tavern")).toBe(false);
+    expect(wakesSync("image:src:portrait:9f1c")).toBe(false);
     expect(wakesSync(LEGACY_CHARACTERS_DOC)).toBe(false);
   });
 });
@@ -143,22 +143,21 @@ describe("slot document keys", () => {
 describe("image object names", () => {
   it("round-trips keys with colons and spaces", () => {
     for (const key of [
-      "banner:Boars Head Tavern",
       "portrait:9f1c-4d2e",
       "src:portrait:9f1c-4d2e",
-      "banner:Ruins of Ys — Lower Vault",
+      "portrait:Alaric of Ys — the Younger",
     ]) {
       expect(decodeImageName(encodeImageName(key))).toBe(key);
     }
   });
 
   it("produces path-safe names (no /, + or =)", () => {
-    const name = encodeImageName("banner:A place with ??? and / in it");
+    const name = encodeImageName("portrait:A name with ??? and / in it");
     expect(name).toMatch(/^[A-Za-z0-9_-]+$/);
   });
 
-  it("round-trips non-ASCII location names", () => {
-    const key = "banner:Kylän kaivo";
+  it("round-trips non-ASCII names", () => {
+    const key = "portrait:Kylän kaivaja";
     expect(decodeImageName(encodeImageName(key))).toBe(key);
   });
 
@@ -258,10 +257,10 @@ describe("planImages", () => {
   });
 
   it("uploads nothing for art no save needs", () => {
-    // The banner of a place the story passed through and never saved at. It is
-    // in the cache, it is not in a snapshot, so it is not the cloud's problem.
+    // The portrait of someone the story passed and never saved with. It is in
+    // the cache, it is not in a snapshot, so it is not the cloud's problem.
     const plan = planImages(
-      ["banner:a wayside shrine", "portrait:a"],
+      ["portrait:a wayside beggar", "portrait:a"],
       {},
       [],
       wants("portrait:a"),
@@ -273,7 +272,7 @@ describe("planImages", () => {
     const plan = planImages(
       [],
       {},
-      [{ key: "banner:somewhere else", updatedAt: "2026-08-01T10:00:00Z" }],
+      [{ key: "portrait:somebody else", updatedAt: "2026-08-01T10:00:00Z" }],
       wants(),
     );
     expect(plan).toEqual({ upload: [], download: [], remove: [] });

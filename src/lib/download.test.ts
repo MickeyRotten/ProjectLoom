@@ -53,7 +53,7 @@ describe("imageFileName", () => {
   });
 
   it("takes a custom suffix and extension", () => {
-    expect(imageFileName("Old Mill", "banner", "jpg")).toBe("loom-old-mill-banner.jpg");
+    expect(imageFileName("Old Mill", "master", "jpg")).toBe("loom-old-mill-master.jpg");
   });
 });
 

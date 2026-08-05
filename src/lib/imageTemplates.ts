@@ -5,8 +5,8 @@ import type { ImagePromptTemplate, PromptFormat, Settings } from "../types";
  * Image prompt templates (DESIGN.md → Image Generation → Prompt Templates).
  *
  * Everything that decides HOW an image prompt is worded lives in one named,
- * switchable bundle: the banner style, the four portrait clauses, the reference
- * line, the diffusion negative prompt, and the narrator's own appearance rule —
+ * switchable bundle: the four portrait clauses, the reference line, the
+ * diffusion negative prompt, and the narrator's own appearance rule —
  * because `Character.description` becomes the portrait's Subject verbatim, so
  * the sentence that writes it is part of the image dialect, not of the
  * character system.
@@ -20,10 +20,10 @@ import type { ImagePromptTemplate, PromptFormat, Settings } from "../types";
  * inferred from the backend: the player may well run a prose-friendly checkpoint
  * locally, and the two choices are theirs to combine.
  *
- * Deliberately NOT in here: `ditherMode`, `locationImages`, `bannerCooldown`,
- * `portraitRefImages`, and every ComfyUI connection field. Those are behaviour
- * and machine config — a template should survive changing checkpoints, and a
- * checkpoint should survive changing dialects.
+ * Deliberately NOT in here: `ditherMode`, `portraitRefImages`, and every
+ * ComfyUI connection field. Those are behaviour and machine config — a template
+ * should survive changing checkpoints, and a checkpoint should survive changing
+ * dialects.
  *
  * Pure and dependency-light on purpose: this module imports types only, so
  * `comfyui.ts` can read the active template's negative prompt without the
@@ -52,8 +52,6 @@ export type TemplateText = Omit<ImagePromptTemplate, "id" | "name" | "format">;
  *   subject specifics come only from the character's own description, so the
  *   same template fits knights, mages, children, and beasts.
  */
-
-export const DEFAULT_BANNER_INSTRUCTIONS = `A wide establishing view of the location itself, empty of characters. Clean black-and-white ink illustration with bold ink lines and large, solid black shadow shapes with hard edges. The entire image uses strictly two tones, pure black and pure white, with no grey tones, no gradients, and no fine hatching. Sharp, high-contrast finish with no anti-aliasing.`;
 
 export const DEFAULT_PORTRAIT_ACTION = `The pose is perfectly neutral and still: arms relaxed at the sides, shoulders square to the camera, head level, mouth closed, eyes open, with a calm, expressionless face.`;
 
@@ -103,8 +101,6 @@ export const DEFAULT_APPEARANCE_INSTRUCTIONS = `"description" is physical appear
  * player who wants them can add them to the style field they own.
  */
 
-export const TAG_BANNER_INSTRUCTIONS = `scenery, no humans, wide shot, establishing shot, monochrome, greyscale, lineart, bold outlines, thick lines, flat black shadows, high contrast, two-tone, no gradients`;
-
 export const TAG_PORTRAIT_ACTION = `standing, arms at sides, closed mouth, expressionless, looking at viewer, neutral pose`;
 
 export const TAG_PORTRAIT_CONTEXT = `simple background, white background, plain background`;
@@ -133,7 +129,6 @@ export const TAG_APPEARANCE_INSTRUCTIONS = `"description" is physical appearance
 /** The shipped wording for each dialect — also what per-field Reset restores. */
 export const TEMPLATE_TEXT: Record<PromptFormat, TemplateText> = {
   prose: {
-    bannerInstructions: DEFAULT_BANNER_INSTRUCTIONS,
     portraitAction: DEFAULT_PORTRAIT_ACTION,
     portraitContext: DEFAULT_PORTRAIT_CONTEXT,
     portraitComposition: DEFAULT_PORTRAIT_COMPOSITION,
@@ -143,7 +138,6 @@ export const TEMPLATE_TEXT: Record<PromptFormat, TemplateText> = {
     appearanceInstructions: DEFAULT_APPEARANCE_INSTRUCTIONS,
   },
   tags: {
-    bannerInstructions: TAG_BANNER_INSTRUCTIONS,
     portraitAction: TAG_PORTRAIT_ACTION,
     portraitContext: TAG_PORTRAIT_CONTEXT,
     portraitComposition: TAG_PORTRAIT_COMPOSITION,
@@ -217,7 +211,6 @@ function normalizeTemplate(raw: unknown, index: number): ImagePromptTemplate | n
         ? stored.name.trim()
         : BUILTIN_NAMES[format],
     format,
-    bannerInstructions: text(stored.bannerInstructions, ship.bannerInstructions),
     portraitAction: text(stored.portraitAction, ship.portraitAction),
     portraitContext: text(stored.portraitContext, ship.portraitContext),
     portraitComposition: text(stored.portraitComposition, ship.portraitComposition),
@@ -232,7 +225,7 @@ function normalizeTemplate(raw: unknown, index: number): ImagePromptTemplate | n
  * Fold whatever localStorage holds onto a usable template list — sanitized at
  * READ time, the way `normalizeDice` and `normalizeComfy` are.
  *
- * `legacy` carries the flat `Settings.bannerInstructions` / `portraitStyle` /
+ * `legacy` carries the flat `Settings.portraitStyle` /
  * `appearanceInstructions` / `comfyNegativePrompt` fields these templates
  * replaced. They are folded onto the PROSE built-in rather than becoming a
  * template of their own: the shipped wording is exactly what they held before

@@ -59,7 +59,7 @@ function filled(rows: ItemRow[]): ItemRow[] {
 /**
  * The text the World Notes matcher scans: what the player asked for, what is
  * already carried, and who is carrying it. A note about the Ashen Legion is
- * pulled in because the player typed their banner, not because it came up three
+ * pulled in because the player typed their sigil, not because it came up three
  * turns ago — this is authoring, so the story is not scanned.
  */
 export function itemScanText(

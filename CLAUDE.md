@@ -74,10 +74,9 @@ Phase 0 (scaffold) + Phase 1 (core loop: turn contract, streaming, autosave — 
 + Phase 2 (party + spotlight: `spotlight.ts`, party deltas, roster + spotlight prompt
 blocks, `detectSpeakers` → `lastSpokeTurn`, dialogue segmenter, party strip / member
 sheet / party + inventory views)
-+ Phase 3 (images: `images.ts` — OpenRouter `modalities:["image","text"]` gen, `banner:`/
-`portrait:` cache keys, IndexedDB blob store, deterministic banner/portrait triggers via
-`syncImages`, object-URL rendering in the banner / party strip / member sheet, regenerate
-buttons)
++ Phase 3 (images: `images.ts` — OpenRouter `modalities:["image","text"]` gen, `portrait:`
+cache keys, IndexedDB blob store, deterministic portrait triggers via `syncImages`,
+object-URL rendering in the party strip / member sheet, regenerate buttons)
 + Phase 4 (authoring + saves: `worldNotes.ts` keyword matcher + prompt block #7 injection,
 named save slots in `db.ts` (`saveSlot`/`loadSlot`/`listSlots`/`deleteSlot`), gear → menu
 routing, full-screen authoring screens — Scenario, Characters (PC + party CRUD), World Notes,
@@ -118,12 +117,6 @@ no gear scan. NPC sheets are keyword-gated (`cast.ts`, reusing `worldNotes.ts �
 keywordHits`) and every NPC is named in the roll call. **Kick** sets `none` — out of the
 party, still in Characters, no story stamp. `normalizeEntry`/`normalizeRoster` fold every
 older stored shape onto the ladder (reversal snapshots live inside saved messages).
-Post-MVP also: **location image cooldown** (`Settings.bannerCooldown` in Advanced,
-0 = off) — N turns of automatic banner generation skipped after one is drawn
-(`images.ts → bannerOnCooldown`/`bannerCooldownLeft`, anchored on
-`GameState.lastBannerTurn`, stamped only on a real generation). Gates generation
-only: cached locations still show instantly, ⟳ ignores the cooldown but restarts
-it, and the placeholder counts the turns left.
 Post-MVP also: **frozen character sheets** — the narrator authors a sheet exactly
 once, on the `add` that creates a character; every later `add`/`update` moves
 `standing` and nothing else (`deltas.ts → applyParty` drops the fields, so no
@@ -162,7 +155,7 @@ matcher), so facts survive the history window instead of vanishing with it;
 player-visible and editable, unlike a rolling summary. `Settings.historyBudget`
 (the 3000-token window was hardcoded and never passed by the store) and
 `Settings.maxTokens` (no `max_tokens` was ever sent) are now fields.
-Post-MVP also: **reading area + shell** — `Settings.textScale`/`bannerSize`, 3:4
+Post-MVP also: **reading area + shell** — `Settings.textScale`, 3:4
 party slots, a tall beat landing on its first line, scene marks in scrollback,
 pinch-zoom restored; Android/browser Back closes overlays via one spare history
 entry (screens with internal depth register `setBackHandler`), `100dvh` +
@@ -173,13 +166,7 @@ Post-MVP also: **first run** — `SetupScreen` gated on `Settings.setupDone` (no
 "is there a key", which would eject the player mid-keystroke), `verifyKey` behind a
 Test button (the model catalog is public, so it can't validate anything), a
 filterable `ModelPicker`, and `imgError` recorded on the automatic image path too.
-Post-MVP also: **location images opt-in** (`Settings.locationImages`, Advanced →
-Images, **off by default**) — a banner is a fresh generation on every new place,
-so the feature is off until asked for: `syncImages`/`regenerateBanner`
-no-op, `<Banner>` renders nothing, and the Menu size toggle + Advanced cooldown /
-banner-style fields are hidden, not disabled. Cached banners survive and return
-when it is switched back on. Alongside it, **one-name locations** —
-`deltas.ts → simplifyLocation` keeps the last segment of a narrator-stapled
+Post-MVP also: **one-name locations** — `deltas.ts → simplifyLocation` keeps the last segment of a narrator-stapled
 compound ("Boars Head Tavern - Damp Cellar" → "Damp Cellar") for the ` - `/` — `/
 ` / `/`: ` joiners only (never a comma or a bare hyphen), backed by an explicit
 `"location"` rule in the output protocol.
@@ -226,17 +213,11 @@ Generate Again**, ✦ shows only in Edit mode and an accepted text lands in the 
 draft — so Discard Changes is the undo and `updateCharacter` still commits. The store
 action writes nothing and takes the character by value, so it needs single-flight and
 no `streaming` guard. `fields.tsx → Field` gained an `action` slot for the label row.
-Post-MVP also: **player Notes + the banner as the top bar** — `Character.notes`
+Post-MVP also: **player Notes** — `Character.notes`
 is the one sheet field no model writes: it rides in the prompt with the rest of
 the sheet (PC block, party roster, keyword-gated NPC sheet, and `formatSheet`
 for the side calls), but `PartyDelta` and `CharacterOverride` both lack the key,
 so no delta and no Auto-Update can reach it, and the member sheet gives it no ✦.
-Alongside it `<Banner>` is gone: `Header` *is* the banner when
-`Settings.locationImages` is on — double height, art as background, location ·
-day · menu bottom-aligned over a black gradient that hits full alpha in ~16px,
-with ⟳/✎/▲ top-right. `bannerSize` now picks 120px vs 60px (art still behind the
-label, under a flat scrim) rather than banner-vs-strip. Everything sitting on
-the art uses literal `#000`/`#fff` — the bitmap does not invert with the theme.
 Post-MVP also: **RPG System** (`Settings` ⊃ `DiceRules` — `diceCount`/`diceSides`/
 `strengthsBonus`/`flawsPenalty`/`strongThreshold`/`mixedThreshold`, plus
 `riskKeywords` + `alwaysRoll`; Menu → RPG System) — the one mechanic the player
@@ -248,8 +229,6 @@ without rewriting the next. `TurnRoll` records `count`/`sides`/`dice`, the chip
 reads "2d6 [4, 3] 7 +1 = 8", and the prompt block gains a `Scale:` line. The
 Stakes toggle + Outcome Rule moved out of Advanced → Narrator (Advanced is prompt
 text; this is on-device mechanics); `ToggleRow` moved to `fields.tsx`.
-Alongside it the **banner bar lost ⟳ and ▲** — sizing is Menu → Compact Location
-Image, and ✎ is the only in-bar control left.
 Post-MVP also: **the dice toss** (`diceAnim.ts` + `DiceOverlay.tsx`,
 `Settings.diceAnimation` in RPG System → Presentation, on by default) — a rolled
 turn throws real CSS 3D cubes across a full-screen 60% ink scrim (`--scrim`, a
@@ -286,11 +265,7 @@ locked them into opposite parities, so **2d6 could never roll 7**. Now one hash,
 `avalanche`d (murmur3 finalizer), with the extra dice counting off that base.
 Rolls no longer replay to pre-fix values; nothing recomputes a past roll but
 `regenerateLastTurn`.
-Post-MVP also: **UI tweaks + sheet reorganisation** — the location bar lost its
-last on-art control (✎, after ⟳ and ▲; `store.editBanner` deleted with it) and
-its **scrim**: label · day · menu now sit straight on the picture, kept legible
-by an outline (`-webkit-text-stroke` + `paint-order: stroke`) instead of a
-gradient that was darkening a third of every banner. **Scenario ✦**
+Post-MVP also: **UI tweaks + sheet reorganisation** — **Scenario ✦**
 (`generateScenario.ts` — Premise + Opening Narration, `generateField.ts`'s
 sibling one level up; context is the scenario, the PC and keyword-matched World
 Notes, never the beats) shares `parseGeneratedField` and the new
@@ -394,14 +369,13 @@ not topical), bounded by `Settings.journalBudget` with old entries decaying to
 their facts. Editable on the **Journal** screen, where the player keeps every
 entry forever while the model sees only the tail.
 Post-MVP also: **image generation master switch** (`Settings.imagesEnabled`,
-Model & Key → Image Generation, **on** by default) — `locationImages` only ever
-gated banners, so switching off the portrait spend meant *Remove Image* on every
-character forever. Off means no request reaches the image model at all:
-`images.ts → imagesAllowed`/`bannerAllowed` fold into the existing `cacheOnly`
-flag, so `syncImages` degrades to a cache probe (already-drawn art still shows),
-`regenerateBanner`/`editImage`/forced portraits no-op, ⟳ + ✎ hide on the member
-sheet, the banner cooldown countdown stops rendering, and the Image API Key +
-Image Model fields hide under the switch. Uploads/downloads/Remove keep working —
+Model & Key → Image Generation, **on** by default) — switching off the portrait
+spend otherwise meant *Remove Image* on every character forever. Off means no
+request reaches the image model at all: `images.ts → imagesAllowed` folds into
+the existing `cacheOnly` flag, so `syncImages` degrades to a cache probe
+(already-drawn art still shows), `editImage`/forced portraits no-op, ⟳ + ✎ hide
+on the member sheet, and the Image API Key + Image Model fields hide under the
+switch. Uploads/downloads/Remove keep working —
 none of them calls a model — and nothing stored is deleted.
 Post-MVP also: **an open Appearance screen** (`webFonts.ts`) — its three
 controls were three closed lists and are now three open ones. **Font** keeps the
@@ -454,8 +428,8 @@ Post-MVP also: **image prompt templates** (`imageTemplates.ts`,
 `Settings.imageTemplates`/`imageTemplateId`, Advanced → **Image Prompts**) — a
 ComfyUI player runs SD-family checkpoints that read Danbooru tags, and one set of
 prose fields could not serve both backends. Every field that decides how an image
-prompt is *worded* is now one named, switchable `ImagePromptTemplate` — banner
-style, the four portrait clauses, the reference line, the negative prompt (off
+prompt is *worded* is now one named, switchable `ImagePromptTemplate` — the
+four portrait clauses, the reference line, the negative prompt (off
 `ComfySettings`: a negative list is dialect, not machine config) and
 `appearanceInstructions`, which belongs there because `Character.description`
 becomes the portrait Subject verbatim, so a tags portrait needs a tags Subject.
@@ -467,8 +441,8 @@ per-field Reset restores the ship text *for that format*. `normalizeImageTemplat
 sanitizes at READ (blank stays blank — blanking removes a rule), never returns an
 empty list, and folds the old flat fields onto the prose built-in, so an edited
 style clause survives verbatim and the tag dialect just appears beside it.
-Advanced → Images keeps behaviour only (shading · location images · cooldown);
-reference *images* stay global, since they are files.
+Advanced → Images keeps behaviour only (shading); reference *images* stay
+global, since they are files.
 Post-MVP also: **cloud sync** (`sync.ts` + `syncEngine.ts` + `supabaseClient.ts`,
 `Settings.syncEnabled`, Menu → Cloud Sync, **off** by default) — the device was
 the database, so an adventure was stuck on the device it started on. Signing in
@@ -513,11 +487,9 @@ Scenario & Opening · Player Character · Characters · World Notes, four
 independent ticks, first two on by default. The party always starts empty; `npc`
 standings ride along only with the cast; beats, journal, quests and inventory
 always reset.
-Post-MVP also: **image purge** (Advanced → Images) — *Purge Location Images* and
-*Purge Character Images* delete every stored blob of one kind, display copies and
-their `src:` masters, from IndexedDB **and** from Supabase Storage. `images.ts →
-imageKindOf`/`imageKeysOfKind` is the pure classifier (a master counts as its
-subject); the store deletes through `db.deleteImage`, whose stamp makes an
+Post-MVP also: **image purge** (Advanced → Images) — *Purge Stored Images*
+deletes every stored blob, display copies and their `src:` masters, from
+IndexedDB **and** from Supabase Storage. The store deletes through `db.deleteImage`, whose stamp makes an
 ordinary sync pass propagate the deletion, and `syncEngine.purgeRemoteImages`
 lists the bucket and removes matching objects directly — without it a cloud-only
 key (drawn on the other phone, never pulled here) has no stamp and `planImages`
@@ -535,13 +507,11 @@ model: *This Adventure* is `GameState` and dies with the next New Adventure,
 *Settings* is `Settings` and outlives it — with **New Adventure** below a rule,
 under both. Their contents became two domain screens: **Narrator** (Model ·
 Voice & Actions · Memory · Writing Characters) and **Images** (Image Generation
-+ 1-Bit Shading on the index, then Model · Location Images · Prompt Templates ·
-Stored Images). Images existed in four places before — master switch and backend
-under Model & Key, behaviour under Advanced → Images, wording under Advanced →
-Image Prompts, and `bannerSize` loose on the root menu — so "why is there no
-picture?" had four answers and no route between them; *Compact Location Image*
-now sits beside the switch deciding whether a banner exists at all, which had
-been the *less* discoverable of the two. `AdvancedScreen`'s index/depth/
++ 1-Bit Shading on the index, then Model · Prompt Templates · Stored Images).
+Images existed in three places before — master switch and backend under Model &
+Key, behaviour under Advanced → Images, wording under Advanced → Image Prompts —
+so "why is there no picture?" had three answers and no route between them.
+`AdvancedScreen`'s index/depth/
 back-handler pattern is extracted as **`SubMenuScreen.tsx`** (depth stays local
 component state; the store owns only the `setBackHandler` claim, so the Android
 button matches, and the one-shot `section` deep link). `setScreen(screen,
@@ -560,7 +530,7 @@ Post-MVP also: **cloud saves** (`Settings.syncEnabled`, Menu → **Cloud Saves**
 — sync shipped as a mirror of the whole device and that was the wrong shape: the
 active game was pushed on a 5s debounce after **every** write, re-sending the
 entire transcript per beat (no delta protocol), uploading every generated
-portrait and banner, running a pass on `visibilitychange`, and carrying a
+portrait, running a pass on `visibilitychange`, and carrying a
 conflict prompt, two rescue snapshots and an `isUntouchedGame` heuristic purely
 to survive two devices playing one live game. The app already had the primitive:
 **Saves**. The live game now stays on the device playing it and the cloud holds
@@ -578,8 +548,8 @@ A pass is provoked by four things: a snapshot taken/overwritten/deleted, a
 settings edit, launch/sign-in, and **Sync Now** — that is **`wakesSync`**,
 honouring the key `dirty.ts` was already passing and the engine had always
 ignored; `saveActiveGame` stops stamping entirely. Images are scoped to the
-saves: **`images.ts → slotImageKeys`** (the cast's portraits + the banner of
-where it was saved, **no `src:` masters**) feeds a `wanted` set — the union over
+saves: **`images.ts → slotImageKeys`** (the cast's portraits, **no `src:`
+masters**) feeds a `wanted` set — the union over
 local *and* cloud slots, whose bodies `pullDocs` already returns — that gates
 `planImages` upload/download but **not** `remove`, so *Remove Image* and the
 purge buttons still reach the cloud. No remote GC. Saves is the cloud's only
@@ -674,16 +644,29 @@ from the scene — had no permanent place on screen and was renting one of four
 party-strip slots. Now `Header` is portrait · name · six **placeholder** hearts
 (`aria-hidden`: announcing "6 of 6 health" would describe a mechanic that does
 not exist), menu at the right, the whole PC block tapping through to the member
-sheet — the only route to it now. The location banner is still the bar's
-background with everything unchanged (zoom · error badge · cooldown countdown ·
-`bannerSize`); the bar's own contents inherit through `border-current`, so the
-themed strip and the on-art variant stop being two hand-written colour sets.
-`PartyStrip` is **companions only**, moved **above** the reading area so the
+sheet — the only route to it now. `PartyStrip` is **companions only**, moved **above** the reading area so the
 whole cast sits together at the top, and its slots went 3:5 → **4:5** (a quarter
 shorter) since every pixel it takes is now one the prose does not get. The freed
 slot went back to the cap: `PARTY_LIMIT` is **4**, and it is the strip's width
 again rather than the width minus the player. Tests that spelled the old cap out
 now read it off `PARTY_LIMIT`.
+Post-MVP also: **location art removed** — the whole location-image system is
+gone, not switched off: no `banner:` cache key, no cooldown, no top-bar art.
+`Settings.locationImages`/`bannerSize`/`bannerCooldown`,
+`ImagePromptTemplate.bannerInstructions` and `GameState.lastBannerTurn` are
+deleted, and with them `images.ts → bannerKey`/`bannerAllowed`/
+`buildBannerPrompt`/`bannerOnCooldown`/`bannerCooldownLeft`/`clampBannerCooldown`/
+`BANNER_PIXEL_WIDTH`, `store.regenerateBanner`, the Images → Location Images
+sub-menu and the Banner Style template field. `Header` is now only the themed PC
+strip (portrait · name · hearts · menu) — the on-art variant, the zoom overlay
+and the ▲ expand control go with the art they were drawn on. Portraits are the
+only picture the app makes, so `ImageKind`/`imageKindOf`/`imageKeysOfKind` are
+gone too: **Purge Stored Images** is one button that deletes every stored blob
+(which also clears whatever `banner:` blobs an older build left behind), and
+`purgeRemoteImages` no longer takes a key filter. `slotImageKeys` names the
+cast's portraits and nothing else. No migration — the retired `Settings` keys
+are simply ignored on read, so every stored document and save slot loads
+unchanged.
 Deferred (post-MVP): rolling LLM summarization of the beats themselves,
 NPC/item art, TTS, weather animation, multi-world. Track scope in
 `DESIGN.md → Build Phases`.

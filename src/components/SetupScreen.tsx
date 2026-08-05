@@ -67,7 +67,7 @@ export function SetupScreen() {
           models={image}
           loading={loading}
           error={error}
-          hint="Draws character portraits — and location images, once you switch those on under Menu → Images. Leave it be if you'd rather not spend on images — the game plays fine without them, and Menu → Images can switch image generation off entirely."
+          hint="Draws character portraits. Leave it be if you'd rather not spend on images — the game plays fine without them, and Menu → Images can switch image generation off entirely."
         />
         )}
 

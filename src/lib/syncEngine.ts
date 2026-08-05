@@ -448,8 +448,8 @@ export interface RemotePurge {
 }
 
 /**
- * Delete every cloud image whose cache key `matches`, and forget its stamp —
- * the remote half of Images → Stored Images → Purge.
+ * Delete every cloud image and forget its stamp — the remote half of
+ * Images → Stored Images → Purge.
  *
  * A local purge already stamps each deletion, so an ordinary pass would
  * propagate it — but only for keys this device HAD. A key that exists only in
@@ -464,12 +464,10 @@ export interface RemotePurge {
 export async function purgeRemoteImages(
   settings: Settings,
   account: Account,
-  matches: (key: string) => boolean,
 ): Promise<RemotePurge> {
   const remote = await listImages(settings, account.id);
   const out: RemotePurge = { removed: 0, failed: 0 };
   for (const image of remote) {
-    if (!matches(image.key)) continue;
     try {
       await removeImage(settings, account.id, image.key);
       await deleteImageStamp(image.key);

@@ -25,11 +25,10 @@ import { DiceOverlay } from "./components/DiceOverlay";
 
 /**
  * Phase 2 shell — the core loop plus party, top to bottom: the header (the PC —
- * portrait · name · hearts · menu — drawn over the location banner when
- * Location Images are on), the party portrait strip, the scrolling narration log
- * with AI options under the latest beat, and a composer (quick actions ·
- * freeform input · GO · ⋯ context menu). Full-screen overlays (member sheet,
- * party, inventory, settings) open over the chat.
+ * portrait · name · hearts · menu), the party portrait strip, the scrolling
+ * narration log with AI options under the latest beat, and a composer (quick
+ * actions · freeform input · GO · ⋯ context menu). Full-screen overlays (member
+ * sheet, party, inventory, settings) open over the chat.
  *
  * The cast sits TOGETHER at the top now — the strip used to hang below the log,
  * a screen's height away from the PC it was showing alongside — and the reading
@@ -105,7 +104,7 @@ export default function App() {
   // is the ink at 60% (the dice-toss backdrop), and `color-scheme` follows the
   // paper's luminance. That last one is not cosmetic — it tells the engine we
   // own theming, so a dark-OS WebView won't run its own force-dark pass over
-  // the generated banner/portrait bitmaps, which are real pixels no token
+  // the generated portrait bitmaps, which are real pixels no token
   // touches. The browser chrome (theme-color) matches the paper too.
   useEffect(() => {
     const root = document.documentElement;

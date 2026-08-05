@@ -115,17 +115,9 @@ import {
 import { captureReversal, applyReversal } from "./lib/reversal";
 import { detectSpeakers } from "./lib/spotlight";
 import {
-  BANNER_PIXEL_WIDTH,
-  BANNER_PREFIX,
-  bannerAllowed,
-  bannerKey,
-  bannerOnCooldown,
   blobToDataUrl,
   imageEditAllowed,
-  imageKeysOfKind,
-  imageKindOf,
   imagesAllowed,
-  buildBannerPrompt,
   buildEditPrompt,
   buildPortraitPrompt,
   generateImage,
@@ -139,7 +131,6 @@ import {
   toOneBitBlob,
   toSourceBlob,
   type GenerateImageOptions,
-  type ImageKind,
 } from "./lib/images";
 import { activeTemplate } from "./lib/imageTemplates";
 import { imageFileName, saveBlobAsFile } from "./lib/download";
@@ -158,13 +149,10 @@ export interface SendTurnOptions {
 /** Per-call knobs for the shared cache-then-generate image helper. */
 interface EnsureImageOptions {
   /**
-   * Publish a cached blob if there is one, but never hit the network — the
-   * banner cooldown (Images → Location Images → Location Image Cooldown) rides
-   * on this.
+   * Publish a cached blob if there is one, but never hit the network — image
+   * generation being switched off (Images) rides on this.
    */
   cacheOnly?: boolean;
-  /** Ran only when a NEW image came off the wire, never on a cache hit. */
-  onGenerated?: () => void;
 }
 
 /** Full-screen overlay currently shown over the chat. */
@@ -451,19 +439,13 @@ export interface LoomStore {
   /** Delete an entry outright. */
   deleteJournalEntry: (id: string) => void;
 
-  /** Ensure the banner + all in-party portraits exist (cache-then-generate). */
+  /** Ensure the PC + all in-party portraits exist (cache-then-generate). */
   syncImages: () => void;
   /** Ensure one member's portrait exists (used when a sheet opens). */
   ensurePortrait: (memberId: string) => void;
   /** Force-regenerate, replacing the cached blob. */
-  regenerateBanner: () => void;
   regeneratePortrait: (memberId: string) => void;
-  /**
-   * Edit the cached image with a text instruction (image + text → image). The
-   * banner has no such control any more — ✎ came off the top bar with ⟳ and ▲,
-   * since a button parked on the art is not where a spend belongs — so this is
-   * portraits only.
-   */
+  /** Edit the cached portrait with a text instruction (image + text → image). */
   editPortrait: (memberId: string, instruction: string) => void;
   /** Replace a member's portrait with a user-supplied image file. */
   uploadPortrait: (memberId: string, file: Blob) => Promise<void>;
@@ -479,15 +461,15 @@ export interface LoomStore {
    */
   downloadPortrait: (memberId: string) => Promise<boolean>;
   /**
-   * Delete every stored picture of one kind — display copies AND their masters
-   * — from this device, and from the cloud when signed in (Images → Stored Images).
+   * Delete every stored picture — display copies AND their masters — from this
+   * device, and from the cloud when signed in (Images → Stored Images).
    *
    * Wholesale, unlike the member sheet's Remove Image: this is for reclaiming
-   * the space a long game's location art takes, or for throwing away a style
-   * the player has just replaced. It leaves no `noPortrait` flag behind, so the
+   * the space a long game's art takes, or for throwing away a style the player
+   * has just replaced. It leaves no `noPortrait` flag behind, so the
    * deterministic triggers redraw what they normally would.
    */
-  purgeImages: (kind: ImageKind) => Promise<PurgeSummary>;
+  purgeImages: () => Promise<PurgeSummary>;
 }
 
 /** What one purge deleted, for the line the screen shows afterwards. */
@@ -513,24 +495,12 @@ const OVERRIDABLE: (keyof CharacterOverride)[] = [
   "flaws",
 ];
 
-/** Latest narrator prose (for banner scene flavour), else the opening beat. */
-function lastNarration(game: GameState): string {
-  for (let i = game.messages.length - 1; i >= 0; i--) {
-    if (game.messages[i].role === "narrator") return game.messages[i].content;
-  }
-  return game.scenario.openingNarration;
-}
-
 export const uid = () =>
   typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
     : `id-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
 export const useStore = create<LoomStore>((set, get) => {
-  /** Stored pixel width for a cache key — banners are wider than portraits. */
-  const pixelWidth = (key: string) =>
-    key.startsWith(BANNER_PREFIX) ? BANNER_PIXEL_WIDTH : PORTRAIT_PIXEL_WIDTH;
-
   /**
    * Expose a blob under `key` as an object URL in `images`, revoking whatever
    * URL it replaces — every image path (generate / edit / upload) ends here.
@@ -619,9 +589,9 @@ export const useStore = create<LoomStore>((set, get) => {
     if (get().imgPending[key]) return;
     if (!force && get().images[key]) return;
 
-    // Nothing may be drawn (banner cooldown): probe the cache and stop there.
-    // Deliberately ahead of `imgPending` — flagging a generation that can't
-    // happen would blink "rendering…" under every suppressed banner.
+    // Nothing may be drawn (generation switched off): probe the cache and stop
+    // there. Deliberately ahead of `imgPending` — flagging a generation that
+    // can't happen would blink "rendering…" under every suppressed portrait.
     if (opts.cacheOnly && !force) {
       const cached = await loadImage(key);
       if (cached) publishImage(key, cached);
@@ -639,11 +609,10 @@ export const useStore = create<LoomStore>((set, get) => {
         return;
       }
       const raw = await generateImage({ settings: get().settings, ...buildRequest() });
-      const blob = await toOneBitBlob(raw, pixelWidth(key), get().settings.ditherMode);
+      const blob = await toOneBitBlob(raw, PORTRAIT_PIXEL_WIDTH, get().settings.ditherMode);
       await saveImage(key, blob);
       await saveSource(key, raw);
       publishImage(key, blob);
-      opts.onGenerated?.();
     } catch (err) {
       // Non-fatal — a failed image never blocks the turn (DESIGN.md) — but it
       // is never SILENT either. Recording the reason on the automatic path too
@@ -690,9 +659,9 @@ export const useStore = create<LoomStore>((set, get) => {
         settings: get().settings,
         prompt: buildEditPrompt(instruction),
         images: [await blobToDataUrl(source)],
-        aspectRatio: key.startsWith("portrait:") ? "2:3" : undefined,
+        aspectRatio: "2:3",
       });
-      const blob = await toOneBitBlob(raw, pixelWidth(key), get().settings.ditherMode);
+      const blob = await toOneBitBlob(raw, PORTRAIT_PIXEL_WIDTH, get().settings.ditherMode);
       await saveImage(key, blob);
       await saveSource(key, raw);
       publishImage(key, blob);
@@ -703,17 +672,6 @@ export const useStore = create<LoomStore>((set, get) => {
     } finally {
       clearPending(key);
     }
-  }
-
-  /**
-   * Record that a location banner was drawn on the current turn — the anchor
-   * the cooldown counts from. Stamped only on a real generation (never a cache
-   * hit), so revisiting known locations doesn't stall the next new one.
-   */
-  function stampBannerTurn() {
-    const game = { ...get().game, lastBannerTurn: get().game.turnNumber };
-    set({ game });
-    void saveActiveGame(game);
   }
 
   /** Abort handle for the in-flight turn (closure state — not reactive). */
@@ -1025,14 +983,13 @@ export const useStore = create<LoomStore>((set, get) => {
     const g = get().game;
     const scenario = { ...g.scenario, ...patch };
     // Editing the starting location/day retargets the active scene too, so the
-    // header + banner follow immediately (they otherwise only move per turn).
+    // scene mark follows immediately (it otherwise only moves per turn).
     const location =
       patch.startLocation !== undefined ? patch.startLocation : g.location;
     const day = patch.startDay !== undefined ? patch.startDay : g.day;
     const game = { ...g, scenario, location, day };
     set({ game });
     void saveActiveGame(game);
-    if (patch.startLocation !== undefined) get().syncImages();
   },
 
   updateCharacter(id, patch) {
@@ -1805,8 +1762,8 @@ export const useStore = create<LoomStore>((set, get) => {
       });
       void saveActiveGame(nextGame);
 
-      // Deterministic triggers: a new location gets a banner, new members get
-      // portraits. Fire-and-forget — never blocks the turn.
+      // Deterministic trigger: new members get portraits. Fire-and-forget —
+      // never blocks the turn.
       get().syncImages();
 
       // Same posture for the journal: the entry is already saved with its
@@ -1955,27 +1912,6 @@ export const useStore = create<LoomStore>((set, get) => {
 
   syncImages() {
     const g = get().game;
-    const location = g.location.trim();
-    // Location images off (Images → Location Images): nothing is generated and nothing
-    // is loaded from cache, since no banner is rendered to put it in.
-    if (location && get().settings.locationImages) {
-      const excerpt = lastNarration(g);
-      // The cooldown gates GENERATION only: a location whose banner is already
-      // cached still shows it immediately, however recently we drew something.
-      // Image generation being off reads the same way — cached art, no new
-      // requests — so the two reasons fold into one flag.
-      const cacheOnly =
-        !imagesAllowed(get().settings) ||
-        bannerOnCooldown(get().settings.bannerCooldown, g.lastBannerTurn, g.turnNumber);
-      void ensureImage(
-        bannerKey(location),
-        () => ({
-          prompt: buildBannerPrompt(location, excerpt, activeTemplate(get().settings)),
-        }),
-        false,
-        { cacheOnly, onGenerated: stampBannerTurn },
-      );
-    }
     // The PC rides the strip too, so its portrait must generate up front — not
     // only after the PC sheet is opened once. Benched members are covered as
     // well, since the Party screen shows them; everyone further out gets theirs
@@ -1987,22 +1923,6 @@ export const useStore = create<LoomStore>((set, get) => {
 
   ensurePortrait(memberId) {
     portrait(memberId, false);
-  },
-
-  regenerateBanner() {
-    const g = get().game;
-    const location = g.location.trim();
-    if (!location || !bannerAllowed(get().settings)) return;
-    const excerpt = lastNarration(g);
-    // ⟳ ignores the cooldown — but it IS a generation, so it restarts the clock.
-    void ensureImage(
-      bannerKey(location),
-      () => ({
-        prompt: buildBannerPrompt(location, excerpt, activeTemplate(get().settings)),
-      }),
-      true,
-      { onGenerated: stampBannerTurn },
-    );
   },
 
   regeneratePortrait(memberId) {
@@ -2065,36 +1985,24 @@ export const useStore = create<LoomStore>((set, get) => {
     );
   },
 
-  async purgeImages(kind) {
-    const stored = imageKeysOfKind(await listImageKeys(), kind);
+  async purgeImages() {
+    const stored = await listImageKeys();
     // Deleted through `db.deleteImage`, which stamps each key — that stamp is
     // what tells a device that syncs later this was a deletion and not a blob
     // it happens to be missing.
     for (const key of stored) await deleteImage(key);
 
-    // The in-memory maps are swept by kind rather than by the list above: a key
-    // published in this session but already gone from IndexedDB would otherwise
-    // keep a dead object URL alive in `images`.
-    const images = { ...get().images };
-    const imgError = { ...get().imgError };
-    for (const key of [...Object.keys(images), ...Object.keys(imgError)]) {
-      if (imageKindOf(key) !== kind) continue;
-      const url = images[key];
-      if (url) URL.revokeObjectURL(url);
-      delete images[key];
-      delete imgError[key];
-    }
-    set({ images, imgError });
+    // The in-memory maps are swept separately rather than by the list above: a
+    // key published in this session but already gone from IndexedDB would
+    // otherwise keep a dead object URL alive in `images`.
+    for (const url of Object.values(get().images)) URL.revokeObjectURL(url);
+    set({ images: {}, imgError: {} });
 
     const summary: PurgeSummary = { local: stored.length, remote: 0, failed: 0, error: null };
     const account = get().account;
     if (!account || !get().settings.syncEnabled) return summary;
     try {
-      const cloud = await purgeRemoteImages(
-        get().settings,
-        account,
-        (key) => imageKindOf(key) === kind,
-      );
+      const cloud = await purgeRemoteImages(get().settings, account);
       summary.remote = cloud.removed;
       summary.failed = cloud.failed;
     } catch (err) {

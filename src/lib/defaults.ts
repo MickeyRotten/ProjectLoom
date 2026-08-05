@@ -98,15 +98,6 @@ export const DEFAULT_QUICK_ACTIONS: QuickAction[] = [
 export const DEFAULT_OPTION_INSTRUCTIONS =`Offer 3–4 distinct, concrete next actions the player could take right now. Short imperative phrases ("Scan the treeline"), no numbering, no punctuation at the end.`;
 
 /**
- * Turns to suppress automatic location-banner generation for after one is
- * generated (Images → Location Images → Cooldown). 0 = off.
- *
- * Every other image-prompt default moved into `imageTemplates.ts`, where the
- * wording is one switchable bundle rather than a dozen loose fields.
- */
-export const DEFAULT_BANNER_COOLDOWN = 0;
-
-/**
  * What the narrator must fill in the one time it authors a sheet. Everything
  * here is unrecoverable if skipped: an `add` is the only op that writes these
  * fields, so a blank drive is blank for the rest of the character's life.
@@ -260,20 +251,12 @@ export function defaultSettings(): Settings {
     textSize: DEFAULT_TEXT_SIZE,
     font: "system",
     webFonts: [],
-    // Off by default (Images → Location Images): the story reads fine without a
-    // banner, and every new location would otherwise bill an image generation
-    // before the player has decided they want any.
-    locationImages: false,
-    bannerSize: "full",
     customInstructions: DEFAULT_CUSTOM_INSTRUCTIONS,
     // Both shipped dialects, with the prose one selected — it is what every
     // image prompt looked like before templates existed, and it is the one that
     // matches the default (OpenRouter) backend.
     imageTemplates: builtinTemplates(),
     imageTemplateId: PROSE_TEMPLATE_ID,
-    // Off by default: shipping a brake on a feature nobody asked to slow down
-    // would just look like broken banners.
-    bannerCooldown: DEFAULT_BANNER_COOLDOWN,
     portraitRefImages: [],
     // Threshold by default: flat 50% keeps shapes and faces crisp. Dither is
     // the opt-in retro texture — its clamped band still speckles less, but any
