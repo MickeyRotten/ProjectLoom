@@ -41,6 +41,7 @@ export type { GenerateImageOptions } from "../types";
 
 export const PORTRAIT_PREFIX = "portrait:";
 export const SOURCE_PREFIX = "src:";
+export const SLOT_IMAGE_PREFIX = "slot:";
 
 /** Blob-store key for a member portrait. */
 export function portraitKey(memberId: string): string {
@@ -60,21 +61,94 @@ export function sourceKey(key: string): string {
 }
 
 /**
+ * Blob-store key for one save slot's FROZEN copy of an image.
+ *
+ * The live keyspace holds one picture per character (`portrait:<id>`), so every
+ * regenerate, edit, upload and removal rewrote the art of every snapshot ever
+ * taken of that character: restore an old save and you got the old story with
+ * today's faces. A snapshot copies the art it was taken with under its own id,
+ * and the same character in two snapshots holds two different pictures.
+ *
+ * Copies rather than versioned live keys, deliberately: everything that renders
+ * a portrait — the top bar, the party strip, the member sheet — keeps reading
+ * the bare `portrait:<id>` it always did, and a restore is a copy back.
+ *
+ * The scope goes INSIDE `sourceKey`, so a master is `src:slot:<id>:portrait:<c>`
+ * and `sourceKey` keeps its one meaning: the master of the key it wraps.
+ */
+export function slotScopedKey(slotId: string, key: string): string {
+  return `${SLOT_IMAGE_PREFIX}${slotId}:${key}`;
+}
+
+/** One image in both keyspaces: `live` is where it renders, `slot` the freeze. */
+export interface ImagePair {
+  live: string;
+  slot: string;
+}
+
+/** One character's frozen art: the portrait, and the master behind it. */
+export interface SlotArt {
+  display: ImagePair;
+  master: ImagePair;
+}
+
+/**
+ * Every blob a snapshot of `characters` freezes, as live ⇄ slot key pairs.
+ *
+ * Pure, and read in BOTH directions — a snapshot copies `live`→`slot`, a restore
+ * copies `slot`→`live` — so the two halves cannot drift into disagreeing about
+ * which art belongs to a slot. A key with nothing behind it is simply not
+ * copied; the caller does the store lookups.
+ *
+ * Display and master stay paired rather than flattened, because a restore has to
+ * decide them together: art restored with a master from a different picture is
+ * exactly what makes ✎ edit something the player is not looking at.
+ */
+export function slotArtPairs(
+  slotId: string,
+  characters: readonly Pick<Character, "id">[] | undefined,
+): SlotArt[] {
+  const out: SlotArt[] = [];
+  for (const c of characters ?? []) {
+    if (!c?.id) continue;
+    const live = portraitKey(c.id);
+    const slot = slotScopedKey(slotId, live);
+    out.push({
+      display: { live, slot },
+      master: { live: sourceKey(live), slot: sourceKey(slot) },
+    });
+  }
+  return out;
+}
+
+/** Prefix covering every blob one slot froze — what dropping a slot sweeps. */
+export function slotArtPrefixes(slotId: string): string[] {
+  return [slotScopedKey(slotId, ""), sourceKey(slotScopedKey(slotId, ""))];
+}
+
+/**
  * The art one saved game needs to look right when it is restored — the cast's
- * portraits. This is what a cloud save carries (`sync.ts → planImages`), and it
- * is a small, bounded set on purpose: the blob store also holds the portraits
- * of everyone a long game has ever met, and nobody restores to those.
+ * frozen portraits. This is what a cloud save carries (`sync.ts → planImages`),
+ * and it is a small, bounded set on purpose: the blob store also holds the
+ * portraits of everyone a long game has ever met, and nobody restores to those.
+ *
+ * The portraits are the SLOT'S copies, not the live ones. That is what makes the
+ * freeze survive the trip: a pulled slot lands under its own keys, so the art of
+ * a save taken on another device can no longer overwrite the portraits of the
+ * game being played on this one.
  *
  * Display copies only, deliberately no `src:` masters. A master is the big copy
  * (up to 1024px, full grey) and it exists so ✎ and the download upscale have
  * real pixels to work from — neither of which a restored save needs. Uploading
  * them would roughly double the bytes of the one thing that still travels.
  */
-export function slotImageKeys(game: GameState): string[] {
+export function slotImageKeys(slot: { id: string; game: GameState }): string[] {
   // Read defensively: this also runs over slot documents pulled from the cloud,
   // which may have been written by a build from before the cast lived in the
   // game — a shape the type says cannot happen and the wire says can.
-  const keys = (game.characters ?? []).filter((c) => c?.id).map((c) => portraitKey(c.id));
+  const keys = (slot.game?.characters ?? [])
+    .filter((c) => c?.id)
+    .map((c) => slotScopedKey(slot.id, portraitKey(c.id)));
   return [...new Set(keys)];
 }
 

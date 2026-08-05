@@ -667,6 +667,26 @@ gone too: **Purge Stored Images** is one button that deletes every stored blob
 cast's portraits and nothing else. No migration — the retired `Settings` keys
 are simply ignored on read, so every stored document and save slot loads
 unchanged.
+Post-MVP also: **snapshots freeze the art** (`images.ts → slotScopedKey` /
+`slotArtPairs` / `slotArtPrefixes`, `db.ts → copyImage` /
+`deleteImagesWithPrefix`) — a slot snapshotted the whole game including the cast,
+but the pictures live outside the document, one blob per character for the whole
+app, so every ⟳ / ✎ / upload / *Remove Image* rewrote the faces of every save
+that character ever appeared in. Taking a snapshot now **copies** the portraits
+under the slot's own keys (`slot:<id>:portrait:<cid>`, master at
+`src:slot:<id>:portrait:<cid>`) and the same character in two snapshots holds two
+different pictures. Copies, not versioned live keys: the top bar, the party strip
+and the member sheet keep reading the bare `portrait:<id>`, and a restore is a
+copy back — republished immediately, since `ensureImage` returns early on a key
+that already has an object URL. Per character: no frozen copy (a slot from before
+this, or a cloud slot whose blobs have not landed) leaves that character's live
+art alone; a copy that IS there brings its master or deletes the live one, since
+a stale master is the *newest* picture and ✎ would edit art that is not on
+screen. Overwrite sweeps before re-freezing, delete sweeps outright (stamped, so
+the cloud follows); **Purge Stored Images** already deletes every blob there is,
+frozen copies included. `slotImageKeys(slot)` takes the slot rather than its game
+and names the frozen keys, which also stops a pulled slot overwriting the live
+art of the game in hand.
 Deferred (post-MVP): rolling LLM summarization of the beats themselves,
 NPC/item art, TTS, weather animation, multi-world. Track scope in
 `DESIGN.md → Build Phases`.

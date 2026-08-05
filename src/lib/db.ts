@@ -199,6 +199,33 @@ export async function deleteImage(key: string): Promise<void> {
   await touchImage(key);
 }
 
+/**
+ * Duplicate a stored image under a second key — how a snapshot freezes the art
+ * it was taken with, and how restoring one puts it back (`images.ts →
+ * slotArtPairs`). Nothing behind `from` means nothing to copy, which is the
+ * ordinary case for a character whose portrait was never drawn.
+ *
+ * Returns whether anything moved, since a restore has to tell "the snapshot has
+ * no copy of this, leave the live art alone" apart from "it has one".
+ */
+export async function copyImage(from: string, to: string): Promise<boolean> {
+  const blob = await loadImage(from);
+  if (!blob) return false;
+  await saveImage(to, blob);
+  return true;
+}
+
+/**
+ * Delete every stored image whose key starts with `prefix` — one slot's frozen
+ * art, when the slot is overwritten or deleted. Goes through `deleteImage` per
+ * key so each deletion is stamped, which is what carries it to the cloud.
+ */
+export async function deleteImagesWithPrefix(prefix: string): Promise<number> {
+  const keys = (await listImageKeys()).filter((k) => k.startsWith(prefix));
+  for (const key of keys) await deleteImage(key);
+  return keys.length;
+}
+
 /** Every cache key with a blob behind it — the local side of an image diff. */
 export async function listImageKeys(): Promise<string[]> {
   const db = await getDB();
