@@ -69,7 +69,7 @@ import {
 } from "./lib/roster";
 import { equipItem as moveToKit, unequipItem as moveToPack, type Move } from "./lib/equip";
 import { computeStakes, previewRoll, rollRecord, stakeRules } from "./lib/stakes";
-import { buildMessages } from "./lib/prompt";
+import { BLOCK_REPAIR_TEMPERATURE, buildMessages, buildRepairMessages } from "./lib/prompt";
 import { completeChat, streamChat, OpenRouterError } from "./lib/openrouter";
 import {
   AUTO_UPDATE_TEMPERATURE,
@@ -96,7 +96,13 @@ import {
   type GeneratedItem,
   type ItemRow,
 } from "./lib/generateItem";
-import { parseLoomResponse, truncateForDisplay } from "./lib/loomBlock";
+import {
+  mergeRepairBlock,
+  needsBlockRepair,
+  normalizeOptions,
+  parseLoomResponse,
+  truncateForDisplay,
+} from "./lib/loomBlock";
 import { applyDeltas, reconcileBlock } from "./lib/deltas";
 import { withRename } from "./lib/names";
 import {
@@ -901,11 +907,14 @@ export const useStore = create<LoomStore>((set, get) => {
           }
         : { ...loaded.game, characters: withPC(loaded.game.characters) };
 
-      // Restore trailing options from the last narrator turn.
+      // Restore trailing options from the last narrator turn. Normalized on the
+      // way out, like every other stored shape in the app: a block recorded
+      // before the parser checked `options` can hold objects, and an object
+      // reaching an option button is a React child that throws.
       const lastNarrator = [...game.messages].reverse().find((m) => m.role === "narrator");
       set({
         game,
-        options: lastNarrator?.appliedDeltas?.options ?? [],
+        options: normalizeOptions(lastNarrator?.appliedDeltas?.options),
         hydrated: true,
       });
       void saveActiveGame(game);
@@ -1579,7 +1588,7 @@ export const useStore = create<LoomStore>((set, get) => {
     const lastNarrator = [...game.messages].reverse().find((m) => m.role === "narrator");
     set({
       game,
-      options: lastNarrator?.appliedDeltas?.options ?? [],
+      options: normalizeOptions(lastNarrator?.appliedDeltas?.options),
       streamText: "",
       error: null,
       failedInput: null,
@@ -1667,7 +1676,35 @@ export const useStore = create<LoomStore>((set, get) => {
         onDelta: (full) => set({ streamText: truncateForDisplay(full) }),
       });
 
-      const { prose, block } = parseLoomResponse(raw);
+      const parsed = parseLoomResponse(raw);
+      const prose = parsed.prose;
+      let block = parsed.block;
+
+      // The turn came back with nothing usable — no block at all, or a block
+      // with no buttons in it. Ask once, over the beat the model already wrote.
+      // Deliberately BEFORE anything is applied, so a repaired block runs
+      // through `reconcileBlock` → `applyDeltas` → the reversal snapshot on the
+      // one code path every other turn takes.
+      //
+      // The prose is already on screen, so this costs the buttons a moment, not
+      // the beat. And it can only ever add: a failed or refused repair leaves
+      // the turn exactly as it arrived rather than turning a beat the player can
+      // read into an error they have to retry.
+      if (needsBlockRepair(get().settings, block)) {
+        try {
+          const repairRaw = await completeChat({
+            settings: get().settings,
+            messages: buildRepairMessages(messages, raw, block !== null),
+            signal: turnAbort.signal,
+            temperature: BLOCK_REPAIR_TEMPERATURE,
+          });
+          block = mergeRepairBlock(block, parseLoomResponse(repairRaw).block);
+        } catch {
+          // Including an abort: the player pressing Stop during a repair wants
+          // the turn over, not thrown away.
+        }
+      }
+
       const g = get().game;
       const library = get().game.characters;
       // Fold restated ops and no-ops out BEFORE applying — and record the folded
@@ -1800,7 +1837,7 @@ export const useStore = create<LoomStore>((set, get) => {
       const lastNarrator = [...msgs].reverse().find((m) => m.role === "narrator");
       set({
         game: { ...g2, messages: msgs, turnNumber },
-        options: lastNarrator?.appliedDeltas?.options ?? [],
+        options: normalizeOptions(lastNarrator?.appliedDeltas?.options),
         streaming: false,
         streamText: "",
         error: message,
@@ -1867,7 +1904,7 @@ export const useStore = create<LoomStore>((set, get) => {
     const game: GameState = { ...restored, roster, messages, turnNumber };
     set({
       game,
-      options: prevNarrator?.appliedDeltas?.options ?? [],
+      options: normalizeOptions(prevNarrator?.appliedDeltas?.options),
       error: null,
       failedInput: null,
       streamText: "",

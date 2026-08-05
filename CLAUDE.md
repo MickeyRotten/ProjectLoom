@@ -637,6 +637,35 @@ lines every character block prints, in one order, so the PC block, the party
 roster and the NPC block stop being three drifting copies; `condition` is
 deliberately not among them. Two rules hold it: **every fact is stated once**,
 and **anything the history can contradict is stated after the history**.
+Post-MVP also: **enforced action options** — a weak model drops the `<<<LOOM>>>`
+block, or its `options`, often enough that "no buttons this beat" was ordinary,
+and the client survived exactly one of the four ways it happens. Emit stays
+canonical; **read** got lenient (`loomBlock.ts`). Marker VARIANTS are accepted
+(`<<LOOM>>`, `[LOOM]`, spacing, case) but only when an object follows, so
+`[loom]` in prose can't truncate a beat; with no marker at all,
+`extractLastJsonObject` takes the last brace-balanced object whose keys intersect
+the contract — which also closed a leak, since with no `<<<` anywhere nothing cut
+the prose and the raw JSON was rendered into the reading pane as narration.
+`normalizeOptions` makes `string[]` true rather than aspirational (a single
+newline-separated string, `{ action: … }` rows, a `{"1": …}` map, self-numbering,
+wrapping bold — an array of objects used to reach the option button as a React
+child and throw), reads the alias keys models reach for (`actions`, `choices`,
+`suggestions`, …), and runs on replayed recorded blocks too, since old saves
+predate the check. `extractProseOptions` is the second exception to *no state
+from prose* after speaker detection: a trailing run of short list lines becomes
+the buttons and is **removed** from the beat — a list left in the prose is also in
+the history the model reads back as an example of what a beat looks like. Prompt
+side, `options` leads the field list as REQUIRED, the protocol finally carries a
+**worked example** of the block, and the last line before the action is a
+checklist. What none of that can fix is a turn that returned nothing at all, so
+`Settings.repairBlock` (Narrator → Voice & Actions, **on**) buys **one** repair
+call — the turn's own messages plus the response it gave plus "the beat is
+accepted, emit the block" — fired only after every salvage path failed, so a
+compliant model never pays for it. It runs before anything is applied, so a
+repaired block takes the normal `reconcileBlock` → `applyDeltas` → reversal path;
+a failure (abort included) is swallowed rather than turning a readable beat into
+an error. `mergeRepairBlock` takes the whole repair only when nothing parsed —
+when a block DID parse its ops already ran, so only `options` is taken.
 Deferred (post-MVP): rolling LLM summarization of the beats themselves,
 NPC/item art, TTS, weather animation, multi-world. Track scope in
 `DESIGN.md → Build Phases`.

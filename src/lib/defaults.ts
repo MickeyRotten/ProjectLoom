@@ -251,6 +251,9 @@ export function defaultSettings(): Settings {
     temperature: 0.8,
     reasoningLevel: DEFAULT_REASONING_LEVEL,
     showActionOptions: true,
+    // On, because it costs nothing on a model that follows the contract — it
+    // fires only when a turn arrives with no block and no salvageable options.
+    repairBlock: true,
     quickActions: DEFAULT_QUICK_ACTIONS.map((a) => ({ ...a })),
     paper: DEFAULT_PAPER,
     ink: DEFAULT_INK,

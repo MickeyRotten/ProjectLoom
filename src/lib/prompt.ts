@@ -607,8 +607,14 @@ function buildOutputProtocol(settings: Settings): string {
     activeTemplate(settings).appearanceInstructions.trim() ||
     '"description" is physical appearance only, concrete and visual.';
 
+  // First in the field list and named as required, because it is the field weak
+  // models drop most and the one whose absence the player sees immediately. The
+  // client salvages what it can (`loomBlock.ts`), but salvage is a net, not a
+  // plan.
   const optionsLine = settings.showActionOptions
-    ? '- "options": array of 3–4 action strings. ' + optionRule
+    ? '- "options": REQUIRED — an array of 3–4 action strings, on EVERY turn without exception. ' +
+      optionRule +
+      ' The options go in this field and NOWHERE else: never number them in your prose, and never end a beat with "What do you do?" or a list of choices.'
     : '- "options": OMIT this field entirely — do not suggest actions this turn.';
 
   // The character-authoring rules (Narrator → Writing Characters). Each is a whole
@@ -627,6 +633,21 @@ function buildOutputProtocol(settings: Settings): string {
     .filter(Boolean)
     .map((rule) => `- ${rule}`);
 
+  // A worked example, which the protocol had none of — fifteen bullets of field
+  // documentation and nothing showing the shape assembled. On a weak model one
+  // exemplar beats another paragraph of rules, and it is the only place
+  // `options` can be shown as what it is: ordinary, and always there.
+  const example = settings.showActionOptions
+    ? '{ "duration": "scene", "options": ["Follow the tracks", "Call out to her", "Back away quietly"] }'
+    : '{ "duration": "scene" }';
+
+  // Last line of the protocol, which is the last thing read before the player's
+  // action — the recency slot, spent on the two failures that cost the player
+  // something visible rather than on a list of prohibitions.
+  const checklist = settings.showActionOptions
+    ? 'Before you finish, check your own output: prose first, then exactly one <<<LOOM>>> … <<<END>>> pair, and "options" inside it with 3–4 strings. A beat that ends without options is an unfinished turn.'
+    : "Before you finish, check your own output: prose first, then exactly one <<<LOOM>>> … <<<END>>> pair.";
+
   return [
     "OUTPUT PROTOCOL — every turn, emit narration prose FIRST, then exactly one machine block.",
     "The prose is short and punchy. After the prose, on its own lines, emit:",
@@ -634,11 +655,16 @@ function buildOutputProtocol(settings: Settings): string {
     "{ a single JSON object }",
     "<<<END>>>",
     "",
+    "A quiet turn that changed nothing in the world still emits the block:",
+    "<<<LOOM>>>",
+    example,
+    "<<<END>>>",
+    "",
     "JSON fields (include only what changed this turn):",
+    optionsLine,
     '- "weather": the current scene (string).',
     '- "duration": how much time your prose just took, as ONE of these words — "moment" (a blow lands, a door opens), "brief" (a short exchange), "scene" (a conversation, a search of one room), "hour", "hours" (a thorough search, a long negotiation), "halfday" (a journey across the region), "day" (a long haul), "night" (the player sleeps until morning). Always send it. The day and the time of day are counted from this, so guess honestly — never send a number, and never try to set the day yourself.',
     '- "location": the name of the place the scene is in, and NOTHING else — one name, the most specific one. Never join two place names: "Damp Cellar", not "Boars Head Tavern - Damp Cellar"; "Market Square", not "Rodstroke: Market Square". No dash, colon, slash or parent place, and no description.',
-    optionsLine,
     '- "party": array of character ops, each { "op": "add|update|remove", "name", "standing" }. Add a character when they enter the player\'s story; remove when they leave it. "name" is always the name you have been calling them — an op naming somebody new creates them.',
     '- An op may also carry "newName" to RENAME the character "name" resolves to. Their sheet, portrait and standing all stay; only what you call them changes, and the old name keeps working.',
     `- A NEW character's "add" also carries "species", "sex", "description", "personality", "drive", "strengths", "flaws" (all strings) and "equipment": [ { "label", "description" } ] — this is the only op that writes them. ${appearanceRule}`,
@@ -655,5 +681,51 @@ function buildOutputProtocol(settings: Settings): string {
     "Every op is a CHANGE your prose just made. The blocks above already tell you what the player has, who travels with them, what marks they carry and what quests are open — none of it needs confirming, and an op that sets something to what it already is will be discarded. When a turn changes nothing, emit an empty object.",
     'Party dialogue uses the convention `Name: "…"` — the name must be an in-company member.',
     "Never put the JSON before the prose. Never emit more than one block. Never wrap it in code fences.",
+    checklist,
   ].join("\n");
+}
+
+/**
+ * Cooler than narration and cooler than the sheet calls: a repair re-reports a
+ * beat that is already written and already on screen. There is nothing here to
+ * be creative about, and a hot re-read invents ops the prose never made.
+ */
+export const BLOCK_REPAIR_TEMPERATURE = 0.2;
+
+/**
+ * The repair call: one more request for a turn whose machine block never
+ * arrived, or arrived without its action options
+ * (`loomBlock.ts → needsBlockRepair`).
+ *
+ * Takes the turn's OWN messages and appends the response the model actually
+ * gave, so the output protocol, the state of play and the beat under repair are
+ * all already in context — the instruction below can just point at them instead
+ * of restating a thousand tokens of contract.
+ *
+ * The beat is explicitly declared final. A model told only "that was wrong" will
+ * happily rewrite the narration, and the prose has already been streamed to the
+ * player and recorded; only the block is in question.
+ */
+export function buildRepairMessages(
+  turn: ChatMessage[],
+  raw: string,
+  optionsOnly: boolean,
+): ChatMessage[] {
+  const instruction = optionsOnly
+    ? [
+        "BLOCK REPAIR — your beat above is accepted and will NOT be rewritten. Its machine block is missing the action options.",
+        'Emit ONE <<<LOOM>>> block containing ONLY "options": an array of 3–4 short, concrete actions the player could take right now, following directly from the beat you just wrote.',
+        "No prose, no other fields, no explanation, no apology. The block and nothing else.",
+      ]
+    : [
+        "BLOCK REPAIR — your beat above is accepted and will NOT be rewritten, but the machine block that must follow it is missing or unreadable.",
+        "Emit that block NOW, exactly as the OUTPUT PROTOCOL above describes it: one <<<LOOM>>> object reporting what the beat you just wrote actually changed, closed with <<<END>>>.",
+        "No prose, no commentary, no apology, no code fence. The block and nothing else.",
+      ];
+
+  return [
+    ...turn,
+    { role: "assistant", content: raw },
+    { role: "system", content: instruction.join("\n") },
+  ];
 }
