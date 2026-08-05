@@ -711,6 +711,50 @@ promoteLegacyMasters` moves every `src:<key>` blob onto `<key>` on first launch
 promotion behind an object URL of the copy it replaced), so an upgrading device
 keeps the good pixels and throws away the thumbnails; `LEGACY_MASTER_PREFIX` is
 all that stays named of the old keyspace, read there and written nowhere.
+Post-MVP also: **Foresight** (`arc.ts` · `fronts.ts` · `areaPrep.ts` ·
+`roomPrep.ts` · `promises.ts` · `gazetteer.ts` · `foresight.ts`,
+`Settings.foresightEnabled` **on**, Narrator → Foresight) — the journal
+remembers backwards; this is the same machine pointed forwards, and built the
+same way: the model authors at a **boundary the client picks**, the client owns
+every number, the artefact is player-visible and editable, it is injected
+**after** the history, and when it is absent the turn is byte-identical to one
+taken without it. Three scopes, widest first: an **arc** (the story's question
+plus **fronts** — things closing in, written in advance as a list of steps whose
+length IS the clock), an **area** card (a region's standing pressure, plus a
+list of room NAMES that seeds the map and stops the narrator renaming the same
+place), and a **room** card — the only one carrying `outcomes`, keyed by the
+same three `TurnOutcome` values `stakes.ts` already bands to. That is the whole
+join: `formatStakesBlock` gained one argument, and **only the branch that rolled
+is ever shown**. Prep runs AFTER a beat lands (`store → runPrep`, single-flight,
+every failure swallowed) and prefetches the rooms the current one's `exits`
+name, since entry is only known when the block lands. **Reckon** is client-owned
+and callless (`foresight.ts → reckonTurn`, folded into the same `nextGame`, so
+it rides the same save and the same `captureReversal`): the room→area join is
+resolved on-device off the room lists — `LoomBlock.area` only ever introduces a
+NEW region, so the front economy never hangs on an optional field weak models
+drop — a COST ticks the front its region serves, a front untouched for
+`frontNeglectDays` ticks itself (the world moving while the player is
+elsewhere), a front at the end of its clock **fires**, is narrated by a
+mandatory arrival block on the next beat, and is retired on the one after; when
+the **spine** is spent the arc goes to **interlude**, a state in which every
+clock is suspended and the prep block is replaced by breathing room. The
+handoff to the next arc is **staged, not applied** — Use / Regenerate on the Arc
+screen, auto-applied when the interlude runs out, so an unvisited screen can
+never dead-end into arcless play. Two cheap turn channels join the contract:
+`promises` (the commitment the prose just made — client-stamped, aged,
+escalated at `promiseTurns`, dropped at twice that) and `optionNotes`, parallel
+to `options` and matched **by tap index**, where a length mismatch drops them
+all. Staleness is the `(arcId, epoch)` **pair**, since every arc counts epochs
+from zero; rooms are keyed by slug with the leading article stripped; every
+coordinate is internal and client-placed by a deterministic spiral, so the
+**1-bit map** (inline SVG, a play screen in the ⋯ menu, `mapFog`) is drawn from
+geometry no model ever saw. Reversal captures the pointers and the clocks
+(`arcs`, `promises`, `areaKey`) and deliberately **not** the gazetteer — prep is
+a cache, so undo puts the player back in a room whose card is still there.
+`Message.reckoning` carries what the client did, apart from `appliedDeltas`,
+which is a record of what the model said. Off is total: no call, no block, no
+tick, nothing deleted.
+
 Deferred (post-MVP): rolling LLM summarization of the beats themselves,
 NPC/item art, TTS, weather animation, multi-world. Track scope in
 `DESIGN.md → Build Phases`.

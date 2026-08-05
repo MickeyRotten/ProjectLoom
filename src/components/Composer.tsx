@@ -15,6 +15,9 @@ const MENU: { screen: Screen; label: string }[] = [
   { screen: "inventory", label: "Inventory" },
   { screen: "quests", label: "Quests" },
   { screen: "worldnotes", label: "World Notes" },
+  // The map is the PLAYER's — where they have been and what leads where. The
+  // threats stay private on the Foresight screen, which is not in this list.
+  { screen: "map", label: "Map" },
   { screen: "saves", label: "Saves" },
 ];
 

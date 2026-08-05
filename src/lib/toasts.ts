@@ -12,7 +12,12 @@ import { isGold } from "./defaults";
  */
 export function deriveToasts(msg: Message): string[] {
   const block = msg.appliedDeltas;
-  if (!block) return [];
+  // Foresight's chips come from `Message.reckoning`, not from the block: front
+  // ticks and promise plants are CLIENT-computed, so they were never something
+  // the model said, and `appliedDeltas` is a record of what it said. A beat can
+  // carry one without the other.
+  const reckoned = reckonToasts(msg);
+  if (!block) return reckoned;
   const toasts: string[] = [];
 
   // Location — only when it actually changed. The reversal snapshot holds the
@@ -94,7 +99,25 @@ export function deriveToasts(msg: Message): string[] {
       toasts.push(`Quest completed: ${d.label}`);
   }
 
-  return toasts;
+  return [...toasts, ...reckoned];
+}
+
+/**
+ * The chips for what the client did after the block applied — a front moving,
+ * a front arriving, a promise planted.
+ *
+ * A front tick is deliberately worded as pressure rather than as a number: the
+ * player sees the clock on the Foresight screen if they want it, and a chip
+ * reading "2/4" in the middle of a beat would turn the story into a status bar.
+ */
+function reckonToasts(msg: Message): string[] {
+  const r = msg.reckoning;
+  if (!r) return [];
+  const out: string[] = [];
+  if (r.frontTicked) out.push(`Closing in: ${r.frontTicked}`);
+  if (r.frontFired) out.push(`It arrives: ${r.frontFired}`);
+  for (const promise of r.promisesPlanted ?? []) out.push(`Promise: ${promise}`);
+  return out;
 }
 
 /**

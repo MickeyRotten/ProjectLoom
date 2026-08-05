@@ -453,7 +453,21 @@ export function bandScale(rules: DiceRules = DEFAULT_DICE): string {
  * Marked authoritative for the same reason the party roll call is: the model
  * will happily narrate a triumph over a "cost" if the block reads as advice.
  */
-export function formatStakesBlock(signals: StakeSignals, rule: string): string {
+export function formatStakesBlock(
+  signals: StakeSignals,
+  rule: string,
+  /**
+   * The line room prep wrote for the band that actually rolled
+   * (`gazetteer.ts → preparedOutcome`), or "" — which is every turn in a game
+   * with Foresight off, or standing in a room nothing has prepped.
+   *
+   * This one argument is the WHOLE join between Foresight and the dice: the
+   * room card's `outcomes` are keyed by the same three `TurnOutcome` values
+   * banded above, so there is no new block and no new mapping. The two branches
+   * that did not roll never enter the context.
+   */
+  prepared = "",
+): string {
   if (!signals.outcome) return "";
   const sign = signed(signals.modifier);
   const note = modifierNote({
@@ -461,12 +475,23 @@ export function formatStakesBlock(signals: StakeSignals, rule: string): string {
     flaws: signals.flawsInPlay,
   });
   const faces = signals.dice.length > 1 ? ` [${signals.dice.join(", ")}]` : "";
+  const line = prepared.trim();
   return [
     "OUTCOME — THIS TURN (authoritative: narrate THIS result; never soften it, upgrade it, or talk the player out of it)",
     `The action is a gamble. Rolled ${diceNotation(signals.rules)}${faces} ${signals.roll} ${sign} (${note}) = ${signals.total} → ${signals.outcome.toUpperCase()}.`,
     // The scale says how CLOSE it was — a 3 that needed a 4 is a different beat
     // from a 3 that needed a 12, and the narrator can only see that if told.
     `Scale: ${bandScale(signals.rules)}.`,
+    // Prepared in advance, for this PLACE rather than for this action: a haggle
+    // attempted on the rotten stair still draws the stair's cost, so it is
+    // material to fold into whatever was attempted, never a script to read out.
+    ...(line
+      ? [
+          "",
+          `Prepared for this scene: ${line}`,
+          "That is what this place does. Fold it into the action the player actually took — adapt the wording, keep the substance.",
+        ]
+      : []),
     "",
     `RULE: ${rule.trim()}`,
   ].join("\n");

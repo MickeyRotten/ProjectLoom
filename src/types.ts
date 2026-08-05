@@ -278,6 +278,16 @@ export interface Message {
   roll?: TurnRoll;
   /** The parsed delta block applied by this turn — recorded for reversal (Phase 5). */
   appliedDeltas?: LoomBlock;
+  /**
+   * What each of this turn's `options` risks, index-aligned with them. Never
+   * rendered: it comes back on the NEXT turn as "you planned this" when the
+   * player taps that button, matched by tap index. A typed or edited action
+   * carries no note, correctly — the note was written for the option, not for
+   * the wording.
+   */
+  optionNotes?: string[];
+  /** What the CLIENT did after the block applied — see `Reckoning`. */
+  reckoning?: Reckoning;
   /** Pre-turn slices this turn overwrote — undo/regenerate restores them (Phase 5). */
   reversal?: Reversal;
   /** Scene snapshot at this message, for header display + reversal restore. */
@@ -318,6 +328,19 @@ export interface Reversal {
   inventory?: Item[];
   quests?: Quest[];
   worldNotes?: Note[];
+  /**
+   * Foresight's POINTERS and CLOCKS — never its cards. `arcs` carries every
+   * `front.ticks`, status and epoch inside it; `areaKey` is the room→area join
+   * (`location` is the room, and was always captured).
+   *
+   * `areas` — the gazetteer — is deliberately absent. Prep is not state: undo
+   * puts the player back in a room whose card is still in the cache, so there
+   * is no re-prep, no double tick, and the snapshot stays small.
+   */
+  arcs?: Arc[];
+  promises?: StoryPromise[];
+  /** Absent when the turn didn't move the player between areas. */
+  areaKey?: string | null;
 }
 
 /**
@@ -341,6 +364,196 @@ export interface Scenario {
   startDay: number;
   /** Location name the game opens in; seeds GameState.location on New Adventure. */
   startLocation: string;
+  /**
+   * The AUTHORED arc — what this story is about and what is closing in on the
+   * player, as a template. Split from `GameState.arcs` exactly the way the cast
+   * is split from the roster (see **Characters ⟂ Party**): this half is written
+   * once and frozen, the instances below are what the story actually spends.
+   *
+   * Optional because every scenario written before Foresight has none, and a
+   * scenario with no arc is the degenerate case rather than a broken one.
+   */
+  arc?: ArcTemplate;
+}
+
+/* ------------------------------------------------------------------ *
+ * Foresight — the arc, the area, the room (DESIGN.md → Foresight).
+ *
+ * The journal remembers backwards; this is the same machine pointed
+ * forwards. Every artefact here has exactly ONE writer: the model authors
+ * material at a boundary the client picks, and the client owns every number
+ * — ticks, epochs, coordinates, ages. That split is the `day` lesson
+ * generalised, and it is why nothing below carries a count the narrator
+ * could write.
+ * ------------------------------------------------------------------ */
+
+/** A cell on one of the two map grids. Internal, like `GameState.minutes`. */
+export interface Coord {
+  x: number;
+  y: number;
+}
+
+/**
+ * One thing closing in on the player, written in ADVANCE as a list of steps.
+ * The length of `steps` IS the clock: a front with four steps fires on its
+ * fourth tick. Authored (in a scenario, or by the handoff call); the instance
+ * below is what ticks.
+ */
+export interface FrontTemplate {
+  id: string;
+  /** "the mine floods" — how the front is named on the Arc screen and in the prompt. */
+  label: string;
+  /** Written in advance, in order. 2–8 of them (`fronts.ts → normalizeFront`). */
+  steps: string[];
+}
+
+/** The authored arc: the story's question, its fronts, and which one ends it. */
+export interface ArcTemplate {
+  /** What this story is about, one line. */
+  question: string;
+  fronts: FrontTemplate[];
+  /** `FrontTemplate.id` — the front whose firing resolves the arc. */
+  spine: string;
+}
+
+/**
+ * A front as the story spends it. `ticks` and `lastTickDay` are CLIENT-owned:
+ * the model never writes either, for the same reason it never writes the day.
+ */
+export interface Front extends FrontTemplate {
+  ticks: number;
+  /** The in-game day this front last moved — what neglect ticking hangs off. */
+  lastTickDay: number;
+  status: "open" | "fired" | "retired";
+}
+
+/**
+ * Where an arc stands. `interlude` is a STATE, not a scene: while it holds,
+ * every front stops ticking, the prep block is replaced by breathing room, and
+ * the handoff to the next arc is staged for the player to look at.
+ */
+export type ArcStatus = "running" | "interlude" | "done";
+
+/**
+ * One arc instance — `GameState.arcs`, appended and never replaced, so a
+ * finished arc is campaign history rather than a deletion.
+ */
+export interface Arc extends ArcTemplate {
+  id: string;
+  /**
+   * Bumped when a front fires or retires, or when a handoff rewrites the
+   * question. Half of the area-card staleness stamp; the other half is `id`,
+   * because every arc counts epochs from zero and the number alone collides.
+   */
+  epoch: number;
+  status: ArcStatus;
+  fronts: Front[];
+  /** AreaKeys this arc has touched — map shading, and nothing else. */
+  areas: string[];
+  openedTurn: number;
+  /** The turn the interlude began, for the `interludeTurns` countdown. */
+  interludeFrom?: number;
+  /**
+   * The next arc, authored by the handoff call and NOT yet applied. Staged
+   * rather than applied because it writes the next several hours of play off a
+   * summary — the player gets Use / Regenerate on the Arc screen. Auto-applies
+   * when the interlude runs out, so an unvisited screen can never dead-end the
+   * campaign into arcless play.
+   */
+  staged?: ArcTemplate;
+}
+
+/**
+ * One room inside an area. `card` is null for a room the area merely NAMED —
+ * a rumour, which is a hook rather than a ghost, so it survives a re-prep.
+ */
+export interface RoomSlot {
+  /** Display spelling. Matching is by slug with the article stripped. */
+  name: string;
+  /** Local grid — internal, placed by the client's spiral, never model-authored. */
+  coord: Coord;
+  /** RoomKeys. Made symmetric by `gazetteer.ts → normalizeMap`. */
+  exits: string[];
+  visited: boolean;
+  card: RoomCard | null;
+}
+
+/**
+ * The room card — the only Foresight artefact carrying outcome bands, keyed by
+ * the same three `TurnOutcome` values `stakes.ts` already bands to. That is the
+ * whole join between the two features: no new prompt block, no new mapping.
+ */
+export interface RoomCard {
+  /** The `AreaCard.version` this was prepped under; a mismatch is stale. */
+  version: number;
+  openedTurn: number;
+  /** One line: what this space is. */
+  danger: string;
+  /** The thing, and what sets it off. `ROOM_MAX_THREATS` of them. */
+  threats: string[];
+  /** What is here to want. Two at most. */
+  hooks: string[];
+  /** What a STRONG / MIXED / COST resolves to *here*. */
+  outcomes: Record<TurnOutcome, string>;
+}
+
+/**
+ * A region's pressure — `GameState.areas`, keyed by AreaKey. Rooms inherit its
+ * `front`, rather than each room picking one and drifting.
+ */
+export interface AreaCard {
+  key: string;
+  name: string;
+  /** With `epoch`, the staleness stamp — the PAIR, never the epoch alone. */
+  arcId: string;
+  epoch: number;
+  /** Bumped on re-prep; invalidates the room cards cached under it. */
+  version: number;
+  /** World grid — internal, client-placed. */
+  coord: Coord;
+  /** AreaKeys. */
+  neighbours: string[];
+  /** One line: what this region is. */
+  texture: string;
+  /** What applies ANYWHERE in it. `AREA_MAX_THREATS` of them. */
+  threats: string[];
+  /** `Front.id` this area serves. Rooms inherit it. */
+  front?: string;
+  /** Keyed by room slug — one room per spelling family. */
+  rooms: Record<string, RoomSlot>;
+}
+
+/**
+ * A commitment the prose just made ("the tremor in the walls"), aged by the
+ * client and read back by area and room prep — the wire that turns a promise
+ * into a threat into a rolled band into a front tick.
+ *
+ * NOT called `Promise`: shadowing the global would break every async signature
+ * in reach.
+ */
+export interface StoryPromise {
+  id: string;
+  text: string;
+  plantedTurn: number;
+}
+
+/** The turn block's promise channel — plant one, or close one off. */
+export interface PromiseDelta {
+  op: "add" | "remove";
+  text: string;
+}
+
+/**
+ * What the CLIENT did after the block applied — front ticks, a front firing,
+ * promises planted. Deliberately not folded into `Message.appliedDeltas`: that
+ * array is a record of what the MODEL said, and `toasts.ts` reads both.
+ */
+export interface Reckoning {
+  /** `Front.label` of the front this turn advanced. */
+  frontTicked?: string;
+  /** `Front.label` of a front that reached the end of its clock. */
+  frontFired?: string;
+  promisesPlanted?: string[];
 }
 
 /**
@@ -377,6 +590,12 @@ export interface JournalEntry {
   fromTurn: number;
   throughTurn: number;
   lines: JournalLine[];
+  /**
+   * The `Arc.id` running when this entry was written — the chapter stamp a
+   * long journal has never had. Absent on every entry written before Foresight,
+   * and on any written with no arc open.
+   */
+  arcId?: string;
 }
 
 export interface GameState {
@@ -409,6 +628,19 @@ export interface GameState {
   minutes: number;
   location: string;
   weather: string;
+  /**
+   * Foresight (DESIGN.md → Foresight). Every field here is absent on saves
+   * written before it and reads as empty, which is exactly the degenerate case
+   * the feature degrades to — so there is no migration on either side.
+   */
+  /** Arc instances, appended: the running one last, the finished ones behind it. */
+  arcs?: Arc[];
+  /** The gazetteer — prepped regions, keyed by AreaKey. */
+  areas?: Record<string, AreaCard>;
+  /** Which area the player is standing in. Resolved on-device off room lists. */
+  areaKey?: string | null;
+  /** Commitments the prose has made and not yet paid off. */
+  promises?: StoryPromise[];
 }
 
 /**
@@ -883,6 +1115,51 @@ export interface Settings extends DiceRules, ComfySettings {
   journalMinTurns: number;
   /** Player-editable rule for what a journal line should be. */
   journalInstructions: string;
+
+  /* ---------------- Foresight (Narrator → Foresight) ---------------- */
+
+  /**
+   * Whether the forward-prep layer exists at all (DESIGN.md → Foresight).
+   *
+   * **Ships ON**: the boundary calls are rare, each is cheaper than one beat,
+   * and a feature whose absence is silent is never discovered switched off.
+   * Off is total — no prep call is made, no block is injected, no front ticks,
+   * no promise ages — so a turn taken with it off is byte-identical to one
+   * taken before the feature existed. Nothing already prepped is deleted: the
+   * cards, arcs and promises sit in the save and come back when it is switched
+   * on again.
+   */
+  foresightEnabled: boolean;
+  /** What a ROOM card must contain — the only card carrying outcome bands. */
+  scenePrepInstructions: string;
+  /** What an AREA card must contain — region texture and standing threats. */
+  areaPrepInstructions: string;
+  /** What the handoff call writes when one arc ends and the next is authored. */
+  arcInstructions: string;
+  /** How the narrator plants and pays off a promise. */
+  promiseInstructions: string;
+  /**
+   * Turns in one room after which its card is re-prepped regardless. Room
+   * granularity absorbs most of what a turn ceiling covered, but a thirty-turn
+   * tavern conversation is one room and still needs refreshing.
+   */
+  sceneBoundaryTurns: number;
+  /** In-game days a front may go untouched before it ticks on its own. */
+  frontNeglectDays: number;
+  /** Turns before an outstanding promise is escalated (and 2× that, dropped). */
+  promiseTurns: number;
+  /** How long an interlude runs before the staged next arc applies itself. */
+  interludeTurns: number;
+  /** A COST outcome ticks the front its area serves. */
+  costTicksFront: boolean;
+  /** A MIXED outcome does too. Off by default — mixed is not a setback. */
+  mixedTicksFront: boolean;
+  /**
+   * Show rooms an area has NAMED but the player has never walked into. A
+   * toggle on the Map screen rather than in the Foresight settings, because it
+   * changes what one play screen draws and nothing the narrator reads.
+   */
+  mapFog: boolean;
 }
 
 /* ------------------------------------------------------------------ *
@@ -1007,4 +1284,21 @@ export interface LoomBlock {
   /** Lore the narrator committed to memory this turn — see `NoteDelta`. */
   notes?: NoteDelta[];
   spoke?: string[];
+  /**
+   * The name of a genuinely NEW region the narrator has just walked the player
+   * into. Deliberately the only Foresight field on the turn block that names a
+   * place: area membership is resolved on-device off the areas' own room lists
+   * (`gazetteer.ts`), so an ordinary turn omitting this costs nothing. The
+   * front economy rides the room→area join, and it must not hang on an optional
+   * field the same weak models drop whole blocks of.
+   */
+  area?: string;
+  /**
+   * What each entry of `options` risks — parallel to it, same length. Never
+   * rendered; it comes back as direction the turn the player takes that option.
+   * A length mismatch drops them ALL: misaligned notes are worse than none.
+   */
+  optionNotes?: string[];
+  /** Commitments the prose just made, and ones it just paid off. */
+  promises?: PromiseDelta[];
 }

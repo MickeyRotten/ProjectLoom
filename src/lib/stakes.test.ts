@@ -599,3 +599,30 @@ describe("fair dice", () => {
     );
   });
 });
+
+describe("formatStakesBlock — the prepared line (Foresight join)", () => {
+  const signals = computeStakes("I climb the rotten stair", undefined, 3, {
+    ...DEFAULT_STAKE_RULES,
+    alwaysRoll: true,
+  });
+
+  it("is byte-identical to before when nothing was prepped", () => {
+    expect(formatStakesBlock(signals, "RULE TEXT", "")).toBe(
+      formatStakesBlock(signals, "RULE TEXT"),
+    );
+  });
+
+  it("folds the prepared line in, as material rather than as a script", () => {
+    const block = formatStakesBlock(signals, "RULE TEXT", "the stair collapses");
+    expect(block).toContain("Prepared for this scene: the stair collapses");
+    expect(block).toContain("Fold it into the action the player actually took");
+    // The band and the rule are still there and still authoritative.
+    expect(block).toContain("authoritative");
+    expect(block).toContain("RULE: RULE TEXT");
+  });
+
+  it("adds nothing on a turn that rolled nothing", () => {
+    const quiet = computeStakes("I look around", undefined, 3, DEFAULT_STAKE_RULES);
+    expect(formatStakesBlock(quiet, "RULE", "the stair collapses")).toBe("");
+  });
+});

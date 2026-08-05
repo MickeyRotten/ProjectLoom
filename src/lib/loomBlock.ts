@@ -1,4 +1,4 @@
-import type { LoomBlock, Settings } from "../types";
+import type { LoomBlock, PromiseDelta, Settings } from "../types";
 
 /**
  * The <<<LOOM>>> turn contract — parsing + streaming truncation.
@@ -90,6 +90,26 @@ export function parseLoomResponse(raw: string): ParsedResponse {
   const block = parsed as LoomBlock & Record<string, unknown>;
   for (const alias of OPTION_ALIASES) delete block[alias];
   if (options.length || read.hadKey) block.options = options;
+
+  // Foresight's two read-side channels, normalized here for the same reason
+  // `options` is: everything downstream — the store, `Message.appliedDeltas`,
+  // a replayed reversal — is entitled to the shape the type promises.
+  const notes = normalizeOptionNotes(block.optionNotes, options);
+  if (notes) block.optionNotes = notes;
+  else delete block.optionNotes;
+
+  const promises = normalizePromiseDeltas(block.promises);
+  if (promises) block.promises = promises;
+  else delete block.promises;
+
+  if (typeof block.area === "string") {
+    const area = block.area.trim();
+    if (area) block.area = area;
+    else delete block.area;
+  } else {
+    delete block.area;
+  }
+
   return { prose, block };
 }
 
@@ -169,6 +189,9 @@ const BLOCK_KEYS = [
   "quests",
   "notes",
   "spoke",
+  "area",
+  "promises",
+  "optionNotes",
 ];
 
 /** Does this object look like a turn block rather than a brace in the prose? */
@@ -495,5 +518,55 @@ export function mergeRepairBlock(
   if (!block) return repaired;
   const options = normalizeOptions(repaired.options);
   if (!options.length) return block;
-  return { ...block, options };
+  // The notes come across only PAIRED with the options they were written for.
+  // A repair call that returned four options and three notes has told us
+  // nothing about which action carries which risk, and a misaligned note is
+  // worse than no note at all.
+  const optionNotes = normalizeOptionNotes(repaired.optionNotes, options);
+  return { ...block, options, ...(optionNotes ? { optionNotes } : {}) };
+}
+
+/**
+ * The per-option notes, or undefined.
+ *
+ * Length is the whole contract: they are matched to the buttons by INDEX, and
+ * `normalizeOptions` legitimately drops and reorders (duplicates, blanks, an
+ * over-long fifth). So the notes are kept only when they still line up with the
+ * options that survived — **a mismatch drops them all**, because a note handed
+ * back for the wrong action is direction pointing at the wrong thing.
+ */
+export function normalizeOptionNotes(
+  value: unknown,
+  options: string[],
+): string[] | undefined {
+  if (!Array.isArray(value) || !options.length) return undefined;
+  if (value.length !== options.length) return undefined;
+  const notes = value.map((n) => (typeof n === "string" ? n.trim().slice(0, MAX_OPTION_NOTE) : ""));
+  return notes.some(Boolean) ? notes : undefined;
+}
+
+/** A note is a clause about what one button risks, not a paragraph. */
+const MAX_OPTION_NOTE = 160;
+
+/**
+ * The `promises` channel, as the `PromiseDelta[]` the type promises. Rows with
+ * no text are dropped; an unreadable `op` reads as `add`, since planting is
+ * overwhelmingly the common case and a stray `remove` would silently delete one.
+ */
+export function normalizePromiseDeltas(value: unknown): PromiseDelta[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const out: PromiseDelta[] = [];
+  for (const row of value) {
+    if (typeof row === "string") {
+      const text = row.trim();
+      if (text) out.push({ op: "add", text });
+      continue;
+    }
+    if (!row || typeof row !== "object") continue;
+    const r = row as { op?: unknown; text?: unknown };
+    const text = typeof r.text === "string" ? r.text.trim() : "";
+    if (!text) continue;
+    out.push({ op: r.op === "remove" ? "remove" : "add", text });
+  }
+  return out.length ? out : undefined;
 }

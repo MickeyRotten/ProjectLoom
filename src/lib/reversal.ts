@@ -34,6 +34,16 @@ export function captureReversal(pre: GameState, post: GameState): Reversal {
   if (pre.quests !== post.quests) rev.quests = pre.quests;
   if (pre.worldNotes !== post.worldNotes) rev.worldNotes = pre.worldNotes;
   if (pre.journal !== post.journal) rev.journal = pre.journal;
+  // Foresight captures its POINTERS and CLOCKS, never its cards: `arcs` carries
+  // every front's ticks, status and epoch inside it, and `areaKey` is the
+  // room→area join (`location` is the room, and was always captured).
+  //
+  // `areas` — the gazetteer — is deliberately not among them. Prep is not
+  // state. Undo puts the player back in a room whose card is still in the
+  // cache: no re-prep, no double tick, and the snapshot stays small.
+  if (pre.arcs !== post.arcs) rev.arcs = pre.arcs;
+  if (pre.promises !== post.promises) rev.promises = pre.promises;
+  if (pre.areaKey !== post.areaKey) rev.areaKey = pre.areaKey ?? null;
   return rev;
 }
 
@@ -60,6 +70,12 @@ export function applyReversal(game: GameState, rev: Reversal): GameState {
     quests: rev.quests ?? game.quests,
     worldNotes: rev.worldNotes ?? game.worldNotes,
     journal: rev.journal ?? game.journal,
+    arcs: rev.arcs ?? game.arcs,
+    promises: rev.promises ?? game.promises,
+    // `undefined` means the turn never moved the player between areas, so the
+    // current pointer stands; an explicit `null` is a real pre-turn value (no
+    // area yet) and has to be restorable.
+    areaKey: rev.areaKey === undefined ? game.areaKey : rev.areaKey,
   };
 }
 

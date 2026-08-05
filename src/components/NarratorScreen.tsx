@@ -1,11 +1,13 @@
 import { useStore } from "../store";
-import { SubMenuScreen, type SubMenuSection } from "./SubMenuScreen";
+import { MenuLink, SubMenuScreen, type SubMenuSection } from "./SubMenuScreen";
 import { Field, SegmentedRow, ToggleRow, btnSmall } from "./fields";
 import { KeyField } from "./KeyField";
 import { ModelPicker } from "./ModelPicker";
 import { splitModels, useModelCatalog } from "./useModelCatalog";
 import { REASONING_LEVELS, type ReasoningLevel, type Settings } from "../types";
 import {
+  DEFAULT_AREA_PREP_INSTRUCTIONS,
+  DEFAULT_ARC_INSTRUCTIONS,
   DEFAULT_CHARACTER_CREATION_INSTRUCTIONS,
   DEFAULT_NAMING_INSTRUCTIONS,
   DEFAULT_CHARACTER_UPDATE_INSTRUCTIONS,
@@ -13,6 +15,8 @@ import {
   DEFAULT_DEPARTURE_INSTRUCTIONS,
   DEFAULT_JOURNAL_INSTRUCTIONS,
   DEFAULT_OPTION_INSTRUCTIONS,
+  DEFAULT_PROMISE_INSTRUCTIONS,
+  DEFAULT_SCENE_PREP_INSTRUCTIONS,
   DEFAULT_SPOTLIGHT_RULE,
   DEFAULT_STANDING_INSTRUCTIONS,
 } from "../lib/defaults";
@@ -22,13 +26,20 @@ import {
   MIN_HISTORY_BUDGET,
 } from "../lib/prompt";
 import {
+  clampInterludeTurns,
   clampJournalBudget,
   clampJournalMaxTurns,
   clampJournalMinTurns,
   clampMaxTokens,
+  clampNeglectDays,
+  clampPromiseTurns,
+  clampSceneBoundaryTurns,
   MAX_BEAT_TOKENS,
+  MAX_FORESIGHT_TURNS,
   MAX_JOURNAL_BUDGET,
   MAX_JOURNAL_TURNS,
+  MAX_NEGLECT_DAYS,
+  MIN_FORESIGHT_TURNS,
   MIN_JOURNAL_TURNS,
 } from "../lib/settings";
 
@@ -57,6 +68,10 @@ type InstrKey = keyof Pick<
   | "characterUpdateInstructions"
   | "standingInstructions"
   | "departureInstructions"
+  | "scenePrepInstructions"
+  | "areaPrepInstructions"
+  | "arcInstructions"
+  | "promiseInstructions"
 >;
 
 interface InstrSpec {
@@ -139,6 +154,41 @@ const CHARACTER_FIELDS: InstrSpec[] = [
     def: DEFAULT_SPOTLIGHT_RULE,
     rows: 4,
     hint: "When a party member gets a spoken line of their own.",
+  },
+];
+
+/**
+ * Foresight's four instruction fields, in scope order: the room (the only one
+ * that carries outcome bands), the region, the arc, the promises.
+ */
+const FORESIGHT_FIELDS: InstrSpec[] = [
+  {
+    key: "scenePrepInstructions",
+    label: "Scene Prep",
+    def: DEFAULT_SCENE_PREP_INSTRUCTIONS,
+    rows: 5,
+    hint: "What the narrator prepares for a place before you act in it — including what a strong, mixed or costly roll actually means there.",
+  },
+  {
+    key: "areaPrepInstructions",
+    label: "Region Prep",
+    def: DEFAULT_AREA_PREP_INSTRUCTIONS,
+    rows: 4,
+    hint: "What the narrator prepares for a whole region: its standing pressure, and the names of the places inside it.",
+  },
+  {
+    key: "arcInstructions",
+    label: "Arc Handoff",
+    def: DEFAULT_ARC_INSTRUCTIONS,
+    rows: 4,
+    hint: "How the next chapter is written when one ends. You always get to read it — and change it — before it starts.",
+  },
+  {
+    key: "promiseInstructions",
+    label: "Promises",
+    def: DEFAULT_PROMISE_INSTRUCTIONS,
+    rows: 4,
+    hint: "When the narrator writes down something its own prose has committed to, so it comes back instead of being forgotten.",
   },
 ];
 
@@ -439,6 +489,150 @@ function WritingCharactersSection() {
   );
 }
 
+/**
+ * Foresight — the forward half of memory (DESIGN.md → Foresight). Its own
+ * sub-menu rather than more rows under Memory: Memory already holds two
+ * concerns, this is eleven keys, and the journal analogy is worth a sentence of
+ * hint text rather than a shared screen.
+ *
+ * The master switch is first and everything else is behind it, because with it
+ * off none of the rest does anything at all — no prep call, no injected block,
+ * no clock. Nothing prepped is deleted either: the cards, arcs and promises sit
+ * in the save and come back when it is switched on again.
+ */
+function ForesightSection() {
+  const s = useStore((st) => st.settings);
+  const update = useStore((st) => st.updateSettings);
+
+  return (
+    <>
+      <ToggleRow
+        label="Foresight"
+        state={s.foresightEnabled ? "ON" : "OFF"}
+        onClick={() => update({ foresightEnabled: !s.foresightEnabled })}
+      />
+      <p className="text-xs opacity-70">
+        The journal remembers backwards; this remembers forwards. Between beats the
+        narrator quietly prepares the region you are in, the place you are standing, and
+        what a roll would actually cost there — so a bad roll has a consequence somebody
+        decided in advance instead of one invented on the spot. It also keeps a slow
+        clock on the things closing in on you. Off means none of it happens: no extra
+        requests, nothing added to a turn, and anything already prepared is kept, not
+        deleted.
+      </p>
+
+      {s.foresightEnabled && (
+        <>
+          <p className="text-xs opacity-70">
+            Prep runs AFTER a beat lands, never before one, so it never delays a turn.
+            It costs a few small requests when you walk into somewhere new and none at
+            all while you stay put. What it prepared for this adventure is under{" "}
+            <MenuLink screen="foresight">Foresight</MenuLink>, and where you have been is
+            on the <MenuLink screen="map">Map</MenuLink>.
+          </p>
+
+          <ToggleRow
+            label="A Cost Moves The World"
+            state={s.costTicksFront ? "ON" : "OFF"}
+            onClick={() => update({ costTicksFront: !s.costTicksFront })}
+          />
+          <p className="text-xs opacity-70">
+            A roll that costs you advances whatever is closing in on this region by one
+            step. Off leaves the clocks to time alone.
+          </p>
+
+          <ToggleRow
+            label="A Mixed Result Moves It Too"
+            state={s.mixedTicksFront ? "ON" : "OFF"}
+            onClick={() => update({ mixedTicksFront: !s.mixedTicksFront })}
+          />
+          <p className="text-xs opacity-70">
+            Harsher: a result that got it done and charged you also counts as ground
+            lost.
+          </p>
+
+          <Field label="Neglect — Days">
+            <input
+              type="number"
+              inputMode="numeric"
+              min={0}
+              max={MAX_NEGLECT_DAYS}
+              step={1}
+              value={s.frontNeglectDays}
+              onChange={(e) => update({ frontNeglectDays: clampNeglectDays(e.target.valueAsNumber) })}
+              className="w-full border-2 border-ink bg-paper p-2 focus:outline-none"
+            />
+            <p className="text-xs opacity-70">
+              In-game days a threat can go untouched before it advances on its own. This
+              is what makes the world move while you are busy elsewhere. 0 switches it off
+              — then only your rolls move anything.
+            </p>
+          </Field>
+
+          <Field label="Scene Prep — Longest Stay">
+            <input
+              type="number"
+              inputMode="numeric"
+              min={MIN_FORESIGHT_TURNS}
+              max={MAX_FORESIGHT_TURNS}
+              step={1}
+              value={s.sceneBoundaryTurns}
+              onChange={(e) =>
+                update({ sceneBoundaryTurns: clampSceneBoundaryTurns(e.target.valueAsNumber) })
+              }
+              className="w-full border-2 border-ink bg-paper p-2 focus:outline-none"
+            />
+            <p className="text-xs opacity-70">
+              A place is normally prepared once. After this many turns in the same one it
+              is prepared again — the long tavern conversation that never moves.
+            </p>
+          </Field>
+
+          <Field label="Promises — Turns To Pay Off">
+            <input
+              type="number"
+              inputMode="numeric"
+              min={MIN_FORESIGHT_TURNS}
+              max={MAX_FORESIGHT_TURNS}
+              step={1}
+              value={s.promiseTurns}
+              onChange={(e) => update({ promiseTurns: clampPromiseTurns(e.target.valueAsNumber) })}
+              className="w-full border-2 border-ink bg-paper p-2 focus:outline-none"
+            />
+            <p className="text-xs opacity-70">
+              How long the narrator has to come back to something it set up before it is
+              told to pay it off or drop it. Twice this and it is dropped for good.
+            </p>
+          </Field>
+
+          <Field label="Interlude — Turns">
+            <input
+              type="number"
+              inputMode="numeric"
+              min={MIN_FORESIGHT_TURNS}
+              max={MAX_FORESIGHT_TURNS}
+              step={1}
+              value={s.interludeTurns}
+              onChange={(e) => update({ interludeTurns: clampInterludeTurns(e.target.valueAsNumber) })}
+              className="w-full border-2 border-ink bg-paper p-2 focus:outline-none"
+            />
+            <p className="text-xs opacity-70">
+              When a chapter ends, everything stops looming for this many turns — room to
+              talk, rest and regroup. The next chapter is written during it and waits for
+              you on the Foresight screen; if you never look, it starts by itself when the
+              interlude runs out.
+            </p>
+          </Field>
+
+          {FORESIGHT_FIELDS.map((f) => (
+            <InstrField key={f.key} spec={f} />
+          ))}
+        </>
+      )}
+    </>
+  );
+}
+
 const SECTIONS: SubMenuSection[] = [
   {
     id: "model",
@@ -463,6 +657,12 @@ const SECTIONS: SubMenuSection[] = [
     label: "Writing Characters",
     note: "Creation · the freeze rule · standings · spotlight",
     Body: WritingCharactersSection,
+  },
+  {
+    id: "foresight",
+    label: "Foresight",
+    note: "What the narrator prepares before you get there",
+    Body: ForesightSection,
   },
 ];
 

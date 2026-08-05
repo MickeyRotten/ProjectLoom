@@ -16,6 +16,7 @@ import type {
 } from "../types";
 import { advanceClock, normalizeDuration } from "./clock";
 import { isGold } from "./defaults";
+import { reconcilePromises } from "./promises";
 import { findByName, slug, withRename } from "./names";
 import {
   getEntry,
@@ -161,18 +162,23 @@ export function reconcileBlock(
   const inventory = reconcileInventory(game.inventory, dropRepeats(block.inventory), prose);
   const quests = reconcileQuests(game.quests, dropRepeats(block.quests));
   const notes = reconcileNotes(game.worldNotes, dropRepeats(block.notes));
+  // Foresight's turn channel folds under the same rule: an `add` for something
+  // already promised and a `remove` for something never promised both change
+  // nothing, and a chip claiming otherwise is a claim the beat didn't make.
+  const promises = reconcilePromises(game.promises ?? [], dropRepeats(block.promises));
 
   if (
     party === block.party &&
     conditions === block.conditions &&
     inventory === block.inventory &&
     quests === block.quests &&
-    notes === block.notes
+    notes === block.notes &&
+    promises === block.promises
   ) {
     return block;
   }
 
-  return { ...block, party, conditions, inventory, quests, notes };
+  return { ...block, party, conditions, inventory, quests, notes, promises };
 }
 
 /**

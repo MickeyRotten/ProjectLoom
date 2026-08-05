@@ -20,7 +20,9 @@ export function Options() {
       const n = Number(e.key);
       if (n >= 1 && n <= options.length) {
         e.preventDefault();
-        void sendTurn(options[n - 1]);
+        // The index rides along so the narrator's own note for THIS option
+        // (`Message.optionNotes`) comes back as direction next turn.
+        void sendTurn(options[n - 1], { optionIndex: n - 1 });
       }
     };
     window.addEventListener("keydown", onKey);
@@ -35,7 +37,7 @@ export function Options() {
         <li key={`${i}-${opt}`}>
           <button
             type="button"
-            onClick={() => void sendTurn(opt)}
+            onClick={() => void sendTurn(opt, { optionIndex: i })}
             className="flex w-full items-baseline gap-2 border-2 border-ink px-3 py-2 text-left active:bg-ink active:text-paper"
           >
             <span className="tabular-nums">{i + 1}.</span>

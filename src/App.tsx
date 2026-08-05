@@ -21,6 +21,8 @@ import { SyncScreen } from "./components/SyncScreen";
 import { MemberSheet } from "./components/MemberSheet";
 import { PartyScreen } from "./components/PartyScreen";
 import { InventoryScreen } from "./components/InventoryScreen";
+import { ForesightScreen } from "./components/ForesightScreen";
+import { MapScreen } from "./components/MapScreen";
 import { DiceOverlay } from "./components/DiceOverlay";
 
 /**
@@ -158,6 +160,8 @@ export default function App() {
     if (screen === "member") return <MemberSheet />;
     if (screen === "party") return <PartyScreen />;
     if (screen === "inventory") return <InventoryScreen />;
+    if (screen === "foresight") return <ForesightScreen />;
+    if (screen === "map") return <MapScreen />;
 
     return (
       <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
