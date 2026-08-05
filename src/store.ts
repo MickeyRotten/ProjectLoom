@@ -147,8 +147,8 @@ import {
 import {
   addRoom,
   applyExits,
+  reseedRooms,
   roomKey,
-  seedRooms,
   seedStartingArea,
   visitRoom,
 } from "./lib/gazetteer";
@@ -817,9 +817,10 @@ export const useStore = create<LoomStore>((set, get) => {
     const name = previous?.name || now.location;
 
     let stamped = stampAreaCard(parsed, key, name, arc, previous);
-    // The room list is a SEED: names only, no cards, and the ones nobody has
-    // walked into survive a re-prep because a rumour is a hook.
-    stamped = seedRooms(stamped, parsed.rooms);
+    // The room list is a SEED: names only, no cards. Writing the region again
+    // REPLACES it — the places the player has walked into stay, the ones nobody
+    // has are dropped rather than accumulating across every rewrite.
+    stamped = reseedRooms(stamped, parsed.rooms);
     // The player is standing in one of them right now, whether it was listed or
     // not — an unlisted room is the ordinary case, not an error.
     if (now.areaKey === key) stamped = visitRoom(stamped, now.location);

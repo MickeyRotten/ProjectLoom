@@ -471,8 +471,9 @@ function AreaSection() {
             ))}
           </ul>
           <p className="text-xs opacity-70">
-            The map's skeleton — names only, kept when the region is written again,
-            because a place nobody has walked into is a rumour and a rumour is a hook.
+            The map's skeleton — names only. Writing the region again replaces this
+            list: the places you have walked into stay, the ones you have not are
+            dropped with the version of the region that named them.
           </p>
         </>
       )}
@@ -482,7 +483,7 @@ function AreaSection() {
         what="Region"
         blurb="Written from the scenario, the arc, the lore your guidance touches and the promises still outstanding. Everything it writes is editable here afterwards."
         written={written}
-        replacingNote="Replaces what is written above. New place names join the map; the ones already on it stay."
+        replacingNote="Replaces what is written above, the list of places included — only the ones you have already walked into stay on the map."
         disabled={!game.areaKey}
         run={generate}
         preview={(card) => (

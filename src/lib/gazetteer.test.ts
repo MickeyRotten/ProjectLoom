@@ -13,6 +13,7 @@ import {
   normalizeMap,
   placeKey,
   preparedOutcome,
+  reseedRooms,
   resolveAreaKey,
   roomIsStale,
   seedRooms,
@@ -162,6 +163,50 @@ describe("applyExits / seedRooms", () => {
   it("seeds names only — no cards, nothing visited", () => {
     const a = seedRooms(area(), ["The Stile", "Wardens' Camp"]);
     expect(Object.values(a.rooms).every((r) => r.card === null && !r.visited)).toBe(true);
+  });
+});
+
+describe("reseedRooms", () => {
+  it("drops the places nobody walked into and keeps the ones they did", () => {
+    let a = visitRoom(area(), "Forest Entrance");
+    a = seedRooms(a, ["The Stile", "Wardens' Camp"]);
+
+    const next = reseedRooms(a, ["Drowned Gallery"]);
+    expect(Object.keys(next.rooms).sort()).toEqual(["drowned-gallery", "forest-entrance"]);
+    expect(next.rooms["forest-entrance"].visited).toBe(true);
+  });
+
+  it("keeps a re-listed name rather than re-seeding a second copy", () => {
+    const a = seedRooms(area(), ["The Stile"]);
+    const next = reseedRooms(a, ["the stile", "Wardens' Camp"]);
+    expect(Object.keys(next.rooms).sort()).toEqual(["stile", "wardens-camp"]);
+    // Re-seeded, so it is a fresh rumour, not the old slot with its old wiring.
+    expect(next.rooms["stile"].name).toBe("the stile");
+  });
+
+  it("prunes exits pointing at a dropped room", () => {
+    let a = visitRoom(area(), "Forest Entrance");
+    a = applyExits(a, "forest-entrance", ["The Stile"]);
+    expect(a.rooms["forest-entrance"].exits).toEqual(["stile"]);
+
+    const next = reseedRooms(a, []);
+    expect(Object.keys(next.rooms)).toEqual(["forest-entrance"]);
+    expect(next.rooms["forest-entrance"].exits).toEqual([]);
+  });
+
+  it("keeps the exits between two rooms that both survive", () => {
+    let a = visitRoom(area(), "Forest Entrance");
+    a = visitRoom(a, "The Stile", "forest-entrance");
+    a = seedRooms(a, ["Wardens' Camp"]);
+
+    const next = reseedRooms(a, []);
+    expect(next.rooms["forest-entrance"].exits).toEqual(["stile"]);
+    expect(next.rooms["stile"].exits).toEqual(["forest-entrance"]);
+  });
+
+  it("is reference-stable when nothing is dropped and nothing is new", () => {
+    const a = visitRoom(area(), "Forest Entrance");
+    expect(reseedRooms(a, ["forest entrance"])).toBe(a);
   });
 });
 
