@@ -20,10 +20,9 @@ import type { ImagePromptTemplate, PromptFormat, Settings } from "../types";
  * inferred from the backend: the player may well run a prose-friendly checkpoint
  * locally, and the two choices are theirs to combine.
  *
- * Deliberately NOT in here: `ditherMode`, `portraitRefImages`, and every
- * ComfyUI connection field. Those are behaviour and machine config — a template
- * should survive changing checkpoints, and a checkpoint should survive changing
- * dialects.
+ * Deliberately NOT in here: `portraitRefImages` and every ComfyUI connection
+ * field. Those are behaviour and machine config — a template should survive
+ * changing checkpoints, and a checkpoint should survive changing dialects.
  *
  * Pure and dependency-light on purpose: this module imports types only, so
  * `comfyui.ts` can read the active template's negative prompt without the
@@ -43,11 +42,10 @@ export type TemplateText = Omit<ImagePromptTemplate, "id" | "name" | "format">;
  * Written as full narrative sentences — Gemini image models respond to
  * descriptions, not keyword lists. Deliberate constraints:
  *
- * - "Pixel art" never appears, even as a negation. The model paints clean bold
- *   ink; the client pixelates via downscale + 1-bit quantize (onebit.ts). A
- *   model-drawn fake pixel grid would moiré against the real downscale grid.
- * - Fine hatching/stippling is ruled out: fine texture aliases to noise at
- *   128px, while bold shadow shapes survive the downscale.
+ * - "Pixel art" never appears, even as a negation: a model-drawn fake pixel
+ *   grid reads as a compression artifact rather than as a style.
+ * - Fine hatching/stippling is ruled out: it muddies to grey at the size a
+ *   portrait is actually looked at, while bold shadow shapes hold their edge.
  * - The style clause carries no anatomy, body-type, armor, or gear language —
  *   subject specifics come only from the character's own description, so the
  *   same template fits knights, mages, children, and beasts.

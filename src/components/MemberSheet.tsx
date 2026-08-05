@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "../store";
 import { OverlayHeader } from "./OverlayHeader";
-import { EditImageButton } from "./EditImageButton";
 import {
   TextField,
   AreaField,
@@ -17,7 +16,7 @@ import { GenerateItemModal } from "./GenerateItemModal";
 import { GEN_FIELD_LABEL, type GenField } from "../lib/generateField";
 import { useEditBuffer } from "./useEditBuffer";
 import { useConfirm } from "./useConfirm";
-import { imageEditAllowed, imagesAllowed, portraitKey } from "../lib/images";
+import { imagesAllowed, portraitKey } from "../lib/images";
 import { parseAliases } from "../lib/names";
 import { equipQuantity } from "../lib/equip";
 import {
@@ -102,7 +101,6 @@ export function MemberSheet() {
   const partyFull = isPartyFull(characters, roster);
   const ensurePortrait = useStore((s) => s.ensurePortrait);
   const regeneratePortrait = useStore((s) => s.regeneratePortrait);
-  const editPortrait = useStore((s) => s.editPortrait);
   const uploadPortrait = useStore((s) => s.uploadPortrait);
   const removePortrait = useStore((s) => s.removePortrait);
   const downloadPortrait = useStore((s) => s.downloadPortrait);
@@ -110,9 +108,6 @@ export function MemberSheet() {
   const portraitPending = useStore((s) => (id ? s.imgPending[portraitKey(id)] : false));
   const imageError = useStore((s) => (id ? s.imgError[portraitKey(id)] : undefined));
   const imagesOn = useStore((s) => imagesAllowed(s.settings));
-  // ✎ is narrower than ⟳: the ComfyUI backend can draw a portrait but cannot
-  // edit one, so the button goes rather than fails.
-  const editOn = useStore((s) => imageEditAllowed(s.settings));
   const [zoom, setZoom] = useState(false);
   const [autoUpdate, setAutoUpdate] = useState(false);
   const [genField, setGenField] = useState<GenField | null>(null);
@@ -211,8 +206,8 @@ export function MemberSheet() {
   // Auto-Update button above is gated for.
   //
   // ✦ and not ✨: the sparkle is an emoji and browsers paint it in colour, which
-  // is one more colour than this app has. Same reason ⟳ and ✎ are the glyphs on
-  // the portrait buttons.
+  // is one more colour than this app has. Same reason ⟳ is the glyph on the
+  // portrait button.
   const genButton = (field: GenField) =>
     editing ? (
       <button
@@ -241,7 +236,7 @@ export function MemberSheet() {
               <img
                 src={portraitUrl}
                 alt={member.name}
-                className="h-full w-full object-cover [image-rendering:pixelated]"
+                className="h-full w-full object-cover"
               />
             </button>
           ) : (
@@ -253,9 +248,9 @@ export function MemberSheet() {
               )}
             </div>
           )}
-          {/* Both controls are generations, so both go with the master switch
-              (Images → Image Generation). Upload / download / remove stay:
-              none of them talks to a model. */}
+          {/* ⟳ is a generation, so it goes with the master switch (Images →
+              Image Generation). Upload / download / remove stay: none of them
+              talks to a model. */}
           {imagesOn && (
             <button
               type="button"
@@ -266,14 +261,6 @@ export function MemberSheet() {
             >
               ⟳
             </button>
-          )}
-          {editOn && portraitUrl && (
-            <EditImageButton
-              label="Edit portrait"
-              disabled={portraitPending}
-              onSubmit={(instruction) => editPortrait(member.id, instruction)}
-              className="absolute right-9 top-1 border-2 border-ink bg-paper px-2 leading-none disabled:opacity-40 active:bg-ink active:text-paper"
-            />
           )}
           {imageError && !portraitPending && (
             <span className="absolute bottom-1 right-1 border-2 border-ink bg-paper px-1 text-[0.6rem] uppercase tracking-widest">
@@ -760,7 +747,7 @@ export function MemberSheet() {
           <img
             src={portraitUrl}
             alt={member.name}
-            className="max-h-full max-w-full object-contain [image-rendering:pixelated]"
+            className="max-h-full max-w-full object-contain"
           />
         </button>
       )}

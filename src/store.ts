@@ -44,6 +44,7 @@ import {
   deleteImage,
   copyImage,
   deleteImagesWithPrefix,
+  promoteLegacyMasters,
   saveSlot,
   loadSlot,
   readSlot,
@@ -117,23 +118,15 @@ import {
 import { captureReversal, applyReversal } from "./lib/reversal";
 import { detectSpeakers } from "./lib/spotlight";
 import {
-  blobToDataUrl,
-  imageEditAllowed,
   imagesAllowed,
-  buildEditPrompt,
   buildPortraitPrompt,
   generateImage,
-  isModelSafeImage,
-  PORTRAIT_PIXEL_WIDTH,
+  MAX_IMAGE_SIDE,
   portraitKey,
-  prepareUploadedImage,
   refImageToDataUrl,
   slotArtPairs,
   slotArtPrefixes,
-  sourceKey,
-  toExportBlob,
-  toOneBitBlob,
-  toSourceBlob,
+  toStoredImage,
   type GenerateImageOptions,
 } from "./lib/images";
 import { activeTemplate } from "./lib/imageTemplates";
@@ -449,13 +442,11 @@ export interface LoomStore {
   ensurePortrait: (memberId: string) => void;
   /** Force-regenerate, replacing the cached blob. */
   regeneratePortrait: (memberId: string) => void;
-  /** Edit the cached portrait with a text instruction (image + text → image). */
-  editPortrait: (memberId: string, instruction: string) => void;
   /** Replace a member's portrait with a user-supplied image file. */
   uploadPortrait: (memberId: string, file: Blob) => Promise<void>;
   /**
-   * Drop a member's portrait entirely — cached image, master copy, and the
-   * automatic re-generation that would otherwise put one straight back.
+   * Drop a member's portrait entirely — the cached image, and the automatic
+   * re-generation that would otherwise put one straight back.
    */
   removePortrait: (memberId: string) => void;
   /**
@@ -465,8 +456,8 @@ export interface LoomStore {
    */
   downloadPortrait: (memberId: string) => Promise<boolean>;
   /**
-   * Delete every stored picture — display copies AND their masters — from this
-   * device, and from the cloud when signed in (Images → Stored Images).
+   * Delete every stored picture from this device, and from the cloud when
+   * signed in (Images → Stored Images).
    *
    * Wholesale, unlike the member sheet's Remove Image: this is for reclaiming
    * the space a long game's art takes, or for throwing away a style the player
@@ -537,24 +528,6 @@ export const useStore = create<LoomStore>((set, get) => {
   }
 
   /**
-   * Store the pre-1-bit master behind `key`, so a later edit is fed real pixels
-   * instead of the tiny display copy. Every write path calls this, which is
-   * also how a regeneration disowns an upload: the new master overwrites the
-   * uploaded one, and the next edit can no longer reach back to it.
-   */
-  async function saveSource(key: string, raw: Blob) {
-    try {
-      const master = await toSourceBlob(raw);
-      // No usable master (an undecodable or model-hostile file) → drop any
-      // stale one rather than leave the previous image's master behind it.
-      if (master) await saveImage(sourceKey(key), master);
-      else await deleteImage(sourceKey(key));
-    } catch {
-      // A master copy is an optimization — losing it must not fail the image.
-    }
-  }
-
-  /**
    * Freeze the cast's art under one slot's keys — the copy that makes a
    * snapshot's portraits its own (`images.ts → slotArtPairs`). Best-effort per
    * blob: art is a cache, and a snapshot must not fail because a picture could
@@ -563,8 +536,7 @@ export const useStore = create<LoomStore>((set, get) => {
   async function freezeSlotArt(slotId: string, game: GameState): Promise<void> {
     for (const art of slotArtPairs(slotId, game.characters)) {
       try {
-        await copyImage(art.display.live, art.display.slot);
-        await copyImage(art.master.live, art.master.slot);
+        await copyImage(art.live, art.slot);
       } catch {
         // See above — a missing frozen copy falls back to the live art.
       }
@@ -588,9 +560,7 @@ export const useStore = create<LoomStore>((set, get) => {
    * Per character, not per blob. A slot with no frozen copy for someone — one
    * taken before snapshots carried art, or a cloud slot whose blobs have not
    * arrived — leaves that character's live art exactly as it is, which is the
-   * behaviour every existing save was made under. When there IS a copy, the
-   * master moves with it or is deleted: a stale master is the newest picture of
-   * this character, and leaving it behind lets ✎ edit art that is not on screen.
+   * behaviour every existing save was made under.
    *
    * Publishing here rather than leaving it to `syncImages` is deliberate —
    * `ensureImage` returns early when the key already has an object URL, so the
@@ -599,14 +569,11 @@ export const useStore = create<LoomStore>((set, get) => {
   async function thawSlotArt(slotId: string, game: GameState): Promise<void> {
     for (const art of slotArtPairs(slotId, game.characters)) {
       try {
-        const frozen = await loadImage(art.display.slot);
+        const frozen = await loadImage(art.slot);
         if (!frozen) continue;
-        await saveImage(art.display.live, frozen);
-        publishImage(art.display.live, frozen);
-        setImageError(art.display.live, null);
-        if (!(await copyImage(art.master.slot, art.master.live))) {
-          await deleteImage(art.master.live);
-        }
+        await saveImage(art.live, frozen);
+        publishImage(art.live, frozen);
+        setImageError(art.live, null);
       } catch {
         // A picture that could not be restored leaves the live one in place.
       }
@@ -614,34 +581,12 @@ export const useStore = create<LoomStore>((set, get) => {
   }
 
   /**
-   * Master copy for an edit round-trip, falling back to the display blob. The
-   * result is always something an image model will accept as an input part:
-   * masters written before uploads were normalized can be any format the
-   * device's gallery handed over (HEIC off an iPhone), and posting one back is
-   * rejected every single time — which is what made editing an uploaded
-   * portrait fail forever. Unconvertible masters fall through to the display
-   * copy, which is always canvas-encoded PNG.
-   */
-  async function loadEditSource(key: string): Promise<Blob | null> {
-    const master = await loadImage(sourceKey(key));
-    if (master) {
-      if (isModelSafeImage(master)) return master;
-      const converted = await toSourceBlob(master);
-      if (converted) return converted;
-    }
-    const display = await loadImage(key);
-    if (!display) return null;
-    if (isModelSafeImage(display)) return display;
-    return await toSourceBlob(display);
-  }
-
-  /**
    * Cache-then-generate an image blob under `key`, exposing it as an object URL
-   * in `images`. Fresh generations are downscaled + quantized to true 1-bit
-   * before caching; already-cached blobs load as-is (regenerate reprocesses).
+   * in `images`. A fresh generation is only bounded to `MAX_IMAGE_SIDE` before
+   * it is cached — what the model drew is what is stored and shown.
    * `force` skips the cache and regenerates, replacing whatever was there —
-   * generated, edited, or uploaded. Fire-and-forget: every failure is swallowed
-   * so an image never blocks a turn.
+   * generated or uploaded. Fire-and-forget: every failure is swallowed so an
+   * image never blocks a turn.
    */
   async function ensureImage(
     key: string,
@@ -672,9 +617,8 @@ export const useStore = create<LoomStore>((set, get) => {
         return;
       }
       const raw = await generateImage({ settings: get().settings, ...buildRequest() });
-      const blob = await toOneBitBlob(raw, PORTRAIT_PIXEL_WIDTH, get().settings.ditherMode);
+      const blob = await toStoredImage(raw);
       await saveImage(key, blob);
-      await saveSource(key, raw);
       publishImage(key, blob);
     } catch (err) {
       // Non-fatal — a failed image never blocks the turn (DESIGN.md) — but it
@@ -683,54 +627,6 @@ export const useStore = create<LoomStore>((set, get) => {
       // the player has no way to explain; before, the reason only appeared if
       // they happened to press ⟳. The badge is small and dismissible; guessing
       // is not.
-      setImageError(key, imageFailure(err));
-    } finally {
-      clearPending(key);
-    }
-  }
-
-  /**
-   * Edit the cached image under `key` with a text instruction: send the master
-   * copy + instruction to the image model, replace the cache with the result —
-   * the edited image becomes the new image, master included, whether what it
-   * replaces was generated or uploaded. Nothing cached → nothing to edit →
-   * no-op. Failures are swallowed like ensureImage's — an image never blocks
-   * anything.
-   */
-  async function editImage(key: string, instruction: string): Promise<void> {
-    if (get().imgPending[key] || !instruction.trim()) return;
-    // Image generation off (Images): an edit is a generation like any
-    // other. The ✎ button is hidden while it's off, so this is the belt to that
-    // braces — nothing reaches the image model behind the switch's back. Same
-    // for the ComfyUI backend, which has no edit path at all.
-    if (!imageEditAllowed(get().settings)) return;
-    const source = await loadEditSource(key);
-    if (!source) {
-      // Nothing cached at all is a plain no-op; a cached image we can't send is
-      // a dead end the player has to be told about, or ✎ just does nothing.
-      if (get().images[key]) {
-        setImageError(key, "This image can't be edited — regenerate or upload a JPG/PNG.");
-      }
-      return;
-    }
-
-    // Clear any prior edit error for this key while the retry is in flight.
-    setImageError(key, null);
-    set({ imgPending: { ...get().imgPending, [key]: true } });
-    try {
-      const raw = await generateImage({
-        settings: get().settings,
-        prompt: buildEditPrompt(instruction),
-        images: [await blobToDataUrl(source)],
-        aspectRatio: "2:3",
-      });
-      const blob = await toOneBitBlob(raw, PORTRAIT_PIXEL_WIDTH, get().settings.ditherMode);
-      await saveImage(key, blob);
-      await saveSource(key, raw);
-      publishImage(key, blob);
-    } catch (err) {
-      // Non-fatal for the turn, but a swallowed edit looks like nothing
-      // happened — flag it so the UI can show a small "image failed" indicator.
       setImageError(key, imageFailure(err));
     } finally {
       clearPending(key);
@@ -913,6 +809,19 @@ export const useStore = create<LoomStore>((set, get) => {
   fieldGenError: null,
 
   async hydrate() {
+    // Before anything reads a picture: fold the retired `src:` masters onto the
+    // keys they belong to, so a device upgrading from a build with the 1-bit
+    // downscale shows the good pixels rather than the thumbnails they were
+    // crushed to. Awaited — `syncImages` below publishes what it finds, and a
+    // promotion landing after that would sit behind an object URL of the copy
+    // it replaced.
+    try {
+      await promoteLegacyMasters();
+    } catch {
+      // A migration that could not run leaves the old art in place; it is
+      // retried on the next launch and must never block one.
+    }
+
     const loaded = await loadActiveGame();
     if (loaded) {
       // The one-time fold: a game stored while the cast was global has none of
@@ -1318,12 +1227,10 @@ export const useStore = create<LoomStore>((set, get) => {
     const g = get().game;
     const game = { ...g, roster: dropEntry(g.roster, id) };
 
-    // Free the character's portrait blob (+ its master copy) and object URL —
-    // nothing references them once they're gone, so they would otherwise orphan
-    // in IndexedDB.
+    // Free the character's portrait blob and object URL — nothing references
+    // them once they're gone, so they would otherwise orphan in IndexedDB.
     const key = portraitKey(id);
     void deleteImage(key);
-    void deleteImage(sourceKey(key));
     const prevUrl = get().images[key];
     if (prevUrl) URL.revokeObjectURL(prevUrl);
     const images = { ...get().images };
@@ -2003,27 +1910,17 @@ export const useStore = create<LoomStore>((set, get) => {
     portrait(memberId, true);
   },
 
-  editPortrait(memberId, instruction) {
-    void editImage(portraitKey(memberId), instruction);
-  },
-
   async uploadPortrait(memberId, file) {
     const key = portraitKey(memberId);
     if (get().imgPending[key]) return;
     setImageError(key, null);
     set({ imgPending: { ...get().imgPending, [key]: true } });
     try {
-      // Same downscale/quantize pass a generated portrait gets, so an upload
-      // sits in the 1-bit look (and stays small in IndexedDB). The file itself
-      // is kept as the master, so editing an upload starts from the real
-      // picture and saving it out isn't limited to the display copy.
-      const blob = await prepareUploadedImage(
-        file,
-        PORTRAIT_PIXEL_WIDTH,
-        get().settings.ditherMode,
-      );
+      // The same bounding pass a generated portrait gets, so an upload is
+      // stored exactly like every other picture — but strict, so an unreadable
+      // file fails at the door instead of becoming a portrait that never loads.
+      const blob = await toStoredImage(file, MAX_IMAGE_SIDE, true);
       await saveImage(key, blob);
-      await saveSource(key, file);
       publishImage(key, blob);
       // Supplying art is the clearest possible "I want a picture here".
       if (get().game.characters.some((c) => c.id === memberId && c.noPortrait)) {
@@ -2043,11 +1940,7 @@ export const useStore = create<LoomStore>((set, get) => {
   removePortrait(memberId) {
     const key = portraitKey(memberId);
     if (get().imgPending[key]) return;
-    // Both copies go: the display blob and its master. Leaving the master would
-    // orphan a few hundred KB in IndexedDB and let a later edit resurrect art
-    // the player deleted.
     void deleteImage(key);
-    void deleteImage(sourceKey(key));
     const prevUrl = get().images[key];
     if (prevUrl) URL.revokeObjectURL(prevUrl);
     const images = { ...get().images };
@@ -2090,10 +1983,10 @@ export const useStore = create<LoomStore>((set, get) => {
     if (!blob) return false;
     const name = get().game.characters.find((c) => c.id === memberId)?.name ?? "";
     try {
-      // The stored blob is the display copy — a ~192px sliver that only looks
-      // right because the app renders it `pixelated`. Bake that upscale into
-      // the exported pixels so the saved file isn't a thumbnail.
-      await saveBlobAsFile(await toExportBlob(blob), imageFileName(name));
+      // Straight out: the stored blob is the picture the model drew (or the
+      // file the player uploaded), so there is nothing left to undo on the way
+      // to the device.
+      await saveBlobAsFile(blob, imageFileName(name));
       return true;
     } catch {
       return false;

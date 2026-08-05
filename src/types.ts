@@ -435,12 +435,6 @@ export interface AdventureImports {
 }
 
 /**
- * 1-bit post-process mode: Bayer ordered dither (textured), plain 50%
- * threshold (flat), or off (raw model output, no quantize pass).
- */
-export type DitherMode = "bayer4" | "threshold" | "off";
-
-/**
  * A user-uploaded portrait style reference image. Stored inline in Settings
  * (localStorage) as base64 — uploads are downscaled client-side first so up to
  * three of them stay well under the storage quota.
@@ -459,8 +453,8 @@ export interface GenerateImageOptions {
   settings: Settings;
   prompt: string;
   /**
-   * Input images as data URLs — style references and/or an edit source. Sent
-   * as `image_url` parts *before* the text part. OpenRouter only; the ComfyUI
+   * Input images as data URLs — the portrait style references. Sent as
+   * `image_url` parts *before* the text part. OpenRouter only; the ComfyUI
    * path has no generic place to put them in a player-authored workflow.
    */
   images?: string[];
@@ -529,9 +523,8 @@ export type PromptFormat = (typeof PROMPT_FORMATS)[number];
  *
  * Everything here decides how a prompt is WORDED, so it can all be swapped in
  * one pick when the player changes image model. Machine config (backend, URL,
- * checkpoint, sampler, size) and behaviour (`ditherMode`, `portraitRefImages`)
- * deliberately stay outside, so a template survives changing checkpoints and
- * vice versa.
+ * checkpoint, sampler, size) and behaviour (`portraitRefImages`) deliberately
+ * stay outside, so a template survives changing checkpoints and vice versa.
  *
  * `appearanceInstructions` is in here even though it steers the TEXT model:
  * `Character.description` becomes the portrait's Subject verbatim, so a portrait
@@ -716,7 +709,7 @@ export interface Settings extends DiceRules, ComfySettings {
   imageModelId: string;
   /**
    * Master switch for image GENERATION (Images). Off means no request ever
-   * reaches the image model — no automatic portrait, no ⟳ and no ✎ — while
+   * reaches the image model — no automatic portrait and no ⟳ — while
    * everything already drawn still shows, uploads still work, and nothing is
    * deleted. The one place to answer "stop buying pictures", and it lives
    * beside the image key and model it switches off.
@@ -791,8 +784,6 @@ export interface Settings extends DiceRules, ComfySettings {
    * what "our art style" means whichever dialect describes it.
    */
   portraitRefImages: RefImage[];
-  /** How generated images are quantized to true 1-bit on-device. */
-  ditherMode: DitherMode;
   /**
    * What the narrator must write when it introduces a character (`add`) — the
    * one moment it authors a sheet, since everything below freezes afterwards.

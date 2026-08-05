@@ -1,6 +1,5 @@
 import type {
   Character,
-  DitherMode,
   GameState,
   GenerateImageOptions,
   ImagePromptTemplate,
@@ -8,7 +7,6 @@ import type {
   RefImage,
   Settings,
 } from "../types";
-import { quantizeToOneBit } from "./onebit";
 import { backoffMs, isRetryableStatus, MAX_ATTEMPTS, sleep } from "./retry";
 import { generateComfyImage } from "./comfyui";
 import { ImageError } from "./imageError";
@@ -20,9 +18,16 @@ import { safeErrorText } from "./http";
  * keyed `portrait:<memberId>`, generated when a member has no cached portrait.
  *
  * Two backends, one seam: `generateImage` dispatches on `Settings.imageBackend`
- * and returns a Blob either way, so the 1-bit pass, the `src:` master, the
- * cache and the failure badge below never learn which one drew it. The
- * OpenRouter path is here; ComfyUI lives in `comfyui.ts`.
+ * and returns a Blob either way, so the store pass, the cache and the failure
+ * badge below never learn which one drew it. The OpenRouter path is here;
+ * ComfyUI lives in `comfyui.ts`.
+ *
+ * **One picture per key.** The app used to keep two — a 192px 1-bit display
+ * copy under the key, and the pixels it was crushed from under `src:<key>` —
+ * because the displayed art was quantized on-device and an edit round-trip
+ * needed something better than a thumbnail to send back. Both halves of that are
+ * gone: nothing quantizes and nothing edits, so what the model drew (bounded to
+ * `MAX_IMAGE_SIDE`) is simply what is stored and what is shown.
  *
  * OpenRouter access shape (verified against their docs at build time): a normal
  * chat-completions POST with `modalities: ["image","text"]`; the generated
@@ -40,8 +45,19 @@ export type { GenerateImageOptions } from "../types";
 /* ------------------------------ cache keys ------------------------------ */
 
 export const PORTRAIT_PREFIX = "portrait:";
-export const SOURCE_PREFIX = "src:";
 export const SLOT_IMAGE_PREFIX = "slot:";
+
+/**
+ * Where the master copy of an image USED to live, back when the key itself held
+ * a downscaled 1-bit copy of it. Read-only and migration-only now: on the first
+ * launch after the display copy was retired, `db.ts → promoteLegacyMasters`
+ * moves every `src:<key>` blob onto `<key>` and drops the prefix, which is what
+ * keeps the masters (the good pixels) and throws away the thumbnails.
+ *
+ * Nothing writes this prefix any more. It stays named here rather than spelled
+ * as a literal in the migration, because the keyspace is this module's to own.
+ */
+export const LEGACY_MASTER_PREFIX = "src:";
 
 /** Blob-store key for a member portrait. */
 export function portraitKey(memberId: string): string {
@@ -49,32 +65,17 @@ export function portraitKey(memberId: string): string {
 }
 
 /**
- * Blob-store key for the MASTER copy behind a cached image — the pixels before
- * the downscale + 1-bit pass (a raw generation, or the file the player
- * uploaded). The displayed blob is deliberately tiny, which makes it a terrible
- * thing to hand back to an image model: an edit round-trip fed a 192px 1-bit
- * thumbnail comes back as mush, or as a text-only reply that fails the whole
- * edit. Every write path stores its master here so edits start from real pixels.
- */
-export function sourceKey(key: string): string {
-  return `${SOURCE_PREFIX}${key}`;
-}
-
-/**
  * Blob-store key for one save slot's FROZEN copy of an image.
  *
  * The live keyspace holds one picture per character (`portrait:<id>`), so every
- * regenerate, edit, upload and removal rewrote the art of every snapshot ever
- * taken of that character: restore an old save and you got the old story with
- * today's faces. A snapshot copies the art it was taken with under its own id,
- * and the same character in two snapshots holds two different pictures.
+ * regenerate, upload and removal rewrote the art of every snapshot ever taken of
+ * that character: restore an old save and you got the old story with today's
+ * faces. A snapshot copies the art it was taken with under its own id, and the
+ * same character in two snapshots holds two different pictures.
  *
  * Copies rather than versioned live keys, deliberately: everything that renders
  * a portrait — the top bar, the party strip, the member sheet — keeps reading
  * the bare `portrait:<id>` it always did, and a restore is a copy back.
- *
- * The scope goes INSIDE `sourceKey`, so a master is `src:slot:<id>:portrait:<c>`
- * and `sourceKey` keeps its one meaning: the master of the key it wraps.
  */
 export function slotScopedKey(slotId: string, key: string): string {
   return `${SLOT_IMAGE_PREFIX}${slotId}:${key}`;
@@ -86,12 +87,6 @@ export interface ImagePair {
   slot: string;
 }
 
-/** One character's frozen art: the portrait, and the master behind it. */
-export interface SlotArt {
-  display: ImagePair;
-  master: ImagePair;
-}
-
 /**
  * Every blob a snapshot of `characters` freezes, as live ⇄ slot key pairs.
  *
@@ -100,30 +95,32 @@ export interface SlotArt {
  * which art belongs to a slot. A key with nothing behind it is simply not
  * copied; the caller does the store lookups.
  *
- * Display and master stay paired rather than flattened, because a restore has to
- * decide them together: art restored with a master from a different picture is
- * exactly what makes ✎ edit something the player is not looking at.
+ * One pair per character, since a character is one picture: the master ⇄ display
+ * pairing this used to carry went with the display copy itself.
  */
 export function slotArtPairs(
   slotId: string,
   characters: readonly Pick<Character, "id">[] | undefined,
-): SlotArt[] {
-  const out: SlotArt[] = [];
+): ImagePair[] {
+  const out: ImagePair[] = [];
   for (const c of characters ?? []) {
     if (!c?.id) continue;
     const live = portraitKey(c.id);
-    const slot = slotScopedKey(slotId, live);
-    out.push({
-      display: { live, slot },
-      master: { live: sourceKey(live), slot: sourceKey(slot) },
-    });
+    out.push({ live, slot: slotScopedKey(slotId, live) });
   }
   return out;
 }
 
-/** Prefix covering every blob one slot froze — what dropping a slot sweeps. */
+/**
+ * Prefix covering every blob one slot froze — what dropping a slot sweeps. The
+ * retired master prefix rides along because a device upgrading from a build that
+ * wrote them may still hold `src:slot:<id>:…` blobs that no live key names.
+ */
 export function slotArtPrefixes(slotId: string): string[] {
-  return [slotScopedKey(slotId, ""), sourceKey(slotScopedKey(slotId, ""))];
+  return [
+    slotScopedKey(slotId, ""),
+    `${LEGACY_MASTER_PREFIX}${slotScopedKey(slotId, "")}`,
+  ];
 }
 
 /**
@@ -136,11 +133,6 @@ export function slotArtPrefixes(slotId: string): string[] {
  * freeze survive the trip: a pulled slot lands under its own keys, so the art of
  * a save taken on another device can no longer overwrite the portraits of the
  * game being played on this one.
- *
- * Display copies only, deliberately no `src:` masters. A master is the big copy
- * (up to 1024px, full grey) and it exists so ✎ and the download upscale have
- * real pixels to work from — neither of which a restored save needs. Uploading
- * them would roughly double the bytes of the one thing that still travels.
  */
 export function slotImageKeys(slot: { id: string; game: GameState }): string[] {
   // Read defensively: this also runs over slot documents pulled from the cloud,
@@ -170,20 +162,6 @@ export function slotImageKeys(slot: { id: string; game: GameState }): string[] {
  */
 export function imagesAllowed(settings: Pick<Settings, "imagesEnabled">): boolean {
   return settings.imagesEnabled !== false;
-}
-
-/**
- * Whether ✎ may edit an existing image. OpenRouter only: an edit is
- * "instruction + this picture, give me the picture back", which a chat image
- * model does natively and a ComfyUI txt2img graph cannot do at all — feeding an
- * image into a workflow means a different graph with a LoadImage node, which is
- * the player's to write and not something the app can substitute into one.
- * Rather than a button that fails, ✎ is hidden.
- */
-export function imageEditAllowed(
-  settings: Pick<Settings, "imagesEnabled" | "imageBackend">,
-): boolean {
-  return imagesAllowed(settings) && settings.imageBackend !== "comfyui";
 }
 
 /* ---------------------------- prompt builders --------------------------- */
@@ -250,18 +228,6 @@ export function buildPortraitPrompt(
     if (member.description.trim()) subject.push(`Appearance: ${member.description.trim()}`);
   }
   return joinPromptParts([...subject, ...trailer], template.format);
-}
-
-/**
- * Edit prompt: the user's instruction plus a fixed style-preservation line.
- * The source image rides along in the request, so the style anchor comes from
- * the image itself — the line just keeps the model from repainting everything.
- */
-export function buildEditPrompt(instruction: string): string {
-  return [
-    `Edit the attached image: ${instruction.trim()}`,
-    "Preserve the existing style and composition except where the edit requires changes.",
-  ].join("\n\n");
 }
 
 /* --------------------------- response parsing --------------------------- */
@@ -344,29 +310,6 @@ export function dataUrlToBlob(dataUrl: string): Blob {
     return new Blob([bytes], { type: mime });
   }
   return new Blob([decodeURIComponent(body)], { type: mime });
-}
-
-/**
- * Image types an image model will actually accept as an input part. A phone
- * gallery hands out plenty of things that are NOT on this list — HEIC/HEIF from
- * iOS, AVIF, BMP, TIFF — and posting one back as an edit source is rejected
- * every single time, which reads as "this picture can never be edited".
- */
-const MODEL_SAFE_MIME = new Set(["image/png", "image/jpeg", "image/webp"]);
-
-/** True when `blob` can ride along in a request as-is. */
-export function isModelSafeImage(blob: Blob): boolean {
-  return MODEL_SAFE_MIME.has(blob.type.toLowerCase());
-}
-
-/** Encode a Blob as a base64 data URL (for sending a source image to edit). */
-export function blobToDataUrl(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(new ImageError("Could not read image blob."));
-    reader.readAsDataURL(blob);
-  });
 }
 
 /* ------------------------------ the request ----------------------------- */
@@ -473,172 +416,39 @@ export async function generateOpenRouterImage(opts: GenerateImageOptions): Promi
   }
 }
 
-/* --------------------------- 1-bit post-process -------------------------- */
+/* ---------------------------- the stored image --------------------------- */
 
 /**
- * Stored pixel widths. Small on purpose: the blobs stay tiny in IndexedDB and
- * the display upscale is nearest-neighbor via the existing CSS
- * `image-rendering: pixelated` on every `<img>`.
- */
-export const PORTRAIT_PIXEL_WIDTH = 192;
-
-/**
- * Display width an upload keeps when 1-bit shading is OFF. With no quantization
- * there is no pixel grid for the art to land on, so the stored-width constants
- * above are just destruction — the image still has to be bounded (IndexedDB),
- * but at a size worth looking at.
- */
-export const UPLOAD_PLAIN_WIDTH = 1024;
-
-/** Longest side a master copy is scaled down to before it's stored. */
-export const SOURCE_MAX_SIDE = 1024;
-
-/** Width a saved-to-device image is upscaled to reach (see `toExportBlob`). */
-export const EXPORT_MIN_WIDTH = 1024;
-
-/**
- * Downscale + quantize a generated image to true 1-bit (the pure math lives in
- * onebit.ts). `mode === "off"` keeps the raw model output untouched.
- */
-export async function toOneBitBlob(
-  blob: Blob,
-  targetWidth: number,
-  mode: DitherMode,
-): Promise<Blob> {
-  if (mode === "off") return blob;
-  return rescaleAndQuantize(blob, targetWidth, mode);
-}
-
-/**
- * Prepare a user-supplied image (custom portrait upload) for the blob store:
- * always downscaled — an untouched camera photo would be megabytes in
- * IndexedDB — and quantized to 1-bit unless shading is "off", so an upload
- * lands in the same visual system as a generated image. With shading off it
- * keeps a real display width instead of the 1-bit pixel width: there is no
- * pixel grid to snap to, so crushing it that far only loses the photo.
+ * Longest side a stored image is scaled down to.
  *
- * Strict, unlike the generated-image path: a file the browser cannot decode
- * (HEIC straight off an iPhone, a renamed non-image) throws instead of being
- * stored verbatim. Storing it "succeeds" and then shows a broken portrait that
- * no later edit can ever repair, so the upload has to fail loudly here.
+ * The one bound left. Portraits used to be stored twice — a 192px 1-bit display
+ * copy, plus the pixels behind it — and the small copy was the one on screen,
+ * which is why every `<img>` rendered `image-rendering: pixelated`. Now the
+ * picture the model drew IS the picture, so the only thing left to decide is how
+ * much of it IndexedDB has to hold: a phone camera's 12-megapixel JPEG is
+ * megabytes per character, and nothing in the app ever displays a portrait
+ * larger than a phone screen.
  */
-export async function prepareUploadedImage(
-  blob: Blob,
-  targetWidth: number,
-  mode: DitherMode,
-): Promise<Blob> {
-  return rescaleAndQuantize(blob, uploadStoredWidth(targetWidth, mode), mode, true);
-}
-
-/** The width `prepareUploadedImage` stores an upload at, per shading mode. */
-export function uploadStoredWidth(targetWidth: number, mode: DitherMode): number {
-  return mode === "off" ? Math.max(targetWidth, UPLOAD_PLAIN_WIDTH) : targetWidth;
-}
+export const MAX_IMAGE_SIDE = 1024;
 
 /**
- * The master copy kept for later edits: the same pixels, bounded to
- * SOURCE_MAX_SIDE and re-encoded as JPEG so it stays a couple hundred KB in
- * IndexedDB and a sane payload to POST back as an edit source. An image that is
- * already model-safe (PNG/JPEG/WebP) and inside the box is stored as-is.
+ * Prepare a picture for the blob store: decoded, bounded to `maxSide`, and
+ * re-encoded as JPEG when it had to be resized. An image already inside the box
+ * is stored exactly as it came — a generated PNG keeps its alpha, and a file the
+ * player uploaded keeps its own bytes.
  *
- * Returns **null** when no usable master can be made — an undecodable upload,
- * or a decodable one in a format no image model accepts (HEIC, AVIF, BMP…) that
- * we also can't re-encode. A master is an optimization, never a hard
- * requirement, and no master at all is strictly better than one that makes
- * every future edit fail on the wire.
- */
-export async function toSourceBlob(blob: Blob, maxSide = SOURCE_MAX_SIDE): Promise<Blob | null> {
-  try {
-    const bitmap = await createImageBitmap(blob);
-    const longest = Math.max(bitmap.width, bitmap.height);
-    if (longest <= maxSide && isModelSafeImage(blob)) {
-      bitmap.close();
-      return blob;
-    }
-    // Never enlarge — an in-the-box image is here only to be re-encoded.
-    const scale = Math.min(1, maxSide / longest);
-    const w = Math.max(1, Math.round(bitmap.width * scale));
-    const h = Math.max(1, Math.round(bitmap.height * scale));
-    const canvas = document.createElement("canvas");
-    canvas.width = w;
-    canvas.height = h;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return isModelSafeImage(blob) ? blob : null;
-    ctx.imageSmoothingEnabled = true;
-    // JPEG has no alpha — flatten onto white so transparent art keeps its paper.
-    ctx.fillStyle = "#fff";
-    ctx.fillRect(0, 0, w, h);
-    ctx.drawImage(bitmap, 0, 0, w, h);
-    bitmap.close();
-    const out = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob(resolve, "image/jpeg", 0.92),
-    );
-    return out ?? (isModelSafeImage(blob) ? blob : null);
-  } catch {
-    return isModelSafeImage(blob) ? blob : null;
-  }
-}
-
-/**
- * Integer upscale factor that takes `width` to at least `minWidth`. Integer on
- * purpose: a whole-number nearest-neighbor blow-up maps every stored pixel to
- * an exact square, so the exported file is the on-screen art enlarged, not a
- * resampled approximation of it.
- */
-export function exportScale(width: number, minWidth = EXPORT_MIN_WIDTH): number {
-  if (!Number.isFinite(width) || width <= 0) return 1;
-  return Math.max(1, Math.ceil(minWidth / width));
-}
-
-/**
- * Blow a stored image up for saving to the device. The cached blob is the
- * display copy — 192px wide for 1-bit art — which lands in a gallery as a
- * postage stamp; the app only gets away with it because every `<img>` renders
- * `image-rendering: pixelated`. A file has no such CSS, so the export bakes the
- * same nearest-neighbor upscale into the pixels. Already-large images (shading
- * off) pass through untouched, as does anything we can't decode.
- */
-export async function toExportBlob(blob: Blob, minWidth = EXPORT_MIN_WIDTH): Promise<Blob> {
-  try {
-    const bitmap = await createImageBitmap(blob);
-    const scale = exportScale(bitmap.width, minWidth);
-    if (scale === 1) {
-      bitmap.close();
-      return blob;
-    }
-    const w = bitmap.width * scale;
-    const h = bitmap.height * scale;
-    const canvas = document.createElement("canvas");
-    canvas.width = w;
-    canvas.height = h;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return blob;
-    // Nearest-neighbor: smoothing here would blur the 1-bit pixels into grey.
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(bitmap, 0, 0, w, h);
-    bitmap.close();
-    const out = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
-    return out ?? blob;
-  } catch {
-    return blob;
-  }
-}
-
-/**
- * Shared resize (+ optional quantize) pass. Downscaling steps by halves before
- * the final resize — one big jump would alias, since canvas resampling only
- * looks at a few source pixels. Any failure (no canvas, undecodable blob)
- * returns the original blob: the image pipeline is fire-and-forget and must
- * never get worse than "unprocessed".
+ * Downscaling steps by halves before the final resize: one big jump aliases,
+ * since canvas resampling only looks at a few source pixels.
  *
- * `strict` flips that for user-supplied files, where "unprocessed" means
- * storing something the browser could not even decode — see
- * `prepareUploadedImage`.
+ * `strict` decides what a failure means. The generated path is lenient — the
+ * image pipeline is fire-and-forget and "unprocessed" beats "no portrait" — but
+ * an UPLOAD must fail loudly: storing a file the browser could not even decode
+ * (HEIC straight off an iPhone, a renamed non-image) "succeeds" and then shows a
+ * broken portrait forever, so it has to be refused at the door.
  */
-async function rescaleAndQuantize(
+export async function toStoredImage(
   blob: Blob,
-  requestedWidth: number,
-  mode: DitherMode,
+  maxSide = MAX_IMAGE_SIDE,
   strict = false,
 ): Promise<Blob> {
   const bail = (why: string): Blob => {
@@ -647,10 +457,15 @@ async function rescaleAndQuantize(
   };
   try {
     const bitmap = await createImageBitmap(blob);
-    // Never enlarge: a small source stretched to the stored width is fake
-    // detail, and the display upscale already happens in CSS.
-    const targetWidth = Math.max(1, Math.min(requestedWidth, bitmap.width));
-    const targetHeight = Math.max(1, Math.round((targetWidth * bitmap.height) / bitmap.width));
+    const longest = Math.max(bitmap.width, bitmap.height);
+    // Never enlarge — the box is a ceiling, not a target.
+    if (longest <= maxSide) {
+      bitmap.close();
+      return blob;
+    }
+    const scale = maxSide / longest;
+    const targetWidth = Math.max(1, Math.round(bitmap.width * scale));
+    const targetHeight = Math.max(1, Math.round(bitmap.height * scale));
 
     let source: ImageBitmap | HTMLCanvasElement = bitmap;
     let w = bitmap.width;
@@ -674,17 +489,14 @@ async function rescaleAndQuantize(
     const ctx = canvas.getContext("2d");
     if (!ctx) return bail("This device could not process the image.");
     ctx.imageSmoothingEnabled = true;
+    // JPEG has no alpha — flatten onto white so transparent art keeps its paper.
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, targetWidth, targetHeight);
     ctx.drawImage(source, 0, 0, targetWidth, targetHeight);
-
-    if (mode !== "off") {
-      const imageData = ctx.getImageData(0, 0, targetWidth, targetHeight);
-      quantizeToOneBit(imageData.data, targetWidth, targetHeight, mode);
-      ctx.putImageData(imageData, 0, 0);
-    }
     bitmap.close();
 
     const out = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob(resolve, "image/png"),
+      canvas.toBlob(resolve, "image/jpeg", 0.92),
     );
     return out ?? bail("This device could not encode the image.");
   } catch (err) {

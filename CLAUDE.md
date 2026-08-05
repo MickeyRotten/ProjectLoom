@@ -89,9 +89,9 @@ whole-stream restart; mobile polish — overscroll lock; signed-release APK CI a
 done. **MVP complete.** Post-MVP: character-sheet **Auto-Update** (`autoUpdate.ts` + `AutoUpdateModal`
 — appearance re-dressed from Equipment, personality/drive re-read from name-mentioning beats).
 Post-MVP also: custom character art (`download.ts` — member-sheet **Upload Image**
-replaces a portrait with a device file through the same 1-bit pass; **Download Image**
+replaces a portrait with a device file through the same store pass; **Download Image**
 saves it out via Capacitor Filesystem+Share on the APK → Web Share → `<a download>` fallback).
-Post-MVP also: **image masters** (`sourceKey` — every image key keeps a pre-1-bit master
+Post-MVP also (retired — see **one picture per key** below): **image masters** (`sourceKey` — every image key keeps a pre-1-bit master
 under `src:<key>`; ✎ edits round-trip through the master and write both copies, ⟳ replaces
 both and flags failures, downloads nearest-neighbor upscale via `toExportBlob`; masters are
 kept model-safe — `isModelSafeImage`, else re-encoded or not kept — and uploads are decoded
@@ -687,6 +687,30 @@ the cloud follows); **Purge Stored Images** already deletes every blob there is,
 frozen copies included. `slotImageKeys(slot)` takes the slot rather than its game
 and names the frozen keys, which also stops a pulled slot overwriting the live
 art of the game in hand.
+Post-MVP also: **one picture per key** — the 1-bit post-process and image
+editing are both **removed**, and what is kept is the master. Every generated or
+uploaded picture used to be downscaled to 192px and quantized (`onebit.ts`,
+`Settings.ditherMode`, *Images → 1-Bit Shading*), displayed
+`image-rendering: pixelated`, with the pixels behind it kept under `src:<key>`
+because a 192px thumbnail is useless to hand back to a model — which is what ✎
+did. With no edit there is nothing to hand back, and with no downscale there is
+no second copy to keep: `images.ts → toStoredImage` decodes, caps the longest
+side at `MAX_IMAGE_SIDE` (1024) and re-encodes as JPEG **only if it had to
+resize**, so what the model drew is what is stored and shown, and the only reason
+left to touch the pixels is IndexedDB's appetite. Gone with them: `onebit.ts`,
+`DitherMode`, `sourceKey`/`SOURCE_PREFIX`, `toOneBitBlob`,
+`prepareUploadedImage`/`uploadStoredWidth`, `toSourceBlob`, `isModelSafeImage`,
+`blobToDataUrl`, `exportScale`/`toExportBlob` (a download is the stored blob
+now), `buildEditPrompt`, `imageEditAllowed`, `store.editImage`/`editPortrait`,
+`EditImageButton`, the ✎ button and every `[image-rendering:pixelated]`.
+`slotArtPairs` is one pair per character rather than display ⟂ master, and the
+strict upload path survives as `toStoredImage(file, MAX_IMAGE_SIDE, true)` — an
+undecodable HEIC must still fail at the door. **Migration:** `db.ts →
+promoteLegacyMasters` moves every `src:<key>` blob onto `<key>` on first launch
+(awaited in `hydrate` before `syncImages`, since publishing first leaves the
+promotion behind an object URL of the copy it replaced), so an upgrading device
+keeps the good pixels and throws away the thumbnails; `LEGACY_MASTER_PREFIX` is
+all that stays named of the old keyspace, read there and written nowhere.
 Deferred (post-MVP): rolling LLM summarization of the beats themselves,
 NPC/item art, TTS, weather animation, multi-world. Track scope in
 `DESIGN.md → Build Phases`.

@@ -191,8 +191,8 @@ export function AppearanceScreen() {
             })}
           </div>
           <p className="text-sm opacity-60">
-            Both colors apply everywhere. Generated portrait art is a real 1-bit
-            bitmap and stays black and white whatever you pick.
+            Both colors apply everywhere. Portrait art is stored as the image
+            model drew it and does not change with the colors you pick.
           </p>
         </div>
       </div>

@@ -299,9 +299,8 @@ describe("seedAdventure — what a New Adventure carries over", () => {
 });
 
 describe("default settings", () => {
-  it("ships clean threshold, no reference images, and both prompt templates", () => {
+  it("ships no reference images, and both prompt templates", () => {
     const s = defaultSettings();
-    expect(s.ditherMode).toBe("threshold");
     expect(s.portraitRefImages).toEqual([]);
     expect(s.imageTemplates.map((t) => t.format)).toEqual(["prose", "tags"]);
     expect(s.imageTemplateId).toBe("prose");

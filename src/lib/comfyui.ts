@@ -8,8 +8,8 @@ import { activeTemplate } from "./imageTemplates";
  * ComfyUI as a second image backend (DESIGN.md → Image Generation → Backends).
  * A local ComfyUI instance draws the same portraits the
  * OpenRouter path does; `images.ts → generateImage` picks between them on
- * `Settings.imageBackend`, and everything downstream — the 1-bit pass, the
- * `src:` master, IndexedDB, the failure badge — only ever sees a Blob.
+ * `Settings.imageBackend`, and everything downstream — the store pass,
+ * IndexedDB, the failure badge — only ever sees a Blob.
  *
  * The wire protocol, in four steps:
  *   1. POST /prompt   { prompt: <graph>, client_id } → { prompt_id }
@@ -68,7 +68,7 @@ export type ComfyPlaceholder = (typeof COMFY_PLACEHOLDERS)[number];
  * The shipped txt2img graph — SillyTavern's default workflow, which is the
  * plainest possible checkpoint → CLIP → KSampler → VAE → save chain. Nothing
  * here is Loom-specific except the filename prefix; the style comes from the
- * prompt, and the 1-bit look from the client-side pass afterwards.
+ * prompt, which is where the black-and-white look is asked for.
  *
  * `denoise` is hardcoded to 1: txt2img has no reason to vary it, and leaving
  * the token out of the default keeps one less number on the screen meaningful.
@@ -803,10 +803,9 @@ function clientId(): string {
  * is what decides, so a rejected workflow surfaces immediately while an
  * unreachable host is tried again.
  *
- * `opts.images` — portrait style references, and the edit source — are not
- * used: they have no place in a txt2img graph, and ✎ is disabled for this
- * backend precisely because there is no generic way to feed an image into a
- * workflow the player wrote.
+ * `opts.images` — the portrait style references — is not used: there is no
+ * generic way to feed an image into a workflow the player wrote, so they have
+ * no place in a txt2img graph.
  */
 export async function generateComfyImage(opts: GenerateImageOptions): Promise<Blob> {
   const { settings, prompt, aspectRatio, signal } = opts;
