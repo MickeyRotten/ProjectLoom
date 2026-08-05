@@ -145,12 +145,26 @@ export function stampAreaCard(
 }
 
 /**
+ * The text the World Notes matcher scans: this region's name, plus whatever the
+ * player typed into the ✦ modal's Guidance. The automatic path passes no hint
+ * and behaves exactly as it did.
+ */
+export function areaScanText(name: string, hint?: string): string {
+  return [name, hint ?? ""].filter((t) => t && t.trim()).join("\n");
+}
+
+/**
  * The messages for one area-prep call: the arc it serves, the scenario, the
- * lore this region's own name pulls in, and the promises still outstanding.
+ * lore this region's own name — and the player's guidance — pull in, and the
+ * promises still outstanding.
  *
  * The arc is shown and the model is told **not to restate it**. Three tiers is
  * where "every fact is stated once" goes to die, so it is enforced at AUTHORING
  * rather than at display — caps do the rest.
+ *
+ * `hint` is the ✦ button's free text. It goes in last, so it outranks the
+ * region as it stands, and it feeds the note matcher on the way — a player
+ * asking for a flooded quarter gets the flood's note in front of the model.
  */
 export function buildAreaMessages(
   settings: Settings,
@@ -158,8 +172,10 @@ export function buildAreaMessages(
   name: string,
   arc: Arc | undefined,
   promises: StoryPromise[] = [],
+  hint = "",
 ): ChatMessage[] {
   const messages: ChatMessage[] = [];
+  const guidance = hint.trim();
 
   messages.push({
     role: "system",
@@ -195,7 +211,9 @@ export function buildAreaMessages(
     });
   }
 
-  const notes = formatWorldNotesBlock(matchWorldNotes(game.worldNotes, name));
+  const notes = formatWorldNotesBlock(
+    matchWorldNotes(game.worldNotes, areaScanText(name, guidance)),
+  );
   if (notes) messages.push({ role: "system", content: notes });
 
   if (promises.length) {
@@ -204,6 +222,14 @@ export function buildAreaMessages(
       content: `OUTSTANDING PROMISES — things the story has committed to and not yet paid off. This region may be where they land.\n${promises
         .map((p) => `- ${p.text}`)
         .join("\n")}`,
+    });
+  }
+
+  // Last, so it outranks the region as it currently stands.
+  if (guidance) {
+    messages.push({
+      role: "system",
+      content: `PLAYER GUIDANCE — what the player wants this region to be. Follow it even where it cuts against what is written above.\n${guidance}`,
     });
   }
 

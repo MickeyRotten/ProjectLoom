@@ -9,6 +9,7 @@ import {
   normalizeRoomCard,
   parseRoomCard,
   roomChanged,
+  roomScanText,
   stampRoomCard,
 } from "./roomPrep";
 
@@ -169,5 +170,57 @@ describe("buildRoomMessages", () => {
       .map((m) => m.content)
       .join("\n");
     expect(text).toContain("CHANGE THE SCENE");
+  });
+
+  it("injects the ✦ guidance last, and nothing at all when it is blank", () => {
+    const blank = buildRoomMessages(defaultSettings(), game(), "Forest Entrance", populated);
+    const guided = buildRoomMessages(
+      defaultSettings(),
+      game(),
+      "Forest Entrance",
+      populated,
+      [],
+      [],
+      "  put a body in it  ",
+    );
+    expect(guided).toHaveLength(blank.length + 1);
+    expect(guided[guided.length - 2].content).toContain("put a body in it");
+    expect(guided[guided.length - 1].role).toBe("user");
+  });
+
+  it("reads the World Notes this place's own name touches — it read none before", () => {
+    const g = game({
+      worldNotes: [
+        { id: "n1", title: "Forest Entrance", keywords: [], content: "a toll was collected here", permanent: false },
+        { id: "n2", title: "The Sunken Choir", keywords: [], content: "drowned singers", permanent: false },
+      ],
+    });
+    const text = buildRoomMessages(defaultSettings(), g, "Forest Entrance", populated)
+      .map((m) => m.content)
+      .join("\n");
+    expect(text).toContain("a toll was collected here");
+    expect(text).not.toContain("drowned singers");
+
+    // …and the ones the player's guidance names.
+    const guided = buildRoomMessages(
+      defaultSettings(),
+      g,
+      "Forest Entrance",
+      populated,
+      [],
+      [],
+      "the sunken choir sang here",
+    )
+      .map((m) => m.content)
+      .join("\n");
+    expect(guided).toContain("drowned singers");
+  });
+});
+
+describe("roomScanText", () => {
+  it("is the place, its region and the guidance, blanks dropped", () => {
+    const text = roomScanText("Forest Entrance", area(), "  a body  ");
+    expect(text).toBe("Forest Entrance\nMurkwood\n  a body  ");
+    expect(roomScanText("Forest Entrance", area())).toBe("Forest Entrance\nMurkwood");
   });
 });

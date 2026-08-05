@@ -1,11 +1,15 @@
-import type { Arc, Front } from "../types";
+import { useState } from "react";
+import type { Arc, Front, RoomCard } from "../types";
 import { useStore } from "../store";
 import { SubMenuScreen, MenuLink, type SubMenuSection } from "./SubMenuScreen";
-import { AreaField, Field, Section, TextField, btn, btnSmall } from "./fields";
+import { GenerateModal } from "./GenerateModal";
+import { AreaField, Field, LinesField, Section, TextField, btn, btnSmall } from "./fields";
 import { useConfirm } from "./useConfirm";
 import { MAX_CLOCK, MIN_CLOCK, clockFace, nextStep } from "../lib/fronts";
 import { clampArcSteps } from "../lib/settings";
 import { runningArc } from "../lib/arc";
+import { AREA_MAX_THREATS, type ParsedAreaCard } from "../lib/areaPrep";
+import { ROOM_MAX_HOOKS, ROOM_MAX_THREATS, type ParsedRoomCard } from "../lib/roomPrep";
 import { areaIsStale, currentArea, currentRoom, roomIsStale } from "../lib/gazetteer";
 
 /**
@@ -20,6 +24,12 @@ import { areaIsStale, currentArea, currentRoom, roomIsStale } from "../lib/gazet
  * Four sub-menus, widest scope first — **Arc** (the question, the one front and
  * its clock, and the ✦ controls that write both), **Region**, **Room**,
  * **Promises**.
+ *
+ * All three scopes now work the same way, and it is the way the rest of the app
+ * already authors text: a ✦ button opens the shared `GenerateModal` — guidance
+ * in, a preview back, Use This / Generate Again — and everything it writes is an
+ * ordinary editable field afterwards. Nothing is applied by generating; the
+ * region and the room in play are untouched until the player accepts.
  */
 
 /** Blank when Foresight is switched off — the one thing worth saying then. */
@@ -109,17 +119,16 @@ function FrontRow({ front }: { front: Front }) {
         <p className="text-sm opacity-70">Next: {nextStep(front)}</p>
       )}
 
-      <AreaField
+      <LinesField
         label="Steps"
-        value={front.steps.join("\n")}
-        rows={Math.max(2, front.steps.length)}
-        onChange={(v) =>
-          write({ steps: v.split("\n").map((s) => s.trim()).filter(Boolean) })
+        value={front.steps}
+        onChange={(steps) => write({ steps })}
+        note={
+          <p className="text-xs opacity-70">
+            One step per line, worst last. The narrator is only ever shown the next one.
+          </p>
         }
       />
-      <p className="text-xs opacity-70">
-        One step per line, worst last. The narrator is only ever shown the next one.
-      </p>
     </div>
   );
 }
@@ -184,34 +193,71 @@ function ArcGeneration({ label }: { label: string }) {
   );
 }
 
-/** The staged next arc — Use / Regenerate, the `GenerateModal` shape one level up. */
+/**
+ * The staged arc — Use / Generate Again, the `GenerateModal` shape one level up
+ * (this one has to persist between visits to the screen, so it lives in the
+ * document rather than in a modal's local state).
+ *
+ * Two modes, and they are the two things "regenerate an arc" can mean. In an
+ * **interlude** the chapter is over and this is the NEXT one, opened beside it.
+ * On a **running** arc the player did not want the chapter they are in, so
+ * accepting REPLACES it in place — same seat, new question, new clock, and every
+ * region prepared afresh because the epoch moves with it.
+ */
 function StagedArc({ arc }: { arc: Arc }) {
   const apply = useStore((s) => s.applyStagedArc);
+  const discard = useStore((s) => s.discardStagedArc);
   const pending = useStore((s) => s.foresightPending);
+  const { ask, dialog } = useConfirm();
   const staged = arc.staged;
+  const interlude = arc.status === "interlude";
+
+  function use() {
+    if (interlude) {
+      apply();
+      return;
+    }
+    ask(
+      {
+        title: "Replace this chapter?",
+        body: "The question and the front you are playing are written over, the clock starts again from zero, and every region is prepared afresh. What has already happened is untouched.",
+        confirmLabel: "Replace",
+      },
+      apply,
+    );
+  }
 
   return (
     <div className="space-y-3 border-2 border-ink p-3">
-      <Section label="The Next Chapter" />
+      <Section label={interlude ? "The Next Chapter" : "A Different Chapter"} />
       {staged ? (
         <>
           <p className="text-sm">{staged.question || "—"}</p>
           {staged.front && <p className="text-sm opacity-70">· {staged.front.label}</p>}
-          <button type="button" onClick={apply} disabled={pending} className={`w-full ${btn}`}>
+          <button type="button" onClick={use} disabled={pending} className={`w-full ${btn}`}>
             Use This
+          </button>
+          <button type="button" onClick={discard} disabled={pending} className={btnSmall}>
+            Discard
           </button>
         </>
       ) : (
         <p className="text-sm opacity-70">
-          Nothing written yet. It arrives on its own during the interlude — or ask for it
-          now.
+          {interlude
+            ? "Nothing written yet. It arrives on its own during the interlude — or ask for it now."
+            : "Ask for a different chapter. Nothing changes until you use it."}
         </p>
       )}
-      <ArcGeneration label={staged ? "Generate Again" : "Write The Next Arc"} />
-      <p className="text-xs opacity-70">
-        If you never open this, whatever is written here starts by itself when the
-        interlude runs out.
-      </p>
+      <ArcGeneration
+        label={staged ? "Generate Again" : interlude ? "Write The Next Arc" : "Rewrite This Arc"}
+      />
+      {interlude && (
+        <p className="text-xs opacity-70">
+          If you never open this, whatever is written here starts by itself when the
+          interlude runs out.
+        </p>
+      )}
+      {dialog}
     </div>
   );
 }
@@ -252,6 +298,9 @@ function ArcSection() {
         placeholder="What this chapter is about"
       />
 
+      {/* In an interlude the handoff IS the screen's business, so it comes
+          first. On a running arc the rewrite is a way out of the chapter in
+          hand — it belongs under the chapter, not above it. */}
       {arc.status === "interlude" && (
         <>
           <p className="border-2 border-ink p-3 text-sm">
@@ -278,6 +327,8 @@ function ArcSection() {
         chapter ends.
       </p>
 
+      {arc.status !== "interlude" && <StagedArc arc={arc} />}
+
       {past.length > 0 && (
         <>
           <Section label="Past Chapters" />
@@ -299,12 +350,65 @@ function ArcSection() {
  * Region + Room
  * ------------------------------------------------------------------ */
 
+/** The ✦ button both card scopes carry, and the modal it opens. */
+function PrepButton<T>({
+  label,
+  what,
+  blurb,
+  written,
+  replacingNote,
+  disabled,
+  run,
+  preview,
+  onAccept,
+}: {
+  /** The button's own words — "Write This Region Again". */
+  label: string;
+  /** What is being written, for the modal's title. */
+  what: string;
+  blurb: string;
+  written: boolean;
+  replacingNote: string;
+  disabled?: boolean;
+  run: (hint: string) => Promise<T | null>;
+  preview: (result: T) => React.ReactNode;
+  onAccept: (result: T) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        disabled={disabled}
+        className={`w-full ${btn}`}
+      >
+        ✦ {label}
+      </button>
+      {open && (
+        <GenerateModal<T>
+          label={what}
+          blurb={blurb}
+          replacing={written}
+          replacingNote={replacingNote}
+          run={run}
+          preview={preview}
+          onAccept={onAccept}
+          onClose={() => setOpen(false)}
+        />
+      )}
+    </>
+  );
+}
+
 function AreaSection() {
   const game = useStore((s) => s.game);
-  const refresh = useStore((s) => s.refreshArea);
-  const pending = useStore((s) => s.foresightPending);
+  const update = useStore((s) => s.updateArea);
+  const generate = useStore((s) => s.generateAreaCard);
+  const apply = useStore((s) => s.applyAreaCard);
   const area = currentArea(game);
   const arc = runningArc(game.arcs);
+  const written = Boolean(area?.texture || area?.threats.length);
 
   return (
     <>
@@ -323,7 +427,7 @@ function AreaSection() {
       ) : (
         <>
           <p className="text-lg font-bold">{area.name}</p>
-          {!area.texture && !area.threats.length && (
+          {!written && (
             <p className="text-xs uppercase tracking-widest opacity-60">
               Nothing prepared here yet.
             </p>
@@ -334,18 +438,28 @@ function AreaSection() {
               again next time you walk in.
             </p>
           )}
-          <p className="text-sm">{area.texture || "—"}</p>
 
-          <Section label="Standing Threats" />
-          {area.threats.length ? (
-            <ul className="space-y-1 text-sm">
-              {area.threats.map((t) => (
-                <li key={t}>· {t}</li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-xs uppercase tracking-widest opacity-60">None.</p>
-          )}
+          <AreaField
+            label="What This Region Is"
+            value={area.texture}
+            rows={3}
+            placeholder="The look, the weather, who moves through it, what state it is in"
+            onChange={(texture) => update({ texture })}
+          />
+
+          <LinesField
+            label="Standing Threats"
+            value={area.threats}
+            limit={AREA_MAX_THREATS}
+            placeholder="what applies anywhere in the region"
+            onChange={(threats) => update({ threats })}
+            note={
+              <p className="text-xs opacity-70">
+                One per line, at most {AREA_MAX_THREATS}. Standing conditions with teeth,
+                not events.
+              </p>
+            }
+          />
 
           <Section label="Places Here" />
           <ul className="space-y-1 text-sm">
@@ -356,28 +470,58 @@ function AreaSection() {
               </li>
             ))}
           </ul>
+          <p className="text-xs opacity-70">
+            The map's skeleton — names only, kept when the region is written again,
+            because a place nobody has walked into is a rumour and a rumour is a hook.
+          </p>
         </>
       )}
 
-      <button
-        type="button"
-        onClick={refresh}
-        disabled={pending || !game.areaKey}
-        className={`w-full ${btn}`}
-      >
-        ↻ Prepare This Region{area?.texture || area?.threats.length ? " Again" : ""}
-      </button>
+      <PrepButton<ParsedAreaCard>
+        label={written ? "Write This Region Again" : "Write This Region"}
+        what="Region"
+        blurb="Written from the scenario, the arc, the lore your guidance touches and the promises still outstanding. Everything it writes is editable here afterwards."
+        written={written}
+        replacingNote="Replaces what is written above. New place names join the map; the ones already on it stay."
+        disabled={!game.areaKey}
+        run={generate}
+        preview={(card) => (
+          <>
+            <p>{card.texture || "—"}</p>
+            {card.threats.length > 0 && (
+              <p className="mt-2">standing: {card.threats.join(" · ")}</p>
+            )}
+            {card.rooms.length > 0 && (
+              <p className="mt-2 opacity-70">places: {card.rooms.join(" · ")}</p>
+            )}
+          </>
+        )}
+        onAccept={apply}
+      />
     </>
   );
 }
 
+/** What an unprepped room's fields show before anything is written into them. */
+const BLANK_ROOM: Pick<RoomCard, "danger" | "threats" | "hooks" | "outcomes"> = {
+  danger: "",
+  threats: [],
+  hooks: [],
+  outcomes: { strong: "", mixed: "", cost: "" },
+};
+
 function RoomSection() {
   const game = useStore((s) => s.game);
-  const refresh = useStore((s) => s.refreshRoom);
-  const pending = useStore((s) => s.foresightPending);
+  const update = useStore((s) => s.updateRoom);
+  const generate = useStore((s) => s.generateRoomCard);
+  const apply = useStore((s) => s.applyRoomCard);
   const area = currentArea(game);
   const room = currentRoom(game);
-  const card = room?.card;
+  // Editable whether or not anything has prepped this place: `updateRoom`
+  // creates the card on the first keystroke, so a player can author a room the
+  // model has never seen — the bargain the Journal screen already makes.
+  const card = room?.card ?? BLANK_ROOM;
+  const written = Boolean(room?.card);
 
   return (
     <>
@@ -386,64 +530,95 @@ function RoomSection() {
 
       <p className="text-lg font-bold">{room?.name || game.location}</p>
 
-      {!card ? (
-        <p className="uppercase tracking-widest opacity-60">Nothing prepared here yet.</p>
-      ) : (
-        <>
-          {area && roomIsStale(area, room) && (
-            <p className="border-2 border-ink p-2 text-xs uppercase tracking-widest">
-              Out of date — its region was prepared again after this was written.
-            </p>
-          )}
-          <p className="text-sm">{card.danger || "—"}</p>
-
-          <Section label="Threats" />
-          {card.threats.length ? (
-            <ul className="space-y-1 text-sm">
-              {card.threats.map((t) => (
-                <li key={t}>· {t}</li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-xs uppercase tracking-widest opacity-60">None.</p>
-          )}
-
-          <Section label="Here To Want" />
-          {card.hooks.length ? (
-            <ul className="space-y-1 text-sm">
-              {card.hooks.map((h) => (
-                <li key={h}>· {h}</li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-xs uppercase tracking-widest opacity-60">None.</p>
-          )}
-
-          <Section label="If You Roll Here" />
-          <dl className="space-y-2 text-sm">
-            <div>
-              <dt className="uppercase tracking-widest opacity-60">Strong</dt>
-              <dd>{card.outcomes.strong || "—"}</dd>
-            </div>
-            <div>
-              <dt className="uppercase tracking-widest opacity-60">Mixed</dt>
-              <dd>{card.outcomes.mixed || "—"}</dd>
-            </div>
-            <div>
-              <dt className="uppercase tracking-widest opacity-60">Cost</dt>
-              <dd>{card.outcomes.cost || "—"}</dd>
-            </div>
-          </dl>
-          <p className="text-xs opacity-70">
-            Only the one your dice actually land on is ever shown to the narrator — the
-            other two never reach it.
-          </p>
-        </>
+      {!written && (
+        <p className="text-xs uppercase tracking-widest opacity-60">
+          Nothing prepared here yet.
+        </p>
+      )}
+      {area && roomIsStale(area, room) && (
+        <p className="border-2 border-ink p-2 text-xs uppercase tracking-widest">
+          Out of date — its region was prepared again after this was written.
+        </p>
       )}
 
-      <button type="button" onClick={refresh} disabled={pending} className={`w-full ${btn}`}>
-        ↻ Prepare This Place Again
-      </button>
+      <AreaField
+        label="What This Place Is"
+        value={card.danger}
+        rows={3}
+        placeholder="The shape of it, the sightlines, what it does to somebody standing in it"
+        onChange={(danger) => update({ danger })}
+      />
+
+      <LinesField
+        label="Threats"
+        value={card.threats}
+        limit={ROOM_MAX_THREATS}
+        placeholder="the thing, and what sets it off"
+        onChange={(threats) => update({ threats })}
+        note={
+          <p className="text-xs opacity-70">One per line, at most {ROOM_MAX_THREATS}.</p>
+        }
+      />
+
+      <LinesField
+        label="Here To Want"
+        value={card.hooks}
+        limit={ROOM_MAX_HOOKS}
+        placeholder="what is here worth having"
+        onChange={(hooks) => update({ hooks })}
+        note={<p className="text-xs opacity-70">One per line, at most {ROOM_MAX_HOOKS}.</p>}
+      />
+
+      <Section label="If You Roll Here" />
+      <AreaField
+        label="Strong"
+        value={card.outcomes.strong}
+        rows={2}
+        placeholder="what a win does to this place"
+        onChange={(strong) => update({ outcomes: { ...card.outcomes, strong } })}
+      />
+      <AreaField
+        label="Mixed"
+        value={card.outcomes.mixed}
+        rows={2}
+        placeholder="it gets done, and it charges for it"
+        onChange={(mixed) => update({ outcomes: { ...card.outcomes, mixed } })}
+      />
+      <AreaField
+        label="Cost"
+        value={card.outcomes.cost}
+        rows={2}
+        placeholder="what failure means HERE, specifically"
+        onChange={(cost) => update({ outcomes: { ...card.outcomes, cost } })}
+      />
+      <p className="text-xs opacity-70">
+        Only the one your dice actually land on is ever shown to the narrator — the other
+        two never reach it.
+      </p>
+
+      <PrepButton<ParsedRoomCard>
+        label={written ? "Write This Place Again" : "Write This Place"}
+        what="Room"
+        blurb="Written from the region, the last two beats, your party's flaws and the lore your guidance touches. Everything it writes is editable here afterwards."
+        written={written}
+        replacingNote="Replaces what is written above. The ways out join the map."
+        disabled={!area}
+        run={generate}
+        preview={(c) => (
+          <>
+            <p>{c.danger || "—"}</p>
+            {c.threats.length > 0 && <p className="mt-2">threats: {c.threats.join(" · ")}</p>}
+            {c.hooks.length > 0 && <p className="mt-2">here to want: {c.hooks.join(" · ")}</p>}
+            {c.exits.length > 0 && (
+              <p className="mt-2 opacity-70">ways out: {c.exits.join(" · ")}</p>
+            )}
+            <p className="mt-2">strong: {c.outcomes.strong || "—"}</p>
+            <p>mixed: {c.outcomes.mixed || "—"}</p>
+            <p>cost: {c.outcomes.cost || "—"}</p>
+          </>
+        )}
+        onAccept={apply}
+      />
     </>
   );
 }

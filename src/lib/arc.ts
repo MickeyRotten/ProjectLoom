@@ -12,6 +12,7 @@ import { extractFirstJsonObject, parseJsonTolerant } from "./loomBlock";
 import { clockFace, nextStep, normalizeFront, openFront, restFront } from "./fronts";
 import { clampArcSteps } from "./settings";
 import { formatIdentity } from "./roster";
+import { formatWorldNotesBlock, matchWorldNotes } from "./worldNotes";
 
 /**
  * The arc — the widest of Foresight's three scopes, and the only one with a
@@ -216,6 +217,36 @@ export function handOff(
 }
 
 /**
+ * Replace the arc the story is INSIDE, keeping its seat — the Arc screen's
+ * rewrite, applied.
+ *
+ * The sibling of `handOff`, and the difference is the whole point: a handoff
+ * closes a chapter and opens the next one beside it, so both are campaign
+ * history. A rewrite is the player saying *this chapter is not the one I
+ * wanted*, so there is no history to keep — the id, the seat in `GameState.arcs`
+ * and the areas it has touched all survive, and the question, the front and the
+ * clock are written again from scratch.
+ *
+ * The epoch bumps for the same reason it bumps when a front fires: every area
+ * card prepped under the old question now describes a world that no longer
+ * exists, and `(arcId, epoch)` is the pair that says so. `status` is pinned back
+ * to `running` and the interlude marker cleared, so a rewrite is total no matter
+ * what state it is called in.
+ */
+export function rewriteArc(arc: Arc, template: ArcTemplate, day: number): Arc {
+  const clean = normalizeTemplate(template);
+  return normalizeArc({
+    ...arc,
+    question: clean.question,
+    front: openFront(clean.front, day),
+    epoch: arc.epoch + 1,
+    status: "running",
+    interludeFrom: undefined,
+    staged: undefined,
+  });
+}
+
+/**
  * End an interlude with no staged arc to open — the player chose *move on* and
  * the handoff call never landed. The arc resumes rather than the campaign
  * stalling, and the front's clock reference moves to today so the suspended
@@ -240,33 +271,80 @@ export function resumeArc(arc: Arc, day: number): Arc {
  * ------------------------------------------------------------------ */
 
 /**
+ * Why the arc call is being made. `next` is the handoff — a chapter closed, and
+ * this writes the one that grows out of it. `rewrite` is the player pressing ✦
+ * on a chapter they are still inside and asking for a different one, which is a
+ * different instruction in two places: the arc shown is being REPLACED rather
+ * than built on, so restating it is the failure mode rather than the point.
+ */
+export type ArcCallMode = "next" | "rewrite";
+
+/**
+ * The text the World Notes matcher scans for an arc call: what the scenario
+ * says, what the arc in hand is about, and — the reason this exists — whatever
+ * the player typed into Guidance.
+ *
+ * Same rule as every other ✦ flow (`generateField.ts → fieldScanText`,
+ * `generateItem.ts → itemScanText`): a player who asks for a chapter about the
+ * Sunken Choir should get the Sunken Choir's note in front of the model, and
+ * before this the arc call read no notes at all.
+ */
+export function arcScanText(
+  game: GameState,
+  arc: Arc | undefined,
+  guidance?: string,
+): string {
+  const s = game.scenario;
+  return [
+    guidance ?? "",
+    s.title,
+    s.startRegion,
+    s.startRoom,
+    s.premise,
+    arc?.question ?? "",
+    arc?.front?.label ?? "",
+  ]
+    .filter((t) => t && t.trim())
+    .join("\n");
+}
+
+/**
  * The messages for the arc call — the highest-stakes call in the system, since
  * it writes the next several hours of play off a summary. That is exactly why
  * its result is STAGED rather than applied (see `Arc.staged`).
  *
- * Reads the journal, the arc that just closed, the cast and the world — never
- * the raw beats, which is the same discipline as every other authoring call
- * here: the beats are what the journal already compressed.
+ * Reads the journal, the arc in hand, the cast and the world — never the raw
+ * beats, which is the same discipline as every other authoring call here: the
+ * beats are what the journal already compressed.
  *
  * Two of its inputs are the player's, taken straight off the Arc screen:
  * `Settings.arcSteps` is the clock length it must write to (a number the client
  * owns, so the model is told the count rather than asked for one), and
  * `Settings.arcGuidance` is free-text direction, injected as its own block —
  * blank adds nothing, exactly the way a blank instruction field removes a rule.
+ * The guidance also feeds the World Notes matcher, so asking for a chapter about
+ * something the player has written lore for pulls that lore in.
+ *
+ * `mode` decides what the arc in `previous` MEANS: the chapter this one grows
+ * out of, or the chapter this one replaces.
  */
 export function buildArcMessages(
   settings: Settings,
   game: GameState,
   characters: Character[],
-  closing: Arc | undefined,
+  previous: Arc | undefined,
+  mode: ArcCallMode = "next",
 ): ChatMessage[] {
   const messages: ChatMessage[] = [];
   const steps = clampArcSteps(settings.arcSteps);
+  const rewrite = mode === "rewrite";
 
   messages.push({
     role: "system",
     content: [
-      "NEXT ARC — you are writing the shape of the next chapter of an ongoing text adventure, not narrating it.",
+      rewrite
+        ? "ARC — you are writing the shape of a chapter of an ongoing text adventure, not narrating it. The chapter it replaces is below, and the player has asked for a different one."
+        : "NEXT ARC — you are writing the shape of the next chapter of an ongoing text adventure, not narrating it.",
       'Reply with a single JSON object and nothing else — no prose, no commentary, no code fences:',
       '{ "question": "…", "front": { "label": "…", "steps": ["…", "…"] } }',
       "",
@@ -293,17 +371,19 @@ export function buildArcMessages(
   const scenario = formatScenarioBlock(game.scenario);
   if (scenario) messages.push({ role: "system", content: scenario });
 
-  if (closing) {
+  if (previous) {
     messages.push({
       role: "system",
       content: [
-        "THE CHAPTER THAT JUST CLOSED — do not repeat it. The next one grows out of what it left behind.",
-        closing.question.trim() ? `Question: ${closing.question.trim()}` : "",
-        closing.front
-          ? `- ${closing.front.label} — ${closing.front.status}${
-              closing.front.status === "fired"
-                ? ` (${nextStep(closing.front)})`
-                : ` ${clockFace(closing.front)}`
+        rewrite
+          ? "THE CHAPTER BEING REPLACED — the player did not want this one. Write a DIFFERENT chapter of the same story: do not restate its question, and do not name the same thing closing in."
+          : "THE CHAPTER THAT JUST CLOSED — do not repeat it. The next one grows out of what it left behind.",
+        previous.question.trim() ? `Question: ${previous.question.trim()}` : "",
+        previous.front
+          ? `- ${previous.front.label} — ${previous.front.status}${
+              previous.front.status === "fired"
+                ? ` (${nextStep(previous.front)})`
+                : ` ${clockFace(previous.front)}`
             }`
           : "",
       ]
@@ -322,12 +402,21 @@ export function buildArcMessages(
     });
   }
 
+  // Lore the guidance, the scenario and the arc in hand reach for. Last of the
+  // context blocks, and never gated on the beats: this is authoring.
+  const notes = formatWorldNotesBlock(
+    matchWorldNotes(game.worldNotes, arcScanText(game, previous, guidance)),
+  );
+  if (notes) messages.push({ role: "system", content: notes });
+
   const journal = formatJournalBlock(game.journal, settings.journalBudget);
   if (journal) messages.push({ role: "system", content: journal });
 
   messages.push({
     role: "user",
-    content: "Write the next arc. Emit the JSON object now.",
+    content: rewrite
+      ? "Write the arc again. Emit the JSON object now."
+      : "Write the next arc. Emit the JSON object now.",
   });
 
   return messages;

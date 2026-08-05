@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 /**
  * Shared 1-bit form controls for the Phase 4 authoring screens (scenario,
@@ -258,6 +258,71 @@ export function AreaField({
         className="w-full resize-y border-2 border-ink bg-paper p-2 focus:outline-none"
       />
     </Field>
+  );
+}
+
+/**
+ * A list of short lines, edited as one text area — the shape Foresight's cards
+ * (standing threats, room threats, hooks) and a front's steps all take.
+ *
+ * It keeps a local draft of the raw text rather than rendering the parsed list
+ * back, and that is the whole reason it exists: parsing trims each line and
+ * drops the blank ones, so a plain controlled textarea fed `value.join("\n")`
+ * eats the newline the instant it is typed and the space before the next word.
+ * The draft is re-seeded when the value changes from OUTSIDE — a generated card
+ * landing, the screen moving to another room — and left alone when the change is
+ * the one this field just emitted.
+ */
+export function LinesField({
+  label,
+  value,
+  onChange,
+  limit,
+  rows = 2,
+  placeholder,
+  note,
+}: {
+  label: string;
+  value: string[];
+  onChange: (lines: string[]) => void;
+  /** Lines past this are dropped, matching the prep caps. */
+  limit?: number;
+  rows?: number;
+  placeholder?: string;
+  note?: React.ReactNode;
+}) {
+  const joined = value.join("\n");
+  const [draft, setDraft] = useState(joined);
+  // What this field last handed upward. Equal to `joined` means the value in
+  // hand is our own echo; anything else is somebody else's write.
+  const emitted = useRef(joined);
+  if (emitted.current !== joined) {
+    emitted.current = joined;
+    setDraft(joined);
+  }
+
+  function edit(text: string) {
+    setDraft(text);
+    const lines = text
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
+    const capped = limit === undefined ? lines : lines.slice(0, limit);
+    emitted.current = capped.join("\n");
+    onChange(capped);
+  }
+
+  return (
+    <div className="space-y-1">
+      <AreaField
+        label={label}
+        value={draft}
+        placeholder={placeholder}
+        rows={Math.max(rows, draft.split("\n").length)}
+        onChange={edit}
+      />
+      {note}
+    </div>
   );
 }
 

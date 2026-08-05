@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
-import type { Arc, ArcTemplate } from "../types";
+import type { Arc, ArcTemplate, Note } from "../types";
 import { newGame, defaultSettings } from "./defaults";
 import {
+  arcScanText,
   buildArcMessages,
   bumpEpoch,
   frontFired,
@@ -14,6 +15,7 @@ import {
   openArc,
   parseArc,
   resumeArc,
+  rewriteArc,
   runningArc,
   toInterlude,
 } from "./arc";
@@ -229,5 +231,128 @@ describe("buildArcMessages", () => {
   it("works with no arc closing — the first handoff of a campaign", () => {
     const messages = buildArcMessages(defaultSettings(), newGame(), [], undefined);
     expect(messages[messages.length - 1].role).toBe("user");
+  });
+
+  it("tells the model to REPLACE the arc it is shown in rewrite mode", () => {
+    const arc = { ...opened(), question: "the consortium is buying the valley" };
+    const next = buildArcMessages(defaultSettings(), newGame(), [], arc, "next")
+      .map((m) => m.content)
+      .join("\n");
+    const rewrite = buildArcMessages(defaultSettings(), newGame(), [], arc, "rewrite")
+      .map((m) => m.content)
+      .join("\n");
+
+    expect(next).toContain("THE CHAPTER THAT JUST CLOSED");
+    expect(next).not.toContain("THE CHAPTER BEING REPLACED");
+    expect(rewrite).toContain("THE CHAPTER BEING REPLACED");
+    expect(rewrite).not.toContain("THE CHAPTER THAT JUST CLOSED");
+    // Both are shown the same arc — only what to do with it differs.
+    expect(rewrite).toContain("the consortium is buying the valley");
+  });
+
+  it("defaults to the handoff wording, so an unmoded call is byte-identical", () => {
+    const arc = opened();
+    expect(buildArcMessages(defaultSettings(), newGame(), [], arc)).toEqual(
+      buildArcMessages(defaultSettings(), newGame(), [], arc, "next"),
+    );
+  });
+
+  it("pulls in the World Notes the player's guidance names", () => {
+    const notes: Note[] = [
+      { id: "n1", title: "The Sunken Choir", keywords: [], content: "drowned singers", permanent: false },
+      { id: "n2", title: "The Ashen Legion", keywords: [], content: "mercenaries", permanent: false },
+    ];
+    const game = { ...newGame(), worldNotes: notes };
+
+    const blank = buildArcMessages(defaultSettings(), game, [], undefined)
+      .map((m) => m.content)
+      .join("\n");
+    expect(blank).not.toContain("drowned singers");
+
+    const guided = buildArcMessages(
+      { ...defaultSettings(), arcGuidance: "give me the sunken choir" },
+      game,
+      [],
+      undefined,
+    )
+      .map((m) => m.content)
+      .join("\n");
+    expect(guided).toContain("drowned singers");
+    // Only the one the guidance named — matching is still keyword matching.
+    expect(guided).not.toContain("mercenaries");
+  });
+});
+
+describe("arcScanText", () => {
+  it("scans the guidance, the scenario and the arc in hand", () => {
+    const game = {
+      ...newGame(),
+      scenario: { ...newGame().scenario, title: "Murkwood", premise: "a wet valley" },
+    };
+    const arc = { ...opened(), question: "who owns the mine" };
+    const text = arcScanText(game, arc, "  keep it underground  ");
+    expect(text).toContain("keep it underground");
+    expect(text).toContain("Murkwood");
+    expect(text).toContain("a wet valley");
+    expect(text).toContain("who owns the mine");
+    expect(text).toContain("the mine floods");
+  });
+
+  it("survives no arc and no guidance", () => {
+    expect(() => arcScanText(newGame(), undefined)).not.toThrow();
+  });
+});
+
+describe("rewriteArc", () => {
+  const played = (): Arc => ({
+    ...opened(1),
+    epoch: 2,
+    areas: ["murkwood"],
+    openedTurn: 4,
+    front: { label: "the mine floods", steps: ["a", "b"], ticks: 1, lastTickDay: 3, status: "open" },
+  });
+
+  const replacement: ArcTemplate = {
+    question: "the warden is selling the pass",
+    front: { label: "the pass closes", steps: ["c", "d", "e"] },
+  };
+
+  it("keeps the arc's seat and rewrites everything the model wrote", () => {
+    const next = rewriteArc(played(), replacement, 9);
+    expect(next.id).toBe("arc-1");
+    expect(next.openedTurn).toBe(4);
+    expect(next.areas).toEqual(["murkwood"]);
+    expect(next.question).toBe("the warden is selling the pass");
+    expect(next.front?.label).toBe("the pass closes");
+    expect(next.front?.steps).toEqual(["c", "d", "e"]);
+  });
+
+  it("starts the clock again from zero, on today", () => {
+    const next = rewriteArc(played(), replacement, 9);
+    expect(next.front?.ticks).toBe(0);
+    expect(next.front?.lastTickDay).toBe(9);
+    expect(next.front?.status).toBe("open");
+  });
+
+  it("bumps the epoch, so every area prepped under the old question is stale", () => {
+    expect(rewriteArc(played(), replacement, 9).epoch).toBe(3);
+  });
+
+  it("clears the staging it was applied from", () => {
+    const staged = { ...played(), staged: replacement };
+    expect(rewriteArc(staged, replacement, 9).staged).toBeUndefined();
+  });
+
+  it("pins the arc back to running, whatever state it was called in", () => {
+    const paused = toInterlude(played(), 7);
+    const next = rewriteArc(paused, replacement, 9);
+    expect(next.status).toBe("running");
+    expect(next.interludeFrom).toBeUndefined();
+  });
+
+  it("drops the front entirely for a template that has none", () => {
+    const next = rewriteArc(played(), { question: "just a question" }, 9);
+    expect(next.front).toBeUndefined();
+    expect(next.question).toBe("just a question");
   });
 });

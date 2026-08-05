@@ -796,6 +796,43 @@ stored `startLocation` onto **both** fields — one name, no way to know which
 scope was meant, so a region holding one room of the same name beats inventing
 "Murkwood" for somebody else's world.
 
+Post-MVP also: **Foresight is co-authored** — all three scopes shipped as
+model-written artefacts the player could only *look at*: the arc's ✦ reached a
+running arc only when there was no arc at all, and the region and room were
+read-only displays with a ↻ that fired a call straight into the document. That
+is the one arrangement the project rejects everywhere else (Journal, World
+Notes, sheets, the front's own steps are all model-written / player-owned), and
+Foresight has the strongest claim to it since a card is read back into every
+turn taken in that place. Now: **✦ opens the shared `GenerateModal`** for the
+region and the room — guidance in, preview, Use This / Generate Again — and it
+writes **nothing** (`store → generateAreaCard`/`generateRoomCard` return the
+parsed card; the region in play is untouched until `applyAreaCard`/
+`applyRoomCard`, and they share `fieldGenPending` with the other ✦ flows rather
+than `foresightPending`, which means *a call the player did not ask for*).
+Every written field is an ordinary editable field afterwards — texture +
+standing threats, danger + threats + hooks + all three outcome bands — written
+**raw** and sanitized at READ, since capping a line on write trims it out from
+under the cursor. `updateRoom` creates the card if the room was never prepped.
+The automatic chain is unchanged and now shares the stamping halves
+(`commitAreaCard`/`commitRoomCard`). The **arc's ✦ reaches a running arc**:
+`buildArcMessages` takes an `ArcCallMode` (`next` = *the chapter that just
+closed, do not repeat it* · `rewrite` = *the chapter being replaced, do not
+restate its question*, defaulting to `next` so the handoff is byte-identical),
+and Use This means what the arc's status says — `handOff` in an interlude,
+`arc.ts → rewriteArc` on a running one: same id, seat, `openedTurn` and
+`areas[]`, new question, new front, clock from zero, **epoch bumped** so every
+region re-preps, behind a confirm. Staged either way, plus **Discard**. Third,
+**guidance is scan text everywhere**: the ✦ hint has always fed the World Notes
+matcher (`fieldScanText`/`scenarioScanText`/`itemScanText`), and the three
+Foresight calls were the exceptions — the arc read no notes at all
+(`arcScanText`), area prep scanned the region name only (`areaScanText`), room
+prep read none (`roomScanText` — this place, its region, the hint). Both prep
+builders take `hint` last as a `PLAYER GUIDANCE` block; blank injects and
+matches nothing. `fields.tsx → LinesField` is the one new control — a line list
+edited as one textarea keeping a **local draft of the raw text**, because
+parsing trims and de-blanks, so a plain controlled textarea eats the newline as
+it is typed (a bug the front's Steps field shipped with and no longer has).
+
 Deferred (post-MVP): rolling LLM summarization of the beats themselves,
 NPC/item art, TTS, weather animation, multi-world. Track scope in
 `DESIGN.md → Build Phases`.
