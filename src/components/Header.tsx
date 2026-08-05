@@ -1,26 +1,39 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useStore } from "../store";
-import { bannerCooldownLeft, bannerKey, imagesAllowed } from "../lib/images";
-import { phaseOf } from "../lib/clock";
+import { bannerCooldownLeft, bannerKey, imagesAllowed, portraitKey } from "../lib/images";
+import { playerCharacter } from "../lib/roster";
+import type { PartyMember } from "../types";
+
+/** Placeholder hit points. No health system exists yet — see below. */
+const HEARTS = 6;
 
 /**
- * The top bar — location · day · menu — and, when Location Images are on, the
- * location banner it is drawn on top of.
+ * The top bar — the PLAYER CHARACTER: a small square portrait, their name
+ * beside it, a row of hearts under the name, and the menu button at the right
+ * edge. When Location Images are on it is still drawn on top of the location
+ * banner, which remains its background.
  *
- * The banner used to be its own strip below the header, which meant the
- * location name was printed twice within 60px of itself and the art cost the
- * reading area its full height. Merged, the bar doubles in height and the image
- * becomes its background: the label, the day and the menu button sit along its
- * bottom edge directly on the art, with nothing painted behind them — the
- * gradient scrim that used to back them was darkening the bottom third of every
- * picture to make room for two short words.
+ * It used to be the location bar: name of the place · day · menu. Both of those
+ * facts are already in the reading area — `ChatView`'s scene marks rule off the
+ * log with "Somewhere · Day 3" every time either one changes — so the bar was
+ * spending the most valuable strip of a phone screen restating the line the
+ * player had just read. The PC had no permanent place on screen at all; they
+ * were one of four party-strip slots, which is backwards, since the strip is
+ * who is IN the scene and the player never is not.
+ *
+ * The hearts are a PLACEHOLDER: six filled glyphs, drawn from nothing and
+ * meaning nothing, holding the shape a future hit-point system would take. They
+ * are `aria-hidden` precisely because of that — a screen reader announcing
+ * "6 of 6 health" would be describing a mechanic this app does not have.
  *
  * Literal `#000`/`#fff`, not the ink/paper tokens, for everything that sits on
  * the art — the ONE place in the app that opts out of the token system, and it
- * has to: a generated banner is a real 1-bit bitmap that the invert theme does
+ * has to: a generated banner is a real 1-bit bitmap that a custom palette does
  * NOT flip (see App.tsx), so tokens would put black text on a black photo the
- * moment the player inverted. The gradient is black for the same reason. With
- * Location Images off the bar is exactly the themed strip it always was.
+ * moment the player chose dark paper. The bar's own contents inherit through
+ * `border-current`/`currentColor`, so there is exactly one place per variant
+ * that names a colour. With Location Images off the bar is the themed
+ * ink-on-paper strip it always was.
  *
  * `bannerSize` still chooses between the double-height bar (`full`) and a
  * single-height one (`compact`) that keeps the art as a backdrop while handing
@@ -28,12 +41,12 @@ import { phaseOf } from "../lib/clock";
  */
 export function Header() {
   const location = useStore((s) => s.game.location);
-  const day = useStore((s) => s.game.day);
-  // A phase word, never a clock face: the minutes are the client's arithmetic,
-  // and "quarter past two" is a precision this setting does not have.
-  const phase = useStore((s) => phaseOf(s.game.minutes));
   const setScreen = useStore((s) => s.setScreen);
   const streaming = useStore((s) => s.streaming);
+
+  const characters = useStore((s) => s.game.characters);
+  const roster = useStore((s) => s.game.roster);
+  const pc = useMemo(() => playerCharacter(characters, roster), [characters, roster]);
 
   const enabled = useStore((s) => s.settings.locationImages);
   const size = useStore((s) => s.settings.bannerSize);
@@ -42,11 +55,10 @@ export function Header() {
   const url = useStore((s) => s.images[key]);
   const pending = useStore((s) => s.imgPending[key]);
   const imageError = useStore((s) => s.imgError[key]);
-  // Turns left on the generation cooldown (Advanced). Without this an empty bar
+  // Turns left on the generation cooldown (Images). Without this an empty bar
   // is indistinguishable from a silently broken one.
-  // ...only while banners can be drawn at all: with image generation off (Model
-  // & Key) the wait never ends, so counting it down would be a lie told every
-  // turn.
+  // ...only while banners can be drawn at all: with image generation off the
+  // wait never ends, so counting it down would be a lie told every turn.
   const waiting = useStore((s) =>
     imagesAllowed(s.settings)
       ? bannerCooldownLeft(s.settings.bannerCooldown, s.game.lastBannerTurn, s.game.turnNumber)
@@ -59,14 +71,9 @@ export function Header() {
   // the setting is toggled mid-session.
   if (!enabled) {
     return (
-      <header className="flex shrink-0 items-center justify-between bg-ink px-3 py-2 text-paper">
-        <span className="truncate uppercase">{location}</span>
-        <div className="flex items-center gap-3 whitespace-nowrap">
-          <span>
-            Day {day} · {phase}
-          </span>
-          <MenuButton streaming={streaming} onOpen={() => setScreen("menu")} light={false} />
-        </div>
+      <header className="flex shrink-0 items-center justify-between gap-3 bg-ink px-3 py-2 text-paper">
+        <PlayerBlock pc={pc} streaming={streaming} />
+        <MenuButton streaming={streaming} onOpen={() => setScreen("menu")} light={false} />
       </header>
     );
   }
@@ -98,12 +105,6 @@ export function Header() {
         />
       )}
 
-      {/* No controls on the art at all now — ✎ followed ⟳ and ▲ off the bar.
-          A location banner is scenery the story replaces on its own every time
-          the player moves; retouching one is not something worth a button
-          parked permanently on top of the picture, and every glyph up there was
-          costing the image the corner it sat in. */}
-
       {/* Nothing drawn yet: say which of the two reasons it is. */}
       {full && !url && (
         <div className="absolute inset-x-0 top-0 flex h-[3.75rem] flex-col items-center justify-center gap-1 px-3 text-center text-sm uppercase tracking-widest opacity-60">
@@ -128,28 +129,20 @@ export function Header() {
       )}
 
       {/* The bottom row sits DIRECTLY on the art — no scrim, no gradient. What
-          was there before darkened the bottom of every banner (a flat black
-          wash on the compact bar, a fast gradient on the tall one) to back two
-          short words, which is a lot of picture spent on legibility.
+          was there before darkened the bottom of every banner to back two short
+          words, which is a lot of picture spent on legibility.
           An OUTLINE buys the same legibility for none of it: `text-stroke` with
           `paint-order: stroke` traces black around each glyph and paints the
-          white fill on top, so the label survives a white patch of banner
-          without hiding what is under it. Still strictly two tones, and still
-          the literal `#000`/`#fff` everything on the art uses — the bitmap does
-          not flip with the invert theme. */}
+          white fill on top, so the name and the hearts survive a white patch of
+          banner without hiding what is under it. Still strictly two tones, and
+          still the literal `#000`/`#fff` everything on the art uses — the bitmap
+          does not flip with the palette. */}
       <div
         className={`absolute inset-x-0 bottom-0 flex items-center justify-between gap-3 px-3 py-1.5 ${
           url ? "[paint-order:stroke] [-webkit-text-stroke:3px_#000]" : ""
         }`}
       >
-        <button
-          type="button"
-          disabled={!url}
-          onClick={() => setZoom(true)}
-          className="min-w-0 flex-1 truncate text-left uppercase disabled:opacity-100"
-        >
-          {location}
-        </button>
+        <PlayerBlock pc={pc} streaming={streaming} />
         <div className="flex items-center gap-3 whitespace-nowrap">
           {!full && (
             <button
@@ -161,9 +154,6 @@ export function Header() {
               ▼
             </button>
           )}
-          <span>
-            Day {day} · {phase}
-          </span>
           <MenuButton streaming={streaming} onOpen={() => setScreen("menu")} light />
         </div>
       </div>
@@ -174,8 +164,64 @@ export function Header() {
 }
 
 /**
+ * Portrait · name · hearts. One button, because it is one subject: tapping
+ * anywhere on it opens the PC's sheet, which is the only route to them now that
+ * they are out of the party strip.
+ *
+ * Everything visible inherits its colour (`border-current`), so this renders
+ * unchanged on the themed strip and on the banner — the two places disagree
+ * about what "the foreground" is, and only the header knows which one it is in.
+ */
+function PlayerBlock({ pc, streaming }: { pc: PartyMember | undefined; streaming: boolean }) {
+  const openMember = useStore((s) => s.openMember);
+  const portrait = useStore((s) => (pc ? s.images[portraitKey(pc.id)] : undefined));
+  if (!pc) return <span className="min-w-0 flex-1" />;
+
+  return (
+    <button
+      type="button"
+      disabled={streaming}
+      onClick={() => openMember(pc.id)}
+      aria-label={pc.name}
+      className="flex min-w-0 flex-1 items-center gap-2 text-left disabled:opacity-40 active:opacity-60"
+    >
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden border-2 border-current text-xs font-bold">
+        {portrait ? (
+          <img
+            src={portrait}
+            alt=""
+            aria-hidden="true"
+            className="h-full w-full origin-top scale-150 object-cover object-top [image-rendering:pixelated]"
+          />
+        ) : (
+          initials(pc)
+        )}
+      </span>
+      <span className="flex min-w-0 flex-col gap-0.5">
+        <span className="truncate uppercase">{pc.name}</span>
+        {/* Placeholder hit points — six full hearts, always. Hidden from
+            assistive tech until they mean something. */}
+        <span aria-hidden="true" className="text-xs leading-none tracking-widest">
+          {"♥".repeat(HEARTS)}
+        </span>
+      </span>
+    </button>
+  );
+}
+
+function initials(c: PartyMember): string {
+  return c.name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
+/**
  * The gear button. `light` is the on-the-art variant: literal white, because a
- * paper-token border vanishes into a white patch of an inverted theme's banner.
+ * paper-token border vanishes into a white patch of a banner under a dark
+ * palette.
  */
 function MenuButton({
   streaming,

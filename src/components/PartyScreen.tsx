@@ -8,7 +8,7 @@ import { PARTY_LIMIT, activeMembers, benchedMembers } from "../lib/roster";
 
 /**
  * Full-screen PARTY view — the company, in two halves: who is in the scene
- * (capped at PARTY_LIMIT, PC + 3) and who is BENCHED, still one of yours but
+ * (capped at PARTY_LIMIT companions) and who is BENCHED, still one of yours but
  * waiting elsewhere. The bench is uncapped, so this is where a long-running
  * adventure keeps its stable.
  *

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  PARTY_LIMIT,
   activeMembers,
   allMembers,
   benchedMembers,
@@ -139,7 +140,9 @@ describe("partyMembers / activeMembers / benchedMembers / npcMembers", () => {
   });
 
   it("is full only at PARTY_LIMIT resolvable members", () => {
-    const ghosts = ["x", "y", "z"].map((id) => entry(id, { standing: "active" }));
+    const ghosts = Array.from({ length: PARTY_LIMIT }, (_, i) =>
+      entry(`ghost-${i}`, { standing: "active" }),
+    );
     expect(partyFull(chars, ghosts)).toBe(false);
   });
 });

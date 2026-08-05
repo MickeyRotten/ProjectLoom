@@ -272,7 +272,7 @@ describe("active party roll call", () => {
     const protocolIdx = msgs.findIndex((m) => m.content.includes("OUTPUT PROTOCOL"));
     expect(idx).toBe(protocolIdx - 1);
     expect(msgs[idx].role).toBe("system");
-    expect(msgs[idx].content).toContain("Travelling with the player (2/3): Navi, Bram");
+    expect(msgs[idx].content).toContain(`Travelling with the player (2/${PARTY_LIMIT}): Navi, Bram`);
   });
 
   it("is emitted even with an empty party, saying the player is alone", () => {
@@ -353,7 +353,7 @@ describe("active party roll call", () => {
       ],
     };
     const block = rollCall(build({ settings, game: g, characters: cast, playerMessage: "go" }));
-    expect(block?.content).toContain("Travelling with the player (1/3): Navi");
+    expect(block?.content).toContain(`Travelling with the player (1/${PARTY_LIMIT}): Navi`);
     expect(block?.content).toContain("With the party but NOT in this scene: Bram");
     // Benched is not gone — it must never read as a departure.
     expect(block?.content).not.toContain("No longer travelling");

@@ -666,6 +666,24 @@ repaired block takes the normal `reconcileBlock` → `applyDeltas` → reversal 
 a failure (abort included) is swallowed rather than turning a readable beat into
 an error. `mergeRepairBlock` takes the whole repair only when nothing parsed —
 when a block DID parse its ops already ran, so only `options` is taken.
+Post-MVP also: **the top bar is the PC** — the bar showed location · day · menu,
+and both facts were already in the reading area (`ChatView`'s scene marks rule
+off the log whenever either changes), so the most valuable strip of a phone was
+restating a line just read. Meanwhile the PC — the one character never absent
+from the scene — had no permanent place on screen and was renting one of four
+party-strip slots. Now `Header` is portrait · name · six **placeholder** hearts
+(`aria-hidden`: announcing "6 of 6 health" would describe a mechanic that does
+not exist), menu at the right, the whole PC block tapping through to the member
+sheet — the only route to it now. The location banner is still the bar's
+background with everything unchanged (zoom · error badge · cooldown countdown ·
+`bannerSize`); the bar's own contents inherit through `border-current`, so the
+themed strip and the on-art variant stop being two hand-written colour sets.
+`PartyStrip` is **companions only**, moved **above** the reading area so the
+whole cast sits together at the top, and its slots went 3:5 → **4:5** (a quarter
+shorter) since every pixel it takes is now one the prose does not get. The freed
+slot went back to the cap: `PARTY_LIMIT` is **4**, and it is the strip's width
+again rather than the width minus the player. Tests that spelled the old cap out
+now read it off `PARTY_LIMIT`.
 Deferred (post-MVP): rolling LLM summarization of the beats themselves,
 NPC/item art, TTS, weather animation, multi-world. Track scope in
 `DESIGN.md → Build Phases`.

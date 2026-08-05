@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { applyDeltas, goldIsNarrated, reconcileBlock, simplifyLocation } from "./deltas";
 import { defaultPC, newGame } from "./defaults";
-import { activeMembers, getEntry, partyMembers, resolve } from "./roster";
+import { PARTY_LIMIT, activeMembers, getEntry, partyMembers, resolve } from "./roster";
 import type { Character, GameState } from "../types";
 
 function game(): GameState {
@@ -415,19 +415,18 @@ describe("applyDeltas — party ops", () => {
   });
 
   it("caps party adds at PARTY_LIMIT — the overflow joins BENCHED", () => {
+    // Written against the cap rather than a literal, so raising PARTY_LIMIT
+    // changes the number in one place instead of silently passing here.
+    const names = ["Ada", "Bel", "Cid", "Dee", "Eli", "Fen", "Gus"].slice(0, PARTY_LIMIT + 1);
+    const last = names[names.length - 1];
     const scene = applyDeltas(game(), lib(), {
-      party: [
-        { op: "add", name: "Ada" },
-        { op: "add", name: "Bel" },
-        { op: "add", name: "Cid" },
-        { op: "add", name: "Dee" },
-      ],
+      party: names.map((name) => ({ op: "add" as const, name })),
     });
-    // All four become characters; only three travel with the player, and the
-    // fourth lands somewhere the player can actually see them.
-    expect(scene.characters.filter((c) => c.role === "member")).toHaveLength(4);
-    expect(activeMembers(scene.characters, scene.roster)).toHaveLength(3);
-    expect(getEntry(scene.roster, "m-dee").standing).toBe("benched");
+    // Everyone named becomes a character; only PARTY_LIMIT travel with the
+    // player, and the overflow lands somewhere the player can actually see it.
+    expect(scene.characters.filter((c) => c.role === "member")).toHaveLength(names.length);
+    expect(activeMembers(scene.characters, scene.roster)).toHaveLength(PARTY_LIMIT);
+    expect(getEntry(scene.roster, `m-${last.toLowerCase()}`).standing).toBe("benched");
   });
 
   it("does not let an unresolvable entry hold a party slot", () => {
@@ -448,17 +447,14 @@ describe("applyDeltas — party ops", () => {
   });
 
   it("does not pull a benched character into a full party", () => {
+    const names = ["Ada", "Bel", "Cid", "Dee", "Eli", "Fen", "Gus"].slice(0, PARTY_LIMIT + 1);
+    const last = names[names.length - 1];
     const first = applyDeltas(game(), lib(), {
-      party: [
-        { op: "add", name: "Ada" },
-        { op: "add", name: "Bel" },
-        { op: "add", name: "Cid" },
-        { op: "add", name: "Dee" },
-      ],
+      party: names.map((name) => ({ op: "add" as const, name })),
     });
     const g = { ...game(), roster: first.roster };
-    const scene = applyDeltas(g, first.characters, { party: [{ op: "add", name: "Dee" }] });
-    expect(getEntry(scene.roster, "m-dee").standing).toBe("benched");
+    const scene = applyDeltas(g, first.characters, { party: [{ op: "add", name: last }] });
+    expect(getEntry(scene.roster, `m-${last.toLowerCase()}`).standing).toBe("benched");
   });
 
   it("adds an important NPC without spending a party slot", () => {

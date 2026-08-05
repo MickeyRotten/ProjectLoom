@@ -24,12 +24,16 @@ import { InventoryScreen } from "./components/InventoryScreen";
 import { DiceOverlay } from "./components/DiceOverlay";
 
 /**
- * Phase 2 shell — the core loop plus party: header (the location banner, with
- * location · day · menu along its bottom edge), scrolling
- * narration log with AI options under the latest beat, the party portrait
- * strip, and a composer (quick actions · freeform input · GO · ⋯ context menu).
- * Full-screen overlays (member sheet, party, inventory, settings) open over the
- * chat.
+ * Phase 2 shell — the core loop plus party, top to bottom: the header (the PC —
+ * portrait · name · hearts · menu — drawn over the location banner when
+ * Location Images are on), the party portrait strip, the scrolling narration log
+ * with AI options under the latest beat, and a composer (quick actions ·
+ * freeform input · GO · ⋯ context menu). Full-screen overlays (member sheet,
+ * party, inventory, settings) open over the chat.
+ *
+ * The cast sits TOGETHER at the top now — the strip used to hang below the log,
+ * a screen's height away from the PC it was showing alongside — and the reading
+ * area runs uninterrupted from there to the composer.
  */
 export default function App() {
   const hydrate = useStore((s) => s.hydrate);
@@ -159,8 +163,8 @@ export default function App() {
     return (
       <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
         <Header />
-        <ChatView />
         <PartyStrip />
+        <ChatView />
         <Composer />
       </main>
     );
