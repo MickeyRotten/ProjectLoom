@@ -18,7 +18,10 @@ import {
   PORTRAIT_PIXEL_WIDTH,
   portraitKey,
   prepareUploadedImage,
+  slotArtPairs,
+  slotArtPrefixes,
   slotImageKeys,
+  slotScopedKey,
   sourceKey,
   toExportBlob,
   toOneBitBlob,
@@ -64,23 +67,79 @@ describe("cache keys", () => {
   });
 });
 
+describe("slot-scoped keys", () => {
+  it("namespaces a live key under the slot that froze it", () => {
+    expect(slotScopedKey("s1", portraitKey("m-navi"))).toBe("slot:s1:portrait:m-navi");
+    // Never collides with the live key — that IS the bug being fixed.
+    expect(slotScopedKey("s1", portraitKey("m-navi"))).not.toBe(portraitKey("m-navi"));
+    // Nor with another slot's copy of the same character.
+    expect(slotScopedKey("s2", portraitKey("m-navi"))).not.toBe(
+      slotScopedKey("s1", portraitKey("m-navi")),
+    );
+  });
+
+  it("keeps the master outside the scope", () => {
+    // `sourceKey` wraps the scoped key, so it keeps its one meaning: the master
+    // of the key it wraps.
+    expect(sourceKey(slotScopedKey("s1", portraitKey("m-navi")))).toBe(
+      "src:slot:s1:portrait:m-navi",
+    );
+  });
+});
+
+describe("slotArtPairs", () => {
+  const cast = (...ids: string[]) => ids.map((id) => ({ id, name: id }) as Character);
+
+  it("pairs each character's portrait and master with the slot's copy", () => {
+    expect(slotArtPairs("s1", cast("pc"))).toEqual([
+      {
+        display: { live: "portrait:pc", slot: "slot:s1:portrait:pc" },
+        master: { live: "src:portrait:pc", slot: "src:slot:s1:portrait:pc" },
+      },
+    ]);
+  });
+
+  it("covers the whole cast and nobody else", () => {
+    expect(slotArtPairs("s1", cast("pc", "m-navi"))).toHaveLength(2);
+    expect(slotArtPairs("s1", [])).toEqual([]);
+    // Slot documents pulled from the cloud may have no cast at all.
+    expect(slotArtPairs("s1", undefined)).toEqual([]);
+  });
+
+  it("sweeps its own keys and nothing else", () => {
+    const prefixes = slotArtPrefixes("s1");
+    const mine = slotArtPairs("s1", cast("pc")).flatMap((a) => [a.display.slot, a.master.slot]);
+    for (const key of mine) expect(prefixes.some((p) => key.startsWith(p))).toBe(true);
+    const other = slotArtPairs("s2", cast("pc")).flatMap((a) => [a.display.slot, a.master.slot]);
+    for (const key of [...other, portraitKey("pc"), sourceKey(portraitKey("pc"))]) {
+      expect(prefixes.some((p) => key.startsWith(p))).toBe(false);
+    }
+  });
+});
+
 describe("slotImageKeys", () => {
   const cast = (...ids: string[]) => ids.map((id) => ({ id, name: id }) as Character);
-  const saved = (patch: Partial<GameState>): GameState => ({ ...newGame(), ...patch });
+  const saved = (id: string, patch: Partial<GameState>) => ({
+    id,
+    game: { ...newGame(), ...patch },
+  });
 
-  it("names the cast's portraits", () => {
-    const game = saved({ characters: cast("pc", "m-navi") });
-    expect(slotImageKeys(game).sort()).toEqual(["portrait:m-navi", "portrait:pc"].sort());
+  it("names the cast's FROZEN portraits", () => {
+    // The slot's own copies, so a pull cannot overwrite the live game's art.
+    const slot = saved("s1", { characters: cast("pc", "m-navi") });
+    expect(slotImageKeys(slot).sort()).toEqual(
+      ["slot:s1:portrait:m-navi", "slot:s1:portrait:pc"].sort(),
+    );
   });
 
   it("leaves the masters out — a restore needs the picture, not the negative", () => {
-    const game = saved({ characters: cast("pc") });
-    expect(slotImageKeys(game).some((k) => k.startsWith("src:"))).toBe(false);
+    const slot = saved("s1", { characters: cast("pc") });
+    expect(slotImageKeys(slot).some((k) => k.startsWith("src:"))).toBe(false);
   });
 
   it("survives a slot written before the cast lived in the game", () => {
     // Pulled from the cloud, so the shape is whatever an older build wrote.
-    const legacy = { location: "Ruins" } as unknown as GameState;
+    const legacy = { id: "s1", game: {} as unknown as GameState };
     expect(slotImageKeys(legacy)).toEqual([]);
   });
 });

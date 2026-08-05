@@ -270,8 +270,8 @@ async function syncPass(p: SyncPorts, settings: Settings, account: Account): Pro
 function wantedImages(local: SaveSlot[], remote: RemoteDoc[]): Set<string> {
   const wanted = new Set<string>();
   const add = (slot: SaveSlot | null | undefined) => {
-    if (!slot?.game) return;
-    for (const key of slotImageKeys(slot.game)) wanted.add(key);
+    if (!slot?.id || !slot.game) return;
+    for (const key of slotImageKeys(slot)) wanted.add(key);
   };
   for (const slot of local) add(slot);
   for (const doc of remote) {

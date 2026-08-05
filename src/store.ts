@@ -42,6 +42,8 @@ import {
   loadImage,
   saveImage,
   deleteImage,
+  copyImage,
+  deleteImagesWithPrefix,
   saveSlot,
   loadSlot,
   readSlot,
@@ -126,6 +128,8 @@ import {
   portraitKey,
   prepareUploadedImage,
   refImageToDataUrl,
+  slotArtPairs,
+  slotArtPrefixes,
   sourceKey,
   toExportBlob,
   toOneBitBlob,
@@ -547,6 +551,65 @@ export const useStore = create<LoomStore>((set, get) => {
       else await deleteImage(sourceKey(key));
     } catch {
       // A master copy is an optimization — losing it must not fail the image.
+    }
+  }
+
+  /**
+   * Freeze the cast's art under one slot's keys — the copy that makes a
+   * snapshot's portraits its own (`images.ts → slotArtPairs`). Best-effort per
+   * blob: art is a cache, and a snapshot must not fail because a picture could
+   * not be duplicated.
+   */
+  async function freezeSlotArt(slotId: string, game: GameState): Promise<void> {
+    for (const art of slotArtPairs(slotId, game.characters)) {
+      try {
+        await copyImage(art.display.live, art.display.slot);
+        await copyImage(art.master.live, art.master.slot);
+      } catch {
+        // See above — a missing frozen copy falls back to the live art.
+      }
+    }
+  }
+
+  /** Delete every blob one slot froze (overwritten, or deleted outright). */
+  async function dropSlotArt(slotId: string): Promise<void> {
+    for (const prefix of slotArtPrefixes(slotId)) {
+      try {
+        await deleteImagesWithPrefix(prefix);
+      } catch {
+        // Orphaned blobs are wasted bytes, never a broken save.
+      }
+    }
+  }
+
+  /**
+   * Put a slot's frozen art back on the live keys, and on screen.
+   *
+   * Per character, not per blob. A slot with no frozen copy for someone — one
+   * taken before snapshots carried art, or a cloud slot whose blobs have not
+   * arrived — leaves that character's live art exactly as it is, which is the
+   * behaviour every existing save was made under. When there IS a copy, the
+   * master moves with it or is deleted: a stale master is the newest picture of
+   * this character, and leaving it behind lets ✎ edit art that is not on screen.
+   *
+   * Publishing here rather than leaving it to `syncImages` is deliberate —
+   * `ensureImage` returns early when the key already has an object URL, so the
+   * restored blob would sit in IndexedDB behind the picture it replaced.
+   */
+  async function thawSlotArt(slotId: string, game: GameState): Promise<void> {
+    for (const art of slotArtPairs(slotId, game.characters)) {
+      try {
+        const frozen = await loadImage(art.display.slot);
+        if (!frozen) continue;
+        await saveImage(art.display.live, frozen);
+        publishImage(art.display.live, frozen);
+        setImageError(art.display.live, null);
+        if (!(await copyImage(art.master.slot, art.master.live))) {
+          await deleteImage(art.master.live);
+        }
+      } catch {
+        // A picture that could not be restored leaves the live one in place.
+      }
     }
   }
 
@@ -1507,6 +1570,10 @@ export const useStore = create<LoomStore>((set, get) => {
       game: structuredClone(get().game),
     };
     await saveSlot(slot);
+    // The art is a snapshot too. Blobs live outside the document, keyed by
+    // character, so without this copy a regenerate or an upload would rewrite
+    // the faces of every save that character ever appeared in.
+    await freezeSlotArt(slot.id, slot.game);
     await get().refreshSlots();
   },
 
@@ -1522,12 +1589,13 @@ export const useStore = create<LoomStore>((set, get) => {
       await get().refreshSlots();
       return;
     }
-    await saveSlot({
-      id,
-      name: existing.name,
-      savedAt: Date.now(),
-      game: structuredClone(get().game),
-    });
+    const game = structuredClone(get().game);
+    await saveSlot({ id, name: existing.name, savedAt: Date.now(), game });
+    // Swept first, then re-frozen: a character who has left the cast since the
+    // last snapshot would otherwise leave their portrait in this slot forever,
+    // and the slot only ever names the art it currently holds.
+    await dropSlotArt(id);
+    await freezeSlotArt(id, game);
     await get().refreshSlots();
   },
 
@@ -1553,11 +1621,17 @@ export const useStore = create<LoomStore>((set, get) => {
       history: [],
     });
     void saveActiveGame(game);
+    // The people come back with the faces they had when the save was taken.
+    // Ahead of `syncImages`, which fills in whatever the slot had no copy of.
+    await thawSlotArt(id, game);
     get().syncImages();
   },
 
   async dropSlot(id) {
     await deleteSlot(id);
+    // The frozen art goes with the save it belonged to — nothing else can reach
+    // it, and each deletion is stamped, so the cloud copy goes too.
+    await dropSlotArt(id);
     await get().refreshSlots();
   },
 
