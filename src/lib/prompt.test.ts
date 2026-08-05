@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   buildMessages,
+  buildRepairMessages,
   buildHistory,
   approxTokens,
   formatPartyRoster,
@@ -590,18 +591,72 @@ describe("turn context travels as one message", () => {
 });
 
 describe("output protocol — action options toggle", () => {
-  it("asks for options by default", () => {
-    const msgs = build({ settings, game: newGame(), playerMessage: "go" });
-    const proto = msgs.find((m) => m.content.includes("OUTPUT PROTOCOL"))!;
-    expect(proto.content).toContain('"options": array of 3–4 action strings');
+  const protocol = (s: Settings) =>
+    build({ settings: s, game: newGame(), playerMessage: "go" }).find((m) =>
+      m.content.includes("OUTPUT PROTOCOL"),
+    )!.content;
+
+  it("asks for options by default, as a required field", () => {
+    expect(protocol(settings)).toContain('"options": REQUIRED');
+  });
+
+  it("leads the field list with options", () => {
+    const proto = protocol(settings);
+    expect(proto.indexOf('- "options"')).toBeLessThan(proto.indexOf('- "weather"'));
+  });
+
+  it("shows a worked example of the block carrying options", () => {
+    expect(protocol(settings)).toContain('{ "duration": "scene", "options": [');
+  });
+
+  it("closes with a checklist naming options", () => {
+    const lines = protocol(settings).trimEnd().split("\n");
+    expect(lines[lines.length - 1]).toContain("unfinished turn");
+  });
+
+  it("forbids numbering the options in the prose", () => {
+    expect(protocol(settings)).toContain("never number them in your prose");
   });
 
   it("tells the model to omit options when disabled", () => {
-    const off = { ...settings, showActionOptions: false };
-    const msgs = build({ settings: off, game: newGame(), playerMessage: "go" });
-    const proto = msgs.find((m) => m.content.includes("OUTPUT PROTOCOL"))!;
-    expect(proto.content).toContain("OMIT this field entirely");
-    expect(proto.content).not.toContain('"options": array of 3–4 action strings');
+    const proto = protocol({ ...settings, showActionOptions: false });
+    expect(proto).toContain("OMIT this field entirely");
+    expect(proto).not.toContain('"options": REQUIRED');
+    // The example and the checklist follow the toggle — a protocol that says
+    // "omit options" must not also show them and then demand them.
+    expect(proto).toContain('{ "duration": "scene" }');
+    expect(proto).not.toContain("unfinished turn");
+  });
+});
+
+describe("buildRepairMessages", () => {
+  const turn = build({ settings, game: newGame(), playerMessage: "go" });
+
+  it("keeps the turn's own context and appends the failed response", () => {
+    const msgs = buildRepairMessages(turn, "You walk on.", false);
+    expect(msgs.slice(0, turn.length)).toEqual(turn);
+    expect(msgs[turn.length]).toEqual({ role: "assistant", content: "You walk on." });
+    expect(msgs[msgs.length - 1].role).toBe("system");
+  });
+
+  it("asks for the whole block when nothing parsed", () => {
+    const instruction = buildRepairMessages(turn, "prose", false).at(-1)!.content;
+    expect(instruction).toContain("missing or unreadable");
+    expect(instruction).toContain("OUTPUT PROTOCOL");
+  });
+
+  it("asks for options alone when the block itself was fine", () => {
+    const instruction = buildRepairMessages(turn, "prose", true).at(-1)!.content;
+    expect(instruction).toContain('ONLY "options"');
+    expect(instruction).not.toContain("OUTPUT PROTOCOL");
+  });
+
+  it("declares the beat final either way — the prose is already on screen", () => {
+    for (const optionsOnly of [true, false]) {
+      expect(buildRepairMessages(turn, "prose", optionsOnly).at(-1)!.content).toContain(
+        "will NOT be rewritten",
+      );
+    }
   });
 });
 

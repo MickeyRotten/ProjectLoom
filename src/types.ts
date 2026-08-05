@@ -749,6 +749,20 @@ export interface Settings extends DiceRules, ComfySettings {
   /** When false, the narrator is not asked for action options and none render. */
   showActionOptions: boolean;
   /**
+   * Whether a turn that came back with no usable machine block gets ONE repair
+   * request (`loomBlock.ts → needsBlockRepair`, `prompt.ts →
+   * buildRepairMessages`). Weak models drop the block — or just its `options` —
+   * often enough that the alternative is a beat with no buttons and no state
+   * changes at all.
+   *
+   * On by default, and it bills nothing on a compliant model: it fires only
+   * after every read-side salvage path has failed, so a model that emits the
+   * contract — or even just misplaces its options into the prose — never costs
+   * a second request. A model that never complies costs one extra small call
+   * per turn, which is why it is a switch rather than a constant.
+   */
+  repairBlock: boolean;
+  /**
    * The composer's always-visible shortcuts — see `QuickAction`. Always exactly
    * `QUICK_ACTION_COUNT` entries after `settings.ts → normalizeQuickActions`, so
    * the editor can address them by index without ever growing the row.

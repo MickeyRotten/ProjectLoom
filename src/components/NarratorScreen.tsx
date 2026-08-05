@@ -284,6 +284,7 @@ function ModelSection() {
 /** How a beat is written, and whether the narrator suggests what to do next. */
 function VoiceSection() {
   const showActionOptions = useStore((s) => s.settings.showActionOptions);
+  const repairBlock = useStore((s) => s.settings.repairBlock);
   const update = useStore((s) => s.updateSettings);
   return (
     <>
@@ -294,6 +295,18 @@ function VoiceSection() {
         onClick={() => update({ showActionOptions: !showActionOptions })}
       />
       {showActionOptions && <InstrField spec={OPTION_FIELD} />}
+      <ToggleRow
+        label="Ask Again On A Bad Turn"
+        state={repairBlock ? "ON" : "OFF"}
+        onClick={() => update({ repairBlock: !repairBlock })}
+      />
+      <p className="text-xs opacity-70">
+        Weaker models forget the machine block at the end of a beat, or leave the action
+        options out of it — losing the buttons, and any state the turn changed. This asks
+        once more for just that block, over the beat the model already wrote. It costs one
+        extra request only on a turn that came back broken; a model that follows the
+        format never triggers it.
+      </p>
     </>
   );
 }
