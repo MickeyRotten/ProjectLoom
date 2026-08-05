@@ -448,9 +448,11 @@ consumes resolved `PartyMember`s, never the raw halves.
   screen. `normalizeEntry` folds any stored shape onto the ladder, forever:
   reversal snapshots live inside saved messages, so the old pair keeps arriving.
 - **Only the scene is capped.** `partyCount` / `partyFull` count `active`
-  members, so `PARTY_LIMIT` is the marching order; the **bench is unlimited**
-  and holds the stable. A narrator `add` past the cap lands the character
-  BENCHED — visible in the Party screen, named in the roll call.
+  members, so `PARTY_LIMIT` (**4**) is the marching order; the **bench is
+  unlimited** and holds the stable. A narrator `add` past the cap lands the
+  character BENCHED — visible in the Party screen, named in the roll call. The
+  cap is 4 rather than 3 because it used to be "the party strip minus the PC";
+  the PC moved up into the top bar and handed that slot back.
 - **Benched members are the party's, but not the scene's.** They get no sheet
   in the prompt (#4), no spotlight signals, no gear scan, and no `lastSpokeTurn`
   bump — a sheet is an invitation to write someone in. The roll call names them
@@ -542,45 +544,61 @@ Layout top-to-bottom (the reference screenshot is a **style guide, not literal t
 
 ```
 ┌──────────────────────────────────────┐
-│                                       │  header IS the location banner:
-│      location banner (1-bit)          │  double height, art as background,
-│ THE DUSTY PATH          Day 37    =   │  label · day · menu along the bottom
-│──────────────────────────────────────│  over a fast black gradient
+│                                       │  header IS the PC, over the location
+│      location banner (1-bit)          │  banner: double height, art as
+│ [KAI] KAI                         =   │  background, portrait · name · hearts
+│       ♥♥♥♥♥♥                          │  bottom-left, menu bottom-right
+│──────────────────────────────────────│
+│ [NAVI] [RILEY] [ELARA] [   ]          │  party portrait strip (tap → sheet)
+│──────────────────────────────────────│
 │  narration prose (short, scrolls)     │  message log
+│  — THE DUSTY PATH · DAY 37 —          │  scene mark, where either changes
 │  ...                                  │
 │  1. Approach the ruins                │  AI options — in the chat view, under
 │  2. Signal the party to hold          │  the latest beat (tap or number key)
 │  3. Scan the treeline                 │
-│ [KAI] [NAVI] [RILEY] [ELARA]          │  party portrait strip (tap → sheet)
 │ [ LOOK ] [ PARTY ] [ INVENTORY ]      │  fixed buttons
 │ > _______________________________     │  freeform input
 └──────────────────────────────────────┘
 ```
 
-- **Top bar = the location banner** (when `Settings.locationImages` is on): one
-  element, not a header plus a strip below it. The bar doubles to 120px, the
-  generated 1-bit image is its background, and the location label, the day and
-  the menu button sit along the **bottom** edge, drawn **directly on the art** —
-  no scrim, no gradient.
-  The gradient that used to back them was darkening the bottom third of every
-  banner to make room for two short words; an **outline** buys the same
+- **Top bar = the player character.** A small square portrait at the left, the
+  name beside it, a row of **six hearts** under the name, and the menu button at
+  the right edge. Tapping anywhere on the portrait/name block opens the PC's
+  member sheet — which is the only route to it, since the PC is no longer in the
+  party strip.
+  It used to be the location bar (place · day · menu), and both of those facts
+  are already in the reading area: `ChatView`'s **scene marks** rule off the log
+  with "SOMEWHERE · DAY 3" every time either one changes. The bar was spending
+  the most valuable strip of a phone screen restating a line the player had just
+  read, while the PC — the one character always in the scene — had no permanent
+  place on screen at all and was instead renting one of four party-strip slots.
+  The **hearts are a placeholder**: six filled glyphs, drawn from nothing,
+  holding the shape a future hit-point system would take. They are `aria-hidden`
+  for exactly that reason — announcing "6 of 6 health" would describe a mechanic
+  this app does not have.
+- **The banner is still the bar's background** (when `Settings.locationImages`
+  is on): the bar doubles to 120px and the generated 1-bit image is drawn behind
+  it, with the PC block and the menu along the **bottom** edge, **directly on the
+  art** — no scrim, no gradient. The gradient that used to back them was
+  darkening the bottom third of every banner; an **outline** buys the same
   legibility for none of the picture (`-webkit-text-stroke: 3px #000` with
   `paint-order: stroke`, so black traces each glyph and the white fill paints on
-  top). Tapping bare art opens it full-screen. **No controls sit on the art at
-  all**: ✎ followed ⟳ and ▲ off the bar — a location banner is scenery the story
-  replaces every time the player moves, so retouching one does not earn a button
-  parked permanently on top of it, and each glyph cost the image the corner it
-  sat in. (`regenerateBanner` is still in the store, just not surfaced;
-  `editBanner` is gone.) Merging them was the point: the
-  header and the banner were printing the same location name 60px apart, and
-  the banner's height came straight out of the reading area. Everything drawn
-  on the art uses literal `#000`/`#fff` rather than the ink/paper tokens — the
-  banner is a real bitmap that the invert theme does **not** flip, so a themed
-  glyph would go black-on-black the moment the player inverted. With location
-  images off the bar is exactly the strip it always was.
-- **AI options:** 3–4 contextual choices from the `<<<LOOM>>>` block, rendered **in the chat view, directly under the latest narration beat** and **above the party portrait strip**; number keys submit; each just sends its text as a normal turn. They scroll with the chat, tethered to the beat that produced them.
+  top). Tapping bare art opens it full-screen. **No image controls sit on the art
+  at all**: ✎ followed ⟳ and ▲ off the bar — a location banner is scenery the
+  story replaces every time the player moves, so retouching one does not earn a
+  button parked permanently on top of it, and each glyph cost the image the
+  corner it sat in. (`regenerateBanner` is still in the store, just not surfaced;
+  `editBanner` is gone.) Everything drawn on the art uses literal `#000`/`#fff`
+  rather than the ink/paper tokens — the banner is a real bitmap that a custom
+  palette does **not** flip, so a themed glyph would go black-on-black the moment
+  the player chose dark paper. The bar's own contents inherit through
+  `border-current`/`currentColor`, so there is one place per variant that names a
+  colour. With location images off the bar is exactly the themed ink strip it
+  always was.
+- **AI options:** 3–4 contextual choices from the `<<<LOOM>>>` block, rendered **in the chat view, directly under the latest narration beat**; number keys submit; each just sends its text as a normal turn. They scroll with the chat, tethered to the beat that produced them.
 - **Chat scrolling:** the log opens on the newest beat and follows the tail while the reader is parked there; scrolling up into the history stops the follow and shows a **↓ LATEST** button back to the live edge.
-- **Party strip** sits below the options, above the fixed buttons; always visible; tapping a portrait opens that member's **full-screen sheet** (info · edit fields · **regenerate portrait** · **auto-update**). Strip portraits are zoomed 50% and top-aligned so the face fills the tall slot; the sheet's portrait frame is **2:3**.
+- **Party strip** sits **directly under the top bar, above the reading area**; always visible; tapping a portrait opens that member's **full-screen sheet** (info · edit fields · **regenerate portrait** · **auto-update**). Strip portraits are zoomed 50% and top-aligned so the face fills the slot; the sheet's portrait frame is **2:3**. It holds **companions only** — the PC is the top bar now, which put the whole cast together at the top of the screen (the strip used to hang below the log, a screen's height from the PC it was showing alongside) and left the reading area running uninterrupted from there to the composer. The freed slot went back to the cap, so `PARTY_LIMIT` and the strip's width are the same number again.
 - **Quick actions (`Settings.quickActions`)** are the three buttons above the input, shipped as LOOK · WAIT · INVESTIGATE and **editable in place**: a ✎ beside them opens a modal with a **label** and an **action** per row (the label is what the button says; the action is what gets sent as the turn, word for word), plus *Reset to Defaults*. What counts as "the thing I do every other turn" is a property of the table, not of the app — a dungeon crawl wants LISTEN, a courtly game wants BOW. **Clearing both halves drops that button**, so a player can run two shortcuts or none; the row is fixed at three because a fourth either shrinks them below a comfortable tap or wraps. `settings.ts → normalizeQuickActions` folds anything stored (a short array, a row with no `input`, junk) onto exactly three well-formed rows at READ time — but never fills a **blank** row back in, since blank is how a button is deleted. ✎ is never disabled: editing a button is not a turn, so it works mid-stream and without a key.
 - **Inventory view:** a list of `Label · Description · Quantity` rows, editable inline, each with an **Equip** button in read mode (see *Equip ⇄ Inventory*) and a **✦ generate** button beside Remove in Edit mode (see *Item generation*).
 - **Quests view:** a list of `Label · Description · Reward` rows (+ active/done status), editable inline; reached from the menu/header (kept off the 3-button row to preserve the screenshot's layout).
@@ -826,8 +844,8 @@ All secondary screens — **member sheet, Party, Inventory, Quests, and every Se
   gain. What the store owns is the Back claim (`setBackHandler`, so the Android
   hardware button behaves like the on-screen one) and the one-shot `section` deep
   link. Back pops to the index first, then out of the screen.
-- **Characters screen** lists the global cast grouped by this adventure's standing — PC, then *In Party n/3*, *Benched*, *NPCs & Allies*, *Gone*, and *Everyone Else* — each row opening the sheet and carrying one-tap moves (**Add to Party** / **Bench** / **Kick** / **Make NPC**). **+ New Character** creates someone in the library only. A filter box appears once the cast grows past 8.
-- **Party screen** lists the company in two halves — *In the scene n/3* (**Bench** / **Kick**) and *Benched* (**Activate** / **Kick**) — with a route to Characters when both are empty. The member sheet carries the same Kick/Add control, the adventure **standing** (active / benched / npc / departed / fallen) with a one-line explanation of what the current one means, **Revert Story Changes** when the story has diverged, and **Delete Character** (library-wide, player-only).
+- **Characters screen** lists the global cast grouped by this adventure's standing — PC, then *In Party n/PARTY_LIMIT*, *Benched*, *NPCs & Allies*, *Gone*, and *Everyone Else* — each row opening the sheet and carrying one-tap moves (**Add to Party** / **Bench** / **Kick** / **Make NPC**). **+ New Character** creates someone in the library only. A filter box appears once the cast grows past 8.
+- **Party screen** lists the company in two halves — *In the scene n/PARTY_LIMIT* (**Bench** / **Kick**) and *Benched* (**Activate** / **Kick**) — with a route to Characters when both are empty. The member sheet carries the same Kick/Add control, the adventure **standing** (active / benched / npc / departed / fallen) with a one-line explanation of what the current one means, **Revert Story Changes** when the story has diverged, and **Delete Character** (library-wide, player-only).
 - **Member sheet order:** portrait → **Image Options** (a closed disclosure: upload · download · remove · the custom portrait prompt) → **Edit** → the sheet → **Story** (Auto-Update, and Revert Story Changes when the story has diverged) → **Condition** → **Standing** → leave/delete. Who the character *is* comes first and everything you can *do* to them follows: the sheet used to open with six buttons and an image-prompt fieldset, so a screen whose entire purpose is the prose underneath them made the player scroll past all of it to reach a name. Nothing was removed — the once-a-character controls fold away, the rest moved below the text they act on.
 - **Member sheet fields:** Name · **Species** · **Sex** (both free text — the setting owns the vocabulary) · Appearance · Personality · Drive · Strengths · Flaws · **Notes** · Equipment, then the per-adventure **Condition** and **Standing**. **Notes** is the player's own field — no ✦, and no model writes it. In Edit mode the five *other* prose fields each carry a **✦ generate** button (see *Per-field generation*), and so does every **Equipment** row, beside its Remove (see *Item generation*); ✦ rather than ✨ because the sparkle is an emoji and browsers paint it in colour, which is one colour more than this app has — the same reason the portrait controls are ⟳ and ✎.
 - **Style:** two colors only, monospace, square borders, no rounded corners, no gradients. Small token set in `theme.css` (`--ink`, `--paper`, shipped as `#000`/`#fff`) so it stays one system — the pair is the player's (Appearance → Colors), but everything still reads through those two tokens and nothing else.
@@ -843,15 +861,16 @@ all about handing that space back:
 - **`Settings.bannerSize`** — `full` is the double-height top bar (120px),
   `compact` the single-height one (60px) with the art still behind the label
   under a flat scrim. Tapping the art opens it full-screen in either.
-- **Party strip** slots are **3:5**, not 1:2 — portraits are face-cropped
-  (`origin-top scale-150`), so the extra height never showed more of anyone. A
-  party of nobody collapses the four-slot grid to a single row rather than
-  standing three full-height dashed boxes on screen. There is **no name caption**
-  under a face: four portraits the player picked and generated are already four
+- **Party strip** slots are **4:5**, not 1:2 — portraits are face-cropped
+  (`origin-top scale-150`), so the extra height never showed more of anyone.
+  They were 3:5 while the strip sat below the log; moving it **above** the
+  reading area made every pixel it takes one the prose does not get, so the slot
+  lost a quarter of its height. A party of nobody collapses the grid to a single
+  row rather than standing empty dashed boxes on screen. There is **no name
+  caption** under a face: portraits the player picked and generated are already
   recognisable faces, and the caption was a row of chrome repeating the picture.
-  Its height goes back into the portrait (3:4 + caption ≈ 3:5 of face), so the
-  reading area keeps what it had while the faces grow; the name still reaches
-  assistive tech via `aria-label`, and a tap opens the sheet that spells it out.
+  The name still reaches assistive tech via `aria-label`, and a tap opens the
+  sheet that spells it out.
 - **Landing on the beat, not its end.** When a completed beat is taller than the
   viewport, the log scrolls to its **first** line instead of pinning the bottom —
   pinning the bottom drops the player at the last paragraph of prose they have

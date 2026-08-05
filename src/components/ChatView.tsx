@@ -20,8 +20,9 @@ const isNearBottom = (el: HTMLElement) =>
 /**
  * The message log. Renders the opening narration, each turn, the live
  * streaming beat, and — tethered under the latest beat — the AI options and
- * quick actions (loom-turn-protocol: options ride the same beat, above the
- * party strip). Tapping the latest beat reveals its controls: Regen/Edit/Undo
+ * quick actions (loom-turn-protocol: options ride the same beat). Runs from the
+ * party strip down to the composer, uninterrupted.
+ * Tapping the latest beat reveals its controls: Regen/Edit/Undo
  * on the narrator beat, Edit on the player beat.
  *
  * Scroll behaviour: the log opens on the newest beat, follows the tail while

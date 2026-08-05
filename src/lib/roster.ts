@@ -11,12 +11,17 @@ import { PARTED_STANDINGS, PARTY_STANDINGS } from "../types";
 import { formatAka } from "./names";
 
 /**
- * Max companions in the scene at once (PC + 3). The BENCH is uncapped — it is
- * the stable, not the marching order. Defined here, not in `defaults.ts`, so
- * this module stays free of imports and the cap lives with the predicate that
+ * Max companions in the scene at once. The BENCH is uncapped — it is the
+ * stable, not the marching order. Defined here, not in `defaults.ts`, so this
+ * module stays free of imports and the cap lives with the predicate that
  * enforces it.
+ *
+ * Four, not three: the party strip used to spend one of its four slots on the
+ * PC, so the cap was "the strip minus the player". The PC moved up into the top
+ * bar, which handed the strip a whole slot back and made the companion cap and
+ * the strip width the same number again.
  */
-export const PARTY_LIMIT = 3;
+export const PARTY_LIMIT = 4;
 
 /**
  * The join between the two halves of the cast model:
