@@ -862,6 +862,7 @@ all about handing that space back:
 - **Phase 3 — Images.** `images.ts`; deterministic portrait triggers, IndexedDB blob store, regenerate buttons. Verify OpenRouter image-output shape first.
 - **Phase 4 — Authoring + Saves.** Scenario editor, World Notes CRUD + keyword injection, narrator instructions, save slots (snapshot/restore/new). The pre-made scenario ships as the default.
 - **Phase 5 — Polish + APK.** ✅ Reversal (`reversal.ts` pre-turn slice snapshot; `undoLastTurn`/`regenerateLastTurn`; `TurnControls`), error auto-retry (`retry.ts` policy + `streamChat` whole-stream restart, ported from Wayward), APK signing/CI (`android.yml`), mobile polish (overscroll lock, safe-area insets).
+- **Foresight — arc ⟂ area ⟂ room (planned, not built).** `arc.ts` · `fronts.ts` · `areaPrep.ts` · `roomPrep.ts` · `promises.ts` · `gazetteer.ts`; boundary prep calls, client-owned clocks, the 1-bit map. See **Foresight — the arc, the area, the room**.
 
 ---
 
@@ -974,6 +975,449 @@ of those stay inspectable, which a rolling summary never is.
 ---
 
 *Deferred (not MVP):* NPC/item art, TTS, weather animation, multi-world.
+
+---
+
+## Foresight — the arc, the area, the room
+
+**Status: designed, not built.** Nothing below exists yet; this section is the
+spec.
+
+The journal remembers backwards. **Foresight remembers forwards** — and it is
+built the same way, deliberately: the model authors at a **boundary** the client
+picks, the client owns every number, the artefact is **player-visible and
+editable**, it is injected **after** the history, it is bounded by caps, and when
+it is absent the turn is byte-identical to one taken without it.
+
+The gap it fills: the narrator has memory but no **intent**. Every block it emits
+is backward-looking, so when `stakes.ts` hands it a `cost` band it invents the
+cost on the spot — and an improvised cost is a generic cost. Nobody decided in
+advance what failure *means here*. The same is true of success: a `strong` grants
+the request and changes nothing.
+
+It also stops throwing away foresight the app already pays for. The narrator
+writes 3–4 `options` every turn. That is one-step lookahead, and the client
+renders the buttons and discards the thinking behind them.
+
+### Three scopes
+
+|                 | **Arc**                                   | **Area**                                        | **Room**                                     |
+| --------------- | ----------------------------------------- | ----------------------------------------------- | -------------------------------------------- |
+| example         | *the consortium is buying the valley*     | Murkwood                                        | Forest Entrance                              |
+| authored by     | the scenario, then the model               | the model                                       | the model                                    |
+| fires on        | New Adventure · spine fires · handoff      | entering an unprepped or stale area             | entering an unprepped room · turn ceiling    |
+| lifespan        | sessions; archived on completion           | the campaign (cached, revisited)                | the campaign (cached under its area)         |
+| owns            | **fronts + clocks** · the story's question | region texture · standing threats · **its front** | this space · threats · hooks · **`outcomes`** |
+| calls           | ~1 per in-game day                         | 1 per area, ever (until stale)                  | 1 per room, ever (until stale)               |
+| reads           | scenario · PC · journal · fronts           | **the arc** · scenario · matched World Notes    | **the area** · last 2 beats · promises · party flaws |
+
+**Only the room carries outcome bands.** A band resolves in a space, never in an
+arc; the two upper scopes exist to make that one line specific rather than
+generic. Extra calls, all off the critical path: **zero per turn.**
+
+### The loop — Prep → Play → Reckon
+
+```
+ boundary                    turn                          after the block applies
+ ────────                    ────                          ──────────────────────
+ PREP call ──> card ──────> injected PRIVATE ──> narrator spends ──> RECKON (no call)
+      ↑          │               │                                        │
+      │          └── outcomes{strong,mixed,cost} ──> OUTCOME block ────────┤ cost ticks a front
+      │                                                                    │ promise planted
+ ARC call <── fronts + promises + journal <─────────────────────────────────┘ promise paid
+  (day boundary)
+```
+
+Each artefact has **exactly one writer**, which is the `day` lesson generalised:
+two writers for one number is how the day came to freeze, jump and run backwards.
+The model authors *material*; the client owns *arithmetic, clocks and geometry*.
+
+### 1. The arc — `Scenario.arc` ⟂ `GameState.arcs`
+
+Split the way the project already splits people (see **Characters ⟂ Party**):
+
+- `Scenario.arc` — the **authored** arc. A template. Rides the scenario through
+  New Adventure's import ticks, so a shipped scenario opens with a real arc and
+  no new tick is needed in `AdventureImports`.
+- `GameState.arcs[]` — the **instances**. Ticks, status, what actually happened.
+  A **list, appended**: a completed arc is archived, not deleted, so the Arc
+  screen doubles as campaign history and `JournalEntry.arcId` gives the journal
+  the chapter structure it has never had (*Arc I — The Drowned Gallery*), which
+  is the legibility a 300-turn journal screen is missing.
+
+**Completion is client-owned and deterministic.** The arc names one front as its
+**spine**; the other fronts are texture. When the spine fires, the arc resolves.
+The model never declares a story over, for the same reason it never ticks a
+clock.
+
+**The interlude is a state, not a scene.** `Arc.status: "running" | "interlude" |
+"done"`. While it holds:
+
+- **front ticking is suspended** — cost bands and neglect alike. Nothing looms.
+- the prep block is replaced by an `INTERLUDE` block: *no threats, no clocks,
+  breathing room; let them talk*.
+- spotlight pressure is raised — companions are the content.
+- it is the natural firing point for **Auto-Update** (personality re-read after
+  the thing that changed them) and for the journal to close the arc.
+
+It ends on `interludeTurns` or a player *move on* — both, because suspending
+every clock is exactly the pressure release the idea wants and also a state a
+player can sit in for forty turns.
+
+**Handoff** then runs one call: journal + closed arc + cast + World Notes → the
+next arc, its spine, its fronts. This is the highest-stakes call in the system —
+it writes the next several hours of play off a summary — so it is the one that is
+**staged, not applied**: previewed on the Arc screen with Use / Regenerate, the
+same shell as `GenerateModal` and the ✦ flows. The player will want to co-author
+it.
+
+### 2. The area
+
+An area card is the region's pressure: what it is like, what applies anywhere in
+it, and **which front it serves** (rooms inherit that, rather than each room
+picking one and drifting).
+
+It also ships a list of **room names** — names only, no content. Cheap, and it
+buys four things:
+
+1. the narrator stops renaming the same place, because it has a list to move you
+   to;
+2. room prep gets a hint (*you are prepping Forest Entrance, one of: the Stile ·
+   Wardens' Camp · Drowned Gallery*);
+3. it is the map's skeleton — an area is drawable before it is walked;
+4. unlisted rooms still work: the narrator invents one and the client appends it.
+   A list is a seed, not a fence.
+
+A named room that is never visited is not a ghost, it is a rumour, and rumours
+are hooks — so unvisited names survive a re-prep. Capped (≤8) so they cannot
+accumulate.
+
+### 3. The room, and the join to `stakes.ts`
+
+The room card is the only one with `outcomes`, keyed by `TurnOutcome` — the same
+three keys `stakes.ts` already bands to. That is the whole join: no new prompt
+block, no new mapping. `formatStakesBlock` gains one line.
+
+```
+OUTCOME — COST · 1d6 2 −1 = 1
+Prepared for this scene: the stair collapses, the ankle turns, and the landlord
+upstairs now knows.
+```
+
+**The narrator is shown only the branch that rolled.** The two it did not roll
+never enter the context, so there is nothing to hedge toward and nothing to leak.
+A quiet turn rolls nothing and gets no line at all, exactly as today.
+
+Shipped prep instructions say a `strong` must **change the scene, not merely
+grant the request** — that is how success gets interesting, and it is one
+sentence of a player-editable field.
+
+The room also carries **`exits`** by name. Worth it independent of the map: "the
+ways out are the stile, the track back, the deer path" is precisely the concrete
+geography the narrator contradicts itself about three beats later.
+
+### Promises and option notes
+
+Two cheap channels on the turn block itself, and the turn contract barely moves —
+which matters, because `loom-turn-protocol` is a guarded contract and weak models
+already drop the block (see **enforced action options**).
+
+- **`optionNotes: string[]`** — parallel to `options`, same length: what each
+  choice risks. Never rendered. When the player takes that option, the note comes
+  back next turn as *you planned this*. **A length mismatch drops them all** —
+  misaligned notes are worse than none. `mergeRepairBlock` takes them only
+  **paired** with `options`.
+- **`promises: [{ op, text }]`** — the commitment the prose just made ("the
+  tremor in the walls"). Client stamps the turn, ages it, escalates the wording
+  at `promiseTurns` (*pay it off or let it go*) and drops it at twice that. Area
+  and room prep both read the outstanding ones, which is the wire that turns a
+  promise into a threat into a rolled band into a front tick — one chain.
+
+There is deliberately **no `fronts` and no card field on the turn block.** Those
+are authored at boundaries only.
+
+`reconcileBlock` folds the new channels under the rule it already applies: an op
+that changes nothing is not an op — a `remove` for a promise not held, an `add`
+for text already promised.
+
+### Reckon — client-owned, no call, inside the reversal snapshot
+
+Runs after `reconcileBlock` → `applyDeltas`, folded into the same `nextGame`, so
+it rides the **same save and the same `captureReversal`** — exactly how a
+`condition` rides the roster.
+
+- `cost` in a room whose area serves front F → **F ticks 1** (`costTicksFront`,
+  on). `mixed` ticks 0 by default (`mixedTicksFront`, off).
+- **Neglect:** a front unticked for `frontNeglectDays` in-game days ticks 1. The
+  clock is `clock.ts`, which the client already owns. This is what makes the
+  world move while the player does something else.
+- `ticks === steps.length` → the front **fires**: the next turn carries a
+  mandatory block (*THE FLOOD ARRIVES — write it into this beat*), the front goes
+  `fired`, and the next arc review authors the aftermath. If it was the spine,
+  the arc goes to interlude.
+- Promises plant, close and age here too.
+
+Front ticks and promise plants are **client-computed, so they do not belong in
+`Message.appliedDeltas`** — that array is a record of what the model said.
+`Message.reckoning` carries them, and `toasts.ts` reads it for chips.
+
+### Epochs — staleness, invalidated lazily
+
+An arc that advances makes every area prepped under it wrong.
+
+```
+Arc.epoch++        on: a front fires, a front retires, handoff rewrites the question
+AreaCard.epoch     stamped at prep; a mismatch marks the area stale
+AreaCard.version++ on re-prep; marks its cached rooms stale
+```
+
+Stale is a **flag, not a purge.** Re-prep happens on next *entry* — never
+eagerly, because a call spent on an area nobody is standing in is a call wasted.
+The player sees the flag on the screen and can force ↻.
+
+### Injection — one private message, tier 4c
+
+Between **STATE OF PLAY** and the **OUTCOME** block, because the outcome line
+refers to the card. It gets its own message rather than joining the state tier
+for a reason the tier order already encodes: the state tier's authority line
+claims *"where this disagrees with a beat, this is what is true now"*, and prep is
+**direction, not fact** — the same category as `formatRegenerateNote`.
+
+```
+NARRATOR'S PREP — private. Yours, not the player's. Never quote it, never list
+it, never name a threat that has not happened.
+
+ARC — the consortium is buying the valley, and the wardens know
+  the mine floods  ●●○○  next: the lower gallery is cut off
+  the warden turns  ●○○○  next: he stops answering letters
+
+AREA — Murkwood
+  old growth, wet, nobody logs here any more; the wardens patrol at dusk
+  standing: anything loud brings a patrol within the hour
+
+ROOM — Forest Entrance
+  the cart track ends at a stile; sightlines die ten feet in
+  threats: the stile is watched · the mist eats sound both ways
+  here to want: the warden's mark cut into the post
+  ways out: the Stile · the track back · the deer path
+
+PROMISES — the tremor in the walls (6 turns ago) — pay it off or let it go
+YOU PLANNED THIS — "the stair takes weight it shouldn't"
+```
+
+Three tiers is where **every fact is stated once** goes to die, so it is enforced
+at *authoring*, not display: area prep is shown the arc and told not to restate
+it, room prep is shown the area and told not to restate it. Caps do the rest
+(`AREA_MAX_THREATS 2`, `ROOM_MAX_THREATS 3`, per-line character caps in the
+`JOURNAL_MAX_LINE_CHARS` mould). Target for the whole block: **≤ ~150 tokens**,
+smaller than one beat.
+
+Only the arc's **next** step is shown, never the remaining ones — the rest is
+spoiler for the narrator and noise in the budget.
+
+### Reversal, determinism, degradation
+
+- **Prep is not state, so reversal does not snapshot the gazetteer.** It captures
+  the *pointers and the clocks*: current area key, current room key,
+  `front.ticks`, promises, arc status. Undo puts the player back in a room whose
+  card is still in the cache — no re-prep, no double tick, and the snapshot stays
+  small.
+- Cards are authored at **boundaries**, not per turn, so `regenerateLastTurn`
+  re-tells the same turn against the same prep. Same rationale as seeding the
+  dice on `(turn, action)`.
+- A prep result carries the key it was prepped for; a card landing for a scene
+  the game has already left is **dropped**. Direct copy of the journal's
+  `appendModelLines` no-op-on-missing-id.
+- `normalizeArc` / `normalizeAreaCard` / `normalizeRoomCard` sanitize at **READ**,
+  in the `normalizeDice` stance — clock size pinned to 2–8, `ticks` pinned inside
+  `0..steps.length`, steps beyond the clock dropped, lines truncated, exits
+  naming an unknown room dropped. Garbage unrepresentable rather than clamped.
+
+| failure                            | result                                            |
+| ---------------------------------- | ------------------------------------------------- |
+| prep call fails or lands late      | no card → **turn byte-identical to today**        |
+| arc review fails                   | fronts stand; clocks still tick (client owns them) |
+| `optionNotes` length mismatch      | dropped whole                                     |
+| `promises` omitted                 | nothing planted; existing ones still age          |
+| no `area` on the block             | falls back: compound `location` → the area you were in |
+| `foresightEnabled` off             | zero new tokens, zero new calls, prompt as today  |
+
+A save with no `area` — which is every save written before this — has an empty
+arc and no areas, injects the room tier only, and behaves as single-scope
+foresight. The simpler design is the degenerate case, so there is no migration.
+
+### The map
+
+Two grids, unrelated to one another: a world grid for areas, a local grid inside
+each area. No zoom continuity between them, as in every CRPG that has ever
+shipped two maps.
+
+**The rule that makes it safe is already in the codebase:**
+
+> Coordinates are internal, like `GameState.minutes`. The narrator never sees a
+> number — it sees `exits` by name. The player sees the map.
+
+Exactly the phase-word rule from **The clock**: a model shown `14:30` writes "half
+past two" into the prose; a model shown `x:3, y:-1` writes cardinal directions and
+then contradicts them two beats later. The model authors material; the client
+computes geometry.
+
+`normalizeMap` runs at READ:
+
+- coordinates clamped to a bounded grid (−16…16);
+- **two rooms on one cell → the later one is pushed to the nearest free cell by a
+  deterministic spiral.** Models are poor at spatial consistency, so collisions
+  are assumed rather than trusted against;
+- exit edges made symmetric; an exit naming an unknown room is dropped.
+
+Rendering is where the app has an unfair advantage: **1-bit, so the map is free
+and exactly on-brand.** CSS grid or inline SVG, no image model, no `images.ts`
+involvement at all. Filled cell = visited · outline = named but unvisited ·
+current room inverted · exits as rules between cells. `mapFog` toggles whether
+rumoured rooms show.
+
+**It is a play screen, not a prep screen** — the ⋯ quick menu beside Party,
+Inventory, Journal and Saves. The map is the *player's*; the threats stay private
+on the Foresight screen. Player-editable like everything else: dragging a room
+writes its cell, since the client owns the coordinates anyway.
+
+Optional and nearly free: `Arc.areas[]` tags the regions an arc touches, so the
+world map can shade them. One field, and the campaign becomes visible.
+
+### Data model
+
+```ts
+// Authored, frozen, rides the scenario import. The template.
+interface ArcTemplate {
+  question: string;              // what this story is about, one line
+  fronts: FrontTemplate[];
+  spine: string;                 // FrontTemplate.id — the front whose firing ends the arc
+}
+
+// The instance. GameState.arcs — appended, never replaced.
+interface Arc extends ArcTemplate {
+  id: string;
+  epoch: number;                 // bumped when a front fires/retires or handoff rewrites
+  status: "running" | "interlude" | "done";
+  fronts: Front[];
+  areas: string[];               // AreaKeys this arc touches (map shading)
+  openedTurn: number;
+  interludeFrom?: number;        // turn the interlude began
+}
+
+interface Front {
+  id: string;
+  label: string;                 // "the mine floods"
+  steps: string[];               // written in ADVANCE; length is the clock, 2..8
+  ticks: number;                 // CLIENT-owned. The model never writes this.
+  lastTickDay: number;           // neglect hangs off clock.ts
+  status: "open" | "fired" | "retired";
+}
+
+// GameState.areas — the gazetteer, keyed by AreaKey.
+interface AreaCard {
+  key: string;
+  name: string;                  // "Murkwood"
+  epoch: number;                 // the Arc.epoch it was prepped under
+  version: number;               // bumped on re-prep; invalidates its rooms
+  coord: Coord;                  // world grid — internal
+  neighbours: string[];          // AreaKeys
+  texture: string;               // one line: what this region is
+  threats: string[];             // <= AREA_MAX_THREATS, applies anywhere in it
+  front?: string;                // Front.id this area serves; rooms inherit
+  rooms: Record<string, RoomSlot>;
+}
+
+interface RoomSlot {
+  name: string;                  // known from the area's list, possibly unvisited
+  coord: Coord;                  // local grid — internal
+  exits: string[];               // RoomKeys; symmetric after normalizeMap
+  visited: boolean;
+  card: RoomCard | null;         // null = named, never entered, never prepped
+}
+
+interface RoomCard {
+  version: number;               // the AreaCard.version it was prepped under
+  openedTurn: number;
+  danger: string;                // one line: what this space is
+  threats: string[];             // <= ROOM_MAX_THREATS: the thing + what sets it off
+  hooks: string[];               // <= 2: what is here to want
+  outcomes: Record<TurnOutcome, string>;   // SAME keys as stakes.ts
+}
+
+interface Promise {              // GameState.promises
+  id: string;
+  text: string;
+  plantedTurn: number;
+}
+
+interface Coord { x: number; y: number }
+
+// On the turn block / message:
+interface LoomBlock  { area?: string; optionNotes?: string[]; promises?: PromiseDelta[] }
+interface Message    { optionNotes?: string[]; reckoning?: Reckoning }
+interface Reckoning  { frontTicked?: string; frontFired?: string; promisesPlanted?: string[] }
+```
+
+`GameState.location` stays the **room**. `deltas.ts → simplifyLocation` already
+splits a narrator-stapled compound on `LOCATION_JOINERS` and keeps the last
+segment — the app has been separating area from room since **one-name locations**
+and discarding the left half. The rule stays; it stops throwing that half away.
+
+### Modules and screens
+
+```
+src/lib/arc.ts        spine · completion · interlude state · buildArcMessages · parseArc · normalizeArc
+src/lib/fronts.ts     tickFronts · neglect · firedFront · formatLoomingBlock
+src/lib/areaPrep.ts   areaChanged · buildAreaMessages · parseAreaCard · normalizeAreaCard
+src/lib/roomPrep.ts   roomChanged · buildRoomMessages · parseRoomCard · normalizeRoomCard
+src/lib/promises.ts   plant · close · age · formatPromisesBlock
+src/lib/gazetteer.ts  keys · lookup · staleness · normalizeMap (coords, collisions, exits)
+prompt.ts             formatForesightBlock — tier 4c, joins arc + area + room + promises + option note
+stakes.ts             formatStakesBlock gains the prepared line for the band that rolled
+```
+
+Pure and tested; only the store touches the network — the same discipline as
+`clock.ts`, `journal.ts` and `stakes.ts`, and the same reason.
+
+- **Menu → This Adventure → Foresight** (`SubMenuScreen`): **Arc** (question,
+  spine, fronts with editable steps and manual ticks, past arcs, staged handoff
+  preview) · **Area** (this area's card, stale flag, ↻) · **Room** (this room's
+  card, ↻) · **Promises** (close / drop).
+- **Map** — a *play* screen, in the ⋯ quick menu with Party, Inventory, Journal
+  and Saves.
+- **Menu → Settings → Narrator → Memory**, beside the journal's controls, because
+  it is the same feature pointed the other way: `foresightEnabled`,
+  `scenePrepInstructions`, `areaPrepInstructions`, `arcInstructions`,
+  `promiseInstructions` (each folded into the output protocol as a whole bullet
+  that a blank field removes), `sceneBoundaryTurns`, `frontNeglectDays`,
+  `promiseTurns`, `interludeTurns`, `costTicksFront`, `mixedTicksFront`,
+  `mapFog`.
+
+Save slots freeze all of it for free (it rides `GameState`), cloud saves carry it
+in the slot document, and absent fields read as empty — so there is no migration
+on either side.
+
+### Open questions
+
+- **Room prep as a call, or derived?** A `derive` mode — the area pre-writes room
+  seeds and the client picks one deterministically, zero calls — would serve
+  players on cheap models. Quality is almost certainly worse; worth measuring
+  before deciding.
+- **Area cards overlap World Notes.** Both are keyed by place, both editable,
+  both injected. The distinction that holds: a World Note is **public and
+  keyword-gated** (facts, readable anytime), an area card is **private and
+  location-gated** (threats, unspent consequence, only while you stand there).
+  The wire between them: leaving an area deposits a short *public* note
+  (*Murkwood — the wardens patrol at dusk*) while the threat material stays
+  private — the same retirement shape as beats → journal. Decide before building,
+  or the player maintains the same place twice.
+- **Player-authored arcs.** The Arc screen is appealing enough on its own that
+  "write your own campaign outline, the model fills the gaps" may be the primary
+  mode rather than the escape hatch.
+- **How often a boundary really fires** in play. Room granularity absorbs most of
+  what a turn ceiling was covering, but a 30-turn tavern conversation is one room
+  and still needs the ceiling to refresh its card.
 
 ---
 
