@@ -833,6 +833,18 @@ edited as one textarea keeping a **local draft of the raw text**, because
 parsing trims and de-blanks, so a plain controlled textarea eats the newline as
 it is typed (a bug the front's Steps field shipped with and no longer has).
 
+Post-MVP also: **a rewritten region gets a new list of places**
+(`gazetteer.ts → reseedRooms`) — an unvisited room name used to survive a
+re-prep (*a rumour is a hook*), which made the room list a ratchet: every
+rewrite added names and nothing removed one, so a region the player wrote again
+until it read right still carried the places of the versions they threw away.
+Now writing a region REPLACES its list — rooms the player has walked into stay
+(they are on the map, they hold the exits actually walked, and one is under
+their feet), unvisited ones are dropped, exits pointing at a dropped room are
+pruned with them, and the new card's names are seeded onto what is left. One
+rule for both writers, since both go through `commitAreaCard`: the ✦ on
+Foresight → Region and the automatic re-prep an arc's new epoch triggers.
+
 Deferred (post-MVP): rolling LLM summarization of the beats themselves,
 NPC/item art, TTS, weather animation, multi-world. Track scope in
 `DESIGN.md → Build Phases`.

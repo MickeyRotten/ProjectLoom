@@ -209,6 +209,40 @@ export function seedRooms(area: AreaCard, names: string[]): AreaCard {
 }
 
 /**
+ * Seed the room list of a region being WRITTEN AGAIN: the places the player has
+ * walked into stay, every place they have not is DROPPED, and the new card's
+ * names are seeded onto what is left.
+ *
+ * The rule the old one had was the opposite — an unvisited room survived a
+ * re-prep, because a rumour is a hook. In practice it made the list a ratchet:
+ * every rewrite added names and nothing ever removed one, so a region the player
+ * rewrote until it read right still carried the places of the versions they
+ * threw away, and the map filled with rooms belonging to a region that no longer
+ * exists. A rumour belongs to the version of the region that invented it.
+ *
+ * Visited rooms are never dropped: they are on the map, they hold the exits the
+ * player actually walked, and one of them is under their feet. Exits pointing at
+ * a dropped room are pruned here rather than left for `normalizeMap`, so the
+ * card is coherent the moment it is committed.
+ */
+export function reseedRooms(area: AreaCard, names: string[]): AreaCard {
+  const kept: Record<string, RoomSlot> = {};
+  for (const [key, room] of Object.entries(area.rooms)) {
+    if (room.visited) kept[key] = room;
+  }
+
+  const dropped = Object.keys(area.rooms).length - Object.keys(kept).length;
+  if (dropped === 0) return seedRooms(area, names);
+
+  for (const [key, room] of Object.entries(kept)) {
+    const exits = room.exits.filter((exit) => kept[exit]);
+    if (exits.length !== room.exits.length) kept[key] = { ...room, exits };
+  }
+
+  return seedRooms({ ...area, rooms: kept }, names);
+}
+
+/**
  * A region with nothing written in it yet — the shape every card starts as,
  * before a prep call fills in its texture, its threats and its room names.
  *

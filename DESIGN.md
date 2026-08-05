@@ -1165,9 +1165,15 @@ buys four things:
 4. unlisted rooms still work: the narrator invents one and the client appends it.
    A list is a seed, not a fence.
 
-A named room that is never visited is not a ghost, it is a rumour, and rumours
-are hooks — so unvisited names survive a re-prep. Capped (≤8) so they cannot
-accumulate.
+A named room that is never visited is not a ghost, it is a rumour — but a rumour
+belongs to the version of the region that invented it, so **writing the region
+again replaces the list**: rooms the player has walked into stay (they are on the
+map, they hold the exits actually walked, and one of them is under their feet),
+every unvisited name is dropped, and the new card's names are seeded onto what is
+left (`gazetteer.ts → reseedRooms`, exits pointing at a dropped room pruned with
+it). Keeping them made the list a ratchet — a region rewritten until it read
+right still carried the places of every version thrown away. Capped (≤8) on top
+of that.
 
 **The room list is also how the client knows where the player is.** Area
 membership resolves on-device: a `location` matching a name on some area's list
