@@ -202,15 +202,11 @@ Skip anything the FACTS list below has already recorded.`;
  * ------------------------------------------------------------------ */
 
 /**
- * What a ROOM card must contain. The only prep instruction that mentions the
- * outcome bands, because the room is the only scope that carries them: a band
- * resolves in a space, never in an arc.
- *
- * The `strong` sentence is the load-bearing one. A success that merely grants
- * the request changes nothing, and "nothing changed" is the most common way a
- * win reads flat — so the shipped rule asks for the scene to move.
+ * What a ROOM card must contain. The narrowest prep scope, so it is the one
+ * asked for concrete matter: a threat with a trigger, something worth having,
+ * and the ways out by name.
  */
-export const DEFAULT_SCENE_PREP_INSTRUCTIONS = `Write what this PLACE does, never what the player does. A strong result must CHANGE THE SCENE, not merely grant the request — something opens, someone arrives, the ground shifts. A cost is what failure means HERE, in this specific place, and it lands on a person: an injury, an alarm, a debt, a witness. Keep every line to one concrete sentence, and never write an outcome that ends the adventure.`;
+export const DEFAULT_SCENE_PREP_INSTRUCTIONS = `Write what this PLACE is, never what the player does. A threat is a thing AND what sets it off, not a mood. Something here is worth having, and somebody would mind it being taken. Keep every line to one concrete sentence, and write nothing that ends the adventure.`;
 
 /**
  * What an AREA card must contain. Deliberately about standing conditions, not

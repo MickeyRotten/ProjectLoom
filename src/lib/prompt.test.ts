@@ -1119,11 +1119,6 @@ function foresightGame(): GameState {
               danger: "the cart track ends at a stile",
               threats: ["the stile is watched"],
               hooks: ["a warden's mark cut into the post"],
-              outcomes: {
-                strong: "the watcher steps out and talks",
-                mixed: "you get through, and are seen",
-                cost: "the stile gives, and the noise carries",
-              },
             },
           },
           stile: { name: "The Stile", coord: { x: 1, y: 0 }, exits: ["forest-entrance"], visited: false, card: null },
@@ -1204,7 +1199,7 @@ describe("foresight injection", () => {
     expect(block).not.toContain("the sump fills");
   });
 
-  it("keeps the three outcome bands OUT of the prep block", () => {
+  it("carries the room's own material, and never a prepared roll result", () => {
     const messages = buildMessages({
       settings,
       game: foresightGame(),
@@ -1212,11 +1207,11 @@ describe("foresight injection", () => {
       playerMessage: "I wait.",
     });
     const block = messages.find((m) => m.content.includes("NARRATOR'S PREP"))!.content;
-    expect(block).not.toContain("the stile gives");
-    expect(block).not.toContain("the watcher steps out");
+    expect(block).toContain("the stile is watched");
+    expect(block).toContain("a warden's mark cut into the post");
   });
 
-  it("hands the narrator ONLY the band that rolled, folded into the OUTCOME block", () => {
+  it("leaves the OUTCOME block to the dice alone — the room prepares no band", () => {
     const messages = buildMessages({
       settings,
       game: foresightGame(),
@@ -1235,9 +1230,8 @@ describe("foresight injection", () => {
       },
     });
     const outcome = messages.find((m) => m.content.includes("OUTCOME — THIS TURN"))!.content;
-    expect(outcome).toContain("Prepared for this scene: the stile gives, and the noise carries");
-    // The two branches that did not roll never enter the context at all.
-    expect(messages.map((m) => m.content).join("\n")).not.toContain("the watcher steps out");
+    expect(outcome).toContain("COST");
+    expect(outcome).not.toContain("Prepared for this scene");
   });
 
   it("replaces the whole block with an interlude while one is running", () => {

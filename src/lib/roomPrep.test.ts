@@ -19,7 +19,6 @@ const card = (patch: Partial<RoomCard> = {}): RoomCard => ({
   danger: "the cart track ends at a stile",
   threats: [],
   hooks: [],
-  outcomes: { strong: "", mixed: "", cost: "" },
   ...patch,
 });
 
@@ -60,24 +59,23 @@ describe("roomChanged", () => {
 });
 
 describe("parseRoomCard", () => {
-  it("reads the three bands under the keys stakes.ts already uses", () => {
+  it("reads the fields the card is made of", () => {
     const parsed = parseRoomCard(
       JSON.stringify({
         danger: "sightlines die ten feet in",
         threats: ["the stile is watched"],
         hooks: ["a warden's mark"],
         exits: ["The Stile", "the track back"],
-        outcomes: { strong: "S", mixed: "M", cost: "C" },
       }),
     );
-    expect(parsed?.outcomes).toEqual({ strong: "S", mixed: "M", cost: "C" });
+    expect(parsed?.danger).toBe("sightlines die ten feet in");
     expect(parsed?.exits).toEqual(["The Stile", "the track back"]);
   });
 
-  it("keeps a card that came back without its outcomes — the exits still earn it", () => {
-    const parsed = parseRoomCard('{ "danger": "a wet stair", "exits": ["Cellar"] }');
-    expect(parsed?.danger).toBe("a wet stair");
-    expect(parsed?.outcomes).toEqual({ strong: "", mixed: "", cost: "" });
+  it("keeps a partial card — the exits alone still earn it", () => {
+    const parsed = parseRoomCard('{ "exits": ["Cellar"] }');
+    expect(parsed?.danger).toBe("");
+    expect(parsed?.exits).toEqual(["Cellar"]);
   });
 
   it("caps threats and hooks", () => {
@@ -94,14 +92,14 @@ describe("parseRoomCard", () => {
 
   it("returns null when nothing usable came back", () => {
     expect(parseRoomCard("sorry, I can't")).toBeNull();
-    expect(parseRoomCard('{ "outcomes": {} }')).toBeNull();
+    expect(parseRoomCard('{ "threats": [] }')).toBeNull();
   });
 });
 
 describe("stampRoomCard / normalizeRoomCard", () => {
   it("stamps the version it was prepped under", () => {
     const stamped = stampRoomCard(
-      { danger: "d", threats: [], hooks: [], exits: [], outcomes: { strong: "", mixed: "", cost: "" } },
+      { danger: "d", threats: [], hooks: [], exits: [] },
       area({ version: 3 }),
       12,
     );
@@ -113,12 +111,13 @@ describe("stampRoomCard / normalizeRoomCard", () => {
     expect(normalizeRoomCard(undefined)).toBeNull();
     const clean = normalizeRoomCard({
       version: -2,
+      danger: 7 as unknown as string,
       threats: ["a", "b", "c", "d"],
-      outcomes: { strong: 7, cost: " C " } as unknown as RoomCard["outcomes"],
+      hooks: [" a hook ", ""],
     });
-    expect(clean).toMatchObject({ version: 1 });
+    expect(clean).toMatchObject({ version: 1, danger: "" });
     expect(clean?.threats).toHaveLength(ROOM_MAX_THREATS);
-    expect(clean?.outcomes).toEqual({ strong: "", mixed: "", cost: "C" });
+    expect(clean?.hooks).toEqual(["a hook"]);
   });
 });
 
@@ -142,7 +141,7 @@ describe("buildRoomMessages", () => {
     expect(text).not.toContain("Other places in the region: Forest Entrance");
   });
 
-  it("reads the last beats and the party's flaws — a cost lands on somebody", () => {
+  it("reads the last beats and the party's flaws — a threat lands on somebody", () => {
     const g = game({
       messages: [
         { id: "m1", role: "player", content: "OLD AND FORGOTTEN", turn: 1 },
@@ -165,11 +164,12 @@ describe("buildRoomMessages", () => {
     expect(text).not.toContain("OLD AND FORGOTTEN");
   });
 
-  it("asks for a strong result that CHANGES the scene", () => {
+  it("asks for the ways out by name, and for no prepared roll results", () => {
     const text = buildRoomMessages(defaultSettings(), game(), "Forest Entrance", populated)
       .map((m) => m.content)
       .join("\n");
-    expect(text).toContain("CHANGE THE SCENE");
+    expect(text).toContain('"exits" is the ways out, BY NAME');
+    expect(text).not.toContain("outcomes");
   });
 
   it("injects the ✦ guidance last, and nothing at all when it is blank", () => {

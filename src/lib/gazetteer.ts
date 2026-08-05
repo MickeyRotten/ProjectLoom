@@ -1,4 +1,4 @@
-import type { AreaCard, Arc, Coord, GameState, RoomSlot, TurnOutcome } from "../types";
+import type { AreaCard, Arc, Coord, GameState, RoomSlot } from "../types";
 import { slug } from "./names";
 
 /**
@@ -408,11 +408,7 @@ export function formatAreaBlock(card: AreaCard | undefined): string {
   return lines.length > 1 ? lines.join("\n") : "";
 }
 
-/**
- * The `ROOM` tier. The outcomes are deliberately NOT here — only the band that
- * actually rolled is ever shown, and it rides the OUTCOME block down in the
- * turn's own facts.
- */
+/** The `ROOM` tier — this place, and the concrete geography around it. */
 export function formatRoomBlock(
   area: AreaCard | undefined,
   room: RoomSlot | undefined,
@@ -428,19 +424,6 @@ export function formatRoomBlock(
   const ways = room.exits.map((key) => area?.rooms[key]?.name ?? "").filter(Boolean);
   if (ways.length) lines.push(`  ways out: ${ways.join(" · ")}`);
   return lines.length > 1 ? lines.join("\n") : "";
-}
-
-/**
- * The prepared line for the band that rolled, or "". The two branches that did
- * NOT roll are never read, so there is nothing for the narrator to hedge
- * toward and nothing to leak.
- */
-export function preparedOutcome(
-  room: RoomSlot | undefined,
-  outcome: TurnOutcome | null | undefined,
-): string {
-  if (!room?.card || !outcome) return "";
-  return room.card.outcomes[outcome]?.trim() ?? "";
 }
 
 /* ------------------------------------------------------------------ *

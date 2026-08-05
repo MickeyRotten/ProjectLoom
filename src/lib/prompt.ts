@@ -33,13 +33,7 @@ import { matchWorldNotes, formatWorldNotesBlock } from "./worldNotes";
 import { formatConditionsBlock, formatStakesBlock, type StakeSignals } from "./stakes";
 import { formatFrontLine, formatLoomingBlock, liveFront } from "./fronts";
 import { formatOptionNote, formatPromisesBlock } from "./promises";
-import {
-  currentArea,
-  currentRoom,
-  formatAreaBlock,
-  formatRoomBlock,
-  preparedOutcome,
-} from "./gazetteer";
+import { currentArea, currentRoom, formatAreaBlock, formatRoomBlock } from "./gazetteer";
 
 /**
  * Prompt assembly (DESIGN.md → Prompt assembly, trimmed port of
@@ -224,9 +218,9 @@ export function buildMessages(opts: BuildOptions): ChatMessage[] {
   messages.push({ role: "system", content: buildStateOfPlay(game, characters) });
 
   // 4c. The narrator's PREP — the arc, the region, this room, the outstanding
-  //     promises. Between the state and the outcome, because the outcome line
-  //     refers to the card. Its own message rather than joining the state tier
-  //     for a reason the tier order already encodes: the state tier claims
+  //     promises. Before the turn's own facts, so the place is read first and
+  //     the roll lands inside it. Its own message rather than joining the state
+  //     tier for a reason the tier order already encodes: the state tier claims
   //     "where this disagrees with a beat, this is what is true now", and prep
   //     is DIRECTION, not fact — the same category as a regeneration note.
   if (settings.foresightEnabled) {
@@ -244,13 +238,7 @@ export function buildMessages(opts: BuildOptions): ChatMessage[] {
   //     full of turns that went differently. Gated on the setting so switching
   //     stakes off restores the pure-sandbox behaviour exactly.
   if (settings.stakesEnabled && opts.stakes) {
-    // The prepared line for the band that ROLLED, and only that one — the join
-    // between Foresight and the dice is these three shared keys and nothing
-    // else.
-    const prepared = settings.foresightEnabled
-      ? preparedOutcome(currentRoom(game), opts.stakes.outcome)
-      : "";
-    const stakes = formatStakesBlock(opts.stakes, settings.stakesRule, prepared);
+    const stakes = formatStakesBlock(opts.stakes, settings.stakesRule);
     if (stakes) messages.push({ role: "system", content: stakes });
   }
 

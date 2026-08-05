@@ -504,11 +504,10 @@ function AreaSection() {
 }
 
 /** What an unprepped room's fields show before anything is written into them. */
-const BLANK_ROOM: Pick<RoomCard, "danger" | "threats" | "hooks" | "outcomes"> = {
+const BLANK_ROOM: Pick<RoomCard, "danger" | "threats" | "hooks"> = {
   danger: "",
   threats: [],
   hooks: [],
-  outcomes: { strong: "", mixed: "", cost: "" },
 };
 
 function RoomSection() {
@@ -570,33 +569,6 @@ function RoomSection() {
         note={<p className="text-xs opacity-70">One per line, at most {ROOM_MAX_HOOKS}.</p>}
       />
 
-      <Section label="If You Roll Here" />
-      <AreaField
-        label="Strong"
-        value={card.outcomes.strong}
-        rows={2}
-        placeholder="what a win does to this place"
-        onChange={(strong) => update({ outcomes: { ...card.outcomes, strong } })}
-      />
-      <AreaField
-        label="Mixed"
-        value={card.outcomes.mixed}
-        rows={2}
-        placeholder="it gets done, and it charges for it"
-        onChange={(mixed) => update({ outcomes: { ...card.outcomes, mixed } })}
-      />
-      <AreaField
-        label="Cost"
-        value={card.outcomes.cost}
-        rows={2}
-        placeholder="what failure means HERE, specifically"
-        onChange={(cost) => update({ outcomes: { ...card.outcomes, cost } })}
-      />
-      <p className="text-xs opacity-70">
-        Only the one your dice actually land on is ever shown to the narrator — the other
-        two never reach it.
-      </p>
-
       <PrepButton<ParsedRoomCard>
         label={written ? "Write This Place Again" : "Write This Place"}
         what="Room"
@@ -613,9 +585,6 @@ function RoomSection() {
             {c.exits.length > 0 && (
               <p className="mt-2 opacity-70">ways out: {c.exits.join(" · ")}</p>
             )}
-            <p className="mt-2">strong: {c.outcomes.strong || "—"}</p>
-            <p>mixed: {c.outcomes.mixed || "—"}</p>
-            <p>cost: {c.outcomes.cost || "—"}</p>
           </>
         )}
         onAccept={apply}
