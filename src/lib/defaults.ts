@@ -11,6 +11,7 @@ import type {
   Settings,
 } from "../types";
 import { MORNING_ANCHOR, normalizeMinutes } from "./clock";
+import { seedStartingArea } from "./gazetteer";
 import { PARTY_LIMIT, normalizeRoster, strengthsText } from "./roster";
 import { SCENE_TILT } from "./diceAnim";
 import { DEFAULT_DICE, RISK_KEYWORDS } from "./stakes";
@@ -378,7 +379,8 @@ export const DEFAULT_SCENARIO: Scenario = {
     
     What do you do?`,
   startDay: 1,
-  startLocation: "Murkwood Entrance",
+  startRegion: "Murkwood",
+  startRoom: "Southern Entrance",
 };
 
 export function defaultPC(): Character {
@@ -440,6 +442,13 @@ export function newGame(
   scenario: Scenario = DEFAULT_SCENARIO,
   characters: Character[] = [defaultPC()],
 ): GameState {
+  // The room is the scene; the region is the scope above it. Seeding BOTH is
+  // what gives a fresh adventure an `areaKey` before any turn has resolved one,
+  // so the prep chain, the map and Foresight → Region all have a region to work
+  // on from the opening beat.
+  const location = scenario.startRoom?.trim() || scenario.startRegion?.trim() || scenario.title;
+  const { areaKey, areas } = seedStartingArea(undefined, scenario.startRegion ?? "", location);
+
   return {
     scenario,
     characters,
@@ -454,8 +463,12 @@ export function newGame(
     // An adventure opens in the morning — the same anchor a night's sleep wakes
     // to, so Day 1 reads like every day after it.
     minutes: MORNING_ANCHOR,
-    location: scenario.startLocation || scenario.title,
+    location,
     weather: "clear",
+    // Absent when the scenario names no region, exactly as every pre-Foresight
+    // save holds them — the degenerate case, not a broken one.
+    ...(areas ? { areas } : {}),
+    ...(areaKey ? { areaKey } : {}),
   };
 }
 
@@ -490,6 +503,33 @@ export function migrateCharacter(saved: LegacyCharacter): Character {
   };
 }
 
+/**
+ * Carry a stored scenario onto the current shape. One historical rename:
+ * `startLocation` — a single place name — split into `startRegion` +
+ * `startRoom`, the two scopes the turn contract has always had.
+ *
+ * The old field folds onto BOTH. It named one place and there is no way to tell
+ * which scope the player meant, so the honest degradation is a region holding
+ * one room of the same name — their own words in both fields, editable, and
+ * with nothing invented. Filling the region from the shipped default instead
+ * would drop "Murkwood" into a scenario that has never heard of it.
+ */
+export function migrateScenario(
+  saved: Partial<Scenario> | undefined,
+  base: Scenario,
+): Scenario {
+  const stored = (saved ?? {}) as Partial<Scenario> & { startLocation?: string };
+  const { startLocation, ...rest } = stored;
+  const legacy = typeof startLocation === "string" ? startLocation.trim() : "";
+  const scenario = { ...base, ...rest };
+  if (!legacy) return scenario;
+  return {
+    ...scenario,
+    startRegion: rest.startRegion ?? legacy,
+    startRoom: rest.startRoom ?? legacy,
+  };
+}
+
 export interface LoadedGame {
   game: GameState;
   /**
@@ -520,6 +560,7 @@ export function loadGame(saved: unknown): LoadedGame | null {
   const partial = saved as Omit<Partial<GameState>, "characters"> & {
     characters?: LegacyCharacter[];
   };
+  const scenario = migrateScenario(partial.scenario, base.scenario);
 
   const stored = Array.isArray(partial.characters) ? partial.characters : null;
   const characters = (stored ?? []).map(migrateCharacter);
@@ -539,7 +580,7 @@ export function loadGame(saved: unknown): LoadedGame | null {
     game: {
       ...base,
       ...partial,
-      scenario: { ...base.scenario, ...(partial.scenario ?? {}) },
+      scenario,
       characters,
       roster,
       // Saves from before Gold existed gain the permanent currency row.

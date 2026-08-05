@@ -200,7 +200,9 @@ describe("seedArcs", () => {
 
 describe("normalizeForesight / anchorClocks", () => {
   it("is reference-stable on a save with no Foresight in it", () => {
-    const g = newGame();
+    // Every pre-Foresight save, and any scenario naming no starting region: the
+    // three slices are absent, and they must come back absent.
+    const g: GameState = { ...newGame(), areas: undefined, areaKey: undefined };
     expect(normalizeForesight(g)).toBe(g);
   });
 

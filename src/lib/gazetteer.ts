@@ -208,6 +208,61 @@ export function seedRooms(area: AreaCard, names: string[]): AreaCard {
   return out;
 }
 
+/**
+ * A region with nothing written in it yet — the shape every card starts as,
+ * before a prep call fills in its texture, its threats and its room names.
+ *
+ * It lives here rather than beside the call that writes over it (`areaPrep.ts →
+ * normalizeAreaCard`, which produces exactly this from a blank record) for the
+ * same reason the card READERS do: this module imports nothing but `names.ts`,
+ * so `defaults.ts` can seed a starting region without dragging prompt assembly
+ * in behind it.
+ */
+export function blankArea(key: string, name: string): AreaCard {
+  return {
+    key,
+    name: (name ?? "").trim() || key,
+    arcId: "",
+    epoch: 0,
+    version: 1,
+    coord: { x: 0, y: 0 },
+    neighbours: [],
+    texture: "",
+    threats: [],
+    rooms: {},
+  };
+}
+
+/**
+ * Put the player in a named room of a named region, creating the region's stub
+ * card if nothing has prepped it yet.
+ *
+ * This is what the scenario's Starting Region / Starting Room seed through, and
+ * what an edit to either of them retargets, so the answer to "which region am I
+ * in?" is the same one before the first turn as after it — `areaKey` set, a card
+ * under it, the room marked visited. Without it a fresh adventure had no
+ * `areaKey` at all, and every path that reads one (the prep chain, the map, the
+ * Foresight → Region screen) sat disabled until a turn had resolved.
+ *
+ * Reference-stable: a region and room already in place come back untouched.
+ */
+export function seedStartingArea(
+  areas: Record<string, AreaCard> | undefined,
+  region: string,
+  room: string,
+): { areaKey: string | null; areas: Record<string, AreaCard> | undefined } {
+  const key = areaKeyFor(region);
+  if (!key) return { areaKey: null, areas };
+
+  const existing = (areas ?? {})[key];
+  const card = existing ?? blankArea(key, region);
+  // A blank room name is not an error: the region alone is a place to stand,
+  // and the narrator names the room on the first beat.
+  const visited = room.trim() ? visitRoom(card, room) : card;
+  if (visited === existing) return { areaKey: key, areas };
+  return { areaKey: key, areas: { ...(areas ?? {}), [key]: visited } };
+}
+
 /* ------------------------------------------------------------------ *
  * The room → area join
  * ------------------------------------------------------------------ */
