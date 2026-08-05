@@ -7,6 +7,7 @@ import {
   AREA_MAX_THREATS,
   PREP_MAX_LINE_CHARS,
   areaChanged,
+  areaScanText,
   buildAreaMessages,
   normalizeAreaCard,
   parseAreaCard,
@@ -155,5 +156,39 @@ describe("buildAreaMessages", () => {
   it("ends on the user turn, so the model has something to answer", () => {
     const messages = buildAreaMessages(defaultSettings(), game(), "Murkwood", undefined);
     expect(messages[messages.length - 1].role).toBe("user");
+  });
+
+  it("injects the ✦ guidance last, and nothing at all when it is blank", () => {
+    const blank = buildAreaMessages(defaultSettings(), game(), "Murkwood", undefined);
+    const guided = buildAreaMessages(defaultSettings(), game(), "Murkwood", undefined, [], "  make it flooded  ");
+    expect(guided).toHaveLength(blank.length + 1);
+    // Last of the system blocks, so it outranks the region as it stands.
+    expect(guided[guided.length - 2].content).toContain("make it flooded");
+    expect(guided[guided.length - 1].role).toBe("user");
+  });
+
+  it("pulls in the World Notes the guidance names, not just the region's own", () => {
+    const g = game({
+      worldNotes: [
+        { id: "n1", title: "The Sunken Choir", keywords: [], content: "drowned singers", permanent: false },
+      ],
+    });
+    const blank = buildAreaMessages(defaultSettings(), g, "Murkwood", undefined)
+      .map((m) => m.content)
+      .join("\n");
+    expect(blank).not.toContain("drowned singers");
+
+    const guided = buildAreaMessages(defaultSettings(), g, "Murkwood", undefined, [], "the sunken choir is here")
+      .map((m) => m.content)
+      .join("\n");
+    expect(guided).toContain("drowned singers");
+  });
+});
+
+describe("areaScanText", () => {
+  it("is the region's name plus the guidance, blanks dropped", () => {
+    expect(areaScanText("Murkwood", "  flooded  ")).toBe("Murkwood\n  flooded  ");
+    expect(areaScanText("Murkwood")).toBe("Murkwood");
+    expect(areaScanText("", "  ")).toBe("");
   });
 });

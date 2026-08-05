@@ -13,6 +13,7 @@ import { type ChatMessage, formatScenarioBlock } from "./prompt";
 import { extractFirstJsonObject, parseJsonTolerant } from "./loomBlock";
 import { roomIsStale, roomKey } from "./gazetteer";
 import { prepLine, prepLines } from "./areaPrep";
+import { formatWorldNotesBlock, matchWorldNotes } from "./worldNotes";
 
 /**
  * Room prep — one call per room, ever, until its area is re-prepped.
@@ -142,10 +143,25 @@ export function stampRoomCard(
 }
 
 /**
+ * The text the World Notes matcher scans: this place's name, the region it sits
+ * in, and whatever the player typed into the ✦ modal's Guidance.
+ *
+ * Room prep read no notes at all before this — the one prep call in the chain
+ * that did not, so a lorebook entry about the Drowned Stair reached the region
+ * that contains it and never the stair itself.
+ */
+export function roomScanText(name: string, area: AreaCard, hint?: string): string {
+  return [name, area.name, hint ?? ""].filter((t) => t && t.trim()).join("\n");
+}
+
+/**
  * The messages for one room-prep call: the area it sits in (shown, and not to
- * be restated), the last two beats, the outstanding promises, and the party's
+ * be restated), the last two beats, the outstanding promises, the party's
  * flaws — which are what makes a COST land on somebody in particular rather
- * than on the scenery.
+ * than on the scenery — and the lore this place's name pulls in.
+ *
+ * `hint` is the ✦ button's free text: last in the list so it outranks the room
+ * as it stands, and folded into the note scan on the way.
  */
 export function buildRoomMessages(
   settings: Settings,
@@ -154,8 +170,10 @@ export function buildRoomMessages(
   area: AreaCard,
   party: PartyMember[] = [],
   promises: StoryPromise[] = [],
+  hint = "",
 ): ChatMessage[] {
   const messages: ChatMessage[] = [];
+  const guidance = hint.trim();
 
   messages.push({
     role: "system",
@@ -225,6 +243,19 @@ export function buildRoomMessages(
       content: `OUTSTANDING PROMISES — the story has committed to these and not paid them off. This is a place they could land.\n${promises
         .map((p) => `- ${p.text}`)
         .join("\n")}`,
+    });
+  }
+
+  const notes = formatWorldNotesBlock(
+    matchWorldNotes(game.worldNotes, roomScanText(name, area, guidance)),
+  );
+  if (notes) messages.push({ role: "system", content: notes });
+
+  // Last, so it outranks the place as it currently stands.
+  if (guidance) {
+    messages.push({
+      role: "system",
+      content: `PLAYER GUIDANCE — what the player wants this place to be. Follow it even where it cuts against what is written above.\n${guidance}`,
     });
   }
 

@@ -2,6 +2,8 @@ import { create } from "zustand";
 import type {
   AdventureImports,
   Arc,
+  AreaCard,
+  RoomCard,
   Character,
   CharacterOverride,
   DiceCast,
@@ -123,6 +125,7 @@ import {
   buildArcMessages,
   handOff,
   parseArc,
+  rewriteArc,
   runningArc,
 } from "./lib/arc";
 import {
@@ -131,6 +134,7 @@ import {
   buildAreaMessages,
   parseAreaCard,
   stampAreaCard,
+  type ParsedAreaCard,
 } from "./lib/areaPrep";
 import {
   ROOM_PREP_TEMPERATURE,
@@ -138,6 +142,7 @@ import {
   parseRoomCard,
   roomChanged,
   stampRoomCard,
+  type ParsedRoomCard,
 } from "./lib/roomPrep";
 import {
   addRoom,
@@ -499,17 +504,47 @@ export interface LoomStore {
    * byte-identical to one taken with the feature off.
    */
   prepForesight: () => void;
-  /** ↻ on the Foresight screen: re-prep this region even though it is fresh. */
-  refreshArea: () => void;
-  /** ↻ on the Foresight screen: re-prep this room. */
-  refreshRoom: () => void;
   /**
-   * Ask for the next arc, staged rather than applied (`Arc.staged`). Runs when
-   * an interlude begins, and again behind the screen's **Regenerate**.
+   * ✦ on the Foresight screen: write this region's card again, with the
+   * player's guidance. Resolves to the card for the modal to preview, or null
+   * on failure (the reason lands in `fieldGenError`) — it writes NOTHING, so
+   * the region in play is untouched until `applyAreaCard`.
+   *
+   * Shares `fieldGenPending` / `fieldGenError` with the other ✦ flows rather
+   * than using `foresightPending`: one generate modal is open at a time
+   * app-wide, and `foresightPending` means "a boundary call the player did not
+   * ask for is in flight".
+   */
+  generateAreaCard: (hint: string) => Promise<ParsedAreaCard | null>;
+  /** **Use This** on a generated region card: stamp it and put it in play. */
+  applyAreaCard: (parsed: ParsedAreaCard) => void;
+  /** ✦ for this room — `generateAreaCard`'s twin, one scope down. */
+  generateRoomCard: (hint: string) => Promise<ParsedRoomCard | null>;
+  /** **Use This** on a generated room card. */
+  applyRoomCard: (parsed: ParsedRoomCard) => void;
+  /** Edit this region's written material by hand (texture, standing threats). */
+  updateArea: (patch: Partial<Pick<AreaCard, "texture" | "threats">>) => void;
+  /**
+   * Edit this room's card by hand. Creates the card if the room has never been
+   * prepped, so a player can author a place the model has never seen — the same
+   * bargain the Journal and World Notes screens make.
+   */
+  updateRoom: (patch: Partial<Omit<RoomCard, "version" | "openedTurn">>) => void;
+  /**
+   * Ask for an arc, staged rather than applied (`Arc.staged`). Runs when an
+   * interlude begins, and again behind the screen's ✦ — which now also reaches
+   * a RUNNING arc, where the staged template replaces the chapter in hand
+   * instead of opening the next one.
    */
   stageNextArc: (force?: boolean) => Promise<void>;
-  /** **Use** the staged arc now: close the current one and open it. */
+  /**
+   * **Use This** on the staged arc. In an interlude that closes the current
+   * chapter and opens the staged one beside it (`handOff`); on a running arc it
+   * REPLACES the chapter in hand, keeping its seat (`rewriteArc`).
+   */
   applyStagedArc: () => void;
+  /** Throw away the staged arc without using it. */
+  discardStagedArc: () => void;
   /** *Move on* — end the interlude by hand rather than waiting it out. */
   endInterlude: () => void;
   /** Edit the running arc (question, the front's steps, manual ticks). */
@@ -767,7 +802,20 @@ export const useStore = create<LoomStore>((set, get) => {
       return;
     }
 
+    commitAreaCard(key, parsed);
+  }
+
+  /**
+   * Stamp a parsed area card and put it in play — the half of `prepArea` that
+   * writes, shared with the Foresight screen's ✦, whose staleness question was
+   * answered by the player pressing **Use This**.
+   */
+  function commitAreaCard(key: string, parsed: ParsedAreaCard): void {
+    const now = get().game;
+    const arc = runningArc(now.arcs);
     const previous = (now.areas ?? {})[key];
+    const name = previous?.name || now.location;
+
     let stamped = stampAreaCard(parsed, key, name, arc, previous);
     // The room list is a SEED: names only, no cards, and the ones nobody has
     // walked into survive a re-prep because a rumour is a hook.
@@ -816,7 +864,21 @@ export const useStore = create<LoomStore>((set, get) => {
     // written against a version of the place that no longer exists.
     if (!nowArea || nowArea.version !== area.version) return;
 
-    let next = addRoom(nowArea, room?.name || location);
+    commitRoomCard(areaKey, room?.name || location, parsed);
+  }
+
+  /**
+   * Stamp a parsed room card and put it in play — `commitAreaCard`'s twin, and
+   * the half of `prepRoom` the Foresight screen's ✦ shares.
+   */
+  function commitRoomCard(areaKey: string, location: string, parsed: ParsedRoomCard): void {
+    const now = get().game;
+    const nowArea = (now.areas ?? {})[areaKey];
+    if (!nowArea) return;
+    const key = roomKey(location);
+    if (!key) return;
+
+    let next = addRoom(nowArea, location);
     const slot = next.rooms[key];
     if (!slot) return;
     next = {
@@ -1389,34 +1451,141 @@ export const useStore = create<LoomStore>((set, get) => {
     void runPrep();
   },
 
-  refreshArea() {
-    const key = get().game.areaKey;
-    if (!key || prepRunning) return;
-    prepRunning = true;
-    set({ foresightPending: true, foresightError: null });
-    void prepArea(key, true)
-      .catch((err) =>
-        set({ foresightError: err instanceof Error ? err.message : "Prep failed." }),
-      )
-      .finally(() => {
-        prepRunning = false;
-        set({ foresightPending: false });
+  async generateAreaCard(hint) {
+    // Single-flight against the other ✦ flows, and nothing else: this writes no
+    // state, so a turn or an automatic prep in flight has nothing to undo.
+    if (get().fieldGenPending) return null;
+    const game = get().game;
+    const key = game.areaKey;
+    if (!key) return null;
+
+    set({ fieldGenPending: true, fieldGenError: null });
+    try {
+      const settings = get().settings;
+      const name = (game.areas ?? {})[key]?.name || game.location;
+      const raw = await completeChat({
+        settings,
+        messages: buildAreaMessages(
+          settings,
+          game,
+          name,
+          runningArc(game.arcs),
+          game.promises ?? [],
+          hint,
+        ),
+        temperature: AREA_PREP_TEMPERATURE,
       });
+      const parsed = parseAreaCard(raw);
+      if (!parsed) throw new Error("The model returned nothing usable. Try again.");
+      set({ fieldGenPending: false });
+      return parsed;
+    } catch (err) {
+      const message =
+        err instanceof OpenRouterError || err instanceof Error
+          ? err.message
+          : "Generation failed.";
+      set({ fieldGenPending: false, fieldGenError: message });
+      return null;
+    }
   },
 
-  refreshRoom() {
+  applyAreaCard(parsed) {
+    const key = get().game.areaKey;
+    if (!key) return;
+    commitAreaCard(key, parsed);
+  },
+
+  async generateRoomCard(hint) {
+    if (get().fieldGenPending) return null;
     const game = get().game;
-    if (!game.areaKey || prepRunning) return;
-    prepRunning = true;
-    set({ foresightPending: true, foresightError: null });
-    void prepRoom(game.areaKey, game.location, true)
-      .catch((err) =>
-        set({ foresightError: err instanceof Error ? err.message : "Prep failed." }),
-      )
-      .finally(() => {
-        prepRunning = false;
-        set({ foresightPending: false });
+    const areaKey = game.areaKey;
+    const area = areaKey ? (game.areas ?? {})[areaKey] : undefined;
+    // A room is prepped INSIDE a region, so there is nothing to write against
+    // until one exists — the same guard `prepRoom` makes.
+    if (!area) return null;
+
+    set({ fieldGenPending: true, fieldGenError: null });
+    try {
+      const settings = get().settings;
+      const name = area.rooms[roomKey(game.location)]?.name || game.location;
+      const raw = await completeChat({
+        settings,
+        messages: buildRoomMessages(
+          settings,
+          game,
+          name,
+          area,
+          activeMembers(game.characters, game.roster),
+          game.promises ?? [],
+          hint,
+        ),
+        temperature: ROOM_PREP_TEMPERATURE,
       });
+      const parsed = parseRoomCard(raw);
+      if (!parsed) throw new Error("The model returned nothing usable. Try again.");
+      set({ fieldGenPending: false });
+      return parsed;
+    } catch (err) {
+      const message =
+        err instanceof OpenRouterError || err instanceof Error
+          ? err.message
+          : "Generation failed.";
+      set({ fieldGenPending: false, fieldGenError: message });
+      return null;
+    }
+  },
+
+  applyRoomCard(parsed) {
+    const game = get().game;
+    const areaKey = game.areaKey;
+    if (!areaKey) return;
+    const name = (game.areas ?? {})[areaKey]?.rooms[roomKey(game.location)]?.name;
+    commitRoomCard(areaKey, name || game.location, parsed);
+  },
+
+  updateArea(patch) {
+    const game = get().game;
+    const key = game.areaKey;
+    if (!key) return;
+    const card = (game.areas ?? {})[key];
+    if (!card) return;
+    // Written RAW, sanitized at read (`foresight.ts → normalizeCards`). Capping
+    // a line here would trim it out from under the cursor mid-word.
+    commitForesight({ areas: { ...(game.areas ?? {}), [key]: { ...card, ...patch } } });
+  },
+
+  updateRoom(patch) {
+    const game = get().game;
+    const areaKey = game.areaKey;
+    if (!areaKey) return;
+    const area = (game.areas ?? {})[areaKey];
+    if (!area) return;
+
+    const key = roomKey(game.location);
+    if (!key) return;
+    // The room may be one the map has never heard of — the player is typing a
+    // card for the place they are standing in, which is reason enough to add it.
+    const next = addRoom(area, game.location);
+    const slot = next.rooms[key];
+    if (!slot) return;
+
+    const card: RoomCard = slot.card ?? {
+      version: next.version,
+      openedTurn: game.turnNumber,
+      danger: "",
+      threats: [],
+      hooks: [],
+      outcomes: { strong: "", mixed: "", cost: "" },
+    };
+    commitForesight({
+      areas: {
+        ...(game.areas ?? {}),
+        [areaKey]: {
+          ...next,
+          rooms: { ...next.rooms, [key]: { ...slot, card: { ...card, ...patch } } },
+        },
+      },
+    });
   },
 
   async stageNextArc(force = false) {
@@ -1452,18 +1621,30 @@ export const useStore = create<LoomStore>((set, get) => {
       }
       return;
     }
-    if (arc.status !== "interlude") return;
+    // A staged arc is never quietly replaced; `force` is the player pressing ✦.
     if (arc.staged && !force) return;
+    // The one automatic caller is the interlude (`runPrep`), which never forces.
+    // A RUNNING arc only ever reaches here behind the screen's button, and what
+    // it writes REPLACES the chapter in hand rather than opening the next one —
+    // so the model is told that, and `applyStagedArc` does it.
+    const rewrite = arc.status !== "interlude";
+    if (rewrite && !force) return;
 
     set({ foresightPending: true, foresightError: null });
     try {
       const raw = await completeChat({
         settings,
-        messages: buildArcMessages(settings, game, game.characters, arc),
+        messages: buildArcMessages(
+          settings,
+          game,
+          game.characters,
+          arc,
+          rewrite ? "rewrite" : "next",
+        ),
         temperature: ARC_TEMPERATURE,
       });
       const staged = parseArc(raw);
-      if (!staged) throw new Error("The next arc came back empty.");
+      if (!staged) throw new Error("The arc came back empty.");
       // STAGED, not applied. This call writes the next several hours of play off
       // a summary and the player will want to co-author it, so it is previewed
       // on the Arc screen and applied only by Use — or by the interlude running
@@ -1486,14 +1667,36 @@ export const useStore = create<LoomStore>((set, get) => {
     const game = get().game;
     const arc = runningArc(game.arcs);
     if (!arc?.staged) return;
+
+    // Two meanings for one button, decided by where the arc stands. An
+    // interlude means the chapter is OVER, so the staged one opens beside it
+    // and both are campaign history. A running arc means the player did not
+    // want the chapter they are in, so there is no history to keep: it is
+    // rewritten in its seat.
+    if (arc.status === "interlude") {
+      commitForesight({
+        arcs: handOff(
+          game.arcs ?? [],
+          arc.staged,
+          `arc-${game.turnNumber}-${(game.arcs ?? []).length + 1}`,
+          game.turnNumber,
+          game.day,
+        ),
+      });
+      return;
+    }
+    const staged = arc.staged;
     commitForesight({
-      arcs: handOff(
-        game.arcs ?? [],
-        arc.staged,
-        `arc-${game.turnNumber}-${(game.arcs ?? []).length + 1}`,
-        game.turnNumber,
-        game.day,
-      ),
+      arcs: (game.arcs ?? []).map((a) => (a.id === arc.id ? rewriteArc(a, staged, game.day) : a)),
+    });
+  },
+
+  discardStagedArc() {
+    const game = get().game;
+    const arc = runningArc(game.arcs);
+    if (!arc?.staged) return;
+    commitForesight({
+      arcs: (game.arcs ?? []).map((a) => (a.id === arc.id ? { ...a, staged: undefined } : a)),
     });
   },
 

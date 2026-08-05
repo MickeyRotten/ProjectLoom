@@ -1091,6 +1091,34 @@ the whole interlude to be looked at — and a staged arc still unaccepted when
 interlude must never dead-end into arcless play because the Arc screen went
 unvisited.
 
+**The same call rewrites the chapter in hand.** The ✦ button used to reach a
+*running* arc only when there was no arc at all; once one was open, the question
+and the front were the player's to hand-edit and nobody else's to rewrite, so the
+one way to get a different chapter out of the model was to wait for the front to
+fire. Now the ✦ is offered in both states and `buildArcMessages` takes an
+`ArcCallMode` for what the arc it is shown MEANS: `"next"` is the handoff (*the
+chapter that just closed — do not repeat it*), `"rewrite"` is the player asking
+for a different one (*the chapter being replaced — do not restate its question,
+and do not name the same thing closing in*). The default is `"next"`, so the
+handoff's prompt is byte-identical to before.
+
+Accepting means two different things, and the arc's own status decides which:
+
+- **In an interlude** the chapter is over, so Use This is `handOff` — the staged
+  arc opens *beside* the closed one and both are campaign history.
+- **On a running arc** there is no history to keep, so it is `arc.ts →
+  rewriteArc`: same id, same seat in `GameState.arcs`, same `openedTurn` and
+  `areas[]`, and a new question, a new front and a clock starting from zero on
+  today. The **epoch bumps**, for exactly the reason it bumps when a front fires
+  — every area card prepped under the old question now describes a world that
+  does not exist — so the regions re-prep themselves on the next turn. Behind a
+  confirm, since it is the one Foresight action that throws written material
+  away.
+
+Nothing is applied by generating, in either state: a staged arc sits in the
+document (`Arc.staged`) until Use This or **Discard**, and only the interlude
+auto-applies.
+
 **The player writes the brief.** The same call is reachable on demand — the Arc
 screen's ✦ button, which is also the only way to get an arc at all when a
 scenario shipped without one — and it takes two inputs from the player rather
@@ -1111,6 +1139,14 @@ interlude handoff writes to the same brief the player set — and both are edite
 on the Arc screen, beside the button that spends them, rather than in the
 Foresight settings: `arcInstructions` is a standing rule about what an arc IS,
 this is about the story in hand.
+
+**Guidance also matches World Notes** (`arc.ts → arcScanText`). The arc call read
+no lorebook at all, which made it the one authoring call in the app where naming
+a thing the player had written lore for did not put that lore in front of the
+model. It now scans the guidance, the scenario (title, starting region and room,
+premise) and the arc in hand (question + front label) through the same
+`worldNotes.ts → matchWorldNotes` every other ✦ flow uses. See **Guidance is
+scan text** below.
 
 ### 2. The area
 
@@ -1199,6 +1235,71 @@ row — a turn byte-identical to today.
 The room also carries **`exits`** by name. Worth it independent of the map: "the
 ways out are the stile, the track back, the deer path" is precisely the concrete
 geography the narrator contradicts itself about three beats later.
+
+### The cards are the player's too
+
+Both card scopes shipped as *read-only displays with a ↻ button*: prep wrote
+them, the screen showed them, and a texture the model got wrong could only be
+fixed by paying for the whole card again and hoping. That is the one arrangement
+this project has already rejected everywhere else — the Journal, World Notes, the
+character sheet and the front's own steps are all *model-written, player-owned* —
+and Foresight is the feature with the strongest claim to it, since a card is read
+back into every turn taken in that place.
+
+So both scopes now work exactly the way the rest of the app authors text:
+
+- **✦ opens the shared `GenerateModal`** — guidance in, a preview, Use This /
+  Generate Again — instead of ↻ firing a call straight into the document. It
+  writes **nothing**: `store.generateAreaCard` / `generateRoomCard` return the
+  parsed card and the region in play is untouched until `applyAreaCard` /
+  `applyRoomCard`. They share `fieldGenPending` / `fieldGenError` with the other
+  ✦ flows (one generate modal is open at a time app-wide) rather than
+  `foresightPending`, which means *a boundary call the player did not ask for is
+  in flight*.
+- **Every written field is an ordinary editable field afterwards** — the region's
+  texture and standing threats, the room's danger, threats, hooks and all three
+  outcome bands. `store.updateArea` / `updateRoom` write **raw** and sanitize at
+  READ (`foresight.ts → normalizeCards`), because capping a line on write trims
+  it out from under the cursor mid-word. `updateRoom` **creates** the card if the
+  room has never been prepped, so a place the model has never seen can be
+  authored by hand.
+- The room-name list stays a display. It is the map's skeleton and every
+  coordinate on it is client-placed geometry; a generated card's new names join
+  it and the ones already on it stay.
+
+The automatic prep chain is unchanged and still commits directly — it is the same
+two functions (`store → commitAreaCard` / `commitRoomCard`), now shared, so a
+card that arrives at a boundary and a card the player accepted are stamped
+identically.
+
+`fields.tsx → LinesField` is the one new control: a list of short lines edited as
+one textarea, keeping a **local draft of the raw text**. Parsing trims each line
+and drops the blanks, so a plain controlled textarea fed `value.join("\n")` eats
+the newline the instant it is typed and the space before the next word — a bug
+the front's Steps field shipped with, and which it no longer has.
+
+### Guidance is scan text
+
+Every ✦ flow in the app takes an optional line of guidance, and it has always
+been more than an instruction: it is also what the **World Notes** matcher scans,
+so a player asking for something they have written lore for gets that lore in
+front of the model. `generateField.ts → fieldScanText`, `generateScenario.ts →
+scenarioScanText` and `generateItem.ts → itemScanText` all did this from the
+start. The three Foresight calls did not:
+
+- the **arc** call read no notes at all → `arc.ts → arcScanText`;
+- **area prep** scanned the region's name only → `areaPrep.ts → areaScanText`
+  adds the hint;
+- **room prep** read no notes at all → `roomPrep.ts → roomScanText` (this place,
+  its region, the hint) — so a lorebook entry about the Drowned Stair reached the
+  region that contains it and never the stair itself.
+
+Both prep builders take `hint` last and inject it as a `PLAYER GUIDANCE` block
+after everything else, the same position and the same authority as the ✦ flows:
+*follow it even where it cuts against what is written above*. Blank injects
+nothing and matches nothing, so the automatic prep chain — which never passes a
+hint — is byte-identical to before apart from the notes the place's own name now
+pulls in.
 
 ### Promises and option notes
 
@@ -1476,10 +1577,10 @@ room-list resolution that needs no model channel at all.
 ### Modules and screens
 
 ```
-src/lib/arc.ts        completion · interlude state · buildArcMessages · parseArc · normalizeArc
+src/lib/arc.ts        completion · interlude state · handOff ⟂ rewriteArc · buildArcMessages(mode) · arcScanText · parseArc · normalizeArc
 src/lib/fronts.ts     tickFront · neglect · restFront · formatFrontLine · formatLoomingBlock
-src/lib/areaPrep.ts   areaChanged · buildAreaMessages · parseAreaCard · normalizeAreaCard
-src/lib/roomPrep.ts   roomChanged · buildRoomMessages · parseRoomCard · normalizeRoomCard
+src/lib/areaPrep.ts   areaChanged · buildAreaMessages · areaScanText · parseAreaCard · normalizeAreaCard
+src/lib/roomPrep.ts   roomChanged · buildRoomMessages · roomScanText · parseRoomCard · normalizeRoomCard
 src/lib/promises.ts   plant · close · age · formatPromisesBlock
 src/lib/gazetteer.ts  slug keys · room→area resolution · staleness · placement spiral · normalizeMap
 prompt.ts             formatForesightBlock — tier 4b, joins arc + area + room + promises + option note
@@ -1490,10 +1591,12 @@ Pure and tested; only the store touches the network — the same discipline as
 `clock.ts`, `journal.ts` and `stakes.ts`, and the same reason.
 
 - **Menu → This Adventure → Foresight** (`SubMenuScreen`): **Arc** (question,
-  the front with editable label, steps and manual ticks, past arcs, staged
-  handoff preview, and the **✦ generation controls** — `arcGuidance` and
-  `arcSteps`, edited where they are spent) · **Area** (this area's card, stale
-  flag, ↻) · **Room** (this room's card, ↻) · **Promises** (close / drop).
+  the front with editable label, steps and manual ticks, past arcs, the staged
+  arc with Use This / Discard — a handoff in an interlude, a rewrite of the
+  chapter in hand otherwise — and the **✦ generation controls**, `arcGuidance`
+  and `arcSteps`, edited where they are spent) · **Area** (this area's card,
+  every field editable, stale flag, ✦) · **Room** (this room's card, every field
+  editable including the three outcome bands, ✦) · **Promises** (close / drop).
 - **Map** — a *play* screen, in the ⋯ quick menu with Party, Inventory, Journal
   and Saves.
 - **Menu → Settings → Narrator → Foresight** — its own sub-menu, not more rows
