@@ -409,12 +409,6 @@ export interface GameState {
   minutes: number;
   location: string;
   weather: string;
-  /**
-   * Turn number the last location banner was GENERATED on (never a cache hit).
-   * Feeds `Settings.bannerCooldown` — see `images.ts → bannerOnCooldown`.
-   * Undefined on a fresh or pre-cooldown adventure, which reads as "never".
-   */
-  lastBannerTurn?: number;
 }
 
 /**
@@ -477,8 +471,8 @@ export interface GenerateImageOptions {
 
 /**
  * Where generated images come from. `openrouter` is the shipped cloud path;
- * `comfyui` points the same two triggers (portraits, banners) at a ComfyUI
- * instance the player runs themselves. See `lib/comfyui.ts`.
+ * `comfyui` points the same portrait triggers at a ComfyUI instance the player
+ * runs themselves. See `lib/comfyui.ts`.
  */
 export type ImageBackend = "openrouter" | "comfyui";
 
@@ -505,8 +499,8 @@ export interface ComfySettings {
   /** CFG scale — `%scale%`, matching SillyTavern's token name. */
   comfyScale: number;
   /**
-   * Base pixel size. Banners use it verbatim; a portrait is reshaped to 2:3 at
-   * the same pixel area (`comfyui.ts → comfyDimensions`).
+   * Base pixel size. A portrait is reshaped to 2:3 at the same pixel area
+   * (`comfyui.ts → comfyDimensions`).
    */
   comfyWidth: number;
   comfyHeight: number;
@@ -535,9 +529,9 @@ export type PromptFormat = (typeof PROMPT_FORMATS)[number];
  *
  * Everything here decides how a prompt is WORDED, so it can all be swapped in
  * one pick when the player changes image model. Machine config (backend, URL,
- * checkpoint, sampler, size) and behaviour (`ditherMode`, `locationImages`,
- * `bannerCooldown`, `portraitRefImages`) deliberately stay outside, so a
- * template survives changing checkpoints and vice versa.
+ * checkpoint, sampler, size) and behaviour (`ditherMode`, `portraitRefImages`)
+ * deliberately stay outside, so a template survives changing checkpoints and
+ * vice versa.
  *
  * `appearanceInstructions` is in here even though it steers the TEXT model:
  * `Character.description` becomes the portrait's Subject verbatim, so a portrait
@@ -548,8 +542,6 @@ export interface ImagePromptTemplate {
   id: string;
   name: string;
   format: PromptFormat;
-  /** Art direction for a location banner — everything after the place and scene. */
-  bannerInstructions: string;
   /** The portrait Action/Location-context/Composition/Style clauses. Subject is auto-built from the character, never a settings field. */
   portraitAction: string;
   portraitContext: string;
@@ -622,14 +614,6 @@ export interface WebFontFace {
   /** Absolute woff2 URL on fonts.gstatic.com. */
   url: string;
 }
-
-/**
- * How much room the location banner takes. `compact` keeps the art reachable (a
- * tap still opens it full-screen) while handing the reading area back ~90px on
- * a phone — the banner, the party strip and the composer together were eating
- * over half the viewport of a text-first app.
- */
-export type BannerSize = "full" | "compact";
 
 /**
  * How hard the text model is asked to think before it writes (OpenRouter's
@@ -732,10 +716,9 @@ export interface Settings extends DiceRules, ComfySettings {
   imageModelId: string;
   /**
    * Master switch for image GENERATION (Images). Off means no request ever
-   * reaches the image model — no automatic portrait, no location banner, no ⟳
-   * and no ✎ — while everything already drawn still shows, uploads still work,
-   * and nothing is deleted. `locationImages` only ever governed half of the
-   * spend; this is the one place to answer "stop buying pictures", and it lives
+   * reaches the image model — no automatic portrait, no ⟳ and no ✎ — while
+   * everything already drawn still shows, uploads still work, and nothing is
+   * deleted. The one place to answer "stop buying pictures", and it lives
    * beside the image key and model it switches off.
    */
   imagesEnabled: boolean;
@@ -788,17 +771,6 @@ export interface Settings extends DiceRules, ComfySettings {
   font: string;
   /** Google Web Fonts the player added by name — see `WebFont`. */
   webFonts: WebFont[];
-  /**
-   * Whether location images exist at all. Off by default: a banner is an image
-   * generation on every new location, which is the app's most expensive habit
-   * and the one least tied to play. Off means no generation, no cached-image
-   * display, and none of the banner UI — the banner itself, its Menu size
-   * toggle, and the Images → Location Images settings all disappear rather than
-   * sitting there doing nothing.
-   */
-  locationImages: boolean;
-  /** Whether the location banner shows full height or as a thin strip. */
-  bannerSize: BannerSize;
   // Advanced (player-editable, Phase 4):
   customInstructions: string;
   /**
@@ -813,13 +785,6 @@ export interface Settings extends DiceRules, ComfySettings {
    * the first template rather than failing (`activeTemplate`).
    */
   imageTemplateId: string;
-  /**
-   * Turns to skip automatic location-banner generation for after one is
-   * generated — a spend brake for location-heavy play. 0 = off (every new
-   * location draws immediately). Cached locations always show, and ⟳ always
-   * regenerates.
-   */
-  bannerCooldown: number;
   /**
    * Style reference images (0–3, ordered) sent with every portrait generation.
    * Not part of a template: they are files, and the same three references are

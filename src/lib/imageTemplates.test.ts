@@ -4,7 +4,6 @@ import {
   builtinTemplates,
   duplicateTemplate,
   DEFAULT_APPEARANCE_INSTRUCTIONS,
-  DEFAULT_BANNER_INSTRUCTIONS,
   DEFAULT_NEGATIVE_PROMPT,
   DEFAULT_PORTRAIT_ACTION,
   DEFAULT_PORTRAIT_COMPOSITION,
@@ -113,7 +112,6 @@ describe("migration off the flat fields", () => {
     expect(prose.appearanceInstructions).toBe("Three vivid clauses.");
     expect(prose.negativePrompt).toBe("blurry");
     // Untouched fields keep the shipped wording…
-    expect(prose.bannerInstructions).toBe(DEFAULT_BANNER_INSTRUCTIONS);
     expect(prose.portraitAction).toBe(DEFAULT_PORTRAIT_ACTION);
     expect(prose.portraitContext).toBe(DEFAULT_PORTRAIT_CONTEXT);
     expect(prose.portraitComposition).toBe(DEFAULT_PORTRAIT_COMPOSITION);

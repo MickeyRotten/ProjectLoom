@@ -46,7 +46,7 @@ const ENTRIES: { screen: Screen; label: string; note: string; group: Group }[] =
   { group: "adventure", screen: "characters", label: "Characters", note: "Full cast · add to party" },
   { group: "adventure", screen: "scenario", label: "Scenario", note: "Title · premise · opening" },
   { group: "settings", screen: "narrator", label: "Narrator", note: "API key · model · voice · memory" },
-  { group: "settings", screen: "images", label: "Images", note: "Portraits · location art · prompts" },
+  { group: "settings", screen: "images", label: "Images", note: "Portraits · prompts · storage" },
   { group: "settings", screen: "rpg", label: "RPG System", note: "Dice · outcomes · what counts as risky" },
   { group: "settings", screen: "appearance", label: "Appearance", note: "Text size · font · colors" },
   { group: "settings", screen: "sync", label: "Cloud Saves", note: "Keep your snapshots on another device" },

@@ -22,23 +22,19 @@ import {
 } from "../lib/imageTemplates";
 import {
   blobToRefImage,
-  clampBannerCooldown,
   imagesAllowed,
-  MAX_BANNER_COOLDOWN,
   MAX_REF_IMAGES,
   refImageToDataUrl,
-  type ImageKind,
 } from "../lib/images";
 
 /**
  * Everything that draws a picture, in one place (DESIGN.md → Menu).
  *
- * It used to be four places — the master switch and the backend under *Model &
- * Key*, the behaviour under *Advanced → Images*, every word of every prompt
- * under *Advanced → Image Prompts*, and the banner size loose on the root menu —
- * so "why is there no picture?" had four possible answers and no route between
- * them. One screen, four sub-menus, and the two settings that apply to every
- * image on the index above them.
+ * It used to be three places — the master switch and the backend under *Model &
+ * Key*, the behaviour under *Advanced → Images*, and every word of every prompt
+ * under *Advanced → Image Prompts* — so "why is there no picture?" had three
+ * possible answers and no route between them. One screen, three sub-menus, and
+ * the two settings that apply to every image on the index above them.
  *
  * Portrait Subject (name/species/description) is never editable here — it's
  * always auto-built from the character, per the Nano Banana Subject → Action →
@@ -77,8 +73,8 @@ const DITHER_NOTES: Record<DitherMode, string> = {
 
 /**
  * The template's own fields, in the order a prompt is assembled: the appearance
- * rule that writes the Subject, then the banner, then the four portrait clauses,
- * then the negative prompt.
+ * rule that writes the Subject, then the four portrait clauses, then the
+ * negative prompt.
  */
 interface TemplateSpec {
   key: keyof TemplateText;
@@ -93,12 +89,6 @@ const TEMPLATE_FIELDS: TemplateSpec[] = [
     label: "Appearance Descriptions",
     rows: 4,
     hint: "How the narrator writes a new character's appearance — it becomes their portrait prompt verbatim, which is why it belongs to the template. Existing characters keep the appearance they were written with.",
-  },
-  {
-    key: "bannerInstructions",
-    label: "Banner Style",
-    rows: 4,
-    hint: "The art style for location images.",
   },
   { key: "portraitAction", label: "Portrait Action", rows: 3 },
   { key: "portraitContext", label: "Portrait Location/Context", rows: 2 },
@@ -201,76 +191,6 @@ function ModelSection() {
             error={error}
           />
         </>
-      )}
-    </>
-  );
-}
-
-/** Whether the top bar carries art at all, how tall it is, and how often it redraws. */
-function LocationSection() {
-  const locationImages = useStore((s) => s.settings.locationImages);
-  const bannerSize = useStore((s) => s.settings.bannerSize);
-  const bannerCooldown = useStore((s) => s.settings.bannerCooldown);
-  const update = useStore((s) => s.updateSettings);
-  return (
-    <>
-      <GenerationOffNote />
-
-      <ToggleRow
-        label="Location Images"
-        state={locationImages ? "ON" : "OFF"}
-        onClick={() => update({ locationImages: !locationImages })}
-      />
-
-      {locationImages ? (
-        <>
-          {/* Sizing the banner belongs with the switch that creates it. It used
-              to sit loose on the root menu, appearing and disappearing with a
-              toggle three levels deep in Advanced. */}
-          <ToggleRow
-            label="Compact Location Image"
-            state={bannerSize === "compact" ? "ON" : "OFF"}
-            onClick={() => update({ bannerSize: bannerSize === "compact" ? "full" : "compact" })}
-          />
-          <p className="text-xs opacity-70">
-            The top bar carries the location's art. Compact is a thin strip; off is the
-            double-height bar.
-          </p>
-
-          <Field label="Location Image Cooldown">
-            <input
-              type="number"
-              inputMode="numeric"
-              min={0}
-              max={MAX_BANNER_COOLDOWN}
-              step={1}
-              value={bannerCooldown}
-              onChange={(e) =>
-                update({ bannerCooldown: clampBannerCooldown(e.target.valueAsNumber) })
-              }
-              className="w-full border-2 border-ink bg-paper p-2 focus:outline-none"
-            />
-            <p className="text-xs opacity-70">
-              Turns to wait after a location image is generated before another one is
-              drawn — "3" skips the next 3 turns' worth of new locations. 0 turns it off.
-              Locations you've already seen still show their cached image instantly.
-            </p>
-          </Field>
-
-          <p className="text-xs opacity-70">
-            The art style for a location image lives under{" "}
-            <MenuLink screen="images" section="prompts">
-              Prompt Templates
-            </MenuLink>
-            , with the rest of the wording.
-          </p>
-        </>
-      ) : (
-        <p className="border-2 border-ink p-3 text-sm opacity-70">
-          Off: no image is drawn for a location and the banner is hidden. Character
-          portraits are unaffected. Images already generated are kept, and turning this
-          back on shows them again.
-        </p>
       )}
     </>
   );
@@ -547,11 +467,9 @@ function PromptsSection() {
 }
 
 /**
- * Delete stored art wholesale — the two kinds separately, because they go stale
- * for different reasons. Location art is the bulk (a banner per place visited,
- * each with a master behind it) and is the thing to throw away to reclaim space;
- * portraits are the thing to throw away after changing template, checkpoint or
- * style, so the cast is redrawn in the new one.
+ * Delete stored art wholesale — what a player reaches for after changing
+ * template, checkpoint or style, so the cast is redrawn in the new one, or
+ * simply to reclaim the space a long game's portraits take.
  *
  * Not gated on the master switch: purging is exactly what a player does when
  * they have just switched generation off.
@@ -559,7 +477,7 @@ function PromptsSection() {
 function StorageSection() {
   const purge = useStore((s) => s.purgeImages);
   const syncing = useStore((s) => s.settings.syncEnabled && s.account !== null);
-  const [busy, setBusy] = useState<ImageKind | null>(null);
+  const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const { ask, dialog } = useConfirm();
 
@@ -572,12 +490,12 @@ function StorageSection() {
     return line;
   }
 
-  function run(kind: ImageKind) {
+  function run() {
     setResult(null);
-    setBusy(kind);
-    void purge(kind)
+    setBusy(true);
+    void purge()
       .then((r) => setResult(describe(r)))
-      .finally(() => setBusy(null));
+      .finally(() => setBusy(false));
   }
 
   const cloudLine = syncing
@@ -597,44 +515,23 @@ function StorageSection() {
 
       <button
         type="button"
-        disabled={busy !== null}
+        disabled={busy}
         onClick={() =>
           ask(
             {
-              title: "Purge location images?",
-              body:
-                "Every location image and its master copy is deleted." +
-                cloudLine +
-                " A place is drawn again the next time you're there — the current location on your next turn, subject to the cooldown.",
-              confirmLabel: "Purge",
-            },
-            () => run("banner"),
-          )
-        }
-        className={btnSmall}
-      >
-        {busy === "banner" ? "Purging…" : "Purge Location Images"}
-      </button>
-
-      <button
-        type="button"
-        disabled={busy !== null}
-        onClick={() =>
-          ask(
-            {
-              title: "Purge character images?",
+              title: "Purge stored images?",
               body:
                 "Every portrait and its master copy is deleted, uploaded art included." +
                 cloudLine +
                 " The player character and the party are drawn again on your next turn; everyone else when their sheet is opened. Characters you removed a picture from stay without one.",
               confirmLabel: "Purge",
             },
-            () => run("portrait"),
+            run,
           )
         }
         className={btnSmall}
       >
-        {busy === "portrait" ? "Purging…" : "Purge Character Images"}
+        {busy ? "Purging…" : "Purge Stored Images"}
       </button>
 
       {result && <p className="text-xs opacity-70">{result}</p>}
@@ -651,21 +548,15 @@ const SECTIONS: SubMenuSection[] = [
     Body: ModelSection,
   },
   {
-    id: "location",
-    label: "Location Images",
-    note: "The top bar's art · size · cooldown",
-    Body: LocationSection,
-  },
-  {
     id: "prompts",
     label: "Prompt Templates",
-    note: "Wording · banner · portraits · references",
+    note: "Wording · portraits · references",
     Body: PromptsSection,
   },
   {
     id: "storage",
     label: "Stored Images",
-    note: "Purge location and character art",
+    note: "Purge stored character art",
     Body: StorageSection,
   },
 ];
@@ -689,10 +580,10 @@ function ImagesHeader() {
 
       {!imagesEnabled && (
         <p className="border-2 border-ink p-3 text-sm opacity-70">
-          Off: nothing is sent to an image model — no portraits are drawn, no location
-          images, and the regenerate and edit buttons are hidden. Pictures you already
-          have still show, and you can still upload your own art on a character's sheet.
-          Nothing is deleted; switching this back on picks up where you left off.
+          Off: nothing is sent to an image model — no portraits are drawn, and the
+          regenerate and edit buttons are hidden. Pictures you already have still show,
+          and you can still upload your own art on a character's sheet. Nothing is
+          deleted; switching this back on picks up where you left off.
         </p>
       )}
 

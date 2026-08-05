@@ -64,7 +64,7 @@ export const slotIdOf = (key: string): string =>
  * "cloud saves, not a live mirror" in one predicate.
  *
  * `dirty.ts` announces every write the app makes: the active game on every
- * turn, every generated portrait and banner, the journal, settings, slots. The
+ * turn, every generated portrait, the journal, settings, slots. The
  * engine used to ignore the key it was handed and schedule a pass for all of
  * them, which is what made syncing a per-turn upload of the entire transcript.
  * Only a snapshot and a settings edit are worth a network round trip now; the
@@ -200,10 +200,10 @@ export function newerSide(localAt: number, remoteUpdatedAt: string): "local" | "
 /**
  * Storage object name for an image cache key.
  *
- * Cache keys are free text — `banner:Boars Head Tavern`, `src:portrait:<uuid>`
- * — with spaces, colons and whatever a location name contains, none of which
- * belongs in a path segment. base64url keeps the mapping reversible (so a pull
- * knows which cache key it just downloaded) without a second table.
+ * Cache keys are free text — `portrait:<uuid>`, `src:portrait:<uuid>` — with
+ * colons and whatever a character id contains, none of which belongs in a path
+ * segment. base64url keeps the mapping reversible (so a pull knows which cache
+ * key it just downloaded) without a second table.
  */
 export function encodeImageName(key: string): string {
   const bytes = new TextEncoder().encode(key);
@@ -242,8 +242,8 @@ export interface ImagePlan {
  *
  * `wanted` is the art the SNAPSHOTS need — the union of every image key named
  * by a save slot on either side (`images.ts → slotImageKeys`). Traffic is gated
- * on it, because the cache is not the point: a long game visits dozens of
- * locations and the banners of places nobody saved at are pure spend. Deletions
+ * on it, because the cache is not the point: a long game meets dozens of
+ * people and the portraits of those nobody saved beside are pure spend. Deletions
  * are NOT gated — a `remove` for an unwanted key still propagates, or *Remove
  * Image* and the purge buttons would stop reaching the cloud the moment the key
  * fell out of scope.
@@ -251,7 +251,7 @@ export interface ImagePlan {
  * No garbage collection here on purpose. An object in the bucket that no slot
  * names is left alone rather than deleted on the inference that nothing wants
  * it — the inference is only as good as this pass's view of the slots, and the
- * player already has *Purge Location/Character Images* for saying it out loud.
+ * player already has *Purge Stored Images* for saying it out loud.
  */
 export function planImages(
   localKeys: string[],

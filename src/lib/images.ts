@@ -15,12 +15,9 @@ import { ImageError } from "./imageError";
 import { safeErrorText } from "./http";
 
 /**
- * Image generation (DESIGN.md → Image Generation). Two kinds, both triggered
- * deterministically by the client (never model-driven):
- *   - Location banner — keyed `banner:<location>`, generated on a scene change
- *     to an uncached location.
- *   - Party portrait — keyed `portrait:<memberId>`, generated when a member
- *     has no cached portrait.
+ * Image generation (DESIGN.md → Image Generation). One kind, triggered
+ * deterministically by the client (never model-driven): the party portrait,
+ * keyed `portrait:<memberId>`, generated when a member has no cached portrait.
  *
  * Two backends, one seam: `generateImage` dispatches on `Settings.imageBackend`
  * and returns a Blob either way, so the 1-bit pass, the `src:` master, the
@@ -42,14 +39,8 @@ export type { GenerateImageOptions } from "../types";
 
 /* ------------------------------ cache keys ------------------------------ */
 
-export const BANNER_PREFIX = "banner:";
 export const PORTRAIT_PREFIX = "portrait:";
 export const SOURCE_PREFIX = "src:";
-
-/** Blob-store key for a location banner. Case/whitespace-insensitive. */
-export function bannerKey(location: string): string {
-  return `${BANNER_PREFIX}${location.trim().toLowerCase()}`;
-}
 
 /** Blob-store key for a member portrait. */
 export function portraitKey(memberId: string): string {
@@ -68,35 +59,11 @@ export function sourceKey(key: string): string {
   return `${SOURCE_PREFIX}${key}`;
 }
 
-/** The two kinds of picture the app stores. */
-export type ImageKind = "banner" | "portrait";
-
-/**
- * Which kind of picture a cache key holds, or null for a key that is neither.
- *
- * A master counts as its subject: `src:banner:…` is a banner. A purge that left
- * the masters behind would free almost none of the bytes (a master is the big
- * copy — up to 1024px JPEG, the display blob is 192–256px 1-bit) and would let
- * a later ✎ edit start from art the player deleted.
- */
-export function imageKindOf(key: string): ImageKind | null {
-  const bare = key.startsWith(SOURCE_PREFIX) ? key.slice(SOURCE_PREFIX.length) : key;
-  if (bare.startsWith(BANNER_PREFIX)) return "banner";
-  if (bare.startsWith(PORTRAIT_PREFIX)) return "portrait";
-  return null;
-}
-
-/** Every key of one kind, masters included — what a purge deletes. */
-export function imageKeysOfKind(keys: Iterable<string>, kind: ImageKind): string[] {
-  return [...keys].filter((key) => imageKindOf(key) === kind);
-}
-
 /**
  * The art one saved game needs to look right when it is restored — the cast's
- * portraits and the banner of the place it was saved at. This is what a cloud
- * save carries (`sync.ts → planImages`), and it is a small, bounded set on
- * purpose: the blob store also holds the banner of every location a long game
- * ever passed through, and nobody restores to those.
+ * portraits. This is what a cloud save carries (`sync.ts → planImages`), and it
+ * is a small, bounded set on purpose: the blob store also holds the portraits
+ * of everyone a long game has ever met, and nobody restores to those.
  *
  * Display copies only, deliberately no `src:` masters. A master is the big copy
  * (up to 1024px, full grey) and it exists so ✎ and the download upscale have
@@ -108,7 +75,6 @@ export function slotImageKeys(game: GameState): string[] {
   // which may have been written by a build from before the cast lived in the
   // game — a shape the type says cannot happen and the wire says can.
   const keys = (game.characters ?? []).filter((c) => c?.id).map((c) => portraitKey(c.id));
-  if (game.location?.trim()) keys.push(bannerKey(game.location));
   return [...new Set(keys)];
 }
 
@@ -133,18 +99,6 @@ export function imagesAllowed(settings: Pick<Settings, "imagesEnabled">): boolea
 }
 
 /**
- * Whether a LOCATION banner may be generated: both the master switch and the
- * location-images opt-in. Two settings, one question — the banner path had to
- * ask it in three places, and a gate that reads only half of it is a generation
- * the player switched off.
- */
-export function bannerAllowed(
-  settings: Pick<Settings, "imagesEnabled" | "locationImages">,
-): boolean {
-  return imagesAllowed(settings) && settings.locationImages;
-}
-
-/**
  * Whether ✎ may edit an existing image. OpenRouter only: an edit is
  * "instruction + this picture, give me the picture back", which a chat image
  * model does natively and a ComfyUI txt2img graph cannot do at all — feeding an
@@ -156,54 +110,6 @@ export function imageEditAllowed(
   settings: Pick<Settings, "imagesEnabled" | "imageBackend">,
 ): boolean {
   return imagesAllowed(settings) && settings.imageBackend !== "comfyui";
-}
-
-/* ------------------------------- cooldown ------------------------------- */
-
-/**
- * Upper bound on the banner cooldown (Advanced). Anything past a couple of
- * dozen turns is indistinguishable from "off" in practice; the cap only exists
- * so a mistyped number can't silently kill banners for the rest of the save.
- */
-export const MAX_BANNER_COOLDOWN = 99;
-
-/** Clamp a player-typed cooldown to a whole number of turns in range. */
-export function clampBannerCooldown(value: number): number {
-  if (!Number.isFinite(value)) return 0;
-  return Math.min(MAX_BANNER_COOLDOWN, Math.max(0, Math.floor(value)));
-}
-
-/**
- * Turns still to wait before another location banner may be generated
- * automatically — 0 when generation is allowed right now.
- *
- * A cooldown of N means the N turns *after* the generating turn are skipped:
- * generated on turn T, turns T+1…T+N draw nothing new, T+N+1 draws again. The
- * gate is on GENERATION only — a location whose banner is already cached still
- * shows it instantly, and ⟳ ignores the cooldown entirely.
- *
- * `turnNumber` below `lastBannerTurn` (an undo walked the story back past the
- * generating turn) counts as no turns elapsed, so the wait holds rather than
- * evaporating.
- */
-export function bannerCooldownLeft(
-  cooldown: number,
-  lastBannerTurn: number | undefined,
-  turnNumber: number,
-): number {
-  const turns = clampBannerCooldown(cooldown);
-  if (turns === 0 || lastBannerTurn === undefined || !Number.isFinite(lastBannerTurn)) return 0;
-  const elapsed = Math.max(0, turnNumber - lastBannerTurn);
-  return Math.max(0, turns + 1 - elapsed);
-}
-
-/** True while automatic banner generation is suppressed. */
-export function bannerOnCooldown(
-  cooldown: number,
-  lastBannerTurn: number | undefined,
-  turnNumber: number,
-): boolean {
-  return bannerCooldownLeft(cooldown, lastBannerTurn, turnNumber) > 0;
 }
 
 /* ---------------------------- prompt builders --------------------------- */
@@ -221,32 +127,6 @@ export function joinPromptParts(parts: string[], format: PromptFormat): string {
   const clean = parts.map((p) => p.trim()).filter(Boolean);
   if (format !== "tags") return clean.join("\n\n");
   return clean.map((p) => p.replace(/[\s.,;]+$/, "")).filter(Boolean).join(", ");
-}
-
-/**
- * Banner prompt: follows the Subject → Action → Location/context → Composition
- * → Style formula. The location name (Subject) and narration excerpt
- * (Location/context) lead, since they're per-scene; the (editable) instructions
- * trail, so the 1-bit look stays fixed last regardless of what the scene
- * contains. In `tags` format the `Location:`/`Scene:` labels are dropped —
- * they'd be two tags describing nothing.
- */
-export function buildBannerPrompt(
-  location: string,
-  excerpt: string,
-  template: ImagePromptTemplate,
-): string {
-  const tags = template.format === "tags";
-  const place = location.trim();
-  const scene = excerpt.trim();
-  return joinPromptParts(
-    [
-      tags ? place : `Location: ${place}.`,
-      scene && (tags ? scene : `Scene: ${scene}`),
-      template.bannerInstructions,
-    ].filter((p): p is string => Boolean(p)),
-    template.format,
-  );
 }
 
 /**
@@ -527,7 +407,6 @@ export async function generateOpenRouterImage(opts: GenerateImageOptions): Promi
  * `image-rendering: pixelated` on every `<img>`.
  */
 export const PORTRAIT_PIXEL_WIDTH = 192;
-export const BANNER_PIXEL_WIDTH = 256;
 
 /**
  * Display width an upload keeps when 1-bit shading is OFF. With no quantization
@@ -639,7 +518,7 @@ export function exportScale(width: number, minWidth = EXPORT_MIN_WIDTH): number 
 
 /**
  * Blow a stored image up for saving to the device. The cached blob is the
- * display copy — 192–256px wide for 1-bit art — which lands in a gallery as a
+ * display copy — 192px wide for 1-bit art — which lands in a gallery as a
  * postage stamp; the app only gets away with it because every `<img>` renders
  * `image-rendering: pixelated`. A file has no such CSS, so the export bakes the
  * same nearest-neighbor upscale into the pixels. Already-large images (shading

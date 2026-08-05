@@ -168,8 +168,8 @@ interface DocRow {
  * Every document the account holds, metadata included.
  *
  * `doc` bodies come back with it. The engine needs them for more than a pull —
- * a cloud slot's body is what names the portraits and the banner this device
- * should download (`syncEngine.ts → wantedImages`) — and a second round trip per
+ * a cloud slot's body is what names the portraits this device should download
+ * (`syncEngine.ts → wantedImages`) — and a second round trip per
  * key would cost more than the bytes do. If that ever inverts, the fix is a
  * `select` without `doc` here plus a per-key fetch in the engine; the plan it
  * feeds does not change.
@@ -239,9 +239,8 @@ const LIST_PAGE = 1000;
 
 /**
  * Every stored image, as cache keys. Paged, because a long-played account holds
- * a portrait and a master per character plus a banner per location, and a single
- * page would silently truncate the diff into "delete everything past the first
- * thousand".
+ * a portrait and a master per character, and a single page would silently
+ * truncate the diff into "delete everything past the first thousand".
  */
 export async function listImages(settings: Settings, userId: string): Promise<RemoteImage[]> {
   const storage = (await need(settings)).storage.from(IMAGE_BUCKET);

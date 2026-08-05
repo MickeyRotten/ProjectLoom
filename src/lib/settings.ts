@@ -41,7 +41,6 @@ interface LegacySettings {
    * with no way to hold a second dialect. Folded onto the shipped prose
    * template — see `imageTemplates.ts → normalizeImageTemplates`.
    */
-  bannerInstructions?: string;
   portraitAction?: string;
   portraitContext?: string;
   portraitComposition?: string;
@@ -55,7 +54,6 @@ interface LegacySettings {
 /** The old flat image-prompt fields, keyed the way a template holds them. */
 function legacyTemplateText(stored: LegacySettings): Partial<TemplateText> {
   return {
-    bannerInstructions: stored.bannerInstructions,
     portraitAction: stored.portraitAction,
     portraitContext: stored.portraitContext,
     portraitComposition: stored.portraitComposition,

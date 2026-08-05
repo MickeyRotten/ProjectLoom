@@ -13,12 +13,12 @@ DB split, TTS, weather/backdrop system, Python backend).
 Design goals, in priority order: **simplicity**, fast/short/punchy shonen-style
 action, **sandbox** freedom, and **everything player-editable** without a separate
 edit mode. It generates its own characters/items/quests/adventures and, as the story
-moves, generates **1-bit pixel-art portraits and location banners** via an image model.
+moves, generates **1-bit pixel-art character portraits** via an image model.
 
 ### Locked decisions (from design Q&A)
 - **Client-only, no backend.** One app; the phone calls OpenRouter directly; all logic + saves are on-device.
 - **One pre-made scenario**, fully editable in Settings. Inline editing everywhere — no Edit mode.
-- **Images via OpenRouter** (Nano Banana 2 Lite). Scope: **party portraits + location banners**, generated on demand, player can **regenerate**.
+- **Images via OpenRouter** (Nano Banana 2 Lite). Scope: **party portraits**, generated on demand, player can **regenerate**.
 - **Uncensored adult** default.
 - Carry over: **Spotlight**, **day counter**. Single-category lorebook = **World Notes**. Equipment = simple `{label, description, quantity?}` text fields per character, **moved** in and out of the shared inventory (see *Equip ⇄ Inventory*).
 - **Turn model: single structured call** (not an agentic tool loop).
@@ -70,7 +70,7 @@ loop. The model returns **narration prose followed by one machine-read JSON bloc
 - Client **parses tolerantly** (brace-matched salvage, always strip the block from displayed prose even if JSON is malformed — port `parse_action_block`'s tolerance from `narrator_actions.py`).
 - `options` are the **AI-generated action buttons** — inline in the same call, so no extra request per turn (Wayward's `inline` action-suggestions mode).
 - State changes (`location`/`day`/`weather`/`party`/`inventory`/`quests`) are applied to the active save (op-based add/update/remove; inventory carries `quantity`, quests carry `reward`). `spoke` is a hint, but **`lastSpokeTurn` is updated deterministically** from the prose via the ported `detectSpeakers` (never trust the model alone).
-- **`location` is ONE place name, the most specific one.** The protocol says so ("Damp Cellar", never "Boars Head Tavern - Damp Cellar"), and `deltas.ts → simplifyLocation` enforces it on the way in: a compound joined by ` - `, ` — `, ` / `, ` > `, ` | ` or `: ` keeps only the **last** segment, since with those joiners the tail is the narrower place. Prompt wording alone wasn't enough — the location is a scene label *and* the banner's cache key, so "Tavern - Damp Cellar" is a different key from "Damp Cellar" and the same room gets drawn again every time the model changes its mind about the prefix. Commas are deliberately **not** joiners ("Rodstroke, Mesmeria" nests the other way round), and a hyphen without surrounding spaces is part of a name ("Half-Moon Inn"). A location that is nothing but separators leaves the scene unchanged.
+- **`location` is ONE place name, the most specific one.** The protocol says so ("Damp Cellar", never "Boars Head Tavern - Damp Cellar"), and `deltas.ts → simplifyLocation` enforces it on the way in: a compound joined by ` - `, ` — `, ` / `, ` > `, ` | ` or `: ` keeps only the **last** segment, since with those joiners the tail is the narrower place. Prompt wording alone wasn't enough — the location is the scene label the reading area rules off with, so "Tavern - Damp Cellar" and "Damp Cellar" read as two different rooms every time the model changes its mind about the prefix. Commas are deliberately **not** joiners ("Rodstroke, Mesmeria" nests the other way round), and a hyphen without surrounding spaces is part of a name ("Half-Moon Inn"). A location that is nothing but separators leaves the scene unchanged.
 - `party` ops match **by name across the whole cast**, so a companion from an earlier adventure is re-used, not duplicated. **A sheet is authored once, at creation, and frozen after**: only an `add` naming someone genuinely new writes `species`/`description`/`personality`/`drive`/`strengths`/`flaws` **and their starting `equipment`** (straight onto the new `Character`) — the narrator kits a companion out from the appearance it just wrote, and the gear is the player's from then on. Every later op — `add` or `update` — carries `standing` and nothing else; sheet fields on a character who already exists are dropped. An `add`/`update` may carry `"standing": "active" | "benched" | "npc"`, and a `remove` `"standing": "departed" | "fallen"` — nothing the model emits ever deletes anyone. See *Characters ⟂ Party*.
 - **A character can be renamed** (`names.ts`, `PartyDelta.newName`). Matching by name is what makes the whole party channel work — the narrator only ever knows a character as a string — and it is also what made a rename impossible. Asked to add "a character who enters the player's story", a narrator adds one the moment a goblin swings a club, before anybody in the scene has a name for it; two beats later the goblin gives a name and the model's only way to connect the two is a second `add`, so the party holds **Unnamed Goblin** *and* **Grik**. Renaming in place was no better: the id, the roster entry and the `portrait:<id>` cache all survive, but the transcript, the journal and the model's own next few ops keep saying the OLD name, and every name-keyed path — `detectSpeakers`, the spotlight's `directlyAddressed`, NPC keyword gating, Auto-Update's story scan — silently stops matching until the history window rolls over. So a rename is one operation with two halves: **the name moves and the old one is kept.** `Character.aliases` is the list of names someone has answered to (newest first, capped), `names.ts → nameForms` is what every matcher takes instead of `c.name`, and `withRename` is the only writer — shared by the narrator's `{ "op":"update", "name":"Unnamed Goblin", "newName":"Grik" }` and by the player editing Name on the member sheet, so the two cannot mean different things. The sheet stays frozen through it (a rename is not a way back in), a `newName` on the op that *creates* somebody renames nobody, and a rename onto a name that already belongs to someone **else** is refused — that op is the narrator conflating two characters, and merging two sheets, two portraits and two standings is the player's call. The prevention rides beside the cure, as `Settings.namingInstructions` (Narrator → *Names & Renames*): don't add a character until the player has something to call them — a name, an alias, or the title they are known by; someone nameless is prose. That is only prevention, though, and never enough on its own — an alias revealed as a real name is the same event, and no naming discipline stops it.
 - **An op that changes nothing is not an op** (`deltas.ts → reconcileBlock`) — every channel, folded before anything applies or records it. A narrator asked every turn *what changed* answers with the state instead: it re-reports an acquisition it already made, re-states a mark someone already carries, re-sends the Gold total it can see in INVENTORY. Most of that is harmless to the state (setting X to what X already is costs nothing) but **inventory `add` merges quantity**, so a restated `add` is `+1` a turn and the pack fills with Rusty Key ×7 — and none of it is harmless to the transcript, since `toasts.ts` derives its chips from the recorded block. A chip is a claim that something happened: "Hiro: Armed with a strange, glowing sword" on four beats in a row, "Gold: 15" on a beat where nobody paid anybody. So a row is dropped when the state it asks for is the state already there — a condition equal to the current mark, an `update` to the count it already is, a quest `add` for a quest already on the board, a party op leaving someone where they stand, a `remove` for something not held, an op naming a character or item nothing resolves. Plus the two the data shape creates: an **exact-duplicate row inside one block** is written once (keys sorted, so field order can't hide a copy), and an inventory **`add` with NO `quantity` for an item already held** is a restatement — dropped, or demoted to the `update` it meant if it brought a new `description`. An `add` *with* a quantity is always honoured ("picked up 2 more torches" is a real event). State is tracked *as the block runs*, so a pickup earlier in the same block counts, and Gold stays held through a `remove` (the purse empties, the row survives). The store applies **and records** the folded block.
@@ -270,20 +270,17 @@ One isolated function returning the OpenRouter `messages[]`. It is built in **ti
 ## Image Generation — `src/lib/images.ts`
 
 - **Access:** OpenRouter chat-completions with an image-output model (Nano Banana 2 Lite), reading the returned image (base64 data URL) from the response. *(Exact request/response shape for image output over OpenRouter must be verified against current OpenRouter docs at implementation time — flag, don't assume.)*
-- **Two backends, one seam (`Settings.imageBackend`, Images → Model):** `generateImage` is the only function in the app that turns a prompt into pixels, so a second backend is a dispatch inside it and nothing else changes — the 1-bit pass, the `src:` master, the IndexedDB cache, the placeholder and the failure badge never learn which machine drew the picture. **OpenRouter** is the default and is untouched. **ComfyUI** (`src/lib/comfyui.ts`) points the same two deterministic triggers at a server the player runs themselves: free to render, their own checkpoints, and no network round-trip to a vendor. See **ComfyUI** below.
-- **Two kinds, deterministic triggers (not model-driven):**
-  - **Location banner** — keyed by `banner:<location>`. On a scene change to an **uncached** location, generate from location name + a short narration excerpt + the **banner style instructions**. Gated by `Settings.locationImages`, see below.
+- **Two backends, one seam (`Settings.imageBackend`, Images → Model):** `generateImage` is the only function in the app that turns a prompt into pixels, so a second backend is a dispatch inside it and nothing else changes — the 1-bit pass, the `src:` master, the IndexedDB cache, the placeholder and the failure badge never learn which machine drew the picture. **OpenRouter** is the default and is untouched. **ComfyUI** (`src/lib/comfyui.ts`) points the same deterministic trigger at a server the player runs themselves: free to render, their own checkpoints, and no network round-trip to a vendor. See **ComfyUI** below.
+- **One kind, deterministic trigger (not model-driven):**
   - **Party portrait** — keyed by `portrait:<memberId>`. When a member has no portrait, generate from their name/species/**sex**/description + the **portrait style instructions** — *unless* the player removed it (`Character.noPortrait`), see **Remove** below. Sex is in the Subject because an image model given only prose guesses, and guesses differently on every regenerate.
-- **Style baked in:** default banner/portrait instructions enforce **1-bit monochrome pixel/line art**. Player-editable under Images → Prompt Templates, as one of several **templates**, see below.
-- **Master switch (Images → Image Generation, `Settings.imagesEnabled`, ON by default):** one setting that stops *every* request to the image model — portraits, banners, ⟳ and ✎ alike. `locationImages` only ever governed half the spend, and the other half had no switch at all: a player who didn't want to buy pictures had to turn location images off and then *Remove Image* on every character, one at a time, forever, because the automatic trigger redraws whatever isn't cached. The gate is on **generation only** and reads the same as the banner cooldown does — `imagesAllowed`/`bannerAllowed` in `images.ts`, folded into the existing `cacheOnly` flag, so `syncImages` degrades to a cache probe and everything already drawn still shows. Uploads, downloads, *Remove Image* and the zoom view all keep working (none of them talks to a model); ⟳/✎ hide, `regenerateBanner`/`editImage`/forced portraits no-op, the banner's cooldown countdown stops being displayed (that wait would never end), and the Image API Key + Image Model fields hide under the switch that made them dead. Nothing stored is deleted. Ships **on** because portraits have always drawn themselves — shipping it off would read as a broken pipeline, not a saving.
-- **Location images off by default (Images → Location Images → `Settings.locationImages`):** the whole banner feature is opt-in. Portraits are drawn once per character and then reused forever; a location banner is a fresh generation every time the story moves somewhere new, which makes it the app's most expensive habit and the one furthest from the text the player came for. Off means **no generation and no UI**: `syncImages` skips the banner entirely (cached or not), `regenerateBanner` no-ops, `<Header>` falls back to the plain single-height ink strip (no art, no image controls), and the *Compact Location Image* toggle and the cooldown field beneath it are hidden rather than left as dead controls (the banner *style* is part of a prompt template and stays editable — a template is a whole dialect, not a per-feature setting). Nothing is deleted — already-generated banners are still in IndexedDB and reappear the moment it's switched back on. Portraits are unaffected.
-- **Location image cooldown (Images → Location Images → `Settings.bannerCooldown`, 0 = off):** turns to skip automatic banner generation for after one is drawn — `3` means the next 3 turns draw no new location image, the 4th does (`bannerOnCooldown` / `bannerCooldownLeft`, counted from `GameState.lastBannerTurn`). A location-hopping stretch otherwise bills one generation per turn, which is the single easiest way to burn image credit without noticing. Three deliberate limits: the gate is on **generation only**, so an already-cached location still shows its banner instantly; the stamp is written on a real generation only, never a cache hit, so re-treading known ground doesn't stall the next new one; and **`regenerateBanner` ignores the cooldown** (but restarts it — it *is* a generation; no longer reachable from the bar, see *Top bar*). While suppressed the banner placeholder says how many turns are left, so it never reads as a broken image. `lastBannerTurn` is deliberately outside `Reversal` — an undo can't un-spend a generation.
-- **Regenerate:** ⟳ on each member sheet (and `regenerateBanner` in the store) re-runs generation and **replaces the cached blob and its master** — generated, edited, or uploaded, whatever is there loses. A forced regeneration that fails flags `imgError` (an *image failed* badge) **with the reason** — "failed" alone is unactionable, and the causes are wildly different (no credit, a refused prompt, an unreadable file). ⟳ also clears `noPortrait`.
+- **Style baked in:** the default portrait instructions enforce **1-bit monochrome pixel/line art**. Player-editable under Images → Prompt Templates, as one of several **templates**, see below.
+- **Master switch (Images → Image Generation, `Settings.imagesEnabled`, ON by default):** one setting that stops *every* request to the image model — automatic portraits, ⟳ and ✎ alike. A player who didn't want to buy pictures otherwise had to press *Remove Image* on every character, one at a time, forever, because the automatic trigger redraws whatever isn't cached. The gate is on **generation only** — `imagesAllowed` in `images.ts`, folded into the `cacheOnly` flag, so `syncImages` degrades to a cache probe and everything already drawn still shows. Uploads, downloads and *Remove Image* all keep working (none of them talks to a model); ⟳/✎ hide, `editImage`/forced portraits no-op, and the Image API Key + Image Model fields hide under the switch that made them dead. Nothing stored is deleted. Ships **on** because portraits have always drawn themselves — shipping it off would read as a broken pipeline, not a saving.
+- **Regenerate:** ⟳ on each member sheet re-runs generation and **replaces the cached blob and its master** — generated, edited, or uploaded, whatever is there loses. A forced regeneration that fails flags `imgError` (an *image failed* badge) **with the reason** — "failed" alone is unactionable, and the causes are wildly different (no credit, a refused prompt, an unreadable file). ⟳ also clears `noPortrait`.
 - **Edit (✎):** instruction + the image back to the model; the result **becomes** the new image (display copy *and* master). The edit source is the master, never the display copy — handing a model a 192px 1-bit thumbnail comes back as mush or as a text-only reply that fails the edit outright.
 - **Remove (member sheet):** *Remove Image* deletes a member's portrait **and its master**, revokes the object URL, and sets `Character.noPortrait` on the global character. The flag is the whole point: the automatic trigger is "no cached portrait → draw one", so without it the next turn's `syncImages` would silently undo the removal. It's a character-level choice (a portrait is shared across adventures), and only ⟳ or an upload clears it.
 - **Upload / download (member sheet):** *Upload Image* replaces a member's portrait with a file from the device — put through the same downscale + 1-bit pass as a generated portrait, so custom art lands in the same visual system and stays small in IndexedDB (with shading **off** it keeps `UPLOAD_PLAIN_WIDTH` instead of the 1-bit pixel width: no pixel grid to snap to, so crushing it that far only loses the photo); ⟳ still regenerates over it. Unlike the generated path, the upload pass is **strict**: a file the browser can't decode (HEIC straight off an iPhone, a renamed non-image) fails the upload loudly instead of being stored verbatim — storing it "succeeds" and then shows a broken portrait that no later edit can repair. *Download Image* saves the stored portrait out, **nearest-neighbor upscaled to ≥ `EXPORT_MIN_WIDTH`** by `toExportBlob` — the display copy is a ~192px sliver that only reads as art because every `<img>` renders `image-rendering: pixelated`, and a file has no such CSS, so the upscale is baked into the exported pixels (integer factor: each stored pixel becomes an exact square). Delivery is `lib/download.ts`, three paths in order: on the **APK**, `@capacitor/filesystem` writes the bytes to the app cache and `@capacitor/share` opens the native save/share sheet — the Android System WebView implements neither `navigator.share` nor blob `<a download>`, so this is the only route that reaches the device; then browser **Web Share** with files; then an `<a download>` click on desktop. A dismissed sheet counts as done; any other failure surfaces as a note under the button.
 - **Storage:** image blobs in IndexedDB, referenced by key; UI reads via object URLs. Each key also carries a **master copy** under `src:<key>` (`sourceKey`) — the pixels before the downscale + 1-bit pass, bounded to `SOURCE_MAX_SIDE` as JPEG. Masters exist for edit round-trips only; losing one is never fatal (edits fall back to the display copy). A master is only ever kept in a **model-safe format** (`isModelSafeImage`: PNG/JPEG/WebP) — anything else is re-encoded, and when it can't be, **no master is stored at all**. An unconvertible master (HEIC from a phone gallery) posted back as an edit source is rejected by the API *every single time*, which reads as "this uploaded picture can never be edited"; no master at all is strictly better, since the display copy is always canvas-encoded PNG.
-- **Purge (Images → Stored Images):** two buttons — *Purge Location Images* and *Purge Character Images* — deleting **every** stored blob of one kind, display copies **and** their `src:` masters, from IndexedDB and, when signed in, from Supabase Storage as well. The per-item controls were never enough: *Remove Image* is one character at a time and there is no per-location control at all, so a long game's banner cache (one image plus a ~1024px master per place ever visited) could only be reclaimed by clearing app data, and re-tuning a template or a checkpoint meant redrawing a cast one sheet at a time. Two buttons rather than one because the two kinds go stale for different reasons — banners are the bulk, portraits are the style. `images.ts → imageKindOf`/`imageKeysOfKind` are the pure classifier (a master counts as its subject: `src:banner:…` is a banner — skipping masters would free almost none of the bytes and leave ✎ able to edit art the player deleted); the store deletes through `db.deleteImage`, which stamps each key, so an ordinary sync pass propagates the deletion. That is **not** enough on its own, though: a key that exists only in the cloud — drawn on the other phone and never pulled here — has no stamp and no local blob, so if any save still names it `planImages` would read it as an image this device is missing and download it straight back. So `syncEngine.purgeRemoteImages` lists the bucket and removes the matching objects directly, best-effort per key (a failure leaves the object *and* its stamp, so the local deletion still propagates later). Deliberately leaves **no** `noPortrait` flag: this is a cache purge, not a per-character "no picture", so the deterministic triggers redraw the PC and the party on the next turn — the confirmation says so. Not hidden when generation is off, since purging is exactly what a player does having just switched it off.
+- **Purge (Images → Stored Images):** one button — *Purge Stored Images* — deleting **every** stored blob, display copies **and** their `src:` masters, from IndexedDB and, when signed in, from Supabase Storage as well. The per-item control was never enough: *Remove Image* is one character at a time, so re-tuning a template or a checkpoint meant redrawing a cast one sheet at a time, and a long game's portrait cache (one image plus a ~1024px master per character ever met) could only be reclaimed by clearing app data. The store deletes through `db.deleteImage`, which stamps each key, so an ordinary sync pass propagates the deletion. That is **not** enough on its own, though: a key that exists only in the cloud — drawn on the other phone and never pulled here — has no stamp and no local blob, so if any save still names it `planImages` would read it as an image this device is missing and download it straight back. So `syncEngine.purgeRemoteImages` lists the bucket and removes every object directly, best-effort per key (a failure leaves the object *and* its stamp, so the local deletion still propagates later). Deliberately leaves **no** `noPortrait` flag: this is a cache purge, not a per-character "no picture", so the deterministic trigger redraws the PC and the party on the next turn — the confirmation says so. Not hidden when generation is off, since purging is exactly what a player does having just switched it off.
 - **Diagnostics:** a 200 that carries no image is soft-retried once, then fails with the model's **own text reply** quoted (`extractMessageText`) — a model answering in words is usually saying why ("I can't create images of real people", a policy line), and discarding it leaves the player with a bare badge and nothing to change.
 - Fire-and-forget with a visible placeholder while generating; a failed image never blocks the turn.
 
@@ -307,7 +304,7 @@ prose at one wastes most of a 77-token encoder window. Two templates ship,
   needs. Deliberately *not* inferred from `imageBackend`: a prose-friendly
   checkpoint running locally is a perfectly normal setup, and the two choices are
   the player's to combine.
-- **What's in a template:** the banner style, the four portrait clauses
+- **What's in a template:** the four portrait clauses
   (Action / Location-context / Composition / Style), the reference instruction,
   the **negative prompt** (moved off `ComfySettings` — a negative list is dialect,
   not machine config, and one server runs both dialects), and
@@ -323,8 +320,8 @@ prose at one wastes most of a 77-token encoder window. Two templates ship,
   the appearance they were written with (the member sheet's ✦ and Auto-Update are
   the way to re-word one), and a tag-style appearance reads as tags on the sheet
   too.
-- **What's outside:** `ditherMode`, `locationImages`, `bannerCooldown`,
-  `portraitRefImages`, and every ComfyUI connection field. Behaviour and machine
+- **What's outside:** `ditherMode`, `portraitRefImages`, and every ComfyUI
+  connection field. Behaviour and machine
   config — a template must survive changing checkpoints, and a checkpoint must
   survive changing dialects. Reference *images* stay global for the same reason:
   they are files, and the same three references are what "our art style" means
@@ -335,7 +332,7 @@ prose at one wastes most of a 77-token encoder window. Two templates ship,
   is never empty and `activeTemplate` never fails — a dangling `imageTemplateId`
   takes the first template — since there is no sane state in which an image
   cannot be prompted. **Migration:** a save written before templates existed has
-  its flat `bannerInstructions` / `portrait*` / `appearanceInstructions` /
+  its flat `portrait*` / `appearanceInstructions` /
   `comfyNegativePrompt` folded onto the *prose* built-in, so an edited style
   clause survives verbatim and the tag dialect simply appears beside it.
 
@@ -344,7 +341,7 @@ prose at one wastes most of a 77-token encoder window. Two templates ship,
 - **The protocol:** `POST /prompt` with `{ prompt: <graph>, client_id }` → a `prompt_id`; poll `GET /history/<prompt_id>` (which answers with a map *keyed by prompt id* — `{}` means pending) until the entry appears; pull `{filename, subfolder, type}` out of the first output node carrying `images[]` and fetch `GET /view?…` for the bytes. `POST /interrupt` on abort or timeout. Polling rather than the websocket: a socket adds a second failure mode and a `clientId` handshake for a progress bar nothing renders, while history is the authoritative record either way. Unlike SillyTavern's loop this one has a **deadline** (`COMFY_TIMEOUT_MS`) — a phone that walked out of wifi range would otherwise sit on "rendering…" for the rest of the session.
 - **The workflow is the player's**, stored as raw ComfyUI **API-format** JSON (what *Save (API Format)* exports) with `%placeholder%` tokens, and substituted by a **string replace on the JSON text with the quotes included** — `replaceAll('"%steps%"', JSON.stringify(25))`. That one mechanism gets the types right for free: `JSON.stringify` supplies the quotes for a string and emits a bare number for a number, so `"steps": "%steps%"` becomes `"steps": 25` while a prompt full of quotes and newlines lands correctly escaped. It also means **a template must wrap every placeholder in quotes, even numeric ones**. Tokens are deliberately SillyTavern's set, spelling included (`prompt · negative_prompt · model · vae · sampler · scheduler · steps · scale · width · height · denoise · clip_skip · seed`), so a workflow written for one works in the other: `scale` is CFG (there is no `%cfg%`) and `clip_skip` goes out negative, as `CLIPSetLastLayer` counts it. Everything a workflow doesn't reference is simply ignored, which is how a LoRA stack or a Flux pipeline is supported without a setting for it.
 - **Validated where it's edited.** `validateWorkflow` runs on the *substituted* text — the raw template isn't valid JSON for a hand-written unquoted number — and both the editor and every generation call it, so a bad paste fails on the screen that caused it rather than as a missing portrait forty turns later. A blank stored workflow falls back to the shipped one (the editor would otherwise have nothing to show); a *broken* one is kept, because it's the player's edit and the error is on screen.
-- **Sizing:** `comfyWidth`/`comfyHeight` are the base, used verbatim for a banner. A portrait passes the same `aspectRatio: "2:3"` the OpenRouter path sends and is reshaped to that ratio **at the same pixel area**, snapped to multiples of 64 — so switching backends doesn't quietly change how much work a portrait is.
+- **Sizing:** `comfyWidth`/`comfyHeight` are the base, used verbatim when no ratio is asked for. A portrait passes the same `aspectRatio: "2:3"` the OpenRouter path sends and is reshaped to that ratio **at the same pixel area**, snapped to multiples of 64 — so switching backends doesn't quietly change how much work a portrait is.
 - **Reaching it from the APK** is three separate blockers, and one answer. ComfyUI returns a hard **403** to any request carrying `Sec-Fetch-Site: cross-site` unless started with `--enable-cors-header`; the Capacitor WebView is served from `https://localhost`, so `http://192.168.x.x:8188` is **mixed content**; and Android blocks **cleartext** from targetSdk 28. Requests therefore go through **`CapacitorHttp` on native** and `fetch` on the web — a native request leaves from Java, where none of those three rules apply (the manifest's `usesCleartextTraffic` is patched in CI, since `android/` isn't committed). `server.androidScheme` is deliberately *not* changed: that moves the app's origin and would orphan every installed player's IndexedDB saves. On the web build there is no escape and `--enable-cors-header` is genuinely required, so a 403 is translated into that sentence rather than surfaced as a status — it is the one error every new user hits, and nothing inside the app can fix it. The web POST also sends **no `Content-Type`**, which keeps it a CORS simple request with no preflight; ComfyUI reads the body with `await request.json()` and doesn't check.
 - **Discovery:** *Connect* pings `/system_stats` and then reads `/object_info/{KSampler,CheckpointLoaderSimple,UNETLoader,VAELoader}` to fill the checkpoint / sampler / scheduler / VAE pickers (a combo input's options are `input.required.<field>[0]`). Every lookup is optional — a build without `UNETLoader` is normal. This exists because a wrong host and a mistyped checkpoint name fail *identically*, as a portrait that never appears, and neither is visible anywhere else in the app.
 - **What ComfyUI does not do:** ✎ **Edit** is OpenRouter-only (`imageEditAllowed`) and the button is hidden, not disabled — feeding an image into a workflow means a *different graph* with a LoadImage node, which is the player's to write and not something the app can substitute into one. **Portrait style reference images** are likewise not sent, for the same reason; the Image Prompts screen says so while the backend is selected. Uploads, downloads, *Remove Image* and the zoom view are unaffected — none of them talks to a model.
@@ -371,16 +368,14 @@ Settings {                    // global, edited in Settings
     journalMaxTurns, journalMinTurns, journalInstructions
   characterCreationInstructions, characterUpdateInstructions,           // Writing Characters
     standingInstructions, departureInstructions, spotlightRule
-  // Images (sub-menus: Model · Location Images · Prompt Templates · Stored Images):
+  // Images (sub-menus: Model · Prompt Templates · Stored Images):
   ditherMode                                                            // Images (index)
-  locationImages, bannerSize, bannerCooldown                            // Location Images
   imageTemplates: ImagePromptTemplate[], imageTemplateId,               // Prompt Templates
     portraitRefImages
 }
 
 ImagePromptTemplate {         // one image dialect — lib/imageTemplates.ts
   id, name, format: prose | tags
-  bannerInstructions
   portraitAction, portraitContext, portraitComposition, portraitStyle
   portraitRefInstruction, negativePrompt
   appearanceInstructions      // steers the NARRATOR — the Subject must match the dialect
@@ -414,7 +409,6 @@ GameState {                   // the active adventure (autosaved) + what each sa
   messages: Message[]         // { role, content, turn, appliedDeltas, day, minutes, location, weather }
   journal: JournalEntry[]     // { id, day, fromTurn, throughTurn, lines: { text, source }[] }
   turnNumber, day, minutes, location, weather   // `minutes` = time of day, client-owned (clock.ts)
-  lastBannerTurn?                       // turn a location banner was last GENERATED — cooldown anchor
 }
 
 RosterEntry {
@@ -544,10 +538,8 @@ Layout top-to-bottom (the reference screenshot is a **style guide, not literal t
 
 ```
 ┌──────────────────────────────────────┐
-│                                       │  header IS the PC, over the location
-│      location banner (1-bit)          │  banner: double height, art as
-│ [KAI] KAI                         =   │  background, portrait · name · hearts
-│       ♥♥♥♥♥♥                          │  bottom-left, menu bottom-right
+│ [KAI] KAI                         =   │  header IS the PC: portrait · name ·
+│       ♥♥♥♥♥♥                          │  hearts at the left, menu at the right
 │──────────────────────────────────────│
 │ [NAVI] [RILEY] [ELARA] [   ]          │  party portrait strip (tap → sheet)
 │──────────────────────────────────────│
@@ -577,25 +569,6 @@ Layout top-to-bottom (the reference screenshot is a **style guide, not literal t
   holding the shape a future hit-point system would take. They are `aria-hidden`
   for exactly that reason — announcing "6 of 6 health" would describe a mechanic
   this app does not have.
-- **The banner is still the bar's background** (when `Settings.locationImages`
-  is on): the bar doubles to 120px and the generated 1-bit image is drawn behind
-  it, with the PC block and the menu along the **bottom** edge, **directly on the
-  art** — no scrim, no gradient. The gradient that used to back them was
-  darkening the bottom third of every banner; an **outline** buys the same
-  legibility for none of the picture (`-webkit-text-stroke: 3px #000` with
-  `paint-order: stroke`, so black traces each glyph and the white fill paints on
-  top). Tapping bare art opens it full-screen. **No image controls sit on the art
-  at all**: ✎ followed ⟳ and ▲ off the bar — a location banner is scenery the
-  story replaces every time the player moves, so retouching one does not earn a
-  button parked permanently on top of it, and each glyph cost the image the
-  corner it sat in. (`regenerateBanner` is still in the store, just not surfaced;
-  `editBanner` is gone.) Everything drawn on the art uses literal `#000`/`#fff`
-  rather than the ink/paper tokens — the banner is a real bitmap that a custom
-  palette does **not** flip, so a themed glyph would go black-on-black the moment
-  the player chose dark paper. The bar's own contents inherit through
-  `border-current`/`currentColor`, so there is one place per variant that names a
-  colour. With location images off the bar is exactly the themed ink strip it
-  always was.
 - **AI options:** 3–4 contextual choices from the `<<<LOOM>>>` block, rendered **in the chat view, directly under the latest narration beat**; number keys submit; each just sends its text as a normal turn. They scroll with the chat, tethered to the beat that produced them.
 - **Chat scrolling:** the log opens on the newest beat and follows the tail while the reader is parked there; scrolling up into the history stops the follow and shows a **↓ LATEST** button back to the live edge.
 - **Party strip** sits **directly under the top bar, above the reading area**; always visible; tapping a portrait opens that member's **full-screen sheet** (info · edit fields · **regenerate portrait** · **auto-update**). Strip portraits are zoomed 50% and top-aligned so the face fills the slot; the sheet's portrait frame is **2:3**. It holds **companions only** — the PC is the top bar now, which put the whole cast together at the top of the screen (the strip used to hang below the log, a screen's height from the PC it was showing alongside) and left the reading area running uninterrupted from there to the composer. The freed slot went back to the cap, so `PARTY_LIMIT` and the strip's width are the same number again.
@@ -656,7 +629,7 @@ The third ✦, and the only one that writes a **whole row**. The two places a pl
   plus `interactive-widget=resizes-content`, so the keyboard shrinks the shell
   instead of pushing the composer off-screen.
 - **Touch targets** are `min-h-11` (44px) on `btn`/`btnSmall`, the turn
-  controls, the header gear and the banner icons. `btnSmall` — used for Restore
+  controls and the header gear. `btnSmall` — used for Restore
   / Delete / Remove / Reset, i.e. exactly the mis-taps worth avoiding — was
   ~26px. It still *looks* small; only the hit area grew.
 - **Turn options are visible.** Regen / Edit / Undo were revealed only by an
@@ -722,7 +695,7 @@ optional image model — shown while `Settings.setupDone` is false.
     in the list itself, and the current pick stays selectable even when the
     checkbox or the filter would exclude it.
 - **Failed images say why.** `ensureImage` recorded `imgError` only on a forced
-  ⟳, so an automatic banner or portrait that failed left an eternal placeholder
+  ⟳, so an automatic portrait that failed left an eternal placeholder
   and no reason — the cause (no credit, refused prompt, unreadable file) only
   surfaced if the player happened to press ⟳. It now records on both paths.
 
@@ -743,10 +716,7 @@ All secondary screens — **member sheet, Party, Inventory, Quests, and every Se
   `Settings` and outlives every adventure — which is also why New Adventure sits
   under both rather than inside either. Captions rather than a nested *Settings*
   screen: the depth would cost a tap on every visit and buy nothing the caption
-  doesn't. The one `Settings` key that used to be edited *from* the navigation
-  list — *Compact Location Image* — moved to Images → Location Images, beside the
-  switch that decides whether the banner exists at all; it had been the more
-  discoverable of the two, which was backwards.
+  doesn't.
 - **Deep links, not paths in prose.** `setScreen(screen, section?)` carries an
   optional sub-menu, held as a one-shot `section` on the store and consumed by
   the arriving `SubMenuScreen`. Six copy strings used to *name* a path
@@ -799,8 +769,8 @@ All secondary screens — **member sheet, Party, Inventory, Quests, and every Se
     `theme-color` meta from the paper's relative luminance — so a color is
     decided in exactly one place. The old **Invert Colors** toggle is gone: it
     was one point in this space, and it is the first two of four presets (Ink on
-    Paper · Paper on Ink · Amber CRT · Green CRT). Generated banner and portrait
-    art is a real 1-bit bitmap and stays black and white whatever is picked.
+    Paper · Paper on Ink · Amber CRT · Green CRT). Generated portrait art is a
+    real 1-bit bitmap and stays black and white whatever is picked.
 - **Narrator screen** is everything that steers the **text** model, as an
   **index of sub-menus** (`SubMenuScreen`): **Model** (OpenRouter API Key · Text
   Model · Reasoning · Temperature · Beat Length Limit), **Voice & Actions**
@@ -821,18 +791,16 @@ All secondary screens — **member sheet, Party, Inventory, Quests, and every Se
   screen by that name holding the actual cast. `Memory — Turns Kept` became
   **Memory — Story**: it is a token budget, its own hint said so, and it now
   pairs with **Memory — Journal**.
-- **Images screen** is everything that draws a picture, in one place — the four
+- **Images screen** is everything that draws a picture, in one place — the three
   destinations this used to take (the master switch and backend under *Model &
   Key*, behaviour under *Advanced → Images*, wording under *Advanced → Image
-  Prompts*, and banner size loose on the root menu) meant "why is there no
-  picture?" had four possible answers and no route between them. Its **index**
-  carries the two settings that apply to every image — **Image Generation**
-  (`imagesEnabled`) and **1-Bit Shading** — above four sub-menus: **Model**
-  (backend, then key + model or the whole ComfyUI block), **Location Images**
-  (on/off · **Compact Location Image** · cooldown), **Prompt Templates** (the
-  template picker and everything a template holds: appearance rule · banner
-  style · the four portrait clauses · negative prompt · style references),
-  **Stored Images** (the two purges).
+  Prompts*) meant "why is there no picture?" had three possible answers and no
+  route between them. Its **index** carries the two settings that apply to every
+  image — **Image Generation** (`imagesEnabled`) and **1-Bit Shading** — above
+  three sub-menus: **Model** (backend, then key + model or the whole ComfyUI
+  block), **Prompt Templates** (the template picker and everything a template
+  holds: appearance rule · the four portrait clauses · negative prompt · style
+  references), **Stored Images** (the purge).
 
   1-Bit Shading is a **segmented three-button row**, not the cycling `ToggleRow`
   it was: a toggle can only say what the value is *now*, so a third state
@@ -853,14 +821,11 @@ All secondary screens — **member sheet, Party, Inventory, Quests, and every Se
 ### Reading area
 
 This is a text game, and its chrome had grown to eat more than half a phone:
-header + 16:5 banner + a 1:2 party strip + composer left roughly 350px for
+header + a 1:2 party strip + composer left roughly 350px for
 prose, with the action options rendering *inside* that same scroll region so a
 fresh beat was often pushed above the fold by its own suggestions. The fixes are
 all about handing that space back:
 
-- **`Settings.bannerSize`** — `full` is the double-height top bar (120px),
-  `compact` the single-height one (60px) with the art still behind the label
-  under a flat scrim. Tapping the art opens it full-screen in either.
 - **Party strip** slots are **4:5**, not 1:2 — portraits are face-cropped
   (`origin-top scale-150`), so the extra height never showed more of anyone.
   They were 3:5 while the strip sat below the log; moving it **above** the
@@ -894,7 +859,7 @@ all about handing that space back:
 - **Phase 0 — Scaffold.** Vite + React + TS + Tailwind + Zustand + `idb` + Capacitor. 1-bit `theme.css`. This design doc. GitHub Actions APK build (learn from Wayward's `android.yml`; signed release, self-update-friendly).
 - **Phase 1 — Core loop.** Settings (key + model). `prompt.ts` + streaming call + `<<<LOOM>>>` parse + truncate-at-`<<<`. Narration renders; options work; day/location/weather apply; autosave. (PC only, no party, no images yet.)
 - **Phase 2 — Party + Spotlight.** Port `spotlight.ts`; party roster, portrait strip, member sheets, inventory view, fixed buttons, `detectSpeakers` → `lastSpokeTurn`. Dialogue segmenter (`Name: "…"`).
-- **Phase 3 — Images.** `images.ts`; deterministic banner/portrait triggers, IndexedDB blob store, regenerate buttons. Verify OpenRouter image-output shape first.
+- **Phase 3 — Images.** `images.ts`; deterministic portrait triggers, IndexedDB blob store, regenerate buttons. Verify OpenRouter image-output shape first.
 - **Phase 4 — Authoring + Saves.** Scenario editor, World Notes CRUD + keyword injection, narrator instructions, save slots (snapshot/restore/new). The pre-made scenario ships as the default.
 - **Phase 5 — Polish + APK.** ✅ Reversal (`reversal.ts` pre-turn slice snapshot; `undoLastTurn`/`regenerateLastTurn`; `TurnControls`), error auto-retry (`retry.ts` policy + `streamChat` whole-stream restart, ported from Wayward), APK signing/CI (`android.yml`), mobile polish (overscroll lock, safe-area insets).
 
@@ -1024,8 +989,8 @@ nothing about the app changes and no request is made, and the SDK is a lazy
 **Cloud SAVES, not a live mirror.** This started as a mirror of the whole device
 — the active game pushed on a 5s debounce after every write — and that was the
 wrong shape for a single-player text game. It re-sent the entire transcript on
-every beat (there is no delta protocol), uploaded every generated portrait and
-banner whether anything needed them or not, ran a pass each time the app came
+every beat (there is no delta protocol), uploaded every generated portrait
+whether anything needed it or not, ran a pass each time the app came
 back to the foreground, and needed a conflict prompt, two rescue snapshots and
 an "is this game untouched?" heuristic purely to cope with two devices playing
 the same live game. The app already had the primitive that answers all of it:
@@ -1041,7 +1006,7 @@ per-turn network cost, which is now **zero**.
 key/value table `loom_docs (user_id, key, doc jsonb, deleted, device,
 updated_at)` and one private Storage bucket `loom-images`. The keys are
 `settings` · `slot:<id>`; images are objects at `<user_id>/<base64url(cache
-key)>`, encoded because a cache key is free text ("banner:Boars Head Tavern").
+key)>`, encoded because a cache key is free text ("portrait:<uuid>").
 Every policy is `auth.uid() = user_id` — the anon key ships in the app, as it is
 meant to, and RLS is what protects the data. `updated_at` is stamped by a
 trigger, never by the client: it is the merge clock, and two phones disagree
@@ -1076,12 +1041,11 @@ the cloud holds snapshots that only change when somebody presses Save. Passes
 stay single-flight, debounced 5s, with backed-off retries on failure.
 
 **Images are scoped to the saves.** `images.ts → slotImageKeys` names the art one
-saved game needs — its cast's portraits and the banner of the place it was saved
-at — and `planImages` gates upload and download on the union of those keys across
-the slots on **both** sides (a cloud slot's body is already in hand from
-`pullDocs`, so knowing what to download costs nothing). The blob store also holds
-the banner of every location a long game ever passed through, and nobody restores
-to those. Display copies only, **no `src:` masters**: a master is the big copy,
+saved game needs — its cast's portraits — and `planImages` gates upload and
+download on the union of those keys across the slots on **both** sides (a cloud
+slot's body is already in hand from `pullDocs`, so knowing what to download costs
+nothing). The blob store also holds the portrait of everyone a long game ever
+met, and nobody restores to those. Display copies only, **no `src:` masters**: a master is the big copy,
 kept so ✎ and the download upscale have real pixels, and neither is something a
 restored save needs. Deletions are **not** gated, or *Remove Image* and the purge
 buttons would stop reaching the cloud the moment a key fell out of scope. No
@@ -1115,7 +1079,7 @@ woff2 files do not.
   - `spotlight.ts`: `_member_spoke` / `detectSpeakers` (name-mention vs actual dialogue), signal computation, group-address detection.
   - `prompt.ts`: block ordering, history trimming to budget, opening-narration prepend.
   - `<<<LOOM>>>` parser: tolerant salvage, block always stripped from prose, options parse.
-- **Manual end-to-end on device/emulator:** start the pre-made scenario → take several turns → confirm short punchy narration, working options + fixed buttons, banner appears on new location, portraits appear for party, spotlight voices addressed members and stays quiet otherwise, save/load round-trips, everything editable in Settings.
+- **Manual end-to-end on device/emulator:** start the pre-made scenario → take several turns → confirm short punchy narration, working options + fixed buttons, portraits appear for party, spotlight voices addressed members and stays quiet otherwise, save/load round-trips, everything editable in Settings.
 - **APK smoke test:** install the CI artifact, run a full turn with a real OpenRouter key.
 
 ---
