@@ -722,10 +722,9 @@ taken without it. Three scopes, widest first: an **arc** (the story's question
 plus **fronts** — things closing in, written in advance as a list of steps whose
 length IS the clock), an **area** card (a region's standing pressure, plus a
 list of room NAMES that seeds the map and stops the narrator renaming the same
-place), and a **room** card — the only one carrying `outcomes`, keyed by the
-same three `TurnOutcome` values `stakes.ts` already bands to. That is the whole
-join: `formatStakesBlock` gained one argument, and **only the branch that rolled
-is ever shown**. Prep runs AFTER a beat lands (`store → runPrep`, single-flight,
+place), and a **room** card (this space, its threats and what sets each off,
+what is here to want, and the ways out — no prepared roll results; see **rooms
+prepare no roll result** below). Prep runs AFTER a beat lands (`store → runPrep`, single-flight,
 every failure swallowed) and prefetches the rooms the current one's `exits`
 name, since entry is only known when the block lands. **Reckon** is client-owned
 and callless (`foresight.ts → reckonTurn`, folded into the same `nextGame`, so
@@ -844,6 +843,22 @@ their feet), unvisited ones are dropped, exits pointing at a dropped room are
 pruned with them, and the new card's names are seeded onto what is left. One
 rule for both writers, since both go through `commitAreaCard`: the ✦ on
 Foresight → Region and the automatic re-prep an arc's new epoch triggers.
+
+Post-MVP also: **rooms prepare no roll result** — `RoomCard.outcomes` and the
+Room screen's *If You Roll Here* section are removed, and with them the whole
+Foresight ⟂ dice join: `gazetteer.ts → preparedOutcome`, `formatStakesBlock`'s
+`prepared` argument and its "Prepared for this scene" lines, the three `strong`/
+`mixed`/`cost` keys in the room-prep contract, and the outcome sentences in
+`DEFAULT_SCENE_PREP_INSTRUCTIONS`. A band written for a PLACE is spent on
+whatever was attempted in it — a haggle on the rotten stair drew the stair's
+collapse — where the room's own material (danger · threats · hooks · exits) is
+something the narrator can spend on any action at all. `formatStakesBlock` is
+back to the roll and the rule. Alongside it, **prep fields lost their character
+cap**: `PREP_MAX_LINE_CHARS` is gone and `prepLine` only trims, for the room's
+fields and the region's alike — these are fields the player types into, and a
+cap sanitizing at READ trims text out from under the cursor. The COUNT caps
+(`AREA_MAX_THREATS`, `ROOM_MAX_THREATS`, `ROOM_MAX_HOOKS`, `AREA_MAX_ROOMS`)
+stay. No migration — a stored `outcomes` is simply not read.
 
 Deferred (post-MVP): rolling LLM summarization of the beats themselves,
 NPC/item art, TTS, weather animation, multi-world. Track scope in

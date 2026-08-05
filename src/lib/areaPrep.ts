@@ -29,9 +29,6 @@ export const AREA_MAX_THREATS = 2;
 /** Room names one card may seed. Capped so rumours cannot accumulate forever. */
 export const AREA_MAX_ROOMS = 8;
 
-/** Hard cap on one written line. The `JOURNAL_MAX_LINE_CHARS` mould. */
-export const PREP_MAX_LINE_CHARS = 140;
-
 /**
  * Warmer than the journal's 0.3 (this is invention) and cooler than a ✦ field's
  * 0.9 (it has to sit inside a world somebody else already wrote).
@@ -49,12 +46,16 @@ export function areaChanged(
   return areaIsStale(card, arc);
 }
 
-/** Trim and cap one written line. */
+/**
+ * Trim one written line. No character cap: a prep field is player-editable, so
+ * a cap trims text out from under the cursor on the way back in, and the model
+ * is already told to write one line.
+ */
 export function prepLine(raw: unknown): string {
-  return typeof raw === "string" ? raw.trim().slice(0, PREP_MAX_LINE_CHARS) : "";
+  return typeof raw === "string" ? raw.trim() : "";
 }
 
-/** Trim, cap and de-blank a written list. */
+/** Trim, cap the COUNT of, and de-blank a written list. */
 export function prepLines(raw: unknown, limit: number): string[] {
   if (!Array.isArray(raw)) return [];
   return raw.map(prepLine).filter(Boolean).slice(0, limit);
@@ -93,7 +94,7 @@ export function parseAreaCard(raw: string): ParsedAreaCard | null {
 
 /**
  * Sanitize a stored area card at READ. Everything the client owns is pinned
- * here — coordinates onto the grid, caps onto the written lines — so a
+ * here — coordinates onto the grid, the count of the written lists — so a
  * hand-edited save degrades instead of reaching the prompt intact.
  */
 export function normalizeAreaCard(raw: Partial<AreaCard>, key: string): AreaCard {
@@ -160,7 +161,7 @@ export function areaScanText(name: string, hint?: string): string {
  *
  * The arc is shown and the model is told **not to restate it**. Three tiers is
  * where "every fact is stated once" goes to die, so it is enforced at AUTHORING
- * rather than at display — caps do the rest.
+ * rather than at display.
  *
  * `hint` is the ✦ button's free text. It goes in last, so it outranks the
  * region as it stands, and it feeds the note matcher on the way — a player

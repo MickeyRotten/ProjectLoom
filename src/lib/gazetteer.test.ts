@@ -12,7 +12,6 @@ import {
   normalizeCoord,
   normalizeMap,
   placeKey,
-  preparedOutcome,
   reseedRooms,
   resolveAreaKey,
   roomIsStale,
@@ -283,7 +282,7 @@ describe("staleness", () => {
   });
 
   it("marks a room card written under an older version of its region", () => {
-    const card = { version: 1, openedTurn: 0, danger: "", threats: [], hooks: [], outcomes: { strong: "", mixed: "", cost: "" } };
+    const card = { version: 1, openedTurn: 0, danger: "", threats: [], hooks: [] };
     expect(roomIsStale(area({ version: 1 }), room("x", { card }))).toBe(false);
     expect(roomIsStale(area({ version: 2 }), room("x", { card }))).toBe(true);
     // A room with no card is not stale, it is unprepped.
@@ -358,7 +357,6 @@ describe("the card readers", () => {
             danger: "the cart track ends at a stile",
             threats: ["the stile is watched"],
             hooks: ["a warden's mark"],
-            outcomes: { strong: "S", mixed: "M", cost: "C" },
           },
         }),
         stile: room("The Stile"),
@@ -366,33 +364,5 @@ describe("the card readers", () => {
     });
     const block = formatRoomBlock(a, a.rooms["forest-entrance"]);
     expect(block).toContain("ways out: The Stile");
-    // The bands never appear in the room block — only the one that rolled does,
-    // and it rides the OUTCOME block instead.
-    expect(block).not.toContain("strong");
-    expect(block).not.toContain("cost");
-  });
-});
-
-describe("preparedOutcome", () => {
-  const card = {
-    version: 1,
-    openedTurn: 1,
-    danger: "",
-    threats: [],
-    hooks: [],
-    outcomes: { strong: "the stair holds", mixed: "", cost: "the stair collapses" },
-  };
-
-  it("returns only the band that rolled", () => {
-    expect(preparedOutcome(room("A", { card }), "cost")).toBe("the stair collapses");
-    expect(preparedOutcome(room("A", { card }), "strong")).toBe("the stair holds");
-  });
-
-  it("is blank with no card, no room and no roll", () => {
-    expect(preparedOutcome(room("A", { card }), null)).toBe("");
-    expect(preparedOutcome(room("A"), "cost")).toBe("");
-    expect(preparedOutcome(undefined, "cost")).toBe("");
-    // A band the prep left blank makes no claim.
-    expect(preparedOutcome(room("A", { card }), "mixed")).toBe("");
   });
 });

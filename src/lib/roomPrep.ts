@@ -7,7 +7,6 @@ import type {
   RoomSlot,
   Settings,
   StoryPromise,
-  TurnOutcome,
 } from "../types";
 import { type ChatMessage, formatScenarioBlock } from "./prompt";
 import { extractFirstJsonObject, parseJsonTolerant } from "./loomBlock";
@@ -18,18 +17,10 @@ import { formatWorldNotesBlock, matchWorldNotes } from "./worldNotes";
 /**
  * Room prep — one call per room, ever, until its area is re-prepped.
  *
- * The room card is the only Foresight artefact with `outcomes`, and they are
- * keyed by `TurnOutcome`: the same three keys `stakes.ts` already bands to.
- * That is the whole join between the two features — no new prompt block, no new
- * mapping, one extra line inside `formatStakesBlock`.
- *
- * **The narrator is shown only the branch that rolled.** The two it did not roll
- * never enter the context, so there is nothing to hedge toward and nothing to
- * leak. A quiet turn rolls nothing and gets no line at all, exactly as today.
- *
- * The prepared line is **per-room, not per-action** — a haggle attempted on the
- * rotten stair still draws the stair's cost — so the wording tells the narrator
- * it is material to FOLD INTO whatever was attempted, never a script.
+ * A room card is what this place IS: the space, the threats and what sets them
+ * off, what is here to want, and the ways out. It carries no prepared outcome
+ * bands — the dice band the narrator rolls is `stakes.ts`'s business alone, and
+ * a line written in advance for a place cannot know what was attempted in it.
  *
  * Pure + tested.
  */
@@ -45,9 +36,6 @@ export const ROOM_MAX_EXITS = 4;
 
 /** Same reasoning as `AREA_PREP_TEMPERATURE`; the room is the more concrete half. */
 export const ROOM_PREP_TEMPERATURE = 0.8;
-
-/** The three bands, in the order the prompt asks for them. */
-const OUTCOME_KEYS: TurnOutcome[] = ["strong", "mixed", "cost"];
 
 /**
  * Does this room need a call?
@@ -74,13 +62,12 @@ export interface ParsedRoomCard {
   threats: string[];
   hooks: string[];
   exits: string[];
-  outcomes: Record<TurnOutcome, string>;
 }
 
 /**
- * Pull a room card out of a model reply. A card with no `outcomes` at all is
- * still worth keeping — the threats and the exits are useful on their own — but
- * a reply with nothing usable anywhere returns null.
+ * Pull a room card out of a model reply. A partial card is still worth keeping
+ * — the threats and the exits are useful on their own — but a reply with
+ * nothing usable anywhere returns null.
  */
 export function parseRoomCard(raw: string): ParsedRoomCard | null {
   const json = extractFirstJsonObject(raw);
@@ -92,25 +79,9 @@ export function parseRoomCard(raw: string): ParsedRoomCard | null {
   const threats = prepLines(parsed.threats, ROOM_MAX_THREATS);
   const hooks = prepLines(parsed.hooks, ROOM_MAX_HOOKS);
   const exits = prepLines(parsed.exits, ROOM_MAX_EXITS);
-  const outcomes = readOutcomes(parsed.outcomes);
 
-  const empty =
-    !danger &&
-    !threats.length &&
-    !hooks.length &&
-    !exits.length &&
-    OUTCOME_KEYS.every((k) => !outcomes[k]);
-  return empty ? null : { danger, threats, hooks, exits, outcomes };
-}
-
-/** The three bands off a reply, each a line or blank. */
-function readOutcomes(raw: unknown): Record<TurnOutcome, string> {
-  const src = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
-  return {
-    strong: prepLine(src.strong),
-    mixed: prepLine(src.mixed),
-    cost: prepLine(src.cost),
-  };
+  const empty = !danger && !threats.length && !hooks.length && !exits.length;
+  return empty ? null : { danger, threats, hooks, exits };
 }
 
 /** Sanitize a stored room card at READ. */
@@ -122,7 +93,6 @@ export function normalizeRoomCard(raw: Partial<RoomCard> | null | undefined): Ro
     danger: prepLine(raw.danger),
     threats: prepLines(raw.threats, ROOM_MAX_THREATS),
     hooks: prepLines(raw.hooks, ROOM_MAX_HOOKS),
-    outcomes: readOutcomes(raw.outcomes),
   };
 }
 
@@ -138,7 +108,6 @@ export function stampRoomCard(
     danger: parsed.danger,
     threats: parsed.threats,
     hooks: parsed.hooks,
-    outcomes: parsed.outcomes,
   };
 }
 
@@ -157,7 +126,7 @@ export function roomScanText(name: string, area: AreaCard, hint?: string): strin
 /**
  * The messages for one room-prep call: the area it sits in (shown, and not to
  * be restated), the last two beats, the outstanding promises, the party's
- * flaws — which are what makes a COST land on somebody in particular rather
+ * flaws — which are what makes a threat land on somebody in particular rather
  * than on the scenery — and the lore this place's name pulls in.
  *
  * `hint` is the ✦ button's free text: last in the list so it outranks the room
@@ -180,18 +149,13 @@ export function buildRoomMessages(
     content: [
       "SCENE PREP — you are preparing ONE place in a text adventure before the player acts in it. Private notes, never narration.",
       "Reply with a single JSON object and nothing else — no prose, no commentary, no code fences:",
-      '{ "danger": "…", "threats": ["…"], "hooks": ["…"], "exits": ["…"], "outcomes": { "strong": "…", "mixed": "…", "cost": "…" } }',
+      '{ "danger": "…", "threats": ["…"], "hooks": ["…"], "exits": ["…"] }',
       "",
       "THE FIELDS",
       `- "danger" is what this space IS, in one line — the shape of it, the sightlines, what it does to somebody standing in it.`,
       `- "threats" is at most ${ROOM_MAX_THREATS}: the thing, AND what sets it off.`,
       `- "hooks" is at most ${ROOM_MAX_HOOKS}: what is here to want.`,
       `- "exits" is the ways out, BY NAME — the concrete geography a scene contradicts itself about three beats later.`,
-      "- \"outcomes\" is the heart of this: what a risky action in this place resolves to. Three lines, prepared in advance, each one thing that HAPPENS here.",
-      "  · \"strong\" must CHANGE THE SCENE, not merely grant the request — that is how a win gets interesting.",
-      "  · \"mixed\" gets it done and charges for it.",
-      "  · \"cost\" is what failure MEANS in this place, specifically. Never a generic setback.",
-      "- Each outcome is material to fold into whatever the player actually attempted, not a script: write what this place does, not what the player does.",
       "- No numbers anywhere, and nothing the player has already been told.",
       settings.scenePrepInstructions.trim(),
     ]
@@ -231,7 +195,7 @@ export function buildRoomMessages(
   if (flaws.length) {
     messages.push({
       role: "system",
-      content: `WHO IS HERE, AND WHAT THEY ARE BAD AT — a cost lands best on somebody in particular.\n${flaws
+      content: `WHO IS HERE, AND WHAT THEY ARE BAD AT — a threat lands best on somebody in particular.\n${flaws
         .map((m) => `- ${m.name}: ${m.flaws.trim()}`)
         .join("\n")}`,
     });
@@ -276,8 +240,7 @@ function lastBeats(messages: Message[], turns: number): string {
 }
 
 /**
- * The card is READ in `gazetteer.ts` — `formatRoomBlock` for the prep block and
- * `preparedOutcome` for the one band that rolled. Same reason as `areaPrep.ts`:
- * this module imports `prompt.ts` to build its call, so prompt assembly cannot
- * import back.
+ * The card is READ in `gazetteer.ts → formatRoomBlock`. Same reason as
+ * `areaPrep.ts`: this module imports `prompt.ts` to build its call, so prompt
+ * assembly cannot import back.
  */

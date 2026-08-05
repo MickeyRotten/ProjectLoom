@@ -5,7 +5,6 @@ import { openArc } from "./arc";
 import {
   AREA_MAX_ROOMS,
   AREA_MAX_THREATS,
-  PREP_MAX_LINE_CHARS,
   areaChanged,
   areaScanText,
   buildAreaMessages,
@@ -77,9 +76,10 @@ describe("parseAreaCard", () => {
     expect(parseAreaCard('{ "texture": "  " }')).toBeNull();
   });
 
-  it("caps a line's length", () => {
+  it("caps the COUNT of a list, never a line's length", () => {
     const long = "x".repeat(400);
-    expect(prepLines([long], 1)[0]).toHaveLength(PREP_MAX_LINE_CHARS);
+    expect(prepLines([long, long], 1)).toHaveLength(1);
+    expect(prepLines([long], 1)[0]).toHaveLength(400);
   });
 });
 

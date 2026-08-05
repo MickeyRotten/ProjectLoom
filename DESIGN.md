@@ -1015,13 +1015,15 @@ renders the buttons and discards the thinking behind them.
 | authored by     | the scenario, then the model               | the model                                       | the model                                    |
 | fires on        | New Adventure · day-boundary review · handoff | entering an unprepped or stale area             | entering an unprepped room · turn ceiling    |
 | lifespan        | sessions; archived on completion           | the campaign (cached, revisited)                | the campaign (cached under its area)         |
-| owns            | **the front + its clock** · the story's question | region texture · standing threats            | this space · threats · hooks · **`outcomes`** |
+| owns            | **the front + its clock** · the story's question | region texture · standing threats            | this space · threats · hooks · **`exits`**   |
 | calls           | ~1 per in-game day                         | 1 per area, ever (until stale)                  | 1 per room, ever (until stale)               |
 | reads           | scenario · PC · journal · the front · **the player's guidance** | **the arc** · scenario · matched World Notes    | **the area** · last 2 beats · promises · party flaws |
 
-**Only the room carries outcome bands.** A band resolves in a space, never in an
-arc; the two upper scopes exist to make that one line specific rather than
-generic. Extra calls, all off the critical path: **zero per turn.**
+**No scope prepares a roll result.** A prepared band is written for a place and
+spent on whatever was attempted in it, which is a guess the dice already make
+better; the bands belong to `stakes.ts` alone. Prep writes what is *there*, and
+the narrator spends it. Extra calls, all off the critical path: **zero per
+turn.**
 
 ### The loop — Prep → Play → Reckon
 
@@ -1030,7 +1032,7 @@ generic. Extra calls, all off the critical path: **zero per turn.**
  ────────                    ────                          ──────────────────────
  PREP call ──> card ──────> injected PRIVATE ──> narrator spends ──> RECKON (no call)
       ↑          │               │                                        │
-      │          └── outcomes{strong,mixed,cost} ──> OUTCOME block ────────┤ cost ticks the front
+      │          └── danger · threats · hooks · exits ─────────────────────┤ cost ticks the front
       │                                                                    │ promise planted
  ARC call <── the front + promises + journal <──────────────────────────────┘ promise paid
   (day boundary)
@@ -1207,28 +1209,16 @@ calls and a map ghost. Naming instability has taught this project the same
 lesson twice already (`names.ts` aliases, inventory `slug` merging); a room's
 `name` keeps the display spelling, the key does the matching.
 
-### 3. The room, and the join to `stakes.ts`
+### 3. The room
 
-The room card is the only one with `outcomes`, keyed by `TurnOutcome` — the same
-three keys `stakes.ts` already bands to. That is the whole join: no new prompt
-block, no new mapping. `formatStakesBlock` gains one line.
-
-```
-OUTCOME — COST · 1d6 2 −1 = 1
-Prepared for this scene: the stair collapses, the ankle turns, and the landlord
-upstairs now knows.
-```
-
-**The narrator is shown only the branch that rolled.** The two it did not roll
-never enter the context, so there is nothing to hedge toward and nothing to leak.
-A quiet turn rolls nothing and gets no line at all, exactly as today.
-
-Shipped prep instructions say a `strong` must **change the scene, not merely
-grant the request** — that is how success gets interesting, and it is one
-sentence of a player-editable field. The prepared line is **per-room, not
-per-action** — a haggle attempted on the rotten stair still draws the stair's
-cost — so the block's wording tells the narrator it is material to fold into
-whatever was attempted, never a script: adapt it to the action that rolled it.
+The narrowest card, and the only one prepped from the beats: what this space
+is, the threats and what sets each off, what is here to want, and the ways out.
+It prepares **no roll result** — the dice band is `stakes.ts`'s alone, and
+`formatStakesBlock` takes the roll and the rule and nothing else. A line written
+in advance for a *place* cannot know what was attempted in it: a haggle
+attempted on the rotten stair drew the stair's collapse, which is a prepared
+non-sequitur where the room's own material — a rotten stair, watched from
+above — is something the narrator can spend on any action at all.
 
 **Entry is only known when the block lands**, so a card requested on arrival is
 ready for the *second* beat in a room — and the entering beat is the one worth
@@ -1263,12 +1253,13 @@ So both scopes now work exactly the way the rest of the app authors text:
   `foresightPending`, which means *a boundary call the player did not ask for is
   in flight*.
 - **Every written field is an ordinary editable field afterwards** — the region's
-  texture and standing threats, the room's danger, threats, hooks and all three
-  outcome bands. `store.updateArea` / `updateRoom` write **raw** and sanitize at
-  READ (`foresight.ts → normalizeCards`), because capping a line on write trims
-  it out from under the cursor mid-word. `updateRoom` **creates** the card if the
-  room has never been prepped, so a place the model has never seen can be
-  authored by hand.
+  texture and standing threats, the room's danger, threats and hooks.
+  `store.updateArea` / `updateRoom` write **raw** and sanitize at READ
+  (`foresight.ts → normalizeCards`), which trims and de-blanks and caps how MANY
+  lines a list holds; there is no per-line character cap, because a cap on a
+  field the player types into trims text out from under the cursor mid-word.
+  `updateRoom` **creates** the card if the room has never been prepped, so a
+  place the model has never seen can be authored by hand.
 - The room-name list stays a display. It is the map's skeleton and every
   coordinate on it is client-placed geometry; a generated card's new names join
   it and the ones already on it stay.
@@ -1404,10 +1395,10 @@ YOU PLANNED THIS — "the stair takes weight it shouldn't"
 
 Three tiers is where **every fact is stated once** goes to die, so it is enforced
 at *authoring*, not display: area prep is shown the arc and told not to restate
-it, room prep is shown the area and told not to restate it. Caps do the rest
-(`AREA_MAX_THREATS 2`, `ROOM_MAX_THREATS 3`, per-line character caps in the
-`JOURNAL_MAX_LINE_CHARS` mould). Target for the whole block: **≤ ~150 tokens**,
-smaller than one beat.
+it, room prep is shown the area and told not to restate it. List caps do the
+rest (`AREA_MAX_THREATS 2`, `ROOM_MAX_THREATS 3`) — counts only, never a
+per-line character cap, since these are fields the player edits. Target for the
+whole block: **≤ ~150 tokens**, smaller than one beat.
 
 Only the arc's **next** step is shown, never the remaining ones — the rest is
 spoiler for the narrator and noise in the budget.
@@ -1553,7 +1544,6 @@ interface RoomCard {
   danger: string;                // one line: what this space is
   threats: string[];             // <= ROOM_MAX_THREATS: the thing + what sets it off
   hooks: string[];               // <= 2: what is here to want
-  outcomes: Record<TurnOutcome, string>;   // SAME keys as stakes.ts
 }
 
 // NOT `Promise` — shadowing the global breaks every async signature in reach.
@@ -1601,8 +1591,9 @@ Pure and tested; only the store touches the network — the same discipline as
   arc with Use This / Discard — a handoff in an interlude, a rewrite of the
   chapter in hand otherwise — and the **✦ generation controls**, `arcGuidance`
   and `arcSteps`, edited where they are spent) · **Area** (this area's card,
-  every field editable, stale flag, ✦) · **Room** (this room's card, every field
-  editable including the three outcome bands, ✦) · **Promises** (close / drop).
+  every field editable, stale flag, ✦) · **Room** (this room's card — what the
+  place is, its threats, what is here to want — every field editable, ✦) ·
+  **Promises** (close / drop).
 - **Map** — a *play* screen, in the ⋯ quick menu with Party, Inventory, Journal
   and Saves.
 - **Menu → Settings → Narrator → Foresight** — its own sub-menu, not more rows

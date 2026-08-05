@@ -157,17 +157,14 @@ const CHARACTER_FIELDS: InstrSpec[] = [
   },
 ];
 
-/**
- * Foresight's four instruction fields, in scope order: the room (the only one
- * that carries outcome bands), the region, the arc, the promises.
- */
+/** Foresight's four instruction fields, in scope order: room, region, arc, promises. */
 const FORESIGHT_FIELDS: InstrSpec[] = [
   {
     key: "scenePrepInstructions",
     label: "Scene Prep",
     def: DEFAULT_SCENE_PREP_INSTRUCTIONS,
     rows: 5,
-    hint: "What the narrator prepares for a place before you act in it — including what a strong, mixed or costly roll actually means there.",
+    hint: "What the narrator prepares for a place before you act in it: what it is, what is dangerous in it, and what is here to want.",
   },
   {
     key: "areaPrepInstructions",

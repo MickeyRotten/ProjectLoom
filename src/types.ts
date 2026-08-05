@@ -502,9 +502,8 @@ export interface RoomSlot {
 }
 
 /**
- * The room card — the only Foresight artefact carrying outcome bands, keyed by
- * the same three `TurnOutcome` values `stakes.ts` already bands to. That is the
- * whole join between the two features: no new prompt block, no new mapping.
+ * The room card — the narrowest Foresight artefact: one place, as it stands,
+ * for as long as the region under it does not move.
  */
 export interface RoomCard {
   /** The `AreaCard.version` this was prepped under; a mismatch is stale. */
@@ -516,8 +515,6 @@ export interface RoomCard {
   threats: string[];
   /** What is here to want. Two at most. */
   hooks: string[];
-  /** What a STRONG / MIXED / COST resolves to *here*. */
-  outcomes: Record<TurnOutcome, string>;
 }
 
 /**

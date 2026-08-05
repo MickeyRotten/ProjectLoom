@@ -1576,7 +1576,6 @@ export const useStore = create<LoomStore>((set, get) => {
       danger: "",
       threats: [],
       hooks: [],
-      outcomes: { strong: "", mixed: "", cost: "" },
     };
     commitForesight({
       areas: {
