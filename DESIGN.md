@@ -1015,9 +1015,9 @@ renders the buttons and discards the thinking behind them.
 | authored by     | the scenario, then the model               | the model                                       | the model                                    |
 | fires on        | New Adventure · day-boundary review · handoff | entering an unprepped or stale area             | entering an unprepped room · turn ceiling    |
 | lifespan        | sessions; archived on completion           | the campaign (cached, revisited)                | the campaign (cached under its area)         |
-| owns            | **fronts + clocks** · the story's question | region texture · standing threats · **its front** | this space · threats · hooks · **`outcomes`** |
+| owns            | **the front + its clock** · the story's question | region texture · standing threats            | this space · threats · hooks · **`outcomes`** |
 | calls           | ~1 per in-game day                         | 1 per area, ever (until stale)                  | 1 per room, ever (until stale)               |
-| reads           | scenario · PC · journal · fronts           | **the arc** · scenario · matched World Notes    | **the area** · last 2 beats · promises · party flaws |
+| reads           | scenario · PC · journal · the front · **the player's guidance** | **the arc** · scenario · matched World Notes    | **the area** · last 2 beats · promises · party flaws |
 
 **Only the room carries outcome bands.** A band resolves in a space, never in an
 arc; the two upper scopes exist to make that one line specific rather than
@@ -1030,9 +1030,9 @@ generic. Extra calls, all off the critical path: **zero per turn.**
  ────────                    ────                          ──────────────────────
  PREP call ──> card ──────> injected PRIVATE ──> narrator spends ──> RECKON (no call)
       ↑          │               │                                        │
-      │          └── outcomes{strong,mixed,cost} ──> OUTCOME block ────────┤ cost ticks a front
+      │          └── outcomes{strong,mixed,cost} ──> OUTCOME block ────────┤ cost ticks the front
       │                                                                    │ promise planted
- ARC call <── fronts + promises + journal <─────────────────────────────────┘ promise paid
+ ARC call <── the front + promises + journal <──────────────────────────────┘ promise paid
   (day boundary)
 ```
 
@@ -1053,16 +1053,21 @@ Split the way the project already splits people (see **Characters ⟂ Party**):
   the chapter structure it has never had (*Arc I — The Drowned Gallery*), which
   is the legibility a 300-turn journal screen is missing.
 
-**Completion is client-owned and deterministic.** The arc names one front as its
-**spine**; the other fronts are texture. When the spine fires, the arc resolves.
-The model never declares a story over, for the same reason it never ticks a
-clock.
+**One question, one front, and the front is global.** An arc used to carry up to
+four fronts and name one of them its **spine**; the rest were texture, each
+served by whichever areas named it — so three clocks the player never saw moved
+only while they stood in the right part of the map. Now there is one front, it
+ticks wherever the tick was earned, and `spine` is not a field anybody chooses.
+
+**Completion is client-owned and deterministic.** When the front fires, the arc
+resolves. The model never declares a story over, for the same reason it never
+ticks a clock.
 
 **The interlude is a state, not a scene.** `Arc.status: "running" | "interlude" |
 "done"`. While it holds:
 
 - **front ticking is suspended** — cost bands and neglect alike. Nothing looms.
-  Resuming advances every open front's `lastTickDay` to the resume day, or the
+  Resuming advances the front's `lastTickDay` to the resume day, or the
   suspended days would arrive all at once as a neglect tick burst.
 - the prep block is replaced by an `INTERLUDE` block: *no threats, no clocks,
   breathing room; let them talk — the companions are the content*. That sentence
@@ -1076,7 +1081,7 @@ every clock is exactly the pressure release the idea wants and also a state a
 player can sit in for forty turns.
 
 **Handoff** then runs one call: journal + closed arc + cast + World Notes → the
-next arc, its spine, its fronts. This is the highest-stakes call in the system —
+next arc: its question and its front. This is the highest-stakes call in the system —
 it writes the next several hours of play off a summary — so it is the one that is
 **staged, not applied**: previewed on the Arc screen with Use / Regenerate, the
 same shell as `GenerateModal` and the ✦ flows. The player will want to co-author
@@ -1086,11 +1091,32 @@ the whole interlude to be looked at — and a staged arc still unaccepted when
 interlude must never dead-end into arcless play because the Arc screen went
 unvisited.
 
+**The player writes the brief.** The same call is reachable on demand — the Arc
+screen's ✦ button, which is also the only way to get an arc at all when a
+scenario shipped without one — and it takes two inputs from the player rather
+than deciding both itself:
+
+- **Guidance** (`Settings.arcGuidance`) — free text, injected as its own
+  authoritative block: *keep it inside the city*, *I want the guild to come
+  after us*. Blank injects nothing, so the call is byte-identical to one built
+  before the field existed.
+- **Steps** (`Settings.arcSteps`, 2–8, `clampArcSteps`) — the length of the
+  front's clock, and so how long the chapter runs. A number the client owns, so
+  the model is **told** the count rather than asked for one, and the bound is
+  `fronts.ts`'s clock rather than one of its own: asking for ten and storing
+  eight is how the two would drift.
+
+Both live in `Settings` rather than in component state, so the automatic
+interlude handoff writes to the same brief the player set — and both are edited
+on the Arc screen, beside the button that spends them, rather than in the
+Foresight settings: `arcInstructions` is a standing rule about what an arc IS,
+this is about the story in hand.
+
 ### 2. The area
 
-An area card is the region's pressure: what it is like, what applies anywhere in
-it, and **which front it serves** (rooms inherit that, rather than each room
-picking one and drifting).
+An area card is the region's pressure: what it is like and what applies anywhere
+in it. It does **not** pick a front — the arc has exactly one and it is global,
+so a region can never be the reason a clock stopped moving.
 
 It also ships a list of **room names** — names only, no content. Cheap, and it
 buys four things:
@@ -1112,10 +1138,8 @@ membership resolves on-device: a `location` matching a name on some area's list
 — or a room already appended to one — resolves that area, and `GameState.areaKey`
 moves only then. `LoomBlock.area` exists for exactly one case, the narrator
 walking the player into a genuinely **new** region, so an omitted `area` costs
-nothing on an ordinary turn. This is deliberate: cost → front ticking rides the
-room → area join, and the front economy must not hang on an optional field
-emitted by the same weak models that drop whole blocks (see *enforced action
-options*) — so the join is computed here, never requested per turn.
+nothing on an ordinary turn — and since the front is global, a turn that never
+resolves an area still ticks the clock.
 
 **Rooms match by `slug`** — the `names.ts` export the deltas and `equip.ts`
 already share — with a leading article stripped, so "Forest Entrance", "the
@@ -1178,7 +1202,7 @@ already drop the block (see **enforced action options**).
   and room prep both read the outstanding ones, which is the wire that turns a
   promise into a threat into a rolled band into a front tick — one chain.
 
-There is deliberately **no `fronts` and no card field on the turn block.** Those
+There is deliberately **no `front` and no card field on the turn block.** Those
 are authored at boundaries only.
 
 `reconcileBlock` folds the new channels under the rule it already applies: an op
@@ -1191,15 +1215,15 @@ Runs after `reconcileBlock` → `applyDeltas`, folded into the same `nextGame`, 
 it rides the **same save and the same `captureReversal`** — exactly how a
 `condition` rides the roster.
 
-- `cost` in a room whose area serves front F → **F ticks 1** (`costTicksFront`,
-  on). `mixed` ticks 0 by default (`mixedTicksFront`, off).
+- `cost` → **the front ticks 1** (`costTicksFront`, on), wherever it was rolled.
+  `mixed` ticks 0 by default (`mixedTicksFront`, off).
 - **Neglect:** a front unticked for `frontNeglectDays` in-game days ticks 1. The
   clock is `clock.ts`, which the client already owns. This is what makes the
   world move while the player does something else.
 - `ticks === steps.length` → the front **fires**: the next turn carries a
   mandatory block (*THE FLOOD ARRIVES — write it into this beat*), the front goes
-  `fired`, and the next arc review authors the aftermath. If it was the spine,
-  the arc goes to interlude.
+  `fired`, and the turn after that retires it and takes the arc to interlude —
+  the arrival gets narrated before the story ends on it.
 - Promises plant, close and age here too.
 
 Front ticks and promise plants are **client-computed, so they do not belong in
@@ -1211,7 +1235,7 @@ Front ticks and promise plants are **client-computed, so they do not belong in
 An arc that advances makes every area prepped under it wrong.
 
 ```
-Arc.epoch++            on: a front fires, a front retires, handoff rewrites the question
+Arc.epoch++            on: the front fires, the front retires, handoff rewrites the question
 AreaCard.arcId+epoch   stamped at prep; either mismatching the RUNNING arc marks it stale
 AreaCard.version++     on re-prep; marks its cached rooms stale
 ```
@@ -1287,7 +1311,7 @@ spoiler for the narrator and noise in the budget.
 | failure                            | result                                            |
 | ---------------------------------- | ------------------------------------------------- |
 | prep call fails or lands late      | no card → **turn byte-identical to today**        |
-| arc review fails                   | fronts stand; clocks still tick (client owns them) |
+| arc review fails                   | the front stands; its clock still ticks (client owns it) |
 | `optionNotes` length mismatch      | dropped whole                                     |
 | `promises` omitted                 | nothing planted; existing ones still age          |
 | no `area` on the block             | room name resolves the area on-device; unknown room → the area you were in |
@@ -1352,12 +1376,10 @@ world map can shade them. One field, and the campaign becomes visible.
 // Authored, frozen, rides the scenario import. The template.
 interface ArcTemplate {
   question: string;              // what this story is about, one line
-  fronts: FrontTemplate[];
-  spine: string;                 // FrontTemplate.id — the front whose firing ends the arc
+  front?: FrontTemplate;         // ONE, and global — no spine to choose between
 }
 
 interface FrontTemplate {
-  id: string;
   label: string;                 // "the mine floods"
   steps: string[];               // written in ADVANCE; length is the clock, 2..8
 }
@@ -1365,9 +1387,9 @@ interface FrontTemplate {
 // The instance. GameState.arcs — appended, never replaced.
 interface Arc extends ArcTemplate {
   id: string;
-  epoch: number;                 // bumped when a front fires/retires or handoff rewrites
+  epoch: number;                 // bumped when the front fires/retires or handoff rewrites
   status: "running" | "interlude" | "done";
-  fronts: Front[];               // a legal override: Front extends FrontTemplate
+  front?: Front;                 // a legal override: Front extends FrontTemplate
   areas: string[];               // AreaKeys this arc touches (map shading)
   openedTurn: number;
   interludeFrom?: number;        // turn the interlude began
@@ -1390,7 +1412,6 @@ interface AreaCard {
   neighbours: string[];          // AreaKeys
   texture: string;               // one line: what this region is
   threats: string[];             // <= AREA_MAX_THREATS, applies anywhere in it
-  front?: string;                // Front.id this area serves; rooms inherit
   rooms: Record<string, RoomSlot>;  // keyed by slug(name) — one room per spelling family
 }
 
@@ -1438,8 +1459,8 @@ room-list resolution that needs no model channel at all.
 ### Modules and screens
 
 ```
-src/lib/arc.ts        spine · completion · interlude state · buildArcMessages · parseArc · normalizeArc
-src/lib/fronts.ts     tickFronts · neglect · firedFront · formatLoomingBlock
+src/lib/arc.ts        completion · interlude state · buildArcMessages · parseArc · normalizeArc
+src/lib/fronts.ts     tickFront · neglect · restFront · formatFrontLine · formatLoomingBlock
 src/lib/areaPrep.ts   areaChanged · buildAreaMessages · parseAreaCard · normalizeAreaCard
 src/lib/roomPrep.ts   roomChanged · buildRoomMessages · parseRoomCard · normalizeRoomCard
 src/lib/promises.ts   plant · close · age · formatPromisesBlock
@@ -1452,9 +1473,10 @@ Pure and tested; only the store touches the network — the same discipline as
 `clock.ts`, `journal.ts` and `stakes.ts`, and the same reason.
 
 - **Menu → This Adventure → Foresight** (`SubMenuScreen`): **Arc** (question,
-  spine, fronts with editable steps and manual ticks, past arcs, staged handoff
-  preview) · **Area** (this area's card, stale flag, ↻) · **Room** (this room's
-  card, ↻) · **Promises** (close / drop).
+  the front with editable label, steps and manual ticks, past arcs, staged
+  handoff preview, and the **✦ generation controls** — `arcGuidance` and
+  `arcSteps`, edited where they are spent) · **Area** (this area's card, stale
+  flag, ↻) · **Room** (this room's card, ↻) · **Promises** (close / drop).
 - **Map** — a *play* screen, in the ⋯ quick menu with Party, Inventory, Journal
   and Saves.
 - **Menu → Settings → Narrator → Foresight** — its own sub-menu, not more rows
@@ -1480,10 +1502,10 @@ Four pieces of the spec above are deliberately absent, and none of them is
 load-bearing — the feature degrades to exactly the row of the failure table that
 covers it:
 
-- **The day-boundary arc review.** Fronts are authored at New Adventure and at
-  the handoff; there is no periodic call re-reading them against the journal.
-  The clocks tick regardless, which is the "arc review fails → fronts stand;
-  clocks still tick" row, permanently.
+- **The day-boundary arc review.** The front is authored at New Adventure, at
+  the handoff, and whenever the player presses ✦; there is no periodic call
+  re-reading it against the journal. The clock ticks regardless, which is the
+  "arc review fails → the front stands; its clock still ticks" row, permanently.
 - **Dragging a room on the map.** `normalizeMap` already sanitizes what a drag
   would write (cells clamped, collisions pushed, exits mirrored), so the screen
   is read-only until the gesture lands rather than the data model being unready.

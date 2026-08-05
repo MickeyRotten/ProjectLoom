@@ -16,8 +16,7 @@ import {
 
 const template = {
   question: "the consortium is buying the valley",
-  spine: "flood",
-  fronts: [{ id: "flood", label: "the mine floods", steps: ["a", "b"] }],
+  front: { label: "the mine floods", steps: ["a", "b"] },
 };
 
 const arc = openArc(template, "arc-1", 0, 1);
@@ -46,26 +45,18 @@ describe("areaChanged", () => {
 describe("parseAreaCard", () => {
   it("reads a card out of a chatty, fenced reply", () => {
     const parsed = parseAreaCard(
-      'Here you go:\n```json\n{ "texture": "old growth, wet", "threats": ["anything loud brings a patrol"], "rooms": ["The Stile", "Drowned Gallery"], "front": "flood" }\n```',
-      arc,
+      'Here you go:\n```json\n{ "texture": "old growth, wet", "threats": ["anything loud brings a patrol"], "rooms": ["The Stile", "Drowned Gallery"] }\n```',
     );
     expect(parsed).toEqual({
       texture: "old growth, wet",
       threats: ["anything loud brings a patrol"],
       rooms: ["The Stile", "Drowned Gallery"],
-      front: "flood",
     });
   });
 
-  it("accepts a front named by its LABEL as well as its id", () => {
-    expect(parseAreaCard('{ "texture": "x", "front": "the mine floods" }', arc)?.front).toBe("flood");
-  });
-
-  it("drops a front naming nothing in the arc", () => {
-    // Rooms inherit this: an area serving a front that does not exist would
-    // quietly stop every cost outcome from ticking anything.
-    expect(parseAreaCard('{ "texture": "x", "front": "the sky falls" }', arc)?.front).toBeUndefined();
-    expect(parseAreaCard('{ "texture": "x", "front": "flood" }', undefined)?.front).toBeUndefined();
+  it("ignores a front a model still names — the arc's one front is global", () => {
+    const parsed = parseAreaCard('{ "texture": "x", "front": "the mine floods" }');
+    expect(parsed).toEqual({ texture: "x", threats: [], rooms: [] });
   });
 
   it("caps the threats and the room list", () => {
@@ -75,15 +66,14 @@ describe("parseAreaCard", () => {
         threats: Array.from({ length: 9 }, (_, i) => `t${i}`),
         rooms: Array.from({ length: 20 }, (_, i) => `r${i}`),
       }),
-      arc,
     );
     expect(parsed?.threats).toHaveLength(AREA_MAX_THREATS);
     expect(parsed?.rooms).toHaveLength(AREA_MAX_ROOMS);
   });
 
   it("returns null when there is nothing usable, so nothing is cached", () => {
-    expect(parseAreaCard("no json", arc)).toBeNull();
-    expect(parseAreaCard('{ "texture": "  " }', arc)).toBeNull();
+    expect(parseAreaCard("no json")).toBeNull();
+    expect(parseAreaCard('{ "texture": "  " }')).toBeNull();
   });
 
   it("caps a line's length", () => {
@@ -93,7 +83,7 @@ describe("parseAreaCard", () => {
 });
 
 describe("stampAreaCard", () => {
-  const parsed = { texture: "old growth", threats: ["patrols"], rooms: [], front: "flood" };
+  const parsed = { texture: "old growth", threats: ["patrols"], rooms: [] };
 
   it("writes the arc pair and opens at version 1", () => {
     const card = stampAreaCard(parsed, "murkwood", "Murkwood", arc, undefined);

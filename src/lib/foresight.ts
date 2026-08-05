@@ -19,7 +19,7 @@ import {
   runningArc,
   toInterlude,
 } from "./arc";
-import { restFronts, tickFront, tickNeglect } from "./fronts";
+import { restFront, tickFront, tickNeglect } from "./fronts";
 import { agePromises, applyPromises, normalizePromises } from "./promises";
 import { normalizeMap, resolveAreaKey, visitRoom } from "./gazetteer";
 import { normalizeAreaCard } from "./areaPrep";
@@ -34,13 +34,13 @@ import { normalizeRoomCard } from "./roomPrep";
  * Everything here is arithmetic and bookkeeping the model is never asked about:
  *
  *  - the room→area join, resolved on-device off the areas' own room lists;
- *  - a COST rolled in a room whose area serves a front ticks that front (and a
- *    MIXED one, if the table wants it);
+ *  - a COST ticks the arc's front — wherever it was rolled, since there is one
+ *    front and it is global (and a MIXED one, if the table wants it);
  *  - **neglect** — a front untouched for `frontNeglectDays` in-game days ticks
  *    on its own, which is what makes the world move while the player does
  *    something else;
- *  - a front reaching the end of its clock FIRES, and if it was the spine the
- *    arc goes to interlude;
+ *  - the front reaching the end of its clock FIRES, and the arc goes to
+ *    interlude a beat later, once the arrival has been narrated;
  *  - promises plant, close and age.
  *
  * The result carries a `Reckoning` alongside the new slices, because front ticks
@@ -125,48 +125,48 @@ export function reckonTurn(input: ReckonInput): ReckonResult {
     //     goes `fired`, and the NEXT turn is the one that carries its mandatory
     //     arrival block — so by the time we are back here that beat is written
     //     and the front is spent. Retiring it here is also what makes the block
-    //     fire exactly once instead of on every turn from now on.
-    const spent = arc.fronts.filter((f) => f.status === "fired");
-    let fronts = spent.length
-      ? arc.fronts.map((f) => (f.status === "fired" ? { ...f, status: "retired" as const } : f))
-      : arc.fronts;
-    // The spine's arrival is what ends the story — but only now, a beat after it
-    // landed, so the arrival got narrated instead of being swallowed by an
-    // interlude that starts by saying nothing is looming.
-    const spineSpent = spent.some((f) => f.id === arc.spine);
+    //     fire exactly once instead of on every turn from now on. Its arrival is
+    //     also what ends the story — but only now, a beat after it landed, so
+    //     the arrival got narrated instead of being swallowed by an interlude
+    //     that starts by saying nothing is looming.
+    const spent = arc.front?.status === "fired";
+    let front = spent
+      ? { ...arc.front!, status: "retired" as const }
+      : arc.front;
 
-    // 3b. This turn's tick, if the band earned one and this region serves a front.
-    const areaFront = areaKey ? areas[areaKey]?.front : undefined;
+    // 3b. This turn's tick, if the band earned one. The front is GLOBAL: where
+    //     the roll happened decides nothing, so a cost two regions away from
+    //     the trouble still moves the clock.
     const ticksNow =
       (outcome === "cost" && settings.costTicksFront) ||
       (outcome === "mixed" && settings.mixedTicksFront);
 
-    const ticked: string[] = [];
-    const fired: string[] = [];
+    let ticked: string | null = null;
+    let fired: string | null = null;
 
-    if (ticksNow && areaFront) {
-      const result = tickFront(fronts, areaFront, day);
-      fronts = result.fronts;
-      ticked.push(...result.ticked);
-      fired.push(...result.fired);
+    if (ticksNow) {
+      const result = tickFront(front, day);
+      front = result.front;
+      ticked = result.ticked;
+      fired = result.fired;
     }
 
     // 3c. Neglect — the pass that makes the world move while the player is
     //     doing something else.
-    const neglect = tickNeglect(fronts, day, settings.frontNeglectDays);
-    fronts = neglect.fronts;
-    ticked.push(...neglect.ticked);
-    fired.push(...neglect.fired);
+    const neglect = tickNeglect(front, day, settings.frontNeglectDays);
+    front = neglect.front;
+    ticked = neglect.ticked ?? ticked;
+    fired = neglect.fired ?? fired;
 
-    if (fronts !== arc.fronts) {
-      let next: Arc = { ...arc, fronts };
-      // A front firing or retiring makes every area prepped under this arc
+    if (front !== arc.front) {
+      let next: Arc = { ...arc, front };
+      // The front firing or retiring makes every area prepped under this arc
       // describe a world that has moved, so the epoch moves with it.
-      if (fired.length || spent.length) next = bumpEpoch(next);
-      if (spineSpent) next = toInterlude(next, turn);
+      if (fired || spent) next = bumpEpoch(next);
+      if (spent) next = toInterlude(next, turn);
       nextArcs = arcs.map((a) => (a.id === arc.id ? next : a));
-      if (ticked.length) reckoning.frontTicked = ticked[0];
-      if (fired.length) reckoning.frontFired = fired[0];
+      if (ticked) reckoning.frontTicked = ticked;
+      if (fired) reckoning.frontFired = fired;
     }
   } else if (arc && arc.status === "interlude" && interludeOver(arc, turn, settings.interludeTurns)) {
     // The interlude has run its course. A staged handoff applies itself here —
@@ -254,7 +254,7 @@ function normalizeCards(areas: Record<string, AreaCard>): Record<string, AreaCar
 }
 
 /**
- * Move every open front's clock reference to today WITHOUT ticking — what the
+ * Move an open front's clock reference to today WITHOUT ticking — what the
  * store calls when foresight is switched back on, or when a game is loaded
  * after a long real-world gap in a way that would otherwise arrive as a neglect
  * burst on the first turn.
@@ -263,10 +263,10 @@ export function anchorClocks(arcs: Arc[], day: number): Arc[] {
   let changed = false;
   const out = arcs.map((arc) => {
     if (arc.status === "done") return arc;
-    const fronts = restFronts(arc.fronts, day);
-    if (fronts === arc.fronts) return arc;
+    const front = restFront(arc.front, day);
+    if (front === arc.front) return arc;
     changed = true;
-    return { ...arc, fronts };
+    return { ...arc, front };
   });
   return changed ? out : arcs;
 }

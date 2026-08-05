@@ -218,9 +218,10 @@ export function seedRooms(area: AreaCard, names: string[]): AreaCard {
  * has walked into yet.
  *
  * This is the whole reason `LoomBlock.area` is needed only for a genuinely new
- * region: cost → front ticking rides this join, and the front economy must not
- * hang on an optional field emitted by the same weak models that drop whole
- * blocks.
+ * region: the area decides which card is injected, and the cards are what make
+ * a rolled band specific — so the join must not hang on an optional field
+ * emitted by the same weak models that drop whole blocks. The front's clock no
+ * longer rides it at all: there is one front and it is global.
  */
 export function areaOfRoom(
   areas: Record<string, AreaCard>,
@@ -240,7 +241,7 @@ export function areaOfRoom(
  * Order of trust: the room list resolves it; failing that a narrator-named NEW
  * region does; failing that the player is where they were. Never null once an
  * area exists, because "unknown room → the area you were in" is the documented
- * degradation and a dropped area would silently stop the fronts.
+ * degradation and a dropped area would silently stop the prep.
  */
 export function resolveAreaKey(
   areas: Record<string, AreaCard>,

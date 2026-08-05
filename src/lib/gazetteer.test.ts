@@ -47,8 +47,6 @@ const arc = (patch: Partial<Arc> = {}): Arc =>
   ({
     id: "arc-1",
     question: "",
-    spine: "",
-    fronts: [],
     epoch: 0,
     status: "running",
     areas: [],

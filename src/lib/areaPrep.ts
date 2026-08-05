@@ -2,15 +2,15 @@ import type { Arc, AreaCard, GameState, Settings, StoryPromise } from "../types"
 import { type ChatMessage, formatScenarioBlock } from "./prompt";
 import { extractFirstJsonObject, parseJsonTolerant } from "./loomBlock";
 import { areaIsStale, normalizeCoord } from "./gazetteer";
-import { formatFrontLines, liveFronts } from "./fronts";
+import { formatFrontLine, liveFront } from "./fronts";
 import { formatWorldNotesBlock, matchWorldNotes } from "./worldNotes";
 
 /**
  * Area prep — one call per region, ever, until the arc under it moves.
  *
- * An area card is the region's pressure: what it is like, what applies anywhere
- * in it, and **which front it serves**. Rooms inherit that front rather than
- * each picking one and drifting.
+ * An area card is the region's pressure: what it is like and what applies
+ * anywhere in it. It does NOT pick a front — the arc has exactly one and it is
+ * global, so a region can never be the reason a clock stopped moving.
  *
  * It also ships a list of **room names** — names only, no content. Cheap, and it
  * buys four things: the narrator stops renaming the same place, room prep gets a
@@ -70,7 +70,6 @@ export interface ParsedAreaCard {
   texture: string;
   threats: string[];
   rooms: string[];
-  front?: string;
 }
 
 /**
@@ -78,7 +77,7 @@ export interface ParsedAreaCard {
  * about the contents; a reply with nothing usable in it returns null, and the
  * caller leaves the region unprepped rather than caching an empty card.
  */
-export function parseAreaCard(raw: string, arc: Arc | undefined): ParsedAreaCard | null {
+export function parseAreaCard(raw: string): ParsedAreaCard | null {
   const json = extractFirstJsonObject(raw);
   if (!json) return null;
   const parsed = parseJsonTolerant<Record<string, unknown>>(json);
@@ -89,13 +88,7 @@ export function parseAreaCard(raw: string, arc: Arc | undefined): ParsedAreaCard
   const rooms = prepLines(parsed.rooms, AREA_MAX_ROOMS);
   if (!texture && !threats.length && !rooms.length) return null;
 
-  // A front id naming nothing in the running arc is dropped rather than kept:
-  // rooms inherit this, and an area serving a front that does not exist would
-  // quietly stop every cost outcome from ticking anything.
-  const named = typeof parsed.front === "string" ? parsed.front.trim() : "";
-  const front = liveFronts(arc).find((f) => f.id === named || f.label === named)?.id;
-
-  return { texture, threats, rooms, ...(front ? { front } : {}) };
+  return { texture, threats, rooms };
 }
 
 /**
@@ -116,7 +109,6 @@ export function normalizeAreaCard(raw: Partial<AreaCard>, key: string): AreaCard
       : [],
     texture: prepLine(raw.texture),
     threats: prepLines(raw.threats, AREA_MAX_THREATS),
-    ...(typeof raw.front === "string" && raw.front ? { front: raw.front } : {}),
     rooms: raw.rooms && typeof raw.rooms === "object" ? raw.rooms : {},
   };
 }
@@ -146,7 +138,6 @@ export function stampAreaCard(
       version: (previous?.version ?? 0) + 1,
       texture: parsed.texture,
       threats: parsed.threats,
-      ...(parsed.front ? { front: parsed.front } : {}),
       rooms: previous?.rooms ?? {},
     },
     key,
@@ -175,13 +166,12 @@ export function buildAreaMessages(
     content: [
       "AREA PREP — you are preparing a REGION of a text adventure before the player explores it. This is your own private notes, not narration.",
       "Reply with a single JSON object and nothing else — no prose, no commentary, no code fences:",
-      '{ "texture": "…", "threats": ["…"], "rooms": ["…", "…"], "front": "<front id or omit>" }',
+      '{ "texture": "…", "threats": ["…"], "rooms": ["…", "…"] }',
       "",
       "THE FIELDS",
       `- "texture" is what this region IS, in one line: the look, the weather, who moves through it, what state it is in.`,
       `- "threats" is what applies ANYWHERE in the region — at most ${AREA_MAX_THREATS}. Not events; standing conditions with teeth.`,
       `- "rooms" is up to ${AREA_MAX_ROOMS} PLACE NAMES inside this region. Names only, no description — they are what stops the same place being renamed every time the player walks back into it.`,
-      `- "front" is the id of the arc front this region serves, or omit it when the region is off to one side of the story.`,
       "- Write nothing the player has already been told, and no numbers: no distances, no counts, no times, no coordinates.",
       settings.areaPrepInstructions.trim(),
     ]
@@ -193,13 +183,12 @@ export function buildAreaMessages(
   if (scenario) messages.push({ role: "system", content: scenario });
 
   if (arc) {
-    const fronts = liveFronts(arc);
     messages.push({
       role: "system",
       content: [
         "THE ARC — the story this region sits inside. Do NOT restate any of it in your fields; write what is TRUE HERE because of it.",
         arc.question.trim(),
-        ...formatFrontLines(fronts),
+        formatFrontLine(liveFront(arc)),
       ]
         .filter(Boolean)
         .join("\n"),

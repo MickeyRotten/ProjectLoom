@@ -295,10 +295,7 @@ describe("reversal — foresight", () => {
   const arc = {
     id: "arc-1",
     question: "q",
-    spine: "flood",
-    fronts: [
-      { id: "flood", label: "the mine floods", steps: ["a", "b"], ticks: 0, lastTickDay: 1, status: "open" as const },
-    ],
+    front: { label: "the mine floods", steps: ["a", "b"], ticks: 0, lastTickDay: 1, status: "open" as const },
     epoch: 0,
     status: "running" as const,
     areas: [],
@@ -317,17 +314,17 @@ describe("reversal — foresight", () => {
     const before = pre();
     const after: GameState = {
       ...before,
-      arcs: [{ ...arc, fronts: [{ ...arc.fronts[0], ticks: 1 }] }],
+      arcs: [{ ...arc, front: { ...arc.front, ticks: 1 } }],
       promises: [{ id: "p1", text: "the tremor", plantedTurn: 4 }],
       areaKey: "rodstroke",
     };
     const rev = captureReversal(before, after);
-    expect(rev.arcs?.[0].fronts[0].ticks).toBe(0);
+    expect(rev.arcs?.[0].front?.ticks).toBe(0);
     expect(rev.promises).toEqual([]);
     expect(rev.areaKey).toBe("murkwood");
 
     const back = applyReversal(after, rev);
-    expect(back.arcs?.[0].fronts[0].ticks).toBe(0);
+    expect(back.arcs?.[0].front?.ticks).toBe(0);
     expect(back.promises).toEqual([]);
     expect(back.areaKey).toBe("murkwood");
   });
