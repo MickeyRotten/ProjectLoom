@@ -102,12 +102,12 @@ const SEGMENT_COLS: Record<number, string> = {
 /**
  * A row of mutually exclusive choices, one pressed. The honest control for a
  * setting with more than two values: `ToggleRow` can only say what the value is
- * NOW, so using it for a three-state setting (1-Bit Shading cycled
- * threshold → bayer4 → off) gave no hint that tapping cycles rather than flips,
- * and no way to learn the third value existed without tapping twice.
+ * NOW, so a three-state setting drawn as one gave no hint that tapping cycles
+ * rather than flips, and no way to learn the third value existed without tapping
+ * twice.
  *
  * Extracted from the two hand-rolled grids that already did this — Reasoning and
- * Image Backend — so the three of them can't drift.
+ * Image Backend — so they can't drift.
  */
 export function SegmentedRow<T extends string>({
   label,

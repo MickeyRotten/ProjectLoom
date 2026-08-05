@@ -1,33 +1,22 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  blobToDataUrl,
-  buildEditPrompt,
   buildPortraitPrompt,
   dataUrlToBlob,
-  EXPORT_MIN_WIDTH,
-  exportScale,
   extractImageDataUrl,
   extractMessageText,
   generateImage,
   ImageError,
   imageRequestKey,
   imagesAllowed,
-  imageEditAllowed,
-  isModelSafeImage,
   joinPromptParts,
-  PORTRAIT_PIXEL_WIDTH,
+  LEGACY_MASTER_PREFIX,
+  MAX_IMAGE_SIDE,
   portraitKey,
-  prepareUploadedImage,
   slotArtPairs,
   slotArtPrefixes,
   slotImageKeys,
   slotScopedKey,
-  sourceKey,
-  toExportBlob,
-  toOneBitBlob,
-  toSourceBlob,
-  UPLOAD_PLAIN_WIDTH,
-  uploadStoredWidth,
+  toStoredImage,
 } from "./images";
 import { DEFAULT_COMFY } from "./comfyui";
 import { newGame } from "./defaults";
@@ -60,10 +49,9 @@ describe("cache keys", () => {
     expect(portraitKey("m-navi")).toBe("portrait:m-navi");
   });
 
-  it("source key namespaces the master copy under its display key", () => {
-    expect(sourceKey(portraitKey("m-navi"))).toBe("src:portrait:m-navi");
-    // Never collides with a display key — that would overwrite the art itself.
-    expect(sourceKey(portraitKey("m-navi"))).not.toBe(portraitKey("m-navi"));
+  it("keeps the retired master prefix named, for the migration that folds it in", () => {
+    // Nothing writes it any more; `db.ts → promoteLegacyMasters` reads it once.
+    expect(LEGACY_MASTER_PREFIX).toBe("src:");
   });
 });
 
@@ -77,25 +65,14 @@ describe("slot-scoped keys", () => {
       slotScopedKey("s1", portraitKey("m-navi")),
     );
   });
-
-  it("keeps the master outside the scope", () => {
-    // `sourceKey` wraps the scoped key, so it keeps its one meaning: the master
-    // of the key it wraps.
-    expect(sourceKey(slotScopedKey("s1", portraitKey("m-navi")))).toBe(
-      "src:slot:s1:portrait:m-navi",
-    );
-  });
 });
 
 describe("slotArtPairs", () => {
   const cast = (...ids: string[]) => ids.map((id) => ({ id, name: id }) as Character);
 
-  it("pairs each character's portrait and master with the slot's copy", () => {
+  it("pairs each character's portrait with the slot's copy of it", () => {
     expect(slotArtPairs("s1", cast("pc"))).toEqual([
-      {
-        display: { live: "portrait:pc", slot: "slot:s1:portrait:pc" },
-        master: { live: "src:portrait:pc", slot: "src:slot:s1:portrait:pc" },
-      },
+      { live: "portrait:pc", slot: "slot:s1:portrait:pc" },
     ]);
   });
 
@@ -108,10 +85,14 @@ describe("slotArtPairs", () => {
 
   it("sweeps its own keys and nothing else", () => {
     const prefixes = slotArtPrefixes("s1");
-    const mine = slotArtPairs("s1", cast("pc")).flatMap((a) => [a.display.slot, a.master.slot]);
-    for (const key of mine) expect(prefixes.some((p) => key.startsWith(p))).toBe(true);
-    const other = slotArtPairs("s2", cast("pc")).flatMap((a) => [a.display.slot, a.master.slot]);
-    for (const key of [...other, portraitKey("pc"), sourceKey(portraitKey("pc"))]) {
+    const mine = slotArtPairs("s1", cast("pc")).map((a) => a.slot);
+    // A build that wrote masters left `src:slot:s1:…` blobs behind; dropping the
+    // slot has to take those too, since no live key names them any more.
+    for (const key of [...mine, `${LEGACY_MASTER_PREFIX}slot:s1:portrait:pc`]) {
+      expect(prefixes.some((p) => key.startsWith(p))).toBe(true);
+    }
+    const other = slotArtPairs("s2", cast("pc")).map((a) => a.slot);
+    for (const key of [...other, portraitKey("pc")]) {
       expect(prefixes.some((p) => key.startsWith(p))).toBe(false);
     }
   });
@@ -130,11 +111,6 @@ describe("slotImageKeys", () => {
     expect(slotImageKeys(slot).sort()).toEqual(
       ["slot:s1:portrait:m-navi", "slot:s1:portrait:pc"].sort(),
     );
-  });
-
-  it("leaves the masters out — a restore needs the picture, not the negative", () => {
-    const slot = saved("s1", { characters: cast("pc") });
-    expect(slotImageKeys(slot).some((k) => k.startsWith("src:"))).toBe(false);
   });
 
   it("survives a slot written before the cast lived in the game", () => {
@@ -282,12 +258,6 @@ describe("prompt builders", () => {
     // stray separator behind.
     expect(joinPromptParts(["a", ".", "b"], "tags")).toBe("a, b");
   });
-
-  it("edit prompt folds in the instruction and a style-preservation line", () => {
-    const p = buildEditPrompt("  add a full moon  ");
-    expect(p).toContain("Edit the attached image: add a full moon");
-    expect(p).toContain("Preserve the existing style");
-  });
 });
 
 describe("extractImageDataUrl", () => {
@@ -354,142 +324,78 @@ describe("dataUrlToBlob", () => {
   });
 });
 
-describe("blobToDataUrl", () => {
-  it("round-trips a blob through a base64 data URL", async () => {
-    const blob = dataUrlToBlob("data:image/png;base64,AAAA");
-    const url = await blobToDataUrl(blob);
-    expect(url.startsWith("data:image/png;base64,")).toBe(true);
-    expect(dataUrlToBlob(url).size).toBe(blob.size);
-  });
-});
+describe("toStoredImage", () => {
+  const decodes = (width: number, height: number) => {
+    const close = vi.fn();
+    vi.stubGlobal("createImageBitmap", vi.fn().mockResolvedValue({ width, height, close }));
+    return close;
+  };
 
-describe("toOneBitBlob", () => {
-  it('returns the blob untouched when mode is "off"', async () => {
+  it("stores an image inside the box exactly as it came", async () => {
+    // No quantize, no resize, no re-encode: a generated PNG keeps its own bytes.
     const blob = dataUrlToBlob("data:image/png;base64,AAAA");
-    const decode = vi.fn();
-    vi.stubGlobal("createImageBitmap", decode);
-    await expect(toOneBitBlob(blob, 128, "off")).resolves.toBe(blob);
-    // "off" keeps the raw model output — no decode, no resize.
-    expect(decode).not.toHaveBeenCalled();
-  });
-});
-
-describe("prepareUploadedImage", () => {
-  it('still decodes when shading is "off" — uploads must not be stored raw', async () => {
-    const blob = dataUrlToBlob("data:image/png;base64,AAAA");
-    const decode = vi.fn().mockRejectedValue(new Error("no canvas"));
-    vi.stubGlobal("createImageBitmap", decode);
-    await expect(prepareUploadedImage(blob, 192, "off")).rejects.toThrow(ImageError);
-    expect(decode).toHaveBeenCalledTimes(1);
+    const close = decodes(512, 768);
+    await expect(toStoredImage(blob)).resolves.toBe(blob);
+    expect(close).toHaveBeenCalled();
   });
 
-  it("rejects a file the browser can't decode instead of storing it raw", async () => {
-    // Storing an undecodable upload (HEIC off a phone) "succeeds" and then shows
-    // a broken portrait no edit can ever repair — it has to fail at the door.
+  it("never enlarges — the bound is a ceiling, not a target", async () => {
+    const blob = dataUrlToBlob("data:image/png;base64,AAAA");
+    decodes(64, 96);
+    await expect(toStoredImage(blob, MAX_IMAGE_SIDE)).resolves.toBe(blob);
+  });
+
+  it("keeps a generated image rather than failing when it can't be decoded", async () => {
+    // Lenient by default: the image pipeline is fire-and-forget, and an
+    // unprocessed picture beats no picture at all.
+    const blob = dataUrlToBlob("data:image/png;base64,AAAA");
+    vi.stubGlobal("createImageBitmap", vi.fn().mockRejectedValue(new Error("no canvas")));
+    await expect(toStoredImage(blob)).resolves.toBe(blob);
+  });
+
+  it("rejects an undecodable UPLOAD instead of storing it raw", async () => {
+    // Storing a HEIC off a phone "succeeds" and then shows a portrait that never
+    // loads, with no way to tell why — it has to fail at the door.
     const blob = dataUrlToBlob("data:image/heic;base64,AAAA");
-    vi.stubGlobal("createImageBitmap", vi.fn().mockRejectedValue(new Error("bad file")));
-    await expect(prepareUploadedImage(blob, 192, "threshold")).rejects.toThrow(
+    const decode = vi.fn().mockRejectedValue(new Error("bad file"));
+    vi.stubGlobal("createImageBitmap", decode);
+    await expect(toStoredImage(blob, MAX_IMAGE_SIDE, true)).rejects.toThrow(ImageError);
+    await expect(toStoredImage(blob, MAX_IMAGE_SIDE, true)).rejects.toThrow(
       /try a JPG, PNG, or WebP/,
     );
-  });
-});
-
-describe("isModelSafeImage", () => {
-  it("accepts what an image model takes as an input part", () => {
-    for (const mime of ["image/png", "image/jpeg", "image/webp"]) {
-      expect(isModelSafeImage(new Blob([], { type: mime }))).toBe(true);
-    }
-    expect(isModelSafeImage(new Blob([], { type: "IMAGE/PNG" }))).toBe(true);
+    expect(decode).toHaveBeenCalledTimes(2);
   });
 
-  it("rejects the formats a phone gallery hands over", () => {
-    for (const mime of ["image/heic", "image/heif", "image/avif", "image/bmp", ""]) {
-      expect(isModelSafeImage(new Blob([], { type: mime }))).toBe(false);
-    }
-  });
-});
-
-describe("uploadStoredWidth", () => {
-  it("quantized modes keep the 1-bit pixel width", () => {
-    expect(uploadStoredWidth(PORTRAIT_PIXEL_WIDTH, "threshold")).toBe(PORTRAIT_PIXEL_WIDTH);
-    expect(uploadStoredWidth(PORTRAIT_PIXEL_WIDTH, "bayer4")).toBe(PORTRAIT_PIXEL_WIDTH);
-  });
-
-  it('shading "off" keeps a real display width — no pixel grid to snap to', () => {
-    expect(uploadStoredWidth(PORTRAIT_PIXEL_WIDTH, "off")).toBe(UPLOAD_PLAIN_WIDTH);
-    // Never smaller than what was asked for.
-    expect(uploadStoredWidth(UPLOAD_PLAIN_WIDTH * 2, "off")).toBe(UPLOAD_PLAIN_WIDTH * 2);
-  });
-});
-
-describe("exportScale", () => {
-  it("blows a stored display copy up to at least the export width", () => {
-    expect(exportScale(PORTRAIT_PIXEL_WIDTH)).toBe(6); // 192 → 1152
-    expect(exportScale(256)).toBe(4); // 256 → 1024
-    expect(PORTRAIT_PIXEL_WIDTH * exportScale(PORTRAIT_PIXEL_WIDTH)).toBeGreaterThanOrEqual(
-      EXPORT_MIN_WIDTH,
-    );
-  });
-
-  it("leaves an already-large image alone", () => {
-    expect(exportScale(EXPORT_MIN_WIDTH)).toBe(1);
-    expect(exportScale(2048)).toBe(1);
-  });
-
-  it("is a whole number, so every stored pixel maps to an exact square", () => {
-    for (const w of [7, 100, 192, 256, 333, 1023]) {
-      expect(Number.isInteger(exportScale(w))).toBe(true);
-      expect(exportScale(w)).toBeGreaterThanOrEqual(1);
-    }
-  });
-
-  it("survives a nonsense width", () => {
-    expect(exportScale(0)).toBe(1);
-    expect(exportScale(-5)).toBe(1);
-    expect(exportScale(Number.NaN)).toBe(1);
-  });
-});
-
-describe("toExportBlob / toSourceBlob", () => {
-  it("both survive an image that can't be decoded", async () => {
+  it("bounds the longest side, whichever side that is", async () => {
     const blob = dataUrlToBlob("data:image/png;base64,AAAA");
-    vi.stubGlobal("createImageBitmap", vi.fn().mockRejectedValue(new Error("no canvas")));
-    // Saving a file and keeping a master are both best-effort — neither may
-    // turn an undecodable blob into a failure.
-    await expect(toExportBlob(blob)).resolves.toBe(blob);
-    // A PNG is still safe to post back as an edit source even undecoded here.
-    await expect(toSourceBlob(blob)).resolves.toBe(blob);
-  });
-
-  it("keeps NO master for an undecodable, model-hostile file", async () => {
-    // The alternative — storing the HEIC — is what made every later edit of an
-    // uploaded portrait fail on the wire. No master falls back to the display
-    // copy, which is always canvas-encoded PNG.
-    const blob = dataUrlToBlob("data:image/heic;base64,AAAA");
-    vi.stubGlobal("createImageBitmap", vi.fn().mockRejectedValue(new Error("no canvas")));
-    await expect(toSourceBlob(blob)).resolves.toBeNull();
-  });
-
-  it("keeps a master that already fits the box as-is", async () => {
-    const blob = dataUrlToBlob("data:image/png;base64,AAAA");
-    const close = vi.fn();
-    vi.stubGlobal(
-      "createImageBitmap",
-      vi.fn().mockResolvedValue({ width: 512, height: 768, close }),
-    );
-    await expect(toSourceBlob(blob, 1024)).resolves.toBe(blob);
-    expect(close).toHaveBeenCalled();
-  });
-
-  it("passes an already-large image straight through the export", async () => {
-    const blob = dataUrlToBlob("data:image/png;base64,AAAA");
-    const close = vi.fn();
-    vi.stubGlobal(
-      "createImageBitmap",
-      vi.fn().mockResolvedValue({ width: 1600, height: 900, close }),
-    );
-    await expect(toExportBlob(blob)).resolves.toBe(blob);
-    expect(close).toHaveBeenCalled();
+    const drawn: { w: number; h: number }[] = [];
+    const canvases: { width: number; height: number }[] = [];
+    vi.stubGlobal("createImageBitmap", vi.fn().mockResolvedValue({ width: 4000, height: 2000, close: vi.fn() }));
+    vi.stubGlobal("document", {
+      createElement: () => {
+        const canvas = {
+          width: 0,
+          height: 0,
+          getContext: () => ({
+            imageSmoothingEnabled: false,
+            fillStyle: "",
+            fillRect: () => {},
+            drawImage: (_src: unknown, _x: number, _y: number, w: number, h: number) =>
+              drawn.push({ w, h }),
+          }),
+          toBlob: (cb: (b: Blob | null) => void) =>
+            cb(new Blob(["x"], { type: "image/jpeg" })),
+        };
+        canvases.push(canvas);
+        return canvas;
+      },
+    });
+    const out = await toStoredImage(blob, 1024);
+    expect(out.type).toBe("image/jpeg");
+    // The final draw lands on the bounded size, 2:1 kept.
+    expect(drawn.at(-1)).toEqual({ w: 1024, h: 512 });
+    // And it got there by halving first, rather than in one aliasing jump.
+    expect(drawn.length).toBeGreaterThan(1);
   });
 });
 
@@ -505,14 +411,6 @@ describe("generation gate", () => {
     expect(imagesAllowed({} as { imagesEnabled: boolean })).toBe(true);
   });
 
-  it("an edit needs the master switch AND a backend that can edit", () => {
-    expect(imageEditAllowed({ imagesEnabled: true, imageBackend: "openrouter" })).toBe(true);
-    expect(imageEditAllowed({ imagesEnabled: true, imageBackend: "comfyui" })).toBe(false);
-    expect(imageEditAllowed({ imagesEnabled: false, imageBackend: "openrouter" })).toBe(false);
-    // A save from before the backend existed reads as OpenRouter, which is what
-    // it was played with.
-    expect(imageEditAllowed({ imagesEnabled: true } as Settings)).toBe(true);
-  });
 });
 
 describe("generateImage dispatch", () => {

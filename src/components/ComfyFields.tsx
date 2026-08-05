@@ -257,9 +257,7 @@ export function ComfyFields() {
         <MenuLink screen="images" section="prompts">
           Prompt Templates
         </MenuLink>
-        ) are not sent to ComfyUI — build the look into the workflow instead. Editing a
-        picture with ✎ is OpenRouter only, so that button is hidden while this backend is
-        selected.
+        ) are not sent to ComfyUI — build the look into the workflow instead.
       </p>
     </>
   );

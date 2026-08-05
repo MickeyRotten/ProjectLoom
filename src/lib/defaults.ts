@@ -261,7 +261,6 @@ export function defaultSettings(): Settings {
     // Threshold by default: flat 50% keeps shapes and faces crisp. Dither is
     // the opt-in retro texture — its clamped band still speckles less, but any
     // texture costs legibility at portrait size.
-    ditherMode: "threshold",
     characterCreationInstructions: DEFAULT_CHARACTER_CREATION_INSTRUCTIONS,
     namingInstructions: DEFAULT_NAMING_INSTRUCTIONS,
     characterUpdateInstructions: DEFAULT_CHARACTER_UPDATE_INSTRUCTIONS,

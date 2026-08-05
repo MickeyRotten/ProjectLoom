@@ -68,7 +68,7 @@ function PlayerBlock({ pc, streaming }: { pc: PartyMember | undefined; streaming
             src={portrait}
             alt=""
             aria-hidden="true"
-            className="h-full w-full origin-top scale-150 object-cover object-top [image-rendering:pixelated]"
+            className="h-full w-full origin-top scale-150 object-cover object-top"
           />
         ) : (
           initials(pc)

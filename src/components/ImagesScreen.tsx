@@ -7,12 +7,7 @@ import { ModelPicker } from "./ModelPicker";
 import { splitModels, useModelCatalog } from "./useModelCatalog";
 import { ComfyFields } from "./ComfyFields";
 import { useConfirm } from "./useConfirm";
-import type {
-  DitherMode,
-  ImageBackend,
-  ImagePromptTemplate,
-  PromptFormat,
-} from "../types";
+import type { ImageBackend, ImagePromptTemplate, PromptFormat } from "../types";
 import {
   activeTemplate,
   duplicateTemplate,
@@ -51,24 +46,6 @@ const BACKEND_NOTES: Record<ImageBackend, string> = {
     "Pictures are drawn in the cloud and billed to your key. Works anywhere, needs no setup.",
   comfyui:
     "Pictures are drawn by a ComfyUI server you run yourself. Free to render, and your own models — but it has to be running and reachable from this device.",
-};
-
-/**
- * `off` skips the 1-bit pass entirely and keeps the raw model output. Three
- * buttons rather than the cycling toggle this used to be: a `ToggleRow` can only
- * say what the value is now, so a third state was unreachable without tapping
- * blind.
- */
-const DITHER_MODES: { value: DitherMode; label: string }[] = [
-  { value: "threshold", label: "Threshold" },
-  { value: "bayer4", label: "Dither" },
-  { value: "off", label: "Off" },
-];
-
-const DITHER_NOTES: Record<DitherMode, string> = {
-  threshold: "Every pixel goes to black or white at a hard cutoff. Crisp lines, flat areas.",
-  bayer4: "A 4×4 ordered pattern fakes the greys between black and white. Softer, busier.",
-  off: "The 1-bit pass is skipped and the model's own output is kept as it came.",
 };
 
 /**
@@ -390,7 +367,7 @@ function ReferenceImages() {
               <img
                 src={refImageToDataUrl(ref)}
                 alt={`Style reference ${i + 1}`}
-                className="h-16 w-16 border-2 border-ink object-cover [image-rendering:pixelated]"
+                className="h-16 w-16 border-2 border-ink object-cover"
               />
               <span className="flex-1 text-sm uppercase tracking-widest">Ref {i + 1}</span>
               <button type="button" onClick={() => moveRef(i, -1)} disabled={i === 0} className={btnSmall}>
@@ -521,7 +498,7 @@ function StorageSection() {
             {
               title: "Purge stored images?",
               body:
-                "Every portrait and its master copy is deleted, uploaded art included." +
+                "Every stored portrait is deleted, uploaded art included." +
                 cloudLine +
                 " The player character and the party are drawn again on your next turn; everyone else when their sheet is opened. Characters you removed a picture from stay without one.",
               confirmLabel: "Purge",
@@ -562,13 +539,11 @@ const SECTIONS: SubMenuSection[] = [
 ];
 
 /**
- * The two settings that apply to every image, wherever it came from, so they sit
- * above the sub-menus rather than inside one of them. Uploaded art goes through
- * the same 1-bit pass, which is why shading stays visible with generation off.
+ * The one setting that applies to every image, wherever it came from, so it sits
+ * above the sub-menus rather than inside one of them.
  */
 function ImagesHeader() {
   const imagesEnabled = useStore((s) => s.settings.imagesEnabled);
-  const ditherMode = useStore((s) => s.settings.ditherMode);
   const update = useStore((s) => s.updateSettings);
   return (
     <>
@@ -581,19 +556,11 @@ function ImagesHeader() {
       {!imagesEnabled && (
         <p className="border-2 border-ink p-3 text-sm opacity-70">
           Off: nothing is sent to an image model — no portraits are drawn, and the
-          regenerate and edit buttons are hidden. Pictures you already have still show,
-          and you can still upload your own art on a character's sheet. Nothing is
-          deleted; switching this back on picks up where you left off.
+          regenerate button is hidden. Pictures you already have still show, and you
+          can still upload your own art on a character's sheet. Nothing is deleted;
+          switching this back on picks up where you left off.
         </p>
       )}
-
-      <SegmentedRow
-        label="1-Bit Shading"
-        value={ditherMode}
-        options={DITHER_MODES}
-        onChange={(v) => update({ ditherMode: v })}
-        note={<p className="text-xs opacity-70">{DITHER_NOTES[ditherMode]}</p>}
-      />
     </>
   );
 }

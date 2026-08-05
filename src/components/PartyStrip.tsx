@@ -85,7 +85,7 @@ export function PartyStrip() {
                 <img
                   src={images[portraitKey(c.id)]}
                   alt={c.name}
-                  className="h-full w-full origin-top scale-150 object-cover object-top [image-rendering:pixelated]"
+                  className="h-full w-full origin-top scale-150 object-cover object-top"
                 />
               ) : (
                 initials(c)

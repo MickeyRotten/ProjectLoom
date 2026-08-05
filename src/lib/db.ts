@@ -3,11 +3,12 @@ import type { Character, GameState, LegacyCharacter } from "../types";
 import { migrateCharacter, loadGame, type LoadedGame } from "./defaults";
 import { newStamp, slotDoc, type DocStamp, type SyncKey } from "./sync";
 import { notifyLocalWrite } from "./dirty";
+import { LEGACY_MASTER_PREFIX } from "./images";
 
 /**
  * IndexedDB handle for on-device persistence (DESIGN.md → Persistence).
  * Two stores: `saves` for named GameState snapshots + the autosaved active
- * game, and `images` for generated 1-bit blobs (too big for localStorage),
+ * game, and `images` for generated image blobs (too big for localStorage),
  * keyed by `portrait:<memberId>`.
  *
  * Phase 1 adds the active-game autosave helpers; named slots (Phase 4) and
@@ -224,6 +225,47 @@ export async function deleteImagesWithPrefix(prefix: string): Promise<number> {
   const keys = (await listImageKeys()).filter((k) => k.startsWith(prefix));
   for (const key of keys) await deleteImage(key);
   return keys.length;
+}
+
+/**
+ * One-shot fold of the retired master keyspace onto the live one.
+ *
+ * A device that played an earlier build holds two blobs per picture: a 192px
+ * 1-bit display copy under `portrait:<id>`, and the pixels it was crushed from
+ * under `src:portrait:<id>`. The downscale is gone, so the thumbnail is now
+ * simply the worse of the two copies — and the only one anything renders. This
+ * promotes every master onto the key it belongs to and drops the prefix, which
+ * is what turns "we removed the 1-bit pass" into portraits that actually look
+ * better than they did before the upgrade.
+ *
+ * Runs on every launch rather than behind a flag: it is a single `getAllKeys`
+ * scan, and after the first pass there is nothing left to match. Both writes go
+ * through the stamping helpers, so the promotion and the deletion propagate to
+ * the cloud like any other image change. A character whose master never existed
+ * (an undecodable upload, a build older than masters) keeps the small copy it
+ * has — a redraw is one ⟳ away, and dropping it would leave a blank face.
+ *
+ * Returns how many keys moved, for the tests and for nothing else.
+ */
+export async function promoteLegacyMasters(): Promise<number> {
+  const keys = (await listImageKeys()).filter((k) => k.startsWith(LEGACY_MASTER_PREFIX));
+  let moved = 0;
+  for (const key of keys) {
+    const live = key.slice(LEGACY_MASTER_PREFIX.length);
+    if (!live) continue;
+    try {
+      const master = await loadImage(key);
+      // Copy first, delete second: a crash in between costs a duplicate blob,
+      // the other order costs the picture.
+      if (master) await saveImage(live, master);
+      await deleteImage(key);
+      moved++;
+    } catch {
+      // Best-effort, like every other image path — a master left behind is a
+      // few hundred wasted kilobytes, never a broken launch.
+    }
+  }
+  return moved;
 }
 
 /** Every cache key with a blob behind it — the local side of an image diff. */

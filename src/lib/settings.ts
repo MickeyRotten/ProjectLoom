@@ -305,7 +305,7 @@ export function relativeLuminance(hex: string): number {
 /**
  * Whether the chosen paper reads as a dark theme. Drives `color-scheme`, which
  * is how a dark-OS WebView is told we own theming and must not run its own
- * force-dark pass over the generated 1-bit bitmaps.
+ * force-dark pass over the generated portraits.
  */
 export function isDarkPaper(paper: string): boolean {
   return relativeLuminance(paper) < 0.5;
