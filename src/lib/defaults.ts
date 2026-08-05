@@ -196,6 +196,54 @@ export const DEFAULT_JOURNAL_INSTRUCTIONS = `Write what happened to the player c
 Only write what the beats show happening. Do not restate who the player is, what they carry, who travels with them, or what quests are open — all of that is in front of you every turn already.
 Skip anything the FACTS list below has already recorded.`;
 
+/* ------------------------------------------------------------------ *
+ * Foresight (DESIGN.md → Foresight) — the forward half of memory.
+ * ------------------------------------------------------------------ */
+
+/**
+ * What a ROOM card must contain. The only prep instruction that mentions the
+ * outcome bands, because the room is the only scope that carries them: a band
+ * resolves in a space, never in an arc.
+ *
+ * The `strong` sentence is the load-bearing one. A success that merely grants
+ * the request changes nothing, and "nothing changed" is the most common way a
+ * win reads flat — so the shipped rule asks for the scene to move.
+ */
+export const DEFAULT_SCENE_PREP_INSTRUCTIONS = `Write what this PLACE does, never what the player does. A strong result must CHANGE THE SCENE, not merely grant the request — something opens, someone arrives, the ground shifts. A cost is what failure means HERE, in this specific place, and it lands on a person: an injury, an alarm, a debt, a witness. Keep every line to one concrete sentence, and never write an outcome that ends the adventure.`;
+
+/**
+ * What an AREA card must contain. Deliberately about standing conditions, not
+ * events: an event belongs in a room card or in a front, and a region that
+ * lists events becomes a place where things keep happening for no reason.
+ */
+export const DEFAULT_AREA_PREP_INSTRUCTIONS = `Write the region's standing pressure — what is true anywhere inside it, all the time. Threats are conditions with teeth ("anything loud brings a patrol within the hour"), not incidents. Room names are places somebody who lived here would name: short, concrete, and no two alike.`;
+
+/** What the handoff call writes when one chapter closes and the next opens. */
+export const DEFAULT_ARC_INSTRUCTIONS = `The next chapter grows out of what the last one left behind — a consequence, a debt, a person who survived. Write fronts that move whether or not the player touches them, and whose steps escalate in a way the player could see coming if they were paying attention. The question is what the play answers, not a task the player is handed.`;
+
+/** How the narrator plants and pays off a promise. */
+export const DEFAULT_PROMISE_INSTRUCTIONS = `Plant a promise when your prose commits to something you have not yet delivered — a sound with no source, a name nobody explains, a look that means something. Pay it off within a few turns and remove it, or let the story drop it. Never plant one you have no intention of returning to.`;
+
+/**
+ * Turns in one room before its card is re-prepped. Room granularity already
+ * absorbs most of what a turn ceiling covered; this catches the thirty-turn
+ * conversation that never leaves the tavern.
+ */
+export const DEFAULT_SCENE_BOUNDARY_TURNS = 20;
+
+/**
+ * In-game days a front may go untouched before it ticks on its own. This is the
+ * number that makes the world move while the player does something else — small
+ * enough to be felt, large enough that a busy day never triggers it.
+ */
+export const DEFAULT_FRONT_NEGLECT_DAYS = 2;
+
+/** Turns before an outstanding promise is escalated (and 2× that, dropped). */
+export const DEFAULT_PROMISE_TURNS = 8;
+
+/** How long an interlude runs before the staged next arc applies itself. */
+export const DEFAULT_INTERLUDE_TURNS = 6;
+
 /**
  * Thinking effort for the text model. `auto` ships because it is the only value
  * that changes nothing: no `reasoning` field is sent, so every model — reasoning
@@ -288,6 +336,25 @@ export function defaultSettings(): Settings {
     journalMaxTurns: DEFAULT_JOURNAL_MAX_TURNS,
     journalMinTurns: DEFAULT_JOURNAL_MIN_TURNS,
     journalInstructions: DEFAULT_JOURNAL_INSTRUCTIONS,
+    // Ships ON. The boundary calls are rare, each is cheaper than one beat, and
+    // a feature whose absence is silent is never discovered switched off.
+    foresightEnabled: true,
+    scenePrepInstructions: DEFAULT_SCENE_PREP_INSTRUCTIONS,
+    areaPrepInstructions: DEFAULT_AREA_PREP_INSTRUCTIONS,
+    arcInstructions: DEFAULT_ARC_INSTRUCTIONS,
+    promiseInstructions: DEFAULT_PROMISE_INSTRUCTIONS,
+    sceneBoundaryTurns: DEFAULT_SCENE_BOUNDARY_TURNS,
+    frontNeglectDays: DEFAULT_FRONT_NEGLECT_DAYS,
+    promiseTurns: DEFAULT_PROMISE_TURNS,
+    interludeTurns: DEFAULT_INTERLUDE_TURNS,
+    // A cost is a setback and ticks; a mixed result got it done and charged for
+    // it, which is not the world closing in.
+    costTicksFront: true,
+    mixedTicksFront: false,
+    // Rumoured rooms shown by default: an area's room list is drawn before it
+    // is walked, and hiding it would make a fresh map look empty rather than
+    // unexplored.
+    mapFog: true,
   };
 }
 

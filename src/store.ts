@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type {
   AdventureImports,
+  Arc,
   Character,
   CharacterOverride,
   DiceCast,
@@ -118,6 +119,35 @@ import {
 import { captureReversal, applyReversal } from "./lib/reversal";
 import { detectSpeakers } from "./lib/spotlight";
 import {
+  ARC_TEMPERATURE,
+  buildArcMessages,
+  handOff,
+  parseArc,
+  runningArc,
+} from "./lib/arc";
+import {
+  AREA_PREP_TEMPERATURE,
+  areaChanged,
+  buildAreaMessages,
+  parseAreaCard,
+  stampAreaCard,
+} from "./lib/areaPrep";
+import {
+  ROOM_PREP_TEMPERATURE,
+  buildRoomMessages,
+  parseRoomCard,
+  roomChanged,
+  stampRoomCard,
+} from "./lib/roomPrep";
+import {
+  addRoom,
+  applyExits,
+  roomKey,
+  seedRooms,
+  visitRoom,
+} from "./lib/gazetteer";
+import { closeInterlude, normalizeForesight, reckonTurn, seedArcs } from "./lib/foresight";
+import {
   imagesAllowed,
   buildPortraitPrompt,
   generateImage,
@@ -141,6 +171,14 @@ export interface SendTurnOptions {
    * is drawn from.
    */
   note?: string;
+  /**
+   * Which action BUTTON the player pressed, if they pressed one. The narrator
+   * may have written a note for that option last turn (`Message.optionNotes`),
+   * and this is how it is matched back — by index, because the note was written
+   * for the option rather than for its wording. A typed or edited action passes
+   * nothing and correctly gets no note.
+   */
+  optionIndex?: number;
 }
 
 /** Per-call knobs for the shared cache-then-generate image helper. */
@@ -169,7 +207,11 @@ export type Screen =
   | "sync"
   | "party"
   | "inventory"
-  | "member";
+  | "member"
+  /** This adventure's forward prep — arc, area, room, promises. */
+  | "foresight"
+  /** The 1-bit map. A PLAY screen: the threats stay private on Foresight. */
+  | "map";
 
 export interface LoomStore {
   settings: Settings;
@@ -236,6 +278,16 @@ export interface LoomStore {
   fieldGenPending: boolean;
   /** Why the last field generation failed, shown in the modal until dismissed. */
   fieldGenError: string | null;
+
+  /**
+   * A Foresight boundary call is in flight — area prep, room prep or the arc
+   * handoff. Shown on the Foresight screen and nowhere else: these calls are
+   * off the critical path by construction, so the turn must never wait on one
+   * or even look like it is.
+   */
+  foresightPending: boolean;
+  /** Why the last boundary call failed. Cleared on the next attempt. */
+  foresightError: string | null;
 
   hydrate: () => Promise<void>;
   /**
@@ -435,6 +487,35 @@ export interface LoomStore {
   updateJournalEntry: (id: string, lines: JournalLine[]) => void;
   /** Delete an entry outright. */
   deleteJournalEntry: (id: string) => void;
+
+  /* ------------------------- Foresight ------------------------- */
+
+  /**
+   * Prep whatever the scene now needs — the region, this room, and the rooms
+   * its exits name. Fire-and-forget, called after a turn lands and after a
+   * restore; never awaited by anything, since a card that arrives late simply
+   * makes the NEXT turn better and a card that never arrives leaves the turn
+   * byte-identical to one taken with the feature off.
+   */
+  prepForesight: () => void;
+  /** ↻ on the Foresight screen: re-prep this region even though it is fresh. */
+  refreshArea: () => void;
+  /** ↻ on the Foresight screen: re-prep this room. */
+  refreshRoom: () => void;
+  /**
+   * Ask for the next arc, staged rather than applied (`Arc.staged`). Runs when
+   * an interlude begins, and again behind the screen's **Regenerate**.
+   */
+  stageNextArc: (force?: boolean) => Promise<void>;
+  /** **Use** the staged arc now: close the current one and open it. */
+  applyStagedArc: () => void;
+  /** *Move on* — end the interlude by hand rather than waiting it out. */
+  endInterlude: () => void;
+  /** Edit the running arc (question, spine, fronts, manual ticks). */
+  updateArc: (patch: Partial<Arc>) => void;
+  /** Drop one outstanding promise — the player closing it off by hand. */
+  closePromise: (id: string) => void;
+  clearForesightError: () => void;
 
   /** Ensure the PC + all in-party portraits exist (cache-then-generate). */
   syncImages: () => void;
@@ -636,6 +717,169 @@ export const useStore = create<LoomStore>((set, get) => {
   /** Abort handle for the in-flight turn (closure state — not reactive). */
   let turnAbort: AbortController | null = null;
 
+  /* ------------------------------------------------------------------ *
+   * Foresight — the boundary calls (DESIGN.md → Foresight).
+   *
+   * Every one of them is OFF the critical path: nothing here is ever awaited
+   * by a turn, every failure is swallowed, and a card that arrives late or not
+   * at all leaves the next turn exactly as it would have been without the
+   * feature. That is what makes "extra calls per turn: zero" true.
+   * ------------------------------------------------------------------ */
+
+  /** One prep chain at a time, app-wide. Closure state, not reactive. */
+  let prepRunning = false;
+
+  /** Write one Foresight slice of the game and save, in one place. */
+  function commitForesight(patch: Partial<GameState>) {
+    const game = { ...get().game, ...patch };
+    set({ game });
+    void saveActiveGame(game);
+  }
+
+  /**
+   * Prep one region. The staleness guard is the whole reason the arc is read
+   * twice: a card authored under an arc that has since moved describes a world
+   * the player has already left, and applying it would cache exactly the thing
+   * `Arc.epoch` exists to invalidate.
+   */
+  async function prepArea(key: string, force: boolean): Promise<void> {
+    const settings = get().settings;
+    const game = get().game;
+    const arc = runningArc(game.arcs);
+    if (!force && !areaChanged(game, key, arc)) return;
+
+    const card = (game.areas ?? {})[key];
+    const name = card?.name || game.location;
+    const raw = await completeChat({
+      settings,
+      messages: buildAreaMessages(settings, game, name, arc, game.promises ?? []),
+      temperature: AREA_PREP_TEMPERATURE,
+    });
+    const parsed = parseAreaCard(raw, arc);
+    if (!parsed) return;
+
+    const now = get().game;
+    const nowArc = runningArc(now.arcs);
+    // Landed for an arc that has moved on: dropped, exactly as a journal entry
+    // is dropped when its id is gone.
+    if ((nowArc?.id ?? "") !== (arc?.id ?? "") || (nowArc?.epoch ?? 0) !== (arc?.epoch ?? 0)) {
+      return;
+    }
+
+    const previous = (now.areas ?? {})[key];
+    let stamped = stampAreaCard(parsed, key, name, arc, previous);
+    // The room list is a SEED: names only, no cards, and the ones nobody has
+    // walked into survive a re-prep because a rumour is a hook.
+    stamped = seedRooms(stamped, parsed.rooms);
+    // The player is standing in one of them right now, whether it was listed or
+    // not — an unlisted room is the ordinary case, not an error.
+    if (now.areaKey === key) stamped = visitRoom(stamped, now.location);
+
+    commitForesight({ areas: { ...(now.areas ?? {}), [key]: stamped } });
+  }
+
+  /**
+   * Prep one room inside a prepped region. `location` rather than "the current
+   * room" on purpose: this is also the prefetch path, and the rooms it preps
+   * are ones the player has not walked into yet.
+   */
+  async function prepRoom(areaKey: string, location: string, force: boolean): Promise<void> {
+    const settings = get().settings;
+    const game = get().game;
+    const area = (game.areas ?? {})[areaKey];
+    if (!area) return;
+
+    const key = roomKey(location);
+    if (!key) return;
+    const room = area.rooms[key];
+    if (!force && !roomChanged(area, room, game.turnNumber, settings.sceneBoundaryTurns)) return;
+
+    const raw = await completeChat({
+      settings,
+      messages: buildRoomMessages(
+        settings,
+        game,
+        room?.name || location,
+        area,
+        activeMembers(game.characters, game.roster),
+        game.promises ?? [],
+      ),
+      temperature: ROOM_PREP_TEMPERATURE,
+    });
+    const parsed = parseRoomCard(raw);
+    if (!parsed) return;
+
+    const now = get().game;
+    const nowArea = (now.areas ?? {})[areaKey];
+    // Its region was re-prepped while this was in flight, so the card was
+    // written against a version of the place that no longer exists.
+    if (!nowArea || nowArea.version !== area.version) return;
+
+    let next = addRoom(nowArea, room?.name || location);
+    const slot = next.rooms[key];
+    if (!slot) return;
+    next = {
+      ...next,
+      rooms: { ...next.rooms, [key]: { ...slot, card: stampRoomCard(parsed, nowArea, now.turnNumber) } },
+    };
+    // The exits are what make prefetch possible: the neighbours of a room are
+    // known the moment its card lands, so their cards can be waiting.
+    next = applyExits(next, key, parsed.exits);
+
+    commitForesight({ areas: { ...(now.areas ?? {}), [areaKey]: next } });
+  }
+
+  /**
+   * The chain, in the order the player will meet it: the region, the room they
+   * are standing in, then the rooms its exits name.
+   *
+   * The prefetch is the answer to a timing problem rather than a nicety: entry
+   * is only known when the block lands, so a card requested on arrival is ready
+   * for the SECOND beat in a room — and the entering beat is the one worth
+   * prepping. Immediate neighbours only, never deeper, and bounded by
+   * `ROOM_MAX_EXITS` rather than by a cap of its own.
+   */
+  async function runPrep(): Promise<void> {
+    if (prepRunning) return;
+    const settings = get().settings;
+    if (!settings.foresightEnabled) return;
+
+    const arc = runningArc(get().game.arcs);
+    // An interlude has nothing to prep — every clock is suspended and the block
+    // is replaced by breathing room. What it DOES have is a handoff to stage.
+    if (arc?.status === "interlude") {
+      if (!arc.staged) void get().stageNextArc();
+      return;
+    }
+
+    const areaKey = get().game.areaKey;
+    if (!areaKey) return;
+
+    prepRunning = true;
+    // Only when there is something to clear: this runs after every turn, and an
+    // unconditional `set` would re-render the screens watching it on each one.
+    if (get().foresightError) set({ foresightError: null });
+    try {
+      await prepArea(areaKey, false);
+      await prepRoom(areaKey, get().game.location, false);
+
+      const area = (get().game.areas ?? {})[areaKey];
+      const here = area?.rooms[roomKey(get().game.location)];
+      for (const exit of here?.exits ?? []) {
+        const neighbour = area?.rooms[exit];
+        if (!neighbour || neighbour.card) continue;
+        await prepRoom(areaKey, neighbour.name, false);
+      }
+    } catch (err) {
+      // Never a turn error, and never thrown: a failed prep is the documented
+      // "no card → the turn is byte-identical to today" row of the failure
+      // table. It is recorded only so the Foresight screen can say why.
+      set({ foresightError: err instanceof Error ? err.message : "Prep failed." });
+    } finally {
+      prepRunning = false;
+    }
+  }
+
   /**
    * Write the cast. It is a slice of the game document like any other now, so
    * this exists for the same reason `setEntry` does: one place that both `set`s
@@ -808,6 +1052,9 @@ export const useStore = create<LoomStore>((set, get) => {
   journalPending: false,
   fieldGenError: null,
 
+  foresightPending: false,
+  foresightError: null,
+
   async hydrate() {
     // Before anything reads a picture: fold the retired `src:` masters onto the
     // keys they belong to, so a device upgrading from a build with the 1-bit
@@ -828,7 +1075,7 @@ export const useStore = create<LoomStore>((set, get) => {
       // its own, so it takes the old library wholesale. Anything that library
       // no longer has — a pre-split save still carrying its own people — is
       // folded in behind it, so no authored character is lost on the way over.
-      const game = loaded.legacyCast
+      const loadedGame = loaded.legacyCast
         ? {
             ...loaded.game,
             characters: withPC(
@@ -836,6 +1083,14 @@ export const useStore = create<LoomStore>((set, get) => {
             ),
           }
         : { ...loaded.game, characters: withPC(loaded.game.characters) };
+
+      // Foresight, sanitized at READ like every other stored shape, then given
+      // the scenario's arc if the game has none — which is every save written
+      // before the feature, and every scenario that gains an arc later. Returns
+      // the same references when there is nothing to do.
+      const normalized = normalizeForesight(loadedGame);
+      const arcs = seedArcs(normalized, normalized.turnNumber);
+      const game = arcs === normalized.arcs ? normalized : { ...normalized, arcs };
 
       // Restore trailing options from the last narrator turn. Normalized on the
       // way out, like every other stored shape in the app: a block recorded
@@ -1112,6 +1367,149 @@ export const useStore = create<LoomStore>((set, get) => {
     void saveActiveGame(next);
   },
 
+  /* ------------------------- Foresight ------------------------- */
+
+  prepForesight() {
+    void runPrep();
+  },
+
+  refreshArea() {
+    const key = get().game.areaKey;
+    if (!key || prepRunning) return;
+    prepRunning = true;
+    set({ foresightPending: true, foresightError: null });
+    void prepArea(key, true)
+      .catch((err) =>
+        set({ foresightError: err instanceof Error ? err.message : "Prep failed." }),
+      )
+      .finally(() => {
+        prepRunning = false;
+        set({ foresightPending: false });
+      });
+  },
+
+  refreshRoom() {
+    const game = get().game;
+    if (!game.areaKey || prepRunning) return;
+    prepRunning = true;
+    set({ foresightPending: true, foresightError: null });
+    void prepRoom(game.areaKey, game.location, true)
+      .catch((err) =>
+        set({ foresightError: err instanceof Error ? err.message : "Prep failed." }),
+      )
+      .finally(() => {
+        prepRunning = false;
+        set({ foresightPending: false });
+      });
+  },
+
+  async stageNextArc(force = false) {
+    const settings = get().settings;
+    if (!settings.foresightEnabled || get().foresightPending) return;
+    const game = get().game;
+    const arc = runningArc(game.arcs);
+    // With NO arc running there is nothing to stage against — the scenario
+    // never authored one, or the player deleted theirs — so the same call opens
+    // one directly. Without this the arc scope is unreachable: an interlude is
+    // the only other thing that writes an arc, and an interlude can only begin
+    // when an arc's spine fires.
+    if (!arc) {
+      set({ foresightPending: true, foresightError: null });
+      try {
+        const raw = await completeChat({
+          settings,
+          messages: buildArcMessages(settings, game, game.characters, undefined),
+          temperature: ARC_TEMPERATURE,
+        });
+        const template = parseArc(raw);
+        if (!template) throw new Error("The arc came back empty.");
+        const now = get().game;
+        commitForesight({
+          arcs: handOff(now.arcs ?? [], template, `arc-${(now.arcs ?? []).length + 1}`, now.turnNumber, now.day),
+        });
+      } catch (err) {
+        set({
+          foresightError: err instanceof Error ? err.message : "Could not write the arc.",
+        });
+      } finally {
+        set({ foresightPending: false });
+      }
+      return;
+    }
+    if (arc.status !== "interlude") return;
+    if (arc.staged && !force) return;
+
+    set({ foresightPending: true, foresightError: null });
+    try {
+      const raw = await completeChat({
+        settings,
+        messages: buildArcMessages(settings, game, game.characters, arc),
+        temperature: ARC_TEMPERATURE,
+      });
+      const staged = parseArc(raw);
+      if (!staged) throw new Error("The next arc came back empty.");
+      // STAGED, not applied. This call writes the next several hours of play off
+      // a summary and the player will want to co-author it, so it is previewed
+      // on the Arc screen and applied only by Use — or by the interlude running
+      // out (`foresight.ts → closeInterlude`), because an offer to co-author must
+      // never dead-end the campaign into arcless play.
+      const now = get().game;
+      commitForesight({
+        arcs: (now.arcs ?? []).map((a) => (a.id === arc.id ? { ...a, staged } : a)),
+      });
+    } catch (err) {
+      set({
+        foresightError: err instanceof Error ? err.message : "Could not write the next arc.",
+      });
+    } finally {
+      set({ foresightPending: false });
+    }
+  },
+
+  applyStagedArc() {
+    const game = get().game;
+    const arc = runningArc(game.arcs);
+    if (!arc?.staged) return;
+    commitForesight({
+      arcs: handOff(
+        game.arcs ?? [],
+        arc.staged,
+        `arc-${game.turnNumber}-${(game.arcs ?? []).length + 1}`,
+        game.turnNumber,
+        game.day,
+      ),
+    });
+  },
+
+  endInterlude() {
+    const game = get().game;
+    const arc = runningArc(game.arcs);
+    if (!arc || arc.status !== "interlude") return;
+    commitForesight({
+      arcs: closeInterlude(game.arcs ?? [], arc, game.turnNumber, game.day),
+    });
+  },
+
+  updateArc(patch) {
+    const game = get().game;
+    const arc = runningArc(game.arcs);
+    if (!arc) return;
+    commitForesight({
+      arcs: (game.arcs ?? []).map((a) => (a.id === arc.id ? { ...a, ...patch } : a)),
+    });
+  },
+
+  closePromise(id) {
+    const game = get().game;
+    const promises = (game.promises ?? []).filter((p) => p.id !== id);
+    if (promises.length === (game.promises ?? []).length) return;
+    commitForesight({ promises });
+  },
+
+  clearForesightError() {
+    if (get().foresightError) set({ foresightError: null });
+  },
+
   async generateField(character, field, hint) {
     // Single-flight only. Unlike `autoUpdateCharacter` there is no `streaming`
     // guard and no "was it deleted?" re-check after the await: this writes no
@@ -1385,7 +1783,12 @@ export const useStore = create<LoomStore>((set, get) => {
   newAdventure(imports) {
     // What survives is the player's call now that the cast belongs to the
     // adventure — `seedAdventure` holds every rule; this just writes the result.
-    const game = seedAdventure(get().game, imports);
+    const seeded = seedAdventure(get().game, imports);
+    // The scenario's authored arc opens with the adventure, so a shipped
+    // scenario starts with a real one and no new import tick is needed: the arc
+    // rides the scenario's own tick, being part of it.
+    const arcs = seedArcs(seeded, 0);
+    const game = arcs === seeded.arcs ? seeded : { ...seeded, arcs };
     set({ game, options: [], streamText: "", error: null, failedInput: null });
     void saveActiveGame(game);
     get().syncImages();
@@ -1514,9 +1917,13 @@ export const useStore = create<LoomStore>((set, get) => {
     // the people you saved it with, not whoever happens to be in the app now.
     // A slot taken while the cast lived outside the game carries none, so it
     // keeps the one in hand rather than restoring to nobody.
-    const game = loaded.legacyCast
+    const restored = loaded.legacyCast
       ? { ...loaded.game, characters: get().game.characters }
       : { ...loaded.game, characters: withPC(loaded.game.characters) };
+    // A slot froze the whole adventure, Foresight included — but a slot written
+    // by an older build has none, and one hand-edited in the cloud can hold
+    // anything. Same read-time sanitizing as hydrate.
+    const game = normalizeForesight(restored);
     const lastNarrator = [...game.messages].reverse().find((m) => m.role === "narrator");
     set({
       game,
@@ -1593,6 +2000,15 @@ export const useStore = create<LoomStore>((set, get) => {
       set({ dice: { id: uid(), roll: record, outcome: stakes.outcome } });
     }
 
+    // The note the narrator wrote for the button the player just pressed, read
+    // off the beat that offered it. By INDEX: the note belongs to the option,
+    // not to its wording, so a typed or edited action finds none — correctly.
+    const lastBeat = [...base.messages].reverse().find((m) => m.role === "narrator");
+    const optionNote =
+      opts?.optionIndex === undefined
+        ? undefined
+        : lastBeat?.optionNotes?.[opts.optionIndex];
+
     // Build from `base` (pre-turn history) so the new line isn't duplicated —
     // it rides as the final user message, not also inside the history window.
     const messages = buildMessages({
@@ -1604,6 +2020,7 @@ export const useStore = create<LoomStore>((set, get) => {
       historyBudgetTokens: get().settings.historyBudget,
       // Blank on every ordinary turn, which adds nothing to the prompt.
       regenerateNote: opts?.note,
+      optionNote,
     });
 
     try {
@@ -1670,6 +2087,24 @@ export const useStore = create<LoomStore>((set, get) => {
       // `nextGame` below with every other slice the turn touched, so there is
       // one write and one autosave for the whole turn.
 
+      // Reckon: what the CLIENT does now the block has applied — the room→area
+      // join, front ticks, neglect, promises. No call, and folded into the same
+      // `nextGame` below, so it rides the same save and the same reversal
+      // snapshot, exactly how a `condition` rides the roster. Skipped entirely
+      // when the feature is off, which is what makes a turn taken with it off
+      // byte-identical to one taken before it existed.
+      const foresight = get().settings.foresightEnabled
+        ? reckonTurn({
+            game: { ...g, roster },
+            settings: get().settings,
+            turn,
+            day: scene.day,
+            location: scene.location,
+            block: applied,
+            outcome: get().settings.stakesEnabled ? stakes.outcome : null,
+          })
+        : null;
+
       // The beat itself, minus its reversal — the journal reads this turn's own
       // ops, so the message has to exist before the snapshot does.
       const beat: Message = {
@@ -1683,6 +2118,12 @@ export const useStore = create<LoomStore>((set, get) => {
         // game with stakes off records neither.
         roll: record ?? undefined,
         appliedDeltas: applied ?? undefined,
+        // What each of this beat's buttons risks, kept so the note comes back
+        // if the player presses one. Never rendered.
+        optionNotes: applied?.optionNotes,
+        // What the CLIENT did, kept apart from `appliedDeltas` because that
+        // array is a record of what the MODEL said — and `toasts.ts` reads both.
+        reckoning: foresight?.reckoning,
         day: scene.day,
         minutes: scene.minutes,
         location: scene.location,
@@ -1717,6 +2158,15 @@ export const useStore = create<LoomStore>((set, get) => {
         minutes: scene.minutes,
         location: scene.location,
         weather: scene.weather,
+        // Foresight's pointers and clocks. `areas` is deliberately absent — see
+        // `captureReversal`: prep is a cache, not state.
+        ...(foresight
+          ? {
+              arcs: foresight.arcs,
+              promises: foresight.promises,
+              areaKey: foresight.areaKey,
+            }
+          : {}),
       };
       const narratorMsg: Message = { ...beat, reversal: captureReversal(base, post) };
 
@@ -1733,6 +2183,14 @@ export const useStore = create<LoomStore>((set, get) => {
         inventory: scene.inventory,
         quests: scene.quests,
         worldNotes: scene.worldNotes,
+        ...(foresight
+          ? {
+              arcs: foresight.arcs,
+              areas: foresight.areas,
+              areaKey: foresight.areaKey,
+              promises: foresight.promises,
+            }
+          : {}),
       };
 
       set({
@@ -1746,6 +2204,11 @@ export const useStore = create<LoomStore>((set, get) => {
       // Deterministic trigger: new members get portraits. Fire-and-forget —
       // never blocks the turn.
       get().syncImages();
+
+      // Same posture for the prep: the region, this room and its neighbours are
+      // fetched AFTER the beat has landed, so the player is reading while they
+      // arrive. A card that lands late simply makes the next turn better.
+      get().prepForesight();
 
       // Same posture for the journal: the entry is already saved with its
       // facts, so fetching its written lines happens after the beat has landed

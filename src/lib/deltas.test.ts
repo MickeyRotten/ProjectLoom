@@ -1242,3 +1242,26 @@ describe("goldIsNarrated", () => {
     expect(goldIsNarrated("   ")).toBe(true);
   });
 });
+
+describe("reconcileBlock — promises", () => {
+  it("drops a plant for something already promised", () => {
+    const g: GameState = { ...game(), promises: [{ id: "p1", text: "the tremor", plantedTurn: 2 }] };
+    const folded = reconcileBlock(g, lib(), { promises: [{ op: "add", text: "The Tremor" }] });
+    expect(folded.promises).toEqual([]);
+  });
+
+  it("drops a close for something never promised", () => {
+    const folded = reconcileBlock(game(), lib(), { promises: [{ op: "remove", text: "a debt" }] });
+    expect(folded.promises).toEqual([]);
+  });
+
+  it("keeps the ops that change something, and stays reference-stable when they all do", () => {
+    const block = { promises: [{ op: "add" as const, text: "a watcher in the gallery" }] };
+    expect(reconcileBlock(game(), lib(), block)).toBe(block);
+  });
+
+  it("leaves a block with no promise channel untouched", () => {
+    const block = { location: "Cellar" };
+    expect(reconcileBlock(game(), lib(), block)).toBe(block);
+  });
+});

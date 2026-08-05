@@ -42,6 +42,8 @@ const ENTRIES: { screen: Screen; label: string; note: string; group: Group }[] =
   { group: "adventure", screen: "quests", label: "Quests", note: "Active + finished objectives" },
   { group: "adventure", screen: "worldnotes", label: "World Notes", note: "Lore the story remembers" },
   { group: "adventure", screen: "journal", label: "Journal", note: "What has happened, day by day" },
+  { group: "adventure", screen: "foresight", label: "Foresight", note: "The arc · this region · what a roll costs here" },
+  { group: "adventure", screen: "map", label: "Map", note: "Where you have been · what leads where" },
   { group: "adventure", screen: "saves", label: "Saves", note: "Snapshot · restore slots" },
   { group: "adventure", screen: "characters", label: "Characters", note: "Full cast · add to party" },
   { group: "adventure", screen: "scenario", label: "Scenario", note: "Title · premise · opening" },

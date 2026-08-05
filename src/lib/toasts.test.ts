@@ -199,3 +199,34 @@ describe("deriveToasts — world notes", () => {
     expect(deriveToasts(narr({ notes: [{ op: "add", title: "" }] }))).toEqual([]);
   });
 });
+
+describe("reckoning chips", () => {
+  const beat = (reckoning: Message["reckoning"]): Message => ({
+    id: "m1",
+    role: "narrator",
+    content: "beat",
+    turn: 4,
+    reckoning,
+  });
+
+  it("reports a front moving as pressure, never as a number", () => {
+    const chips = deriveToasts(beat({ frontTicked: "the mine floods" }));
+    expect(chips).toEqual(["Closing in: the mine floods"]);
+    expect(chips.join(" ")).not.toMatch(/\d/);
+  });
+
+  it("reports an arrival and the promises planted", () => {
+    expect(
+      deriveToasts(beat({ frontFired: "the mine floods", promisesPlanted: ["the tremor"] })),
+    ).toEqual(["It arrives: the mine floods", "Promise: the tremor"]);
+  });
+
+  it("shows them on a beat whose block was unreadable — they are the CLIENT's record", () => {
+    const chips = deriveToasts({ ...beat({ frontTicked: "the warden turns" }), appliedDeltas: undefined });
+    expect(chips).toEqual(["Closing in: the warden turns"]);
+  });
+
+  it("adds nothing to a beat that reckoned nothing", () => {
+    expect(deriveToasts(beat(undefined))).toEqual([]);
+  });
+});

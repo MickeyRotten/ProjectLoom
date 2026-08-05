@@ -286,3 +286,83 @@ describe("reversal — world notes", () => {
     expect(applyReversal(g, legacy).worldNotes).toBe(g.worldNotes);
   });
 });
+
+/* ------------------------------------------------------------------ *
+ * Foresight (DESIGN.md → Foresight → Reversal)
+ * ------------------------------------------------------------------ */
+
+describe("reversal — foresight", () => {
+  const arc = {
+    id: "arc-1",
+    question: "q",
+    spine: "flood",
+    fronts: [
+      { id: "flood", label: "the mine floods", steps: ["a", "b"], ticks: 0, lastTickDay: 1, status: "open" as const },
+    ],
+    epoch: 0,
+    status: "running" as const,
+    areas: [],
+    openedTurn: 0,
+  };
+
+  const pre = (): GameState => ({
+    ...seed(),
+    arcs: [arc],
+    promises: [],
+    areaKey: "murkwood",
+    areas: { murkwood: { key: "murkwood", name: "Murkwood", arcId: "arc-1", epoch: 0, version: 1, coord: { x: 0, y: 0 }, neighbours: [], texture: "", threats: [], rooms: {} } },
+  });
+
+  it("captures the ticks, the promises and the area pointer", () => {
+    const before = pre();
+    const after: GameState = {
+      ...before,
+      arcs: [{ ...arc, fronts: [{ ...arc.fronts[0], ticks: 1 }] }],
+      promises: [{ id: "p1", text: "the tremor", plantedTurn: 4 }],
+      areaKey: "rodstroke",
+    };
+    const rev = captureReversal(before, after);
+    expect(rev.arcs?.[0].fronts[0].ticks).toBe(0);
+    expect(rev.promises).toEqual([]);
+    expect(rev.areaKey).toBe("murkwood");
+
+    const back = applyReversal(after, rev);
+    expect(back.arcs?.[0].fronts[0].ticks).toBe(0);
+    expect(back.promises).toEqual([]);
+    expect(back.areaKey).toBe("murkwood");
+  });
+
+  it("never captures the gazetteer — prep is a cache, not state", () => {
+    const before = pre();
+    const after: GameState = { ...before, areas: { ...before.areas, elsewhere: before.areas!.murkwood } };
+    expect(captureReversal(before, after)).not.toHaveProperty("areas");
+    // …so undo leaves the player in a room whose card is still cached: no
+    // re-prep, no double tick, and a small snapshot.
+    expect(applyReversal(after, captureReversal(before, after)).areas).toBe(after.areas);
+  });
+
+  it("records nothing on a turn that touched none of it", () => {
+    const before = pre();
+    const rev = captureReversal(before, { ...before });
+    expect(rev).not.toHaveProperty("arcs");
+    expect(rev).not.toHaveProperty("promises");
+    expect(rev).not.toHaveProperty("areaKey");
+  });
+
+  it("restores an area pointer that was genuinely null before the turn", () => {
+    const before: GameState = { ...pre(), areaKey: null };
+    const after: GameState = { ...before, areaKey: "murkwood" };
+    const rev = captureReversal(before, after);
+    expect(rev.areaKey).toBeNull();
+    expect(applyReversal(after, rev).areaKey).toBeNull();
+  });
+
+  it("leaves a pre-foresight snapshot alone rather than blanking the slices", () => {
+    const game = pre();
+    const legacy: Reversal = { day: 1, location: "x", weather: "clear" };
+    const back = applyReversal(game, legacy);
+    expect(back.arcs).toBe(game.arcs);
+    expect(back.promises).toBe(game.promises);
+    expect(back.areaKey).toBe("murkwood");
+  });
+});

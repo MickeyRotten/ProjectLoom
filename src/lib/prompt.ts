@@ -1,4 +1,5 @@
 import type {
+  Arc,
   Character,
   Equipment,
   GameState,
@@ -30,6 +31,15 @@ import { formatNpcBlock, matchNpcs } from "./cast";
 import { activeTemplate } from "./imageTemplates";
 import { matchWorldNotes, formatWorldNotesBlock } from "./worldNotes";
 import { formatConditionsBlock, formatStakesBlock, type StakeSignals } from "./stakes";
+import { formatFrontLines, formatLoomingBlock, liveFronts } from "./fronts";
+import { formatOptionNote, formatPromisesBlock } from "./promises";
+import {
+  currentArea,
+  currentRoom,
+  formatAreaBlock,
+  formatRoomBlock,
+  preparedOutcome,
+} from "./gazetteer";
 
 /**
  * Prompt assembly (DESIGN.md → Prompt assembly, trimmed port of
@@ -77,6 +87,13 @@ export interface BuildOptions {
    * isn't ↻ Regen with something typed into it.
    */
   regenerateNote?: string;
+  /**
+   * The narrator's own note on the option the player just TAPPED — written last
+   * turn alongside the buttons, matched by tap index (`Message.optionNotes`).
+   * Blank for a typed or edited action, correctly: the note was written for the
+   * option, not for the wording.
+   */
+  optionNote?: string;
 }
 
 /**
@@ -206,12 +223,34 @@ export function buildMessages(opts: BuildOptions): ChatMessage[] {
   //     five competing ones.
   messages.push({ role: "system", content: buildStateOfPlay(game, characters) });
 
+  // 4c. The narrator's PREP — the arc, the region, this room, the outstanding
+  //     promises. Between the state and the outcome, because the outcome line
+  //     refers to the card. Its own message rather than joining the state tier
+  //     for a reason the tier order already encodes: the state tier claims
+  //     "where this disagrees with a beat, this is what is true now", and prep
+  //     is DIRECTION, not fact — the same category as a regeneration note.
+  if (settings.foresightEnabled) {
+    const prep = formatForesightBlock(settings, game, opts.optionNote);
+    if (prep) messages.push({ role: "system", content: prep });
+    // A front whose clock ran out last turn arrives in THIS beat. Its own
+    // message, and after the prep, because it is the one thing in the whole
+    // feature that is not direction: it happens.
+    const arrival = formatFrontArrival(game);
+    if (arrival) messages.push({ role: "system", content: arrival });
+  }
+
   // 5a. This turn's outcome band, if the action was a gamble. Its own message:
   //     it is a fact about THIS action and nothing else, and the history is
   //     full of turns that went differently. Gated on the setting so switching
   //     stakes off restores the pure-sandbox behaviour exactly.
   if (settings.stakesEnabled && opts.stakes) {
-    const stakes = formatStakesBlock(opts.stakes, settings.stakesRule);
+    // The prepared line for the band that ROLLED, and only that one — the join
+    // between Foresight and the dice is these three shared keys and nothing
+    // else.
+    const prepared = settings.foresightEnabled
+      ? preparedOutcome(currentRoom(game), opts.stakes.outcome)
+      : "";
+    const stakes = formatStakesBlock(opts.stakes, settings.stakesRule, prepared);
     if (stakes) messages.push({ role: "system", content: stakes });
   }
 
@@ -581,6 +620,95 @@ export function formatJournalBlock(entries: JournalEntry[], budgetTokens: number
   return `${header}\n\n${blocks.join("\n\n")}`;
 }
 
+/* ------------------------------------------------------------------ *
+ * Tier 4c — the narrator's prep (DESIGN.md → Foresight)
+ * ------------------------------------------------------------------ */
+
+/**
+ * The `ARC` tier: the story's question, then one line per live front — label,
+ * clock, and the ONE step it is about to reach. Only the next step, never the
+ * remaining ones: the rest is spoiler for the narrator and noise in the budget.
+ */
+export function formatArcBlock(arc: Arc | undefined): string {
+  if (!arc || arc.status === "done") return "";
+  const fronts = liveFronts(arc);
+  if (!arc.question.trim() && !fronts.length) return "";
+  const head = arc.question.trim() ? `ARC — ${arc.question.trim()}` : "ARC";
+  return [head, ...formatFrontLines(fronts)].join("\n");
+}
+
+/**
+ * What replaces the whole prep block during an interlude. That sentence IS the
+ * mechanism: the spotlight's signals keep computing exactly as on any other
+ * turn, and what changes is the direction rather than the machinery.
+ */
+export function formatInterludeBlock(): string {
+  return [
+    "INTERLUDE — private. Yours, not the player's. The last arc has closed and the next has not begun.",
+    "No threats, no clocks, no looming anything: nothing is closing in on the player this turn, and nothing should feel like it is.",
+    "This is breathing room. Let them talk — the companions are the content. Rest, repair, argue, celebrate, grieve, plan.",
+  ].join("\n");
+}
+
+/**
+ * The whole prep message: arc → area → room → promises → the note the narrator
+ * wrote for the button the player just pressed. Widest and oldest first, exactly
+ * like the tiers around it.
+ *
+ * Three tiers is where "every fact is stated once" goes to die, so it is
+ * enforced at AUTHORING rather than here — area prep is shown the arc and told
+ * not to restate it, room prep is shown the area and told not to restate that.
+ * Caps do the rest. Target for the whole block: ≤ ~150 tokens, smaller than one
+ * beat.
+ *
+ * Blank when there is nothing prepped, which is what makes a turn in a game
+ * with no cards byte-identical to a turn taken before the feature existed.
+ */
+export function formatForesightBlock(
+  settings: Settings,
+  game: GameState,
+  optionNote?: string,
+): string {
+  const arc = (game.arcs ?? []).find((a) => a.status !== "done");
+  const note = formatOptionNote(optionNote);
+
+  // An interlude replaces the prep rather than adding to it: every clock is
+  // suspended, so there is nothing to show and showing it anyway would be the
+  // one thing the interlude exists to prevent.
+  if (arc?.status === "interlude") {
+    return join([HEADER, formatInterludeBlock(), note]);
+  }
+
+  const area = currentArea(game);
+  const body = join([
+    formatArcBlock(arc),
+    formatAreaBlock(area),
+    formatRoomBlock(area, currentRoom(game)),
+    formatPromisesBlock(game.promises ?? [], game.turnNumber, settings.promiseTurns),
+    note,
+  ]);
+  if (!body) return "";
+  return `${HEADER}\n\n${body}`;
+}
+
+/**
+ * The one line that makes the whole block safe to show a narrator: it is
+ * material to spend, not a script to read out, and naming a threat that has not
+ * happened yet is how prep leaks.
+ */
+const HEADER =
+  "NARRATOR'S PREP — private. Yours, not the player's. Never quote it, never list it, never name a threat that has not happened. Spend it; do not report it.";
+
+/**
+ * The mandatory block a fired front earns — its own message, and after the prep
+ * it belongs to. Blank on every ordinary turn.
+ */
+export function formatFrontArrival(game: GameState): string {
+  const arc = (game.arcs ?? []).find((a) => a.status === "running");
+  const fired = arc?.fronts.find((f) => f.status === "fired");
+  return fired ? formatLoomingBlock(fired) : "";
+}
+
 /**
  * The `conditions` field, documented only when stakes are on. With stakes off
  * nothing in the game produces a mark, so the line would be ~60 tokens a turn
@@ -592,6 +720,32 @@ function conditionLines(settings: Settings): string[] {
     '- "conditions": array of { "name", "condition" } — a lasting mark the story just left on someone ("left arm in a sling", "hunted by the Watch"). Matches ANYONE by name, the player included. Send "condition": "" to clear one. Marks are not sheet fields; write them freely, and clear them when the story resolves them.',
     '- A mark is not gear: what someone carries or wields belongs in "inventory", not in a condition. And a mark STAYS once written — it is shown back to you every turn under CONDITIONS. Emit one only to set a NEW mark, change the words of an old one, or clear it. Never re-send a mark someone already carries.',
   ];
+}
+
+/**
+ * The three Foresight channels on the turn block, documented only when the
+ * feature is on. With it off they would be ~80 tokens a turn teaching the model
+ * channels nothing reads — the same gate `conditionLines` applies.
+ *
+ * All three are deliberately cheap. `promises` is the only one that changes
+ * state; `area` fires on the rare turn that opens a new region, since the
+ * room→area join is computed on-device; and `optionNotes` writes nothing at all
+ * until the player presses the button it belongs to.
+ */
+function foresightLines(settings: Settings): string[] {
+  if (!settings.foresightEnabled) return [];
+  const lines = [
+    '- "area": the name of the REGION the scene is in — a valley, a district, a forest — and ONLY on a turn where the player has just entered a genuinely new one. Not the room: that is "location". Omit it on every ordinary turn.',
+    '- "promises": array of { "op": "add"|"remove", "text" } — a commitment your prose just made and has NOT yet paid off ("the tremor in the walls", "the man watching from the gallery"). Add it the turn you plant it, in a handful of words; remove it the turn the story pays it off or drops it. Never restate one you have already planted.',
+  ];
+  if (settings.showActionOptions) {
+    lines.push(
+      '- "optionNotes": array of strings PARALLEL to "options" — same length, same order — saying what each of those actions would risk or cost. The player never sees these; they come back to you if they take that action. Emit them or omit them, but never send a list of a different length.',
+    );
+  }
+  const rule = settings.promiseInstructions.trim();
+  if (rule) lines.push(`- ${rule}`);
+  return lines;
 }
 
 function buildOutputProtocol(settings: Settings): string {
@@ -677,6 +831,7 @@ function buildOutputProtocol(settings: Settings): string {
     '- "quests": array of { "op": "add|update|remove", "label", "description", "reward", "status": "active"|"done" }. Update a quest with status "done" when the player completes it.',
     '- "notes": array of { "op": "add|update", "title", "content", "keywords": [ … ] } — YOUR OWN MEMORY. Only the last few turns are shown back to you; anything else is forgotten unless you write it down here. Note a place, person, faction, promise, or revelation the moment it matters, and add to a note when you learn more. "keywords" are the words that should bring it back — names and aliases; the title always counts. Keep each note to a couple of factual sentences.',
     '- "spoke": array of member names you gave a spoken line this turn (a hint only).',
+    ...foresightLines(settings),
     "",
     "Every op is a CHANGE your prose just made. The blocks above already tell you what the player has, who travels with them, what marks they carry and what quests are open — none of it needs confirming, and an op that sets something to what it already is will be discarded. When a turn changes nothing, emit an empty object.",
     'Party dialogue uses the convention `Name: "…"` — the name must be an in-company member.',

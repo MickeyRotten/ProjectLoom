@@ -8,12 +8,16 @@ import type {
   WebFont,
 } from "../types";
 import {
+  DEFAULT_FRONT_NEGLECT_DAYS,
   DEFAULT_INK,
+  DEFAULT_INTERLUDE_TURNS,
   DEFAULT_JOURNAL_BUDGET,
   DEFAULT_JOURNAL_MAX_TURNS,
   DEFAULT_JOURNAL_MIN_TURNS,
   DEFAULT_PAPER,
+  DEFAULT_PROMISE_TURNS,
   DEFAULT_QUICK_ACTIONS,
+  DEFAULT_SCENE_BOUNDARY_TURNS,
   DEFAULT_TEXT_SIZE,
   defaultSettings,
 } from "./defaults";
@@ -141,6 +145,13 @@ export function loadSettings(): Settings {
         ? stored.supabaseAnonKey.trim()
         : "",
       syncEnabled: stored.syncEnabled === true,
+      // Foresight's four intervals, same discipline: sanitized at READ, so a
+      // half-typed number can never persist a state where every turn is a
+      // boundary — or where no front ever ticks again.
+      sceneBoundaryTurns: clampSceneBoundaryTurns(stored.sceneBoundaryTurns),
+      frontNeglectDays: clampNeglectDays(stored.frontNeglectDays),
+      promiseTurns: clampPromiseTurns(stored.promiseTurns),
+      interludeTurns: clampInterludeTurns(stored.interludeTurns),
     };
   } catch {
     return defaultSettings();
@@ -376,6 +387,46 @@ export function clampJournalMaxTurns(value: number): number {
 
 export function clampJournalMinTurns(value: number): number {
   return clampTurns(value, DEFAULT_JOURNAL_MIN_TURNS);
+}
+
+/* ------------------------------------------------------------------ *
+ * Foresight's numbers, sanitized at READ (the `normalizeDice` stance) so the
+ * screen can edit one field without having to rewrite the next.
+ * ------------------------------------------------------------------ */
+
+/** Bounds for the four Foresight intervals. */
+export const MIN_FORESIGHT_TURNS = 1;
+export const MAX_FORESIGHT_TURNS = 200;
+/** In-game days. 0 is meaningful: neglect ticking switched off entirely. */
+export const MAX_NEGLECT_DAYS = 60;
+
+function clampForesightTurns(value: unknown, fallback: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  return Math.min(MAX_FORESIGHT_TURNS, Math.max(MIN_FORESIGHT_TURNS, Math.round(value)));
+}
+
+/**
+ * Days of neglect before a front ticks itself. Unlike the turn intervals, 0 is
+ * a legitimate value — it means "fronts only move when the dice move them",
+ * which is a table, not a mistake.
+ */
+export function clampNeglectDays(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    return DEFAULT_FRONT_NEGLECT_DAYS;
+  }
+  return Math.min(MAX_NEGLECT_DAYS, Math.round(value));
+}
+
+export function clampSceneBoundaryTurns(value: unknown): number {
+  return clampForesightTurns(value, DEFAULT_SCENE_BOUNDARY_TURNS);
+}
+
+export function clampPromiseTurns(value: unknown): number {
+  return clampForesightTurns(value, DEFAULT_PROMISE_TURNS);
+}
+
+export function clampInterludeTurns(value: unknown): number {
+  return clampForesightTurns(value, DEFAULT_INTERLUDE_TURNS);
 }
 
 /**

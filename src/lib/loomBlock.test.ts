@@ -381,3 +381,101 @@ describe("mergeRepairBlock", () => {
     expect(mergeRepairBlock(block, { options: [] })).toBe(block);
   });
 });
+
+/* ------------------------------------------------------------------ *
+ * Foresight's read-side channels (DESIGN.md → Foresight)
+ * ------------------------------------------------------------------ */
+
+describe("optionNotes", () => {
+  it("keeps notes that line up with the options that survived", () => {
+    const { block } = parseLoomResponse(
+      'Beat.\n<<<LOOM>>>{ "options": ["Climb", "Wait"], "optionNotes": ["the stair is rotten", "the patrol returns"] }<<<END>>>',
+    );
+    expect(block?.optionNotes).toEqual(["the stair is rotten", "the patrol returns"]);
+  });
+
+  it("drops them ALL on a length mismatch — a misaligned note is worse than none", () => {
+    const { block } = parseLoomResponse(
+      'Beat.\n<<<LOOM>>>{ "options": ["Climb", "Wait", "Run"], "optionNotes": ["only one"] }<<<END>>>',
+    );
+    expect(block?.options).toHaveLength(3);
+    expect(block?.optionNotes).toBeUndefined();
+  });
+
+  it("drops them when normalization changed how many options there are", () => {
+    // The duplicate collapses to one button, so the two notes no longer line up
+    // with anything — index matching is the whole contract.
+    const { block } = parseLoomResponse(
+      'Beat.\n<<<LOOM>>>{ "options": ["Climb", "climb"], "optionNotes": ["a", "b"] }<<<END>>>',
+    );
+    expect(block?.options).toEqual(["Climb"]);
+    expect(block?.optionNotes).toBeUndefined();
+  });
+
+  it("ignores a list of nothing but blanks", () => {
+    const { block } = parseLoomResponse(
+      'Beat.\n<<<LOOM>>>{ "options": ["Climb"], "optionNotes": ["   "] }<<<END>>>',
+    );
+    expect(block?.optionNotes).toBeUndefined();
+  });
+});
+
+describe("promises + area on the block", () => {
+  it("reads the promise ops, defaulting an unreadable op to a plant", () => {
+    const { block } = parseLoomResponse(
+      'Beat.\n<<<LOOM>>>{ "promises": [ { "op": "add", "text": "the tremor" }, { "text": "a watcher" }, { "op": "remove", "text": "the debt" } ] }<<<END>>>',
+    );
+    expect(block?.promises).toEqual([
+      { op: "add", text: "the tremor" },
+      { op: "add", text: "a watcher" },
+      { op: "remove", text: "the debt" },
+    ]);
+  });
+
+  it("accepts a bare string as a plant, and drops the empty rows", () => {
+    const { block } = parseLoomResponse(
+      'Beat.\n<<<LOOM>>>{ "promises": ["the tremor", "", null, { "text": "  " }] }<<<END>>>',
+    );
+    expect(block?.promises).toEqual([{ op: "add", text: "the tremor" }]);
+  });
+
+  it("drops the key entirely when nothing usable came back", () => {
+    const { block } = parseLoomResponse('Beat.\n<<<LOOM>>>{ "promises": "soon" }<<<END>>>');
+    expect(block).not.toHaveProperty("promises");
+  });
+
+  it("trims an area name and drops a blank one", () => {
+    expect(parseLoomResponse('B\n<<<LOOM>>>{ "area": "  Murkwood " }<<<END>>>').block?.area).toBe(
+      "Murkwood",
+    );
+    expect(parseLoomResponse('B\n<<<LOOM>>>{ "area": "  " }<<<END>>>').block).not.toHaveProperty(
+      "area",
+    );
+    expect(parseLoomResponse('B\n<<<LOOM>>>{ "area": 7 }<<<END>>>').block).not.toHaveProperty("area");
+  });
+
+  it("counts as a block on its own when the marker is missing", () => {
+    // Without this a bare object carrying only Foresight fields would be
+    // rendered into the reading pane as narration.
+    const { prose, block } = parseLoomResponse('The wall shivers.\n{ "promises": ["the tremor"] }');
+    expect(prose).toBe("The wall shivers.");
+    expect(block?.promises).toHaveLength(1);
+  });
+});
+
+describe("mergeRepairBlock — option notes", () => {
+  it("takes the notes only PAIRED with the options", () => {
+    const merged = mergeRepairBlock(
+      { location: "Cellar" },
+      { options: ["Climb", "Wait"], optionNotes: ["a", "b"] },
+    );
+    expect(merged?.optionNotes).toEqual(["a", "b"]);
+
+    const mismatched = mergeRepairBlock(
+      { location: "Cellar" },
+      { options: ["Climb", "Wait"], optionNotes: ["a"] },
+    );
+    expect(mismatched?.optionNotes).toBeUndefined();
+    expect(mismatched?.options).toEqual(["Climb", "Wait"]);
+  });
+});

@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 import type { ReasoningLevel, Settings } from "../types";
 import {
+  DEFAULT_FRONT_NEGLECT_DAYS,
   DEFAULT_INK,
+  DEFAULT_INTERLUDE_TURNS,
   DEFAULT_JOURNAL_MAX_TURNS,
   DEFAULT_JOURNAL_MIN_TURNS,
   DEFAULT_PAPER,
+  DEFAULT_PROMISE_TURNS,
   DEFAULT_QUICK_ACTIONS,
+  DEFAULT_SCENE_BOUNDARY_TURNS,
   DEFAULT_TEXT_SIZE,
   QUICK_ACTION_COUNT,
   defaultSettings,
@@ -13,15 +17,22 @@ import {
 import {
   COLOR_PRESETS,
   FONT_LABELS,
+  MAX_FORESIGHT_TURNS,
   MAX_JOURNAL_BUDGET,
   MAX_JOURNAL_TURNS,
+  MAX_NEGLECT_DAYS,
   MAX_TEXT_SIZE,
+  MIN_FORESIGHT_TURNS,
   MIN_JOURNAL_TURNS,
   MIN_TEXT_SIZE,
   clampJournalBudget,
   clampJournalMaxTurns,
+  clampInterludeTurns,
   clampJournalMinTurns,
   clampMaxTokens,
+  clampNeglectDays,
+  clampPromiseTurns,
+  clampSceneBoundaryTurns,
   clampTextSize,
   fontTheme,
   isDarkPaper,
@@ -398,5 +409,29 @@ describe("loadSettings migrations", () => {
     saveSettings(written);
     expect(loadSettings()).toMatchObject({ paper: "#001100", ink: "#33ff33", textSize: 22 });
     localStorage.clear();
+  });
+});
+
+describe("foresight numbers, sanitized at READ", () => {
+  it("pins the three turn intervals inside a usable range", () => {
+    expect(clampSceneBoundaryTurns(0)).toBe(MIN_FORESIGHT_TURNS);
+    expect(clampSceneBoundaryTurns(9999)).toBe(MAX_FORESIGHT_TURNS);
+    expect(clampSceneBoundaryTurns(12.6)).toBe(13);
+    expect(clampSceneBoundaryTurns("soon")).toBe(DEFAULT_SCENE_BOUNDARY_TURNS);
+    expect(clampPromiseTurns(NaN)).toBe(DEFAULT_PROMISE_TURNS);
+    expect(clampInterludeTurns(undefined)).toBe(DEFAULT_INTERLUDE_TURNS);
+  });
+
+  it("keeps 0 meaningful for neglect — 'clocks move only when the dice do'", () => {
+    expect(clampNeglectDays(0)).toBe(0);
+    expect(clampNeglectDays(-5)).toBe(DEFAULT_FRONT_NEGLECT_DAYS);
+    expect(clampNeglectDays(9999)).toBe(MAX_NEGLECT_DAYS);
+  });
+
+  it("ships Foresight on, with a cost — but not a mixed result — moving the world", () => {
+    const s = defaultSettings();
+    expect(s.foresightEnabled).toBe(true);
+    expect(s.costTicksFront).toBe(true);
+    expect(s.mixedTicksFront).toBe(false);
   });
 });

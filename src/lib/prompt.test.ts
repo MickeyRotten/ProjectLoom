@@ -1080,3 +1080,265 @@ describe("buildMessages — regeneration note", () => {
     expect(idx).toBeLessThan(messages.length - 2);
   });
 });
+
+/* ------------------------------------------------------------------ *
+ * Foresight — tier 4c (DESIGN.md → Foresight → Injection)
+ * ------------------------------------------------------------------ */
+
+const ARC = {
+  question: "the consortium is buying the valley",
+  spine: "flood",
+  fronts: [{ id: "flood", label: "the mine floods", steps: ["the sump fills", "the gallery is cut off"] }],
+};
+
+function foresightGame(): GameState {
+  return {
+    ...newGame(),
+    location: "Forest Entrance",
+    areaKey: "murkwood",
+    turnNumber: 9,
+    areas: {
+      murkwood: {
+        key: "murkwood",
+        name: "Murkwood",
+        arcId: "arc-1",
+        epoch: 0,
+        version: 1,
+        coord: { x: 0, y: 0 },
+        neighbours: [],
+        texture: "old growth, wet",
+        threats: ["anything loud brings a patrol"],
+        front: "flood",
+        rooms: {
+          "forest-entrance": {
+            name: "Forest Entrance",
+            coord: { x: 0, y: 0 },
+            exits: ["stile"],
+            visited: true,
+            card: {
+              version: 1,
+              openedTurn: 8,
+              danger: "the cart track ends at a stile",
+              threats: ["the stile is watched"],
+              hooks: ["a warden's mark cut into the post"],
+              outcomes: {
+                strong: "the watcher steps out and talks",
+                mixed: "you get through, and are seen",
+                cost: "the stile gives, and the noise carries",
+              },
+            },
+          },
+          stile: { name: "The Stile", coord: { x: 1, y: 0 }, exits: ["forest-entrance"], visited: false, card: null },
+        },
+      },
+    },
+    arcs: [
+      {
+        id: "arc-1",
+        ...ARC,
+        fronts: ARC.fronts.map((f) => ({ ...f, ticks: 1, lastTickDay: 1, status: "open" as const })),
+        epoch: 0,
+        status: "running" as const,
+        areas: [],
+        openedTurn: 0,
+      },
+    ],
+    promises: [{ id: "p1", text: "the tremor in the walls", plantedTurn: 3 }],
+  };
+}
+
+describe("foresight injection", () => {
+  it("adds nothing at all when the feature is off", () => {
+    const game = foresightGame();
+    const off = buildMessages({
+      settings: { ...settings, foresightEnabled: false },
+      game,
+      characters: [defaultPC()],
+      playerMessage: "I climb the stile.",
+    });
+    const text = off.map((m) => m.content).join("\n");
+    expect(text).not.toContain("NARRATOR'S PREP");
+    expect(text).not.toContain("old growth, wet");
+    expect(text).not.toContain("the tremor in the walls");
+    // …and the turn is the same shape it was before the feature existed.
+    const bare = buildMessages({
+      settings: { ...settings, foresightEnabled: false },
+      game: newGame(),
+      characters: [defaultPC()],
+      playerMessage: "I climb the stile.",
+    });
+    expect(off.length).toBe(bare.length);
+  });
+
+  it("injects arc → area → room → promises, after the state and before the action", () => {
+    const messages = buildMessages({
+      settings,
+      game: foresightGame(),
+      characters: [defaultPC()],
+      playerMessage: "I climb the stile.",
+    });
+    const prep = messages.findIndex((m) => m.content.includes("NARRATOR'S PREP"));
+    const state = messages.findIndex((m) => m.content.includes("STATE OF PLAY"));
+    expect(prep).toBeGreaterThan(state);
+    expect(messages[prep].role).toBe("system");
+
+    const block = messages[prep].content;
+    expect(block.indexOf("ARC —")).toBeLessThan(block.indexOf("AREA —"));
+    expect(block.indexOf("AREA —")).toBeLessThan(block.indexOf("ROOM —"));
+    expect(block.indexOf("ROOM —")).toBeLessThan(block.indexOf("PROMISES"));
+    expect(block).toContain("the mine floods");
+    expect(block).toContain("the cart track ends at a stile");
+    expect(block).toContain("ways out: The Stile");
+    expect(block).toContain("the tremor in the walls");
+    // Private, and never a script.
+    expect(block).toContain("Never quote it");
+  });
+
+  it("shows the front's NEXT step and never the ones after it", () => {
+    const messages = buildMessages({
+      settings,
+      game: foresightGame(),
+      characters: [defaultPC()],
+      playerMessage: "I wait.",
+    });
+    const block = messages.find((m) => m.content.includes("NARRATOR'S PREP"))!.content;
+    expect(block).toContain("the gallery is cut off");
+    expect(block).not.toContain("the sump fills");
+  });
+
+  it("keeps the three outcome bands OUT of the prep block", () => {
+    const messages = buildMessages({
+      settings,
+      game: foresightGame(),
+      characters: [defaultPC()],
+      playerMessage: "I wait.",
+    });
+    const block = messages.find((m) => m.content.includes("NARRATOR'S PREP"))!.content;
+    expect(block).not.toContain("the stile gives");
+    expect(block).not.toContain("the watcher steps out");
+  });
+
+  it("hands the narrator ONLY the band that rolled, folded into the OUTCOME block", () => {
+    const messages = buildMessages({
+      settings,
+      game: foresightGame(),
+      characters: [defaultPC()],
+      playerMessage: "I climb the stile.",
+      stakes: {
+        risky: true,
+        strengthsInPlay: false,
+        flawsInPlay: false,
+        dice: [1],
+        roll: 1,
+        modifier: 0,
+        total: 1,
+        outcome: "cost",
+        rules: DEFAULT_DICE,
+      },
+    });
+    const outcome = messages.find((m) => m.content.includes("OUTCOME — THIS TURN"))!.content;
+    expect(outcome).toContain("Prepared for this scene: the stile gives, and the noise carries");
+    // The two branches that did not roll never enter the context at all.
+    expect(messages.map((m) => m.content).join("\n")).not.toContain("the watcher steps out");
+  });
+
+  it("replaces the whole block with an interlude while one is running", () => {
+    const game = foresightGame();
+    const messages = buildMessages({
+      settings,
+      game: { ...game, arcs: [{ ...game.arcs![0], status: "interlude", interludeFrom: 8 }] },
+      characters: [defaultPC()],
+      playerMessage: "I sit down by the fire.",
+    });
+    const block = messages.find((m) => m.content.includes("NARRATOR'S PREP"))!.content;
+    expect(block).toContain("INTERLUDE");
+    expect(block).not.toContain("the mine floods");
+    expect(block).not.toContain("the stile is watched");
+  });
+
+  it("carries a fired front's arrival exactly once it is fired", () => {
+    const game = foresightGame();
+    const quiet = buildMessages({
+      settings,
+      game,
+      characters: [defaultPC()],
+      playerMessage: "I wait.",
+    });
+    expect(quiet.map((m) => m.content).join("\n")).not.toContain("THE FRONT ARRIVES");
+
+    const fired = buildMessages({
+      settings,
+      game: {
+        ...game,
+        arcs: [
+          {
+            ...game.arcs![0],
+            fronts: game.arcs![0].fronts.map((f) => ({ ...f, ticks: 2, status: "fired" as const })),
+          },
+        ],
+      },
+      characters: [defaultPC()],
+      playerMessage: "I wait.",
+    });
+    const arrival = fired.find((m) => m.content.includes("THE FRONT ARRIVES"))!;
+    expect(arrival.content).toContain("the gallery is cut off");
+  });
+
+  it("hands back the note for the option the player tapped", () => {
+    const messages = buildMessages({
+      settings,
+      game: foresightGame(),
+      characters: [defaultPC()],
+      playerMessage: "I climb the stile.",
+      optionNote: "the stair takes weight it shouldn't",
+    });
+    const block = messages.find((m) => m.content.includes("NARRATOR'S PREP"))!.content;
+    expect(block).toContain("YOU PLANNED THIS");
+    expect(block).toContain("the stair takes weight it shouldn't");
+  });
+
+  it("says nothing when the feature is on but nothing has been prepped", () => {
+    const messages = buildMessages({
+      settings,
+      game: newGame(),
+      characters: [defaultPC()],
+      playerMessage: "I look around.",
+    });
+    expect(messages.map((m) => m.content).join("\n")).not.toContain("NARRATOR'S PREP");
+  });
+});
+
+describe("output protocol — foresight channels", () => {
+  it("documents area, promises and option notes only while the feature is on", () => {
+    const on = build({ game: newGame(), playerMessage: "hi" })
+      .map((m) => m.content)
+      .join("\n");
+    expect(on).toContain('- "promises"');
+    expect(on).toContain('- "optionNotes"');
+    expect(on).toContain('- "area"');
+
+    const off = buildMessages({
+      settings: { ...settings, foresightEnabled: false },
+      game: newGame(),
+      characters: [defaultPC()],
+      playerMessage: "hi",
+    })
+      .map((m) => m.content)
+      .join("\n");
+    expect(off).not.toContain('- "promises"');
+    expect(off).not.toContain('- "optionNotes"');
+  });
+
+  it("drops the option-note rule when there are no options to note", () => {
+    const text = buildMessages({
+      settings: { ...settings, showActionOptions: false },
+      game: newGame(),
+      characters: [defaultPC()],
+      playerMessage: "hi",
+    })
+      .map((m) => m.content)
+      .join("\n");
+    expect(text).not.toContain('- "optionNotes"');
+    expect(text).toContain('- "promises"');
+  });
+});

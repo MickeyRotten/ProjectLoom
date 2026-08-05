@@ -862,7 +862,7 @@ all about handing that space back:
 - **Phase 3 — Images.** `images.ts`; deterministic portrait triggers, IndexedDB blob store, regenerate buttons. Verify OpenRouter image-output shape first.
 - **Phase 4 — Authoring + Saves.** Scenario editor, World Notes CRUD + keyword injection, narrator instructions, save slots (snapshot/restore/new). The pre-made scenario ships as the default.
 - **Phase 5 — Polish + APK.** ✅ Reversal (`reversal.ts` pre-turn slice snapshot; `undoLastTurn`/`regenerateLastTurn`; `TurnControls`), error auto-retry (`retry.ts` policy + `streamChat` whole-stream restart, ported from Wayward), APK signing/CI (`android.yml`), mobile polish (overscroll lock, safe-area insets).
-- **Foresight — arc ⟂ area ⟂ room (planned, not built).** `arc.ts` · `fronts.ts` · `areaPrep.ts` · `roomPrep.ts` · `promises.ts` · `gazetteer.ts`; boundary prep calls, client-owned clocks, the 1-bit map. See **Foresight — the arc, the area, the room**.
+- **Foresight — arc ⟂ area ⟂ room.** ✅ `arc.ts` · `fronts.ts` · `areaPrep.ts` · `roomPrep.ts` · `promises.ts` · `gazetteer.ts` · `foresight.ts`; boundary prep calls, client-owned clocks, the 1-bit map. See **Foresight — the arc, the area, the room**.
 
 ---
 
@@ -980,8 +980,16 @@ of those stay inspectable, which a rolling summary never is.
 
 ## Foresight — the arc, the area, the room
 
-**Status: designed, not built.** Nothing below exists yet; this section is the
-spec.
+**Status: built**, with four deliberate gaps listed under *Not yet built* at the
+end of this section. Everything else below describes what ships.
+
+One deviation from the module map: the per-turn **Reckon** orchestration and the
+read-time sanitizing live in `foresight.ts`, and the prep BLOCK formatters live
+in `prompt.ts` beside every other block (with the card readers in `gazetteer.ts`,
+which imports nothing but `names.ts`). The reason is one-directional imports —
+`arc.ts`, `areaPrep.ts` and `roomPrep.ts` build side calls, so they import
+`prompt.ts`, and prompt assembly reading a card back through them would be a
+cycle. Same shape as `journal.ts` ⟂ `prompt.ts`.
 
 The journal remembers backwards. **Foresight remembers forwards** — and it is
 built the same way, deliberately: the model authors at a **boundary** the client
@@ -1465,6 +1473,27 @@ Pure and tested; only the store touches the network — the same discipline as
 Save slots freeze all of it for free (it rides `GameState`), cloud saves carry it
 in the slot document, and absent fields read as empty — so there is no migration
 on either side.
+
+### Not yet built
+
+Four pieces of the spec above are deliberately absent, and none of them is
+load-bearing — the feature degrades to exactly the row of the failure table that
+covers it:
+
+- **The day-boundary arc review.** Fronts are authored at New Adventure and at
+  the handoff; there is no periodic call re-reading them against the journal.
+  The clocks tick regardless, which is the "arc review fails → fronts stand;
+  clocks still tick" row, permanently.
+- **Dragging a room on the map.** `normalizeMap` already sanitizes what a drag
+  would write (cells clamped, collisions pushed, exits mirrored), so the screen
+  is read-only until the gesture lands rather than the data model being unready.
+- **The area → World Note deposit.** Leaving a region does not yet deposit a
+  short public note, so the "area cards overlap World Notes" open question below
+  is still open rather than answered.
+- **Room prep in `derive` mode** — see the first open question.
+
+Also absent by design: an arc has no `areas[]` writer yet, since nothing shades
+the world map by chapter.
 
 ### Open questions
 
