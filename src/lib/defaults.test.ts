@@ -30,6 +30,34 @@ describe("newGame — a fresh adventure", () => {
     const cast = [defaultPC(), newCharacter("m-1")];
     expect(newGame(DEFAULT_SCENARIO, cast).characters).toBe(cast);
   });
+
+  it("opens in the scenario's starting ROOM", () => {
+    expect(newGame().location).toBe(DEFAULT_SCENARIO.startRoom);
+  });
+
+  it("seeds the starting REGION, so there is one before any turn resolves", () => {
+    const game = newGame();
+    expect(game.areaKey).toBe("murkwood");
+    const area = game.areas![game.areaKey!];
+    expect(area.name).toBe("Murkwood");
+    // Nothing prepped — a stub the prep call fills in, not a written card.
+    expect(area.texture).toBe("");
+    // …and the player is standing in it.
+    expect(area.rooms["southern-entrance"].visited).toBe(true);
+  });
+
+  it("falls back to the region when a scenario names no room", () => {
+    const game = newGame({ ...DEFAULT_SCENARIO, startRoom: "" });
+    expect(game.location).toBe("Murkwood");
+    expect(game.areaKey).toBe("murkwood");
+  });
+
+  it("carries no region at all when the scenario names none", () => {
+    const game = newGame({ ...DEFAULT_SCENARIO, startRegion: "", startRoom: "Stile" });
+    expect(game.areaKey).toBeUndefined();
+    expect(game.areas).toBeUndefined();
+    expect(game.location).toBe("Stile");
+  });
 });
 
 describe("withPC", () => {
@@ -95,7 +123,28 @@ describe("loadGame", () => {
     const { game } = loadGame(old)!;
     expect(game.scenario.title).toBe("My World");
     expect(game.scenario.openingNarration).toBeTruthy();
-    expect(game.scenario.startLocation).toBeTruthy();
+    expect(game.scenario.startRegion).toBeTruthy();
+    expect(game.scenario.startRoom).toBeTruthy();
+  });
+
+  it("folds a stored startLocation onto BOTH halves of the split", () => {
+    // The old field named one place with no way to say which scope it meant, so
+    // it lands as a region holding one room of the same name — the player's own
+    // words, never the shipped default.
+    const old = { scenario: { title: "Bleak Harbour", startLocation: "The Long Quay" } };
+    const { game } = loadGame(old)!;
+    expect(game.scenario.startRegion).toBe("The Long Quay");
+    expect(game.scenario.startRoom).toBe("The Long Quay");
+    expect(game.scenario).not.toHaveProperty("startLocation");
+  });
+
+  it("leaves a scenario that already carries the split alone", () => {
+    const old = {
+      scenario: { startLocation: "Old Name", startRegion: "Murkwood", startRoom: "Stile" },
+    };
+    const { game } = loadGame(old)!;
+    expect(game.scenario.startRegion).toBe("Murkwood");
+    expect(game.scenario.startRoom).toBe("Stile");
   });
 
   it("passes a current-shape game through unchanged", () => {

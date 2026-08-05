@@ -144,6 +144,7 @@ import {
   applyExits,
   roomKey,
   seedRooms,
+  seedStartingArea,
   visitRoom,
 } from "./lib/gazetteer";
 import { closeInterlude, normalizeForesight, reckonTurn, seedArcs } from "./lib/foresight";
@@ -1209,12 +1210,27 @@ export const useStore = create<LoomStore>((set, get) => {
   updateScenario(patch) {
     const g = get().game;
     const scenario = { ...g.scenario, ...patch };
-    // Editing the starting location/day retargets the active scene too, so the
-    // scene mark follows immediately (it otherwise only moves per turn).
-    const location =
-      patch.startLocation !== undefined ? patch.startLocation : g.location;
+    // Editing the starting room/region/day retargets the active scene too, so
+    // the scene mark follows immediately (it otherwise only moves per turn).
+    const location = patch.startRoom !== undefined ? patch.startRoom : g.location;
     const day = patch.startDay !== undefined ? patch.startDay : g.day;
-    const game = { ...g, scenario, location, day };
+    // …and the region with it: `areaKey` is what Foresight → Region prepares
+    // and what the map draws, so leaving it pointed at the old region would
+    // make an edited Starting Region visible everywhere except where it is
+    // spent. Existing cards are kept; only a region nothing has prepped yet
+    // gets a stub.
+    const retarget =
+      patch.startRegion !== undefined || patch.startRoom !== undefined
+        ? seedStartingArea(g.areas, scenario.startRegion, location)
+        : { areaKey: g.areaKey ?? null, areas: g.areas };
+    const game = {
+      ...g,
+      scenario,
+      location,
+      day,
+      ...(retarget.areaKey ? { areaKey: retarget.areaKey } : {}),
+      ...(retarget.areas ? { areas: retarget.areas } : {}),
+    };
     set({ game });
     void saveActiveGame(game);
   },

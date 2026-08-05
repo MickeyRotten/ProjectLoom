@@ -780,6 +780,22 @@ them — `arcInstructions` is the standing rule about what an arc is, this is th
 story in hand — and being `Settings` keys they also brief the interlude's
 automatic handoff.
 
+Post-MVP also: **the scenario names a region and a room** — `Scenario.startLocation`
+was one place name, ambiguous exactly where the turn contract is not (the
+narrator has had `area` ⟂ `location` since Foresight). It is now
+`startRegion` (default *Murkwood*) + `startRoom` (default *Southern Entrance*),
+seeded together by `newGame` through `gazetteer.ts → seedStartingArea` — the room
+becomes `GameState.location`, the region becomes `areaKey` plus a stub
+`AreaCard` (`blankArea`) with the room added and visited. That stub is the point:
+a fresh adventure had no `areaKey`, so the prep chain, the map and **Foresight →
+Region**'s ↻ button were all inert until a turn resolved one, and the region a
+player wanted to regenerate did not exist yet. Editing either field retargets the
+adventure in hand (`store → updateScenario`), so an edited Starting Region is
+also the region Foresight prepares. `defaults.ts → migrateScenario` folds a
+stored `startLocation` onto **both** fields — one name, no way to know which
+scope was meant, so a region holding one room of the same name beats inventing
+"Murkwood" for somebody else's world.
+
 Deferred (post-MVP): rolling LLM summarization of the beats themselves,
 NPC/item art, TTS, weather animation, multi-world. Track scope in
 `DESIGN.md → Build Phases`.

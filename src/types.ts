@@ -362,8 +362,24 @@ export interface Scenario {
   premise: string;
   openingNarration: string;
   startDay: number;
-  /** Location name the game opens in; seeds GameState.location on New Adventure. */
-  startLocation: string;
+  /**
+   * The REGION the game opens in — the scope `LoomBlock.area` names and
+   * `areaPrep.ts` writes a card for. Seeds `GameState.areaKey` (and a stub
+   * `AreaCard` under it) on New Adventure, so Foresight → Region has something
+   * to prepare before the first turn has resolved anything.
+   *
+   * Replaces the old single `startLocation`, which was ambiguous exactly where
+   * the turn contract is not: the narrator has had a region ("area") and a room
+   * ("location") since Foresight shipped, and the scenario only ever named one
+   * of them.
+   */
+  startRegion: string;
+  /**
+   * The ROOM inside that region the game opens in; seeds `GameState.location`.
+   * A stored `startLocation` folds onto this field (`defaults.ts → loadGame`),
+   * since that is the one it always seeded.
+   */
+  startRoom: string;
   /**
    * The AUTHORED arc — what this story is about and what is closing in on the
    * player, as a template. Split from `GameState.arcs` exactly the way the cast
@@ -661,7 +677,7 @@ export interface GameState {
  * a world full of people you wrote.
  */
 export interface AdventureImports {
-  /** Title, premise, opening narration, start day + location. */
+  /** Title, premise, opening narration, start day + starting region/room. */
   scenario: boolean;
   /** The player character's sheet, as authored. */
   pc: boolean;

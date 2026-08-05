@@ -16,6 +16,7 @@ import {
   resolveAreaKey,
   roomIsStale,
   seedRooms,
+  seedStartingArea,
   spiralFrom,
   visitRoom,
 } from "./gazetteer";
@@ -161,6 +162,42 @@ describe("applyExits / seedRooms", () => {
   it("seeds names only — no cards, nothing visited", () => {
     const a = seedRooms(area(), ["The Stile", "Wardens' Camp"]);
     expect(Object.values(a.rooms).every((r) => r.card === null && !r.visited)).toBe(true);
+  });
+});
+
+describe("seedStartingArea", () => {
+  it("creates the region and puts the player in its room", () => {
+    const { areaKey, areas } = seedStartingArea(undefined, "Murkwood", "Southern Entrance");
+    expect(areaKey).toBe("murkwood");
+    const card = areas!.murkwood;
+    expect(card.name).toBe("Murkwood");
+    expect(card.texture).toBe("");
+    expect(card.rooms["southern-entrance"].visited).toBe(true);
+  });
+
+  it("keeps a region that is already prepped, adding only the room", () => {
+    const prepped = { murkwood: area({ texture: "Wet oak, no birdsong." }) };
+    const { areas } = seedStartingArea(prepped, "the Murkwood", "Stile");
+    expect(areas!.murkwood.texture).toBe("Wet oak, no birdsong.");
+    expect(areas!.murkwood.rooms["stile"].visited).toBe(true);
+  });
+
+  it("is reference-stable once the room is there", () => {
+    const first = seedStartingArea(undefined, "Murkwood", "Stile");
+    const again = seedStartingArea(first.areas, "Murkwood", "Stile");
+    expect(again.areas).toBe(first.areas);
+  });
+
+  it("names no region when the scenario names none", () => {
+    expect(seedStartingArea(undefined, "  ", "Stile")).toEqual({
+      areaKey: null,
+      areas: undefined,
+    });
+  });
+
+  it("takes a region with no room — the narrator names the room on beat one", () => {
+    const { areas } = seedStartingArea(undefined, "Murkwood", "");
+    expect(areas!.murkwood.rooms).toEqual({});
   });
 });
 

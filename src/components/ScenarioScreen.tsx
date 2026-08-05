@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useStore } from "../store";
 import { OverlayHeader } from "./OverlayHeader";
 import { Field, TextField, AreaField } from "./fields";
+import { MenuLink } from "./SubMenuScreen";
 import { GenerateModal } from "./GenerateModal";
 import { SCENARIO_FIELD_LABEL, type ScenarioField } from "../lib/generateScenario";
 
@@ -39,11 +40,25 @@ export function ScenarioScreen() {
       <div className="flex-1 space-y-5 overflow-y-auto p-3">
         <TextField label="Title" value={scenario.title} onChange={(v) => update({ title: v })} />
         <TextField
-          label="Starting Location"
-          value={scenario.startLocation ?? ""}
-          onChange={(v) => update({ startLocation: v })}
-          placeholder="Where the adventure opens"
+          label="Starting Region"
+          value={scenario.startRegion ?? ""}
+          onChange={(v) => update({ startRegion: v })}
+          placeholder="The wider place — a forest, a district, a valley"
         />
+        <TextField
+          label="Starting Room"
+          value={scenario.startRoom ?? ""}
+          onChange={(v) => update({ startRoom: v })}
+          placeholder="The exact spot the first beat opens on"
+        />
+        <p className="text-sm opacity-60">
+          The region is what{" "}
+          <MenuLink screen="foresight" section="area">
+            Foresight → Region
+          </MenuLink>{" "}
+          prepares; the room is the scene you start in. Editing either moves the
+          adventure in hand there too.
+        </p>
         <AreaField
           label="Premise"
           value={scenario.premise}
@@ -79,7 +94,7 @@ export function ScenarioScreen() {
           blurb={
             genField === "premise"
               ? "The model writes the setting from the title, the opening narration, your player character and any world notes they touch."
-              : "The model writes the first beat from the premise, the starting location and your player character — second person, exactly as a turn is written."
+              : "The model writes the first beat from the premise, the starting region and room, and your player character — second person, exactly as a turn is written."
           }
           replacing={!!scenario[genField].trim()}
           replacingNote={`Replaces the ${SCENARIO_FIELD_LABEL[genField]} immediately — this screen has no Edit gate. Copy the old text first if you want it back.`}

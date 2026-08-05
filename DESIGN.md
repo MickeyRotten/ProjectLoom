@@ -1141,6 +1141,23 @@ walking the player into a genuinely **new** region, so an omitted `area` costs
 nothing on an ordinary turn — and since the front is global, a turn that never
 resolves an area still ticks the clock.
 
+**The scenario names the first one.** `Scenario.startLocation` was a single
+place name, which is ambiguous exactly where the turn contract is not: the
+narrator has had a region (`area`) and a room (`location`) since Foresight
+shipped, and the scenario only named one of them. It is now
+`Scenario.startRegion` (default *Murkwood*) + `Scenario.startRoom` (default
+*Southern Entrance*), and `newGame` seeds **both** — `location` from the room,
+`areaKey` plus a stub `AreaCard` from the region, with the room added and marked
+visited (`gazetteer.ts → seedStartingArea`, reference-stable, also what an edit
+to either field retargets). Before this a fresh adventure had no `areaKey` at
+all, so every path that reads one — the prep chain, the map, *Foresight →
+Region* and its **↻ Prepare This Region** button — sat inert until a turn had
+resolved a room into an area. A stored `startLocation` folds onto **both** new
+fields (`defaults.ts → migrateScenario`): it named one place with no way to say
+which scope was meant, so the honest degradation is a region holding one room of
+the same name — the player's own words, rather than the shipped default dropped
+into a scenario that has never heard of Murkwood.
+
 **Rooms match by `slug`** — the `names.ts` export the deltas and `equip.ts`
 already share — with a leading article stripped, so "Forest Entrance", "the
 forest entrance" and "Forest Entrance." are one room rather than three prep

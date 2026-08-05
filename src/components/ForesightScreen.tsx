@@ -312,12 +312,22 @@ function AreaSection() {
       <PrepStatus />
 
       {!area ? (
-        <p className="uppercase tracking-widest opacity-60">
-          Nothing prepared for {game.location}.
-        </p>
+        <>
+          <p className="uppercase tracking-widest opacity-60">No region yet.</p>
+          <p className="text-xs opacity-70">
+            A region is named by the scenario's{" "}
+            <MenuLink screen="scenario">Starting Region</MenuLink> and by the narrator
+            when the story walks into a new one.
+          </p>
+        </>
       ) : (
         <>
           <p className="text-lg font-bold">{area.name}</p>
+          {!area.texture && !area.threats.length && (
+            <p className="text-xs uppercase tracking-widest opacity-60">
+              Nothing prepared here yet.
+            </p>
+          )}
           {areaIsStale(area, arc) && (
             <p className="border-2 border-ink p-2 text-xs uppercase tracking-widest">
               Out of date — the story has moved since this was written. It is prepared
@@ -355,7 +365,7 @@ function AreaSection() {
         disabled={pending || !game.areaKey}
         className={`w-full ${btn}`}
       >
-        ↻ Prepare This Region Again
+        ↻ Prepare This Region{area?.texture || area?.threats.length ? " Again" : ""}
       </button>
     </>
   );

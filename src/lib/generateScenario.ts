@@ -57,7 +57,7 @@ export interface GenerateScenarioOptions {
  */
 export function scenarioScanText(game: GameState, hint?: string): string {
   const s = game.scenario;
-  return [s.title, s.startLocation, s.premise, s.openingNarration, hint ?? ""]
+  return [s.title, s.startRegion, s.startRoom, s.premise, s.openingNarration, hint ?? ""]
     .filter(Boolean)
     .join("\n");
 }
@@ -71,7 +71,8 @@ function contextBlock(game: GameState, field: ScenarioField): string {
   const lines = [
     "THIS SCENARIO",
     s.title.trim() ? `Title: ${s.title.trim()}` : "",
-    s.startLocation?.trim() ? `Opens at: ${s.startLocation.trim()}` : "",
+    s.startRegion?.trim() ? `Opens in the region of: ${s.startRegion.trim()}` : "",
+    s.startRoom?.trim() ? `Opens at: ${s.startRoom.trim()}` : "",
     `Day ${s.startDay}`,
     field !== "premise" && s.premise.trim() ? `Premise: ${s.premise.trim()}` : "",
     field !== "openingNarration" && s.openingNarration.trim()
