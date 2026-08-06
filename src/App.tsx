@@ -12,6 +12,7 @@ import { ImagesScreen } from "./components/ImagesScreen";
 import { ScenarioScreen } from "./components/ScenarioScreen";
 import { CharactersScreen } from "./components/CharactersScreen";
 import { WorldNotesScreen } from "./components/WorldNotesScreen";
+import { PlacesScreen } from "./components/PlacesScreen";
 import { JournalScreen } from "./components/JournalScreen";
 import { QuestsScreen } from "./components/QuestsScreen";
 import { RpgSystemScreen } from "./components/RpgSystemScreen";
@@ -149,6 +150,7 @@ export default function App() {
     if (screen === "scenario") return <ScenarioScreen />;
     if (screen === "characters") return <CharactersScreen />;
     if (screen === "worldnotes") return <WorldNotesScreen />;
+    if (screen === "places") return <PlacesScreen />;
     if (screen === "journal") return <JournalScreen />;
     if (screen === "quests") return <QuestsScreen />;
     if (screen === "rpg") return <RpgSystemScreen />;

@@ -3,7 +3,7 @@ import { captureReversal, applyReversal } from "./reversal";
 import { applyDeltas } from "./deltas";
 import { defaultPC, newGame } from "./defaults";
 import { getEntry, mergeOverrides, partyMembers } from "./roster";
-import type { Character, GameState, LoomBlock, Reversal } from "../types";
+import type { Character, GameState, LoomBlock, Place, Reversal } from "../types";
 
 /** A companion in the library, with nothing this adventure has changed. */
 function navi(): Character {
@@ -284,5 +284,48 @@ describe("reversal — world notes", () => {
     const g = { ...seed(), worldNotes: [{ id: "n1", title: "Kept", keywords: [], content: "" }] };
     const legacy: Reversal = { day: 1, location: "x", weather: "clear" };
     expect(applyReversal(g, legacy).worldNotes).toBe(g.worldNotes);
+  });
+});
+
+describe("reversal — places", () => {
+  const stub: Place = {
+    id: "p9",
+    name: "Rodstroke",
+    kind: "wild",
+    type: "",
+    description: "",
+    tags: [],
+    rumours: [],
+    rooms: [],
+    keywords: [],
+    pending: true,
+  };
+
+  it("captures the area and the places a turn discovered", () => {
+    const pre = { ...newGame(), area: "Murkwood" };
+    const post = { ...pre, area: "Rodstroke", places: [stub] };
+    const rev = captureReversal(pre, post);
+    expect(rev.area).toBe("Murkwood");
+    expect(rev.places).toEqual([]);
+  });
+
+  it("captures no places on a turn that discovered nowhere", () => {
+    const pre = { ...newGame(), area: "Murkwood" };
+    expect(captureReversal(pre, { ...pre, day: 2 }).places).toBeUndefined();
+  });
+
+  it("restores both, so undo un-discovers the place with the turn", () => {
+    const pre = { ...newGame(), area: "Murkwood" };
+    const post = { ...pre, area: "Rodstroke", places: [stub] };
+    const back = applyReversal(post, captureReversal(pre, post));
+    expect(back.area).toBe("Murkwood");
+    expect(back.places).toEqual([]);
+  });
+
+  it("leaves the area alone on a snapshot taken before areas existed", () => {
+    const game = { ...newGame(), area: "Rodstroke" };
+    expect(applyReversal(game, { day: 1, location: "Market Square", weather: "clear" }).area).toBe(
+      "Rodstroke",
+    );
   });
 });

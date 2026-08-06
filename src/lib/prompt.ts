@@ -4,6 +4,7 @@ import type {
   GameState,
   JournalEntry,
   PartyMember,
+  Place,
   Scenario,
   Settings,
 } from "../types";
@@ -27,6 +28,12 @@ import {
   presentMembers,
 } from "./roster";
 import { formatNpcBlock, matchNpcs } from "./cast";
+import {
+  findPlace,
+  formatCurrentPlaceBlock,
+  formatKnownPlacesBlock,
+  matchPlaces,
+} from "./places";
 import { activeTemplate } from "./imageTemplates";
 import { matchWorldNotes, formatWorldNotesBlock } from "./worldNotes";
 import { formatConditionsBlock, formatStakesBlock, type StakeSignals } from "./stakes";
@@ -179,8 +186,12 @@ export function buildMessages(opts: BuildOptions): ChatMessage[] {
   // 2. Turn context: lore the action mentions, the sheets of NPCs it named, the
   //    spotlight, the equipped gear that bears on it. All four are absent on a
   //    quiet turn, and then the message is skipped entirely.
+  const here = findPlace(game.places, game.area);
   const turnContext = join([
     formatWorldNotesBlock(matchWorldNotes(game.worldNotes, scan)),
+    // Places the turn NAMED but is not in. The one the scene is actually in
+    // rides in the state tier instead, in full — see `buildStateOfPlay`.
+    formatKnownPlacesBlock(matchPlaces(game.places, scan, here?.id)),
     buildNpcBlock(game, characters, scan),
     buildSpotlightBlock(settings, game, characters, playerMessage, recent, currentTurn),
     buildGearBlock(game, characters, playerMessage, recent),
@@ -204,7 +215,7 @@ export function buildMessages(opts: BuildOptions): ChatMessage[] {
   //     re-read from the game each turn and every one is something the history
   //     drifts on, so they carry ONE authority claim between them rather than
   //     five competing ones.
-  messages.push({ role: "system", content: buildStateOfPlay(game, characters) });
+  messages.push({ role: "system", content: buildStateOfPlay(game, characters, here) });
 
   // 5a. This turn's outcome band, if the action was a gamble. Its own message:
   //     it is a fact about THIS action and nothing else, and the history is
@@ -280,7 +291,11 @@ function buildStandingContext(
  * history, under ONE authority line: three blocks each claiming to override the
  * beats read as three arguments, and the model picks one.
  */
-function buildStateOfPlay(game: GameState, characters: Character[]): string {
+function buildStateOfPlay(
+  game: GameState,
+  characters: Character[],
+  here: Place | undefined,
+): string {
   return join([
     "STATE OF PLAY — true as of this moment, and authoritative. Where anything below disagrees with an earlier beat, what is written here is what is true now.",
     // Time is a PHASE, never a clock face: a model told "14:30" writes "at half
@@ -288,6 +303,11 @@ function buildStateOfPlay(game: GameState, characters: Character[]): string {
     // only ever shown the phase — and implies clocks exist in a setting that
     // may not have them.
     `CURRENT SCENE — location: ${game.location}; day: ${game.day}; time: ${phaseOf(game.minutes)}; weather: ${game.weather}`,
+    // The area the location sits inside, in full: what the place is, what is
+    // said about it, and which parts of it exist. It belongs in this tier for
+    // the same reason the pack does — the beats remember a place already walked
+    // out of, and this is what has to outrank them.
+    formatCurrentPlaceBlock(here),
     buildPartyCompositionBlock(game, characters),
     // The one place a mark is printed. It used to be here AND on every sheet
     // above, which is how a narrator re-stating a condition it had already been
@@ -665,6 +685,7 @@ function buildOutputProtocol(settings: Settings): string {
     '- "weather": the current scene (string).',
     '- "duration": how much time your prose just took, as ONE of these words — "moment" (a blow lands, a door opens), "brief" (a short exchange), "scene" (a conversation, a search of one room), "hour", "hours" (a thorough search, a long negotiation), "halfday" (a journey across the region), "day" (a long haul), "night" (the player sleeps until morning). Always send it. The day and the time of day are counted from this, so guess honestly — never send a number, and never try to set the day yourself.',
     '- "location": the name of the place the scene is in, and NOTHING else — one name, the most specific one. Never join two place names: "Damp Cellar", not "Boars Head Tavern - Damp Cellar"; "Market Square", not "Rodstroke: Market Square". No dash, colon, slash or parent place, and no description.',
+    '- "area": the wider place that "location" is INSIDE — the settlement, the wood, the dungeon, the stretch of road. Send it on EVERY turn. Where an area is already shown to you under CURRENT AREA, repeat that name exactly as written; send a different one only when the player has actually travelled somewhere else, because a name this adventure has not seen before is treated as a new place and written up.',
     '- "party": array of character ops, each { "op": "add|update|remove", "name", "standing" }. Add a character when they enter the player\'s story; remove when they leave it. "name" is always the name you have been calling them — an op naming somebody new creates them.',
     '- An op may also carry "newName" to RENAME the character "name" resolves to. Their sheet, portrait and standing all stay; only what you call them changes, and the old name keeps working.',
     `- A NEW character's "add" also carries "species", "sex", "description", "personality", "drive", "strengths", "flaws" (all strings) and "equipment": [ { "label", "description" } ] — this is the only op that writes them. ${appearanceRule}`,

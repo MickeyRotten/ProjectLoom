@@ -207,6 +207,73 @@ export interface Note {
   permanent?: boolean;
 }
 
+/**
+ * What KIND of place this is — the one field that decides which tag slots the
+ * place even has (`places.ts → PLACE_KINDS`). A dungeon has no prosperity and a
+ * wilderness has no trade partners, so the conditional rule lives in one table
+ * rather than scattered through the editor, the generator and the prompt.
+ */
+export type PlaceKind = "steading" | "dungeon" | "wild";
+
+/**
+ * One tag on a place. `slot` is a key from the kind's schema ("prosperity",
+ * "themes", "denizens"); `value` is free text, because the schema's options are
+ * suggestions rather than a whitelist — a model answering "Destitute" keeps its
+ * word instead of being clamped onto the nearest shipped rung.
+ */
+export interface PlaceTag {
+  slot: string;
+  value: string;
+}
+
+/**
+ * A named part of a place — a room in a dungeon, a building in a town, a
+ * landmark in the wilds.
+ *
+ * `unique` is the whole of what the Perilous Wilds common/unique split buys us
+ * here: a common room is a palette the narrator may reuse (another guardroom,
+ * another game trail), a unique one exists exactly once and must not be
+ * duplicated. Nothing tracks whether it has been visited — the label is context
+ * for the narrator, not a map the client walks.
+ */
+export interface Room {
+  name: string;
+  description: string;
+  unique?: boolean;
+}
+
+/**
+ * An AREA — the place the scene is in, one level above the room named by
+ * `GameState.location`.
+ *
+ * Authored once by a side call the first time the player arrives somewhere new
+ * (`generatePlace.ts`), then frozen against the model and editable by the
+ * player, exactly like a character sheet. There is no place delta channel: the
+ * narrator reads places, it never writes them.
+ */
+export interface Place {
+  id: string;
+  name: string;
+  /** Other names this area answers to — resolution matches these too. */
+  aliases?: string[];
+  kind: PlaceKind;
+  /** village · town · keep · city · tomb · lair · forest · road … */
+  type: string;
+  description: string;
+  tags: PlaceTag[];
+  /** What is said about this place locally. Believed, not necessarily true. */
+  rumours: string[];
+  rooms: Room[];
+  /** Extra words that pull this place into the prompt when it is not the scene. */
+  keywords: string[];
+  /**
+   * Named but not yet authored — an arrival whose side call has not landed, or
+   * a neighbour some other place's `trade` tag mentioned. A stub still resolves
+   * and still injects (its name is a fact); it simply has nothing to say yet.
+   */
+  pending?: boolean;
+}
+
 export type MessageRole = "player" | "narrator";
 
 /**
@@ -300,6 +367,8 @@ export interface Reversal {
   day: number;
   /** Time of day. Absent on turns recorded before the clock existed. */
   minutes?: number;
+  /** The area. Absent on turns recorded before places existed. */
+  area?: string;
   location: string;
   weather: string;
   roster?: RosterEntry[];
@@ -318,6 +387,13 @@ export interface Reversal {
   inventory?: Item[];
   quests?: Quest[];
   worldNotes?: Note[];
+  /**
+   * Present only on a turn that discovered an area — the stub is written
+   * SYNCHRONOUSLY when the turn lands, for the same reason the journal entry
+   * is: its prose arrives later, and a snapshot taken after an async fill would
+   * restore to a state the place was already in.
+   */
+  places?: Place[];
 }
 
 /**
@@ -394,6 +470,11 @@ export interface GameState {
    */
   roster: RosterEntry[];
   worldNotes: Note[];
+  /**
+   * The areas this adventure knows about — see `Place`. Per-adventure, because
+   * a place is a fact about the story being played, not about the app.
+   */
+  places: Place[];
   inventory: Item[];
   quests: Quest[];
   messages: Message[];
@@ -407,6 +488,12 @@ export interface GameState {
    * (`clock.ts → phaseOf`).
    */
   minutes: number;
+  /**
+   * The AREA the scene is in — the name of a `Place`. One level above
+   * `location`, which is the room within it. Blank on a game that has never
+   * moved, and on every save written before places existed.
+   */
+  area: string;
   location: string;
   weather: string;
 }
@@ -432,6 +519,8 @@ export interface AdventureImports {
   /** Every other character sheet in the cast. */
   characters: boolean;
   worldNotes: boolean;
+  /** The areas already authored — the map of the world, minus where you stood. */
+  places: boolean;
 }
 
 /**
@@ -984,6 +1073,12 @@ export interface NoteDelta {
 
 export interface LoomBlock {
   location?: string;
+  /**
+   * The AREA the scene is in — the town, the wood, the dungeon. Only ever
+   * changes when the player travels somewhere else; a name this adventure has
+   * not seen before is what triggers a place being authored.
+   */
+  area?: string;
   weather?: string;
   /**
    * How long this turn took, as a label off the ladder in `clock.ts`. The
