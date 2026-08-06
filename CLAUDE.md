@@ -740,6 +740,15 @@ tier 2 trimmed to name/kind/description. **No place delta channel** — the
 narrator reads places, never writes them — so the Places screen is the only
 thing that changes one, with *Rewrite With Model* to ask again. Deliberately not
 built: tag arithmetic, theme countdowns, fronts, discovery rolls.
+Emit is canonical, the read is lenient: `formatKindMenu` first listed the slots
+at `"type"`'s indent — top-level keys — so models emitted them there and every
+place came back with a description and no tags. The menu nests them under
+`"tags"` and ships a worked example (`PLACE_EXAMPLE`, the `options` fix again),
+and `parseGeneratedPlace` reads the reply twice — nested, then top level,
+merged by `mergeTags` in schema order with the nested answer winning — while
+`parseTagObject` also takes a flat array of bare values, `{slot,value}` rows or
+prefixed strings (`"Prosperity: Poor"`, `"Defenses(Militia)"`); a payload tag
+like `Resource(grain)` names no slot and stays whole in the free list.
 Deferred (post-MVP): rolling LLM summarization of the beats themselves,
 NPC/item art, TTS, weather animation, multi-world. Track scope in
 `DESIGN.md → Build Phases`.

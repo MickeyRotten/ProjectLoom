@@ -6,6 +6,8 @@ import {
   buildPlaceMessages,
   formatKindMenu,
   formatKnownWorldBlock,
+  mergeTags,
+  PLACE_EXAMPLE,
   parseGeneratedPlace,
   parseTagObject,
   placeScanText,
@@ -68,9 +70,10 @@ describe("parseTagObject", () => {
     ]);
   });
 
-  it("reads nothing out of a non-object", () => {
-    expect(parseTagObject(["Poor"], "steading")).toEqual([]);
+  it("reads nothing out of something that is not an object at all", () => {
     expect(parseTagObject(null, "steading")).toEqual([]);
+    expect(parseTagObject("Poor", "steading")).toEqual([]);
+    expect(parseTagObject(undefined, "steading")).toEqual([]);
   });
 });
 
@@ -217,5 +220,149 @@ describe("buildPlaceMessages", () => {
     const fresh = gameWith({ messages: [] });
     const messages = buildPlaceMessages({ game: fresh, settings, name: "Rodstroke" });
     expect(messages.some((m) => m.content.includes("HOW THE PLAYER GOT HERE"))).toBe(false);
+  });
+});
+
+describe("tag salvage — the shapes models actually send", () => {
+  it("reads slots emitted at the TOP LEVEL, beside type", () => {
+    // The bug this fixes: the kind menu listed the slots at the same indent as
+    // "type", so a model put them where they appeared to go and every tag slot
+    // came back empty.
+    const flat = JSON.stringify({
+      kind: "steading",
+      type: "village",
+      description: "A muddy village.",
+      prosperity: "Poor",
+      population: "Shrinking",
+      defenses: "Militia",
+      trade: ["Ennet Bend"],
+      tags: ["Lawless", "Resource(river fish)"],
+    });
+    expect(parseGeneratedPlace(flat, "p9", "Rodstroke")?.tags).toEqual([
+      { slot: "prosperity", value: "Poor" },
+      { slot: "population", value: "Shrinking" },
+      { slot: "defenses", value: "Militia" },
+      { slot: "trade", value: "Ennet Bend" },
+      { slot: "tags", value: "Lawless" },
+      { slot: "tags", value: "Resource(river fish)" },
+    ]);
+  });
+
+  it("still prefers the documented nesting where both are present", () => {
+    const both = JSON.stringify({
+      kind: "steading",
+      description: "A muddy village.",
+      prosperity: "Rich",
+      tags: { prosperity: "Poor" },
+    });
+    expect(parseGeneratedPlace(both, "p9", "Rodstroke")?.tags).toEqual([
+      { slot: "prosperity", value: "Poor" },
+    ]);
+  });
+
+  it("fills a slot from the top level that the nested object left out", () => {
+    const partial = JSON.stringify({
+      kind: "steading",
+      description: "A muddy village.",
+      defenses: "Watch",
+      tags: { prosperity: "Poor" },
+    });
+    expect(parseGeneratedPlace(partial, "p9", "Rodstroke")?.tags).toEqual([
+      { slot: "prosperity", value: "Poor" },
+      { slot: "defenses", value: "Watch" },
+    ]);
+  });
+
+  it("reads a flat array of prefixed strings", () => {
+    expect(
+      parseTagObject(["Prosperity: Poor", "Defenses(Militia)", "Lawless"], "steading"),
+    ).toEqual([
+      { slot: "prosperity", value: "Poor" },
+      { slot: "defenses", value: "Militia" },
+      { slot: "tags", value: "Lawless" },
+    ]);
+  });
+
+  it("keeps a payload tag whole — Resource is a value, not a slot", () => {
+    expect(parseTagObject(["Resource(grain)"], "steading")).toEqual([
+      { slot: "tags", value: "Resource(grain)" },
+    ]);
+  });
+
+  it("reads a list of { slot, value } rows", () => {
+    expect(
+      parseTagObject([{ slot: "travel", value: "rough" }, { slot: "nope", value: "x" }], "wild"),
+    ).toEqual([{ slot: "travel", value: "rough" }]);
+  });
+
+  it("takes a number as a value rather than dropping it", () => {
+    expect(parseTagObject({ denizens: 12 }, "wild")).toEqual([
+      { slot: "denizens", value: "12" },
+    ]);
+  });
+
+  it("keeps a single-value slot single however many ways it was sent", () => {
+    const noisy = JSON.stringify({
+      kind: "wild",
+      description: "Old oaks.",
+      travel: "easy",
+      tags: { travel: ["rough", "perilous"] },
+    });
+    const travel = parseGeneratedPlace(noisy, "p9", "Murkwood")?.tags.filter(
+      (t) => t.slot === "travel",
+    );
+    expect(travel).toEqual([{ slot: "travel", value: "rough" }]);
+  });
+});
+
+describe("mergeTags", () => {
+  it("does not duplicate a tag both readings found", () => {
+    const rows = [{ slot: "tags", value: "Lawless" }];
+    expect(mergeTags(rows, [{ slot: "tags", value: "lawless" }], "steading")).toEqual(rows);
+  });
+
+  it("appends what only the second reading found", () => {
+    expect(
+      mergeTags([{ slot: "tags", value: "Lawless" }], [{ slot: "tags", value: "Market" }], "steading"),
+    ).toHaveLength(2);
+  });
+});
+
+describe("the prompt says where the tags go", () => {
+  it("nests every slot under the tags key", () => {
+    const menu = formatKindMenu();
+    expect(menu).toContain('"tags": {');
+    expect(menu).toContain('    "prosperity"');
+  });
+
+  it("ships a worked example with the slots filled in", () => {
+    expect(PLACE_EXAMPLE).toContain('"prosperity": "Poor"');
+    expect(PLACE_EXAMPLE).toContain('"trade"');
+    expect(JSON.parse(PLACE_EXAMPLE)).toMatchObject({ kind: "steading" });
+  });
+
+  it("parses its own example back to a full sheet", () => {
+    // The example is the contract; if it does not survive the parser, nothing
+    // written to match it will either.
+    const place = parseGeneratedPlace(PLACE_EXAMPLE, "p9", "Rodstroke");
+    expect(place?.tags.map((t) => t.slot)).toEqual([
+      "prosperity",
+      "population",
+      "defenses",
+      "trade",
+      "trade",
+      "tags",
+      "tags",
+      "tags",
+      "tags",
+    ]);
+    expect(place?.rooms.filter((r) => r.unique)).toHaveLength(2);
+    expect(place?.rumours).toHaveLength(2);
+  });
+
+  it("tells the model the slots are not top-level keys", () => {
+    const messages = buildPlaceMessages({ game: gameWith(), settings, name: "Rodstroke" });
+    expect(messages[0].content).toContain("none of them is a top-level key");
+    expect(messages[0].content).toContain("A WORKED EXAMPLE");
   });
 });
