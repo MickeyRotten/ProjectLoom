@@ -62,16 +62,54 @@ export function formatKindMenu(): string {
     const lines = [
       `"${kind.id}" — ${kind.hint}.`,
       `  "type": one of ${kind.types.join(" · ")} (or another word that fits better).`,
+      // Every slot line is written as a path INTO "tags". Listed bare, they read
+      // as siblings of "type" — top-level keys — which is exactly what a model
+      // then emits, and every tag slot came back empty.
+      `  "tags": {`,
     ];
     for (const slot of kind.slots) {
       const options = slot.options?.length ? ` Suggested: ${slot.options.join(" · ")}.` : "";
-      const shape = slot.single ? "one value" : "a list of values";
-      lines.push(`  "${slot.key}": ${shape} — ${slot.hint}.${options}`);
+      const shape = slot.single ? "one string" : "an array of strings";
+      lines.push(`    "${slot.key}": ${shape} — ${slot.hint}.${options}`);
     }
+    lines.push("  }");
     return lines.join("\n");
   });
   return ["THE THREE KINDS OF PLACE", ...blocks].join("\n\n");
 }
+
+/**
+ * A worked example of the whole object, assembled.
+ *
+ * The protocol had a page of field documentation and nothing showing the shape
+ * put together — the same gap that made `options` unreliable in the turn block,
+ * and fixed the same way. On a weak model one exemplar beats another paragraph
+ * of rules, and it is the only place `tags` can be shown as what it is: nested,
+ * ordinary, and filled in.
+ */
+export const PLACE_EXAMPLE = `{
+  "kind": "steading",
+  "type": "village",
+  "description": "Forty souls in the crook of the river, hemmed in by wet fields. Every roof is thatch and every thatch is green with moss. The mill wheel has not turned since the frost.",
+  "tags": {
+    "prosperity": "Poor",
+    "population": "Shrinking",
+    "defenses": "Militia",
+    "trade": ["Ennet Bend", "Torsea"],
+    "tags": ["Resource(river fish)", "Need(grain)", "Personage(Halloway the miller)", "Lawless"]
+  },
+  "rumours": [
+    "The miller's boy walked into the reeds at dusk and did not walk out.",
+    "There is old coin under the mill, if you are fool enough to dig."
+  ],
+  "rooms": [
+    { "name": "The Wend Mill", "description": "Wheel still, floor rotten, door barred from inside.", "unique": true },
+    { "name": "Halloway's House", "description": "The only stone house, and the only shuttered one.", "unique": true },
+    { "name": "Thatched Cottage", "description": "One of thirty, all of them damp.", "unique": false },
+    { "name": "Fishing Stage", "description": "Rickety planking out over the brown water.", "unique": false }
+  ],
+  "keywords": ["the village", "Wend", "Halloway"]
+}`;
 
 /**
  * The places already authored, by name and kind only. Enough for the model to
@@ -134,12 +172,15 @@ export function buildPlaceMessages(opts: GeneratePlaceOptions): ChatMessage[] {
       '- "kind": one of "steading", "dungeon", "wild". This decides which other fields the place has.',
       '- "type": what sort of place it is, in a word.',
       '- "description": two to four sentences. What it looks like, what it is like to be there, and what is going on. Concrete and physical — this is read by the narrator every turn the player is here.',
-      '- "tags": an object whose keys are the tag slots for the kind you chose. Fill every slot you can.',
+      '- "tags": an OBJECT, whose keys are the tag slots listed below for the kind you chose. Every slot goes inside it — none of them is a top-level key. Fill in every slot: a place with no tags is a place the narrator has to keep inventing.',
       `- "rumours": up to ${MAX_RUMOURS} short lines of what is SAID about this place — hooks, warnings, local gossip, old stories. They are believed here; they do not have to be true.`,
       `- "rooms": ${ROOM_TARGET} parts of this place, each { "name", "description", "unique" }. "unique" is true for somewhere there is exactly one of (the warden's office, the shrine, the mayor's house) and false for somewhere that recurs (a cell block, a market stall, a game trail). "description" is one line.`,
       '- "keywords": a few words that should bring this place to the narrator\'s mind when it is mentioned from elsewhere — other names for it, its landmark, its ruler.',
       "",
       formatKindMenu(),
+      "",
+      "A WORKED EXAMPLE — the shape, assembled. Yours describes a different place.",
+      PLACE_EXAMPLE,
       "",
       "RULES",
       "- Write the place, not a scene and not a story. Nothing the player does; nothing that happens next.",
@@ -203,21 +244,105 @@ export function buildPlaceMessages(opts: GeneratePlaceOptions): ChatMessage[] {
  * worth failing a whole place over.
  */
 export function parseTagObject(raw: unknown, kind: Place["kind"]): PlaceTag[] {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
+  if (!raw || typeof raw !== "object") return [];
+  if (Array.isArray(raw)) return parseTagList(raw, kind);
+
   const source = raw as Record<string, unknown>;
   const tags: PlaceTag[] = [];
 
   for (const slot of slotsOf(kind)) {
     const value = source[slot.key];
     if (value === undefined || value === null) continue;
-    const values = (Array.isArray(value) ? value : [value])
-      .map((v) => (typeof v === "string" ? v.trim() : typeof v === "number" ? String(v) : ""))
-      .filter(Boolean);
-    for (const v of slot.single ? values.slice(0, 1) : values) {
-      tags.push({ slot: slot.key, value: v });
+    // The free slot is the one place a nested object can legitimately turn up
+    // ("tags": { "tags": [...] }), and the one place a bare list of prefixed
+    // strings does too. Both route through the list reader.
+    if (Array.isArray(value)) {
+      const rows = parseTagList(value, kind, slot.key);
+      for (const row of slot.single ? rows.slice(0, 1) : rows) tags.push(row);
+      continue;
     }
+    const single = scalar(value);
+    if (single) tags.push({ slot: slot.key, value: single });
   }
   return tags;
+}
+
+/** A string or a number as text; anything else is not a value. */
+function scalar(value: unknown): string {
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return "";
+}
+
+/**
+ * A LIST of tags, in the three shapes models reach for when they do not send
+ * the documented object: bare values, `{ slot, value }` rows, and prefixed
+ * strings ("Prosperity: Poor", "Defenses(Militia)").
+ *
+ * A bare value with no recognisable prefix lands in `fallback` — the slot being
+ * read, or the kind's free slot. That is what makes "Lawless" work: it is a tag
+ * with no slot name of its own, and it belongs in the free list.
+ */
+function parseTagList(rows: unknown[], kind: Place["kind"], fallback = "tags"): PlaceTag[] {
+  const slots = slotsOf(kind);
+  const tags: PlaceTag[] = [];
+
+  for (const row of rows) {
+    if (row && typeof row === "object" && !Array.isArray(row)) {
+      const obj = row as Record<string, unknown>;
+      const slot = scalar(obj.slot);
+      const value = scalar(obj.value);
+      if (value && slots.some((s) => s.key === slot)) tags.push({ slot, value });
+      continue;
+    }
+    const text = scalar(row);
+    if (!text) continue;
+
+    // "Prosperity: Poor" / "Defenses(Militia)" — a slot naming itself inside a
+    // flat list. Only a name the kind actually has counts; "Resource(grain)" is
+    // not a slot, so it stays whole and lands in the free list.
+    const prefixed = /^\s*([A-Za-z][\w -]*?)\s*(?::\s*|\(\s*)(.+?)\s*\)?\s*$/.exec(text);
+    const named = prefixed && slots.find((s) => s.key === prefixed[1].trim().toLowerCase());
+    if (named && prefixed[2].trim()) {
+      tags.push({ slot: named.key, value: prefixed[2].trim() });
+      continue;
+    }
+    tags.push({ slot: fallback, value: text });
+  }
+  return tags;
+}
+
+/**
+ * Merge two readings of the same reply, `first` winning. A single-value slot
+ * keeps one value; a list slot gains what the other reading found and it did
+ * not.
+ */
+export function mergeTags(first: PlaceTag[], second: PlaceTag[], kind: Place["kind"]): PlaceTag[] {
+  const slots = slotsOf(kind);
+  const single = new Set(slots.filter((s) => s.single).map((s) => s.key));
+  const order = new Map(slots.map((s, i) => [s.key, i]));
+  const out = [...first];
+  const taken = new Set(out.map((t) => `${t.slot} ${t.value.toLowerCase()}`));
+  const filled = new Set(out.map((t) => t.slot));
+
+  for (const tag of second) {
+    if (single.has(tag.slot) && filled.has(tag.slot)) continue;
+    const key = `${tag.slot} ${tag.value.toLowerCase()}`;
+    if (taken.has(key)) continue;
+    taken.add(key);
+    filled.add(tag.slot);
+    out.push(tag);
+  }
+  // Schema order, stably — the same order `setTagValues` rebuilds an edited
+  // place in. Which of the two readings found a slot is an accident of how the
+  // model laid its reply out, and it should not decide how the sheet reads.
+  return out
+    .map((tag, i) => ({ tag, i }))
+    .sort((a, b) => {
+      const slot = (order.get(a.tag.slot) ?? 99) - (order.get(b.tag.slot) ?? 99);
+      return slot || a.i - b.i;
+    })
+    .map((row) => row.tag);
 }
 
 /**
@@ -247,7 +372,16 @@ export function parseGeneratedPlace(raw: string, id: string, name: string): Plac
       kind,
       type: parsed.type,
       description: parsed.description,
-      tags: parseTagObject(parsed.tags, kind),
+      // Read the documented nesting first, then the SAME reply again at the top
+      // level. Models put the slots where the menu appeared to put them, and a
+      // whole sheet of tags silently vanishing is worse than reading a key
+      // twice — `mergeTags` keeps the nested answer where both spoke. Emit stays
+      // canonical; only the read is lenient (`loomBlock.ts → normalizeOptions`).
+      tags: mergeTags(
+        parseTagObject(parsed.tags, kind),
+        parseTagObject(parsed, kind),
+        kind,
+      ),
       rumours: parsed.rumours,
       rooms: parseRooms(parsed.rooms),
       keywords: parsed.keywords,

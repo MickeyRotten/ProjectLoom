@@ -1051,6 +1051,19 @@ own standing instructions, so an area reads as part of the same world.
 each already injectable by keyword, each fully authored the day the player walks
 there. No extra call, no extra spend.
 
+**Emit is canonical, the read is lenient.** The kind menu is generated from
+`PLACE_KINDS`, and it first listed the slots at the same indent as `"type"` —
+which reads as top-level keys, so a model put them there, `parseGeneratedPlace`
+looked only in `"tags"`, and every place came back with a description and
+nothing else. The menu now nests them under `"tags"` and ships a **worked
+example** of the whole object (the fix that made `options` reliable in the turn
+block, for the same reason: one exemplar beats another paragraph of rules). The
+parser reads the reply twice regardless — the documented nesting first, then the
+top level, merged by `mergeTags` with the nested answer winning — and tolerates
+a flat array of bare values, `{ slot, value }` rows, or prefixed strings
+(`"Prosperity: Poor"`, `"Defenses(Militia)"`). A payload tag stays whole:
+`Resource(grain)` names no slot, so it lands in the free list.
+
 **Frozen against the model, owned by the player.** There is no place delta
 channel — the narrator reads places, it never writes them — so the **Places**
 screen is the only thing that changes one after it is authored, with *Rewrite
