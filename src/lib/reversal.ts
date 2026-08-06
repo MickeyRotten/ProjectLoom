@@ -26,10 +26,12 @@ export function captureReversal(pre: GameState, post: GameState): Reversal {
   const rev: Reversal = {
     day: pre.day,
     minutes: pre.minutes,
+    area: pre.area,
     location: pre.location,
     weather: pre.weather,
   };
   if (pre.roster !== post.roster) rev.roster = pre.roster;
+  if (pre.places !== post.places) rev.places = pre.places;
   if (pre.inventory !== post.inventory) rev.inventory = pre.inventory;
   if (pre.quests !== post.quests) rev.quests = pre.quests;
   if (pre.worldNotes !== post.worldNotes) rev.worldNotes = pre.worldNotes;
@@ -53,12 +55,16 @@ export function applyReversal(game: GameState, rev: Reversal): GameState {
     // Turns recorded before the clock carry no time; leaving the current one
     // in place is the only honest answer — there is nothing to restore to.
     minutes: rev.minutes ?? game.minutes,
+    // Same posture as `minutes`: a turn recorded before areas existed has
+    // nothing to restore to, and the current area is the only honest answer.
+    area: rev.area ?? game.area,
     location: rev.location,
     weather: rev.weather,
     roster: roster ? normalizeRoster(roster) : game.roster,
     inventory: rev.inventory ?? game.inventory,
     quests: rev.quests ?? game.quests,
     worldNotes: rev.worldNotes ?? game.worldNotes,
+    places: rev.places ?? game.places,
     journal: rev.journal ?? game.journal,
   };
 }

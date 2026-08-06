@@ -328,3 +328,47 @@ describe("Gold — permanent currency", () => {
     expect(restored).toHaveLength(2);
   });
 });
+
+describe("places across saves and adventures", () => {
+  it("opens a new game with no places and no area — the first turn names one", () => {
+    const g = newGame();
+    expect(g.places).toEqual([]);
+    expect(g.area).toBe("");
+  });
+
+  it("reads a save written before places existed as having none", () => {
+    const loaded = loadGame({ ...newGame(), places: undefined, area: undefined });
+    expect(loaded?.game.places).toEqual([]);
+    expect(loaded?.game.area).toBe("");
+  });
+
+  it("drops a stored row that is not a place, rather than the save", () => {
+    const loaded = loadGame({ ...newGame(), places: [{ id: "x" }, { id: "p1", name: "Rodstroke" }] });
+    expect(loaded?.game.places.map((p) => p.name)).toEqual(["Rodstroke"]);
+  });
+
+  it("carries the map into a new adventure only when it is ticked", () => {
+    const prev: GameState = {
+      ...newGame(),
+      area: "Rodstroke",
+      places: [{
+        id: "p1",
+        name: "Rodstroke",
+        kind: "steading",
+        type: "village",
+        description: "",
+        tags: [],
+        rumours: [],
+        rooms: [],
+        keywords: [],
+      }],
+    };
+    expect(seedAdventure(prev, { ...DEFAULT_ADVENTURE_IMPORTS, places: true }).places).toHaveLength(1);
+    expect(seedAdventure(prev, { ...DEFAULT_ADVENTURE_IMPORTS, places: false }).places).toEqual([]);
+  });
+
+  it("never carries the position, however much of the map is kept", () => {
+    const prev: GameState = { ...newGame(), area: "Rodstroke" };
+    expect(seedAdventure(prev, { ...DEFAULT_ADVENTURE_IMPORTS, places: true }).area).toBe("");
+  });
+});

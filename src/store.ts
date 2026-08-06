@@ -10,6 +10,7 @@ import type {
   JournalLine,
   Message,
   Note,
+  Place,
   Quest,
   Scenario,
   Settings,
@@ -108,6 +109,12 @@ import {
 } from "./lib/loomBlock";
 import { applyDeltas, reconcileBlock } from "./lib/deltas";
 import { withRename } from "./lib/names";
+import { addNeighbourStubs, ensurePlace, fillPlace, placeStub } from "./lib/places";
+import {
+  GENERATE_PLACE_TEMPERATURE,
+  buildPlaceMessages,
+  parseGeneratedPlace,
+} from "./lib/generatePlace";
 import {
   JOURNAL_TEMPERATURE,
   appendModelLines,
@@ -161,6 +168,7 @@ export type Screen =
   | "scenario"
   | "characters"
   | "worldnotes"
+  | "places"
   | "journal"
   | "quests"
   | "rpg"
@@ -340,6 +348,19 @@ export interface LoomStore {
   addNote: () => void;
   updateNote: (id: string, patch: Partial<Note>) => void;
   removeNote: (id: string) => void;
+  /** A blank area for the player to write by hand (Places screen). */
+  addPlace: () => void;
+  updatePlace: (id: string, patch: Partial<Place>) => void;
+  removePlace: (id: string) => void;
+  /** An area's sheet is being written by the model. */
+  placePending: boolean;
+  /**
+   * Author the area `id` names, over whatever is there. Fired automatically the
+   * first time a turn moves the scene somewhere new — the stub already exists
+   * with its name by then — and from the Places screen to (re)write one by hand.
+   * Never on the turn's critical path, and its failure is never a turn error.
+   */
+  writePlace: (id: string) => Promise<void>;
   addQuest: () => void;
   updateQuest: (id: string, patch: Partial<Quest>) => void;
   removeQuest: (id: string) => void;
@@ -806,6 +827,7 @@ export const useStore = create<LoomStore>((set, get) => {
 
   fieldGenPending: false,
   journalPending: false,
+  placePending: false,
   fieldGenError: null,
 
   async hydrate() {
@@ -1309,6 +1331,75 @@ export const useStore = create<LoomStore>((set, get) => {
     void saveActiveGame(game);
   },
 
+  addPlace() {
+    const g = get().game;
+    // A stub, exactly like the one an arrival writes — a place the player is
+    // adding by hand is in the same state as one the story has only named.
+    const game = { ...g, places: [...g.places, placeStub(uid(), "")] };
+    set({ game });
+    void saveActiveGame(game);
+  },
+
+  updatePlace(id, patch) {
+    const g = get().game;
+    const places = g.places.map((p) =>
+      p.id === id
+        ? // Any hand edit is authorship: the pending flag exists to say "nobody
+          // has written this yet", and somebody just has.
+          { ...p, ...patch, pending: undefined }
+        : p,
+    );
+    const game = { ...g, places };
+    set({ game });
+    void saveActiveGame(game);
+  },
+
+  removePlace(id) {
+    const g = get().game;
+    const game = { ...g, places: g.places.filter((p) => p.id !== id) };
+    set({ game });
+    void saveActiveGame(game);
+  },
+
+  async writePlace(id) {
+    if (get().placePending) return;
+    const game = get().game;
+    const place = game.places.find((p) => p.id === id);
+    if (!place || !place.name.trim()) return;
+
+    set({ placePending: true });
+    try {
+      const raw = await completeChat({
+        settings: get().settings,
+        messages: buildPlaceMessages({ game, settings: get().settings, name: place.name }),
+        temperature: GENERATE_PLACE_TEMPERATURE,
+      });
+      const authored = parseGeneratedPlace(raw, id, place.name);
+      if (!authored) return;
+
+      // Re-read the store: the player may have undone the turn that discovered
+      // this area, or deleted it outright, while the call was in flight.
+      // `fillPlace` no-ops on a missing id, so a late write can't resurrect it.
+      const current = get().game;
+      const filled = fillPlace(current.places, id, authored);
+      if (filled === current.places) return;
+
+      // The trade tags name other settlements. Each becomes a stub — a name the
+      // keyword matcher can already inject, and an area that authors itself the
+      // day the player walks there. No extra call, so no extra spend.
+      const places = addNeighbourStubs(filled, authored, uid);
+      const next = { ...current, places };
+      set({ game: next });
+      void saveActiveGame(next);
+    } catch {
+      // Deliberately silent, like the journal's. The stub keeps its name, the
+      // Places screen offers a retry, and an area that failed to write is not a
+      // turn that failed.
+    } finally {
+      set({ placePending: false });
+    }
+  },
+
   addQuest() {
     const g = get().game;
     const quest: Quest = { id: uid(), label: "", description: "", reward: "", status: "active" };
@@ -1656,6 +1747,15 @@ export const useStore = create<LoomStore>((set, get) => {
       // nothing — it only advances the clock by the default duration.
       const scene = applyDeltas(g, library, applied ?? {});
 
+      // The area this turn is in, as a `Place`. The stub is written
+      // SYNCHRONOUSLY — before the reversal snapshot below — for exactly the
+      // reason the journal entry is: its sheet is fetched afterwards, and a
+      // snapshot taken after an async fill would restore the place to a state it
+      // was already in, stranding the fill. Returns the same array on an area
+      // this adventure already knows, so re-entering a place costs nothing.
+      const places = ensurePlace(g.places, scene.area, uid());
+      const discovered = places !== g.places ? places[places.length - 1] : null;
+
       // Party deltas apply first, THEN deterministic speaker detection bumps
       // lastSpokeTurn — the model's `spoke` hint never overrides the prose
       // (loom-spotlight). Run against the post-delta ACTIVE roster: only the
@@ -1712,9 +1812,11 @@ export const useStore = create<LoomStore>((set, get) => {
         inventory: scene.inventory,
         quests: scene.quests,
         worldNotes: scene.worldNotes,
+        places,
         journal,
         day: scene.day,
         minutes: scene.minutes,
+        area: scene.area,
         location: scene.location,
         weather: scene.weather,
       };
@@ -1728,11 +1830,13 @@ export const useStore = create<LoomStore>((set, get) => {
         journal,
         day: scene.day,
         minutes: scene.minutes,
+        area: scene.area,
         location: scene.location,
         weather: scene.weather,
         inventory: scene.inventory,
         quests: scene.quests,
         worldNotes: scene.worldNotes,
+        places,
       };
 
       set({
@@ -1753,6 +1857,12 @@ export const useStore = create<LoomStore>((set, get) => {
       if (journal !== g.journal) {
         void get().writeJournalEntry(journal[journal.length - 1].id);
       }
+
+      // And the same for an area the player has just walked into: the stub is
+      // already saved with its name, so its sheet is fetched after the beat has
+      // landed and can fail without the player ever seeing it. The arrival beat
+      // itself is improvised — every beat after it has the place in hand.
+      if (discovered) void get().writePlace(discovered.id);
     } catch (err) {
       const aborted =
         err instanceof DOMException

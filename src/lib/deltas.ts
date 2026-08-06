@@ -55,6 +55,8 @@ export interface AppliedScene {
   minutes: number;
   /** The turn was a night's sleep. The journal's boundary signal. */
   rested: boolean;
+  /** The area the scene is in — see `Place` and `resolveArea`. */
+  area: string;
   location: string;
   weather: string;
   characters: Character[];
@@ -101,6 +103,39 @@ export function simplifyLocation(location: string): string {
     .map((p) => p.trim())
     .filter(Boolean);
   return parts.length ? parts[parts.length - 1] : "";
+}
+
+/**
+ * The PARENT place out of a compound location — the half `simplifyLocation`
+ * throws away. "Boars Head Tavern - Damp Cellar" names both the area and the
+ * room, and now that areas exist, discarding the head loses a fact the model
+ * volunteered.
+ *
+ * Only ever a fallback: the narrator has an `area` field of its own, and this
+ * catches the turn where it staples the two together out of habit instead.
+ * Returns "" when the location is a single name, which is the ordinary case.
+ */
+export function locationParent(location: string): string {
+  const parts = location
+    .split(LOCATION_JOINERS)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  return parts.length > 1 ? parts[0] : "";
+}
+
+/**
+ * The area this turn is in. Three sources, in order: the narrator's own `area`
+ * field, the parent half of a compound `location`, and — when neither says
+ * anything — wherever the scene already was.
+ *
+ * A blank or separators-only value never clears the area: an area the player is
+ * standing in cannot become nowhere because a turn omitted a field.
+ */
+export function resolveArea(current: string, block: LoomBlock): string {
+  const named = typeof block.area === "string" ? block.area.trim() : "";
+  if (named) return named;
+  const parent = locationParent(block.location ?? "");
+  return parent || current;
 }
 
 /**
@@ -557,6 +592,10 @@ export function applyDeltas(
     day: clock.day,
     minutes: clock.minutes,
     rested: clock.rested,
+    // The area is only ever named here. Creating the `Place` behind it is the
+    // store's job: it needs an id and it fires a call, neither of which belongs
+    // in a pure delta apply.
+    area: resolveArea(game.area, block),
     location,
     weather,
     characters: party.characters,

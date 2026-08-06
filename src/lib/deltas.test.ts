@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { applyDeltas, goldIsNarrated, reconcileBlock, simplifyLocation } from "./deltas";
+import {
+  applyDeltas,
+  goldIsNarrated,
+  locationParent,
+  reconcileBlock,
+  resolveArea,
+  simplifyLocation,
+} from "./deltas";
 import { defaultPC, newGame } from "./defaults";
 import { PARTY_LIMIT, activeMembers, getEntry, partyMembers, resolve } from "./roster";
 import type { Character, GameState } from "../types";
@@ -1240,5 +1247,58 @@ describe("goldIsNarrated", () => {
   it("treats blank prose as no claim at all", () => {
     expect(goldIsNarrated("")).toBe(true);
     expect(goldIsNarrated("   ")).toBe(true);
+  });
+});
+
+describe("locationParent", () => {
+  it("keeps the head of a compound, which simplifyLocation throws away", () => {
+    expect(locationParent("Boars Head Tavern - Damp Cellar")).toBe("Boars Head Tavern");
+    expect(locationParent("Rodstroke: Market Square")).toBe("Rodstroke");
+  });
+
+  it("is empty for a single name — the ordinary case", () => {
+    expect(locationParent("Damp Cellar")).toBe("");
+    expect(locationParent("Half-Moon Inn")).toBe("");
+  });
+
+  it("is empty for a comma, which nests the other way round", () => {
+    expect(locationParent("Rodstroke, Mesmeria")).toBe("");
+  });
+});
+
+describe("resolveArea", () => {
+  it("takes the narrator's own field first", () => {
+    expect(resolveArea("Murkwood", { area: "Rodstroke" })).toBe("Rodstroke");
+  });
+
+  it("falls back to the parent half of a compound location", () => {
+    expect(resolveArea("Murkwood", { location: "Boars Head Tavern - Damp Cellar" })).toBe(
+      "Boars Head Tavern",
+    );
+  });
+
+  it("keeps the current area when the turn says nothing", () => {
+    expect(resolveArea("Murkwood", {})).toBe("Murkwood");
+    expect(resolveArea("Murkwood", { area: "   " })).toBe("Murkwood");
+    expect(resolveArea("Murkwood", { location: "Damp Cellar" })).toBe("Murkwood");
+  });
+});
+
+describe("applyDeltas — area", () => {
+  it("names the area without creating anything — the Place is the store's job", () => {
+    const scene = applyDeltas(game(), lib(), { area: "Rodstroke", location: "Market Square" });
+    expect(scene.area).toBe("Rodstroke");
+    expect(scene.location).toBe("Market Square");
+  });
+
+  it("splits a compound location into the two halves it was always naming", () => {
+    const scene = applyDeltas(game(), lib(), { location: "Rodstroke: Market Square" });
+    expect(scene.area).toBe("Rodstroke");
+    expect(scene.location).toBe("Market Square");
+  });
+
+  it("leaves the area alone on an ordinary turn", () => {
+    const g = { ...game(), area: "Murkwood" };
+    expect(applyDeltas(g, lib(), {}).area).toBe("Murkwood");
   });
 });

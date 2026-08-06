@@ -41,6 +41,7 @@ const ENTRIES: { screen: Screen; label: string; note: string; group: Group }[] =
   { group: "adventure", screen: "inventory", label: "Inventory", note: "Carried items · gold" },
   { group: "adventure", screen: "quests", label: "Quests", note: "Active + finished objectives" },
   { group: "adventure", screen: "worldnotes", label: "World Notes", note: "Lore the story remembers" },
+  { group: "adventure", screen: "places", label: "Places", note: "Areas you have been · rooms · tags" },
   { group: "adventure", screen: "journal", label: "Journal", note: "What has happened, day by day" },
   { group: "adventure", screen: "saves", label: "Saves", note: "Snapshot · restore slots" },
   { group: "adventure", screen: "characters", label: "Characters", note: "Full cast · add to party" },

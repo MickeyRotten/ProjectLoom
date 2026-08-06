@@ -12,7 +12,7 @@ import { defaultPC, newGame, defaultSettings } from "./defaults";
 import { PARTY_LIMIT } from "./roster";
 import { DEFAULT_DICE } from "./stakes";
 import { builtinTemplates } from "./imageTemplates";
-import type { Character, GameState, Message, RosterEntry, Settings } from "../types";
+import type { Character, GameState, Message, Place, RosterEntry, Settings } from "../types";
 
 /** Settings whose SELECTED image template carries this appearance rule. */
 function appearanceRule(text: string): Partial<Settings> {
@@ -1078,5 +1078,64 @@ describe("buildMessages — regeneration note", () => {
     expect(last.role).toBe("user");
     expect(last.content).toBe("I open the door.");
     expect(idx).toBeLessThan(messages.length - 2);
+  });
+});
+
+describe("places in the prompt", () => {
+  const rodstroke: Place = {
+    id: "p1",
+    name: "Rodstroke",
+    kind: "steading",
+    type: "village",
+    description: "A muddy village of forty souls.",
+    tags: [{ slot: "prosperity", value: "Poor" }],
+    rumours: ["The miller's boy is missing."],
+    rooms: [{ name: "The Wend Mill", description: "Wheel still.", unique: true }],
+    keywords: [],
+  };
+  const torsea: Place = { ...rodstroke, id: "p2", name: "Torsea", rumours: [], rooms: [] };
+
+  /** A game standing in Rodstroke, which also knows of Torsea. */
+  function here(): GameState {
+    return { ...newGame(), places: [rodstroke, torsea], area: "Rodstroke" };
+  }
+
+  it("puts the current area in the state tier, in full", () => {
+    const msgs = build({ game: here(), playerMessage: "I look around" });
+    const state = msgs.find((m) => m.content.includes("STATE OF PLAY"));
+    expect(state?.content).toContain("CURRENT AREA — Rodstroke — village");
+    expect(state?.content).toContain("Prosperity: Poor");
+    expect(state?.content).toContain("The Wend Mill");
+  });
+
+  it("says nothing when the scene is in no known area", () => {
+    const msgs = build({ game: newGame(), playerMessage: "I look around" });
+    const state = msgs.find((m) => m.content.includes("STATE OF PLAY"));
+    expect(state?.content).not.toContain("CURRENT AREA");
+  });
+
+  it("keyword-gates the OTHER places into the turn tier, trimmed", () => {
+    const msgs = build({ game: here(), playerMessage: "what do you know of Torsea?" });
+    const turn = msgs.find((m) => m.content.includes("KNOWN PLACES"));
+    expect(turn?.content).toContain("Torsea");
+    expect(turn?.content).toContain("The player is NOT in these places");
+  });
+
+  it("never lists the current area among the places elsewhere", () => {
+    const msgs = build({ game: here(), playerMessage: "I walk through Rodstroke" });
+    const turn = msgs.find((m) => m.content.includes("KNOWN PLACES"));
+    expect(turn).toBeUndefined();
+  });
+
+  it("injects no place block on a turn that names none", () => {
+    const msgs = build({ game: here(), playerMessage: "I sharpen my sword" });
+    expect(msgs.some((m) => m.content.includes("KNOWN PLACES"))).toBe(false);
+  });
+
+  it("documents the area field, pointing at the block it must repeat", () => {
+    const msgs = build({ game: here(), playerMessage: "I look around" });
+    const protocol = msgs.find((m) => m.content.includes("OUTPUT PROTOCOL"));
+    expect(protocol?.content).toContain('"area"');
+    expect(protocol?.content).toContain("CURRENT AREA");
   });
 });

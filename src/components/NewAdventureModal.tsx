@@ -67,6 +67,11 @@ export function NewAdventureModal({
       label: "World Notes",
       note: count(game.worldNotes.length, "note", "Lore the story remembers"),
     },
+    {
+      key: "places",
+      label: "Places",
+      note: count(game.places.length, "place", "Areas you have travelled to"),
+    },
   ];
 
   return (

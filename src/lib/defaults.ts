@@ -11,6 +11,7 @@ import type {
   Settings,
 } from "../types";
 import { MORNING_ANCHOR, normalizeMinutes } from "./clock";
+import { normalizePlaces } from "./places";
 import { PARTY_LIMIT, normalizeRoster, strengthsText } from "./roster";
 import { SCENE_TILT } from "./diceAnim";
 import { DEFAULT_DICE, RISK_KEYWORDS } from "./stakes";
@@ -367,6 +368,7 @@ export function newGame(
     characters,
     roster: [],
     worldNotes: [],
+    places: [],
     inventory: [goldItem()],
     quests: [],
     messages: [],
@@ -376,6 +378,11 @@ export function newGame(
     // An adventure opens in the morning — the same anchor a night's sleep wakes
     // to, so Day 1 reads like every day after it.
     minutes: MORNING_ANCHOR,
+    // No area until the narrator names one, which it does on the first turn.
+    // Seeding it from `startLocation` would author a Place for what is meant to
+    // be a room, and the opening beat is the thing best placed to say which
+    // wood or which town the road actually runs through.
+    area: "",
     location: scenario.startLocation || scenario.title,
     weather: "clear",
   };
@@ -472,6 +479,11 @@ export function loadGame(saved: unknown): LoadedGame | null {
       // phase bands.
       minutes: normalizeMinutes(partial.minutes),
       journal: Array.isArray(partial.journal) ? partial.journal : [],
+      // Sanitized on READ, like every other stored list: a save written before
+      // places existed loads as none, and one hand-edited into a bad shape
+      // loses the bad rows rather than the game.
+      places: normalizePlaces(partial.places),
+      area: typeof partial.area === "string" ? partial.area : "",
     },
     legacyCast: stored === null,
   };
@@ -504,6 +516,9 @@ export const DEFAULT_ADVENTURE_IMPORTS: AdventureImports = {
   pc: true,
   characters: false,
   worldNotes: false,
+  // Off with the world notes, and for the same reason: an authored map is
+  // setting, and setting is exactly what a new adventure may be trying to leave.
+  places: false,
 };
 
 /**
@@ -534,5 +549,10 @@ export function seedAdventure(prev: GameState, imports: AdventureImports): GameS
           .map((e) => ({ id: e.id, standing: "npc" as const, lastSpokeTurn: 0 }))
       : [],
     worldNotes: imports.worldNotes ? prev.worldNotes : [],
+    // The map carries, the position never does: a new adventure starts with
+    // `area` blank whatever was ticked, so the first turn names where it opens
+    // and an imported place is simply somewhere already described when the
+    // story reaches it.
+    places: imports.places ? prev.places : [],
   };
 }
