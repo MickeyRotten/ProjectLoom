@@ -186,15 +186,22 @@ export function buildMessages(opts: BuildOptions): ChatMessage[] {
   // 2. Turn context: lore the action mentions, the sheets of NPCs it named, the
   //    spotlight, the equipped gear that bears on it. All four are absent on a
   //    quiet turn, and then the message is skipped entirely.
-  const here = findPlace(game.places, game.area);
+  const features = settings.features;
+  const here = features.places ? findPlace(game.places, game.area) : undefined;
   const turnContext = join([
+    // NEVER gated. World Notes are lore the PLAYER authored, and they are what
+    // is left when every switch below is off — see `FeatureFlags`.
     formatWorldNotesBlock(matchWorldNotes(game.worldNotes, scan)),
     // Places the turn NAMED but is not in. The one the scene is actually in
     // rides in the state tier instead, in full — see `buildStateOfPlay`.
-    formatKnownPlacesBlock(matchPlaces(game.places, scan, here?.id)),
-    buildNpcBlock(game, characters, scan),
-    buildSpotlightBlock(settings, game, characters, playerMessage, recent, currentTurn),
-    buildGearBlock(game, characters, playerMessage, recent),
+    features.places
+      ? formatKnownPlacesBlock(matchPlaces(game.places, scan, here?.id))
+      : "",
+    features.characters ? buildNpcBlock(game, characters, scan) : "",
+    features.spotlight
+      ? buildSpotlightBlock(settings, game, characters, playerMessage, recent, currentTurn)
+      : "",
+    features.gear ? buildGearBlock(game, characters, playerMessage, recent) : "",
   ]);
   if (turnContext) messages.push({ role: "system", content: turnContext });
 
@@ -206,7 +213,7 @@ export function buildMessages(opts: BuildOptions): ChatMessage[] {
   //     the history and before the state because it is the older material: the
   //     window holds the last few beats verbatim, and this is the stretch
   //     behind them that the window has already dropped.
-  if (settings.journalEnabled) {
+  if (features.journal) {
     const journal = formatJournalBlock(game.journal, settings.journalBudget);
     if (journal) messages.push({ role: "system", content: journal });
   }
@@ -215,13 +222,14 @@ export function buildMessages(opts: BuildOptions): ChatMessage[] {
   //     re-read from the game each turn and every one is something the history
   //     drifts on, so they carry ONE authority claim between them rather than
   //     five competing ones.
-  messages.push({ role: "system", content: buildStateOfPlay(game, characters, here) });
+  const state = buildStateOfPlay(settings, game, characters, here);
+  if (state) messages.push({ role: "system", content: state });
 
   // 5a. This turn's outcome band, if the action was a gamble. Its own message:
   //     it is a fact about THIS action and nothing else, and the history is
   //     full of turns that went differently. Gated on the setting so switching
   //     stakes off restores the pure-sandbox behaviour exactly.
-  if (settings.stakesEnabled && opts.stakes) {
+  if (features.stakes && opts.stakes) {
     const stakes = formatStakesBlock(opts.stakes, settings.stakesRule);
     if (stakes) messages.push({ role: "system", content: stakes });
   }
@@ -277,7 +285,9 @@ function buildStandingContext(
     // The members actually in the scene. Benched members get no sheet anywhere:
     // they are the player's, but they are not here, and a sheet is an
     // invitation to write them in.
-    formatPartyRoster(activeMembers(characters, game.roster)),
+    settings.features.characters
+      ? formatPartyRoster(activeMembers(characters, game.roster))
+      : "",
   ]);
 }
 
@@ -292,30 +302,63 @@ function buildStandingContext(
  * beats read as three arguments, and the model picks one.
  */
 function buildStateOfPlay(
+  settings: Settings,
   game: GameState,
   characters: Character[],
   here: Place | undefined,
 ): string {
-  return join([
-    "STATE OF PLAY — true as of this moment, and authoritative. Where anything below disagrees with an earlier beat, what is written here is what is true now.",
-    // Time is a PHASE, never a clock face: a model told "14:30" writes "at half
-    // past two" into the prose, which leaks an exact time to a player who is
-    // only ever shown the phase — and implies clocks exist in a setting that
-    // may not have them.
-    `CURRENT SCENE — location: ${game.location}; day: ${game.day}; time: ${phaseOf(game.minutes)}; weather: ${game.weather}`,
+  const features = settings.features;
+  const blocks = join([
+    formatSceneBlock(settings, game),
     // The area the location sits inside, in full: what the place is, what is
     // said about it, and which parts of it exist. It belongs in this tier for
     // the same reason the pack does — the beats remember a place already walked
     // out of, and this is what has to outrank them.
-    formatCurrentPlaceBlock(here),
-    buildPartyCompositionBlock(game, characters),
+    features.places ? formatCurrentPlaceBlock(here) : "",
+    features.characters ? buildPartyCompositionBlock(game, characters) : "",
     // The one place a mark is printed. It used to be here AND on every sheet
     // above, which is how a narrator re-stating a condition it had already been
     // shown twice ended up stamping the same chip on four beats in a row.
-    formatConditionsBlock(presentMembers(characters, game.roster)),
-    formatInventoryBlock(game),
-    formatQuestBoardBlock(game),
+    features.conditions
+      ? formatConditionsBlock(presentMembers(characters, game.roster))
+      : "",
+    features.inventory ? formatInventoryBlock(game) : "",
+    features.quests ? formatQuestBoardBlock(game) : "",
   ]);
+
+  // The authority line speaks for the blocks under it. With every one of them
+  // switched off it would be a claim about nothing — so the whole tier goes,
+  // and `buildMessages` sends no message for it.
+  if (!blocks) return "";
+  return join([
+    "STATE OF PLAY — true as of this moment, and authoritative. Where anything below disagrees with an earlier beat, what is written here is what is true now.",
+    blocks,
+  ]);
+}
+
+/**
+ * The CURRENT SCENE line — where, when, and what the weather is doing.
+ *
+ * One line built from three independently switchable facts, so a game with the
+ * clock off still gets its location. With all three off the line is blank and
+ * `join` drops it: nothing states the scene, which is exactly what a narrator
+ * running on prose alone should see.
+ *
+ * Time is a PHASE, never a clock face: a model told "14:30" writes "at half past
+ * two" into the prose, which leaks an exact time to a player who is only ever
+ * shown the phase — and implies clocks exist in a setting that may not have
+ * them.
+ */
+function formatSceneBlock(settings: Settings, game: GameState): string {
+  const features = settings.features;
+  const parts = [
+    features.location ? `location: ${game.location}` : "",
+    features.clock ? `day: ${game.day}` : "",
+    features.clock ? `time: ${phaseOf(game.minutes)}` : "",
+    features.weather ? `weather: ${game.weather}` : "",
+  ].filter(Boolean);
+  if (!parts.length) return "";
+  return `CURRENT SCENE — ${parts.join("; ")}`;
 }
 
 /**
@@ -602,19 +645,36 @@ export function formatJournalBlock(entries: JournalEntry[], budgetTokens: number
 }
 
 /**
- * The `conditions` field, documented only when stakes are on. With stakes off
- * nothing in the game produces a mark, so the line would be ~60 tokens a turn
- * teaching the model a channel it has no reason to use.
+ * The `conditions` field. Its own feature rather than a rider on stakes, which
+ * is what it used to be: a COST outcome is the commonest thing that leaves a
+ * mark, but it is not the only one, and the player can set a condition by hand
+ * on any sheet in a game that never rolls a die.
  */
 function conditionLines(settings: Settings): string[] {
-  if (!settings.stakesEnabled) return [];
+  if (!settings.features.conditions) return [];
+  // The "a mark is not gear" half points at "inventory" by name. With the pack
+  // switched off that channel does not exist, and a rule naming it would teach
+  // the field back — the same reason the example is built rather than written.
+  const notGear = settings.features.inventory
+    ? 'A mark is not gear: what someone carries or wields belongs in "inventory", not in a condition. And a'
+    : "A";
   return [
     '- "conditions": array of { "name", "condition" } — a lasting mark the story just left on someone ("left arm in a sling", "hunted by the Watch"). Matches ANYONE by name, the player included. Send "condition": "" to clear one. Marks are not sheet fields; write them freely, and clear them when the story resolves them.',
-    '- A mark is not gear: what someone carries or wields belongs in "inventory", not in a condition. And a mark STAYS once written — it is shown back to you every turn under CONDITIONS. Emit one only to set a NEW mark, change the words of an old one, or clear it. Never re-send a mark someone already carries.',
+    `- ${notGear} mark STAYS once written — it is shown back to you every turn under CONDITIONS. Emit one only to set a NEW mark, change the words of an old one, or clear it. Never re-send a mark someone already carries.`,
   ];
 }
 
+/**
+ * The output protocol — how a turn is emitted, and what may go in the block.
+ *
+ * Every field bullet below is gated on the feature that owns it. A documented
+ * channel is an INVITATION: a model shown `"quests"` will find a quest to open,
+ * and `features.ts -> filterBlock` would then throw the op away every turn. So
+ * the protocol shrinks with the features rather than being filtered after the
+ * fact, and a game with everything off asks for prose and a marker pair.
+ */
 function buildOutputProtocol(settings: Settings): string {
+  const features = settings.features;
   const optionRule =
     settings.optionInstructions.trim() ||
     "Offer 3–4 short, concrete next actions.";
@@ -631,11 +691,14 @@ function buildOutputProtocol(settings: Settings): string {
   // models drop most and the one whose absence the player sees immediately. The
   // client salvages what it can (`loomBlock.ts`), but salvage is a net, not a
   // plan.
-  const optionsLine = settings.showActionOptions
+  const optionsLine = features.options
     ? '- "options": REQUIRED — an array of 3–4 action strings, on EVERY turn without exception. ' +
       optionRule +
       ' The options go in this field and NOWHERE else: never number them in your prose, and never end a beat with "What do you do?" or a list of choices.'
-    : '- "options": OMIT this field entirely — do not suggest actions this turn.';
+    : // Not documented at all — not even as a field to omit. Naming a field is
+      // an invitation, and the salvage paths in `loomBlock.ts` would happily
+      // fish options out of the prose for a game that asked for none.
+      "";
 
   // The character-authoring rules (Narrator → Writing Characters). Each is a whole
   // bullet the player owns: blanking one drops the line rather than falling
@@ -657,16 +720,89 @@ function buildOutputProtocol(settings: Settings): string {
   // documentation and nothing showing the shape assembled. On a weak model one
   // exemplar beats another paragraph of rules, and it is the only place
   // `options` can be shown as what it is: ordinary, and always there.
-  const example = settings.showActionOptions
-    ? '{ "duration": "scene", "options": ["Follow the tracks", "Call out to her", "Back away quietly"] }'
-    : '{ "duration": "scene" }';
+  //
+  // Built from the features rather than written out, because an example is the
+  // strongest instruction in the whole protocol: one showing "duration" to a
+  // game with the clock off teaches the field back after every rule above has
+  // dropped it.
+  const exampleFields = [
+    features.clock ? '"duration": "scene"' : "",
+    features.options
+      ? '"options": ["Follow the tracks", "Call out to her", "Back away quietly"]'
+      : "",
+  ].filter(Boolean);
+  const example = exampleFields.length ? `{ ${exampleFields.join(", ")} }` : "{}";
 
   // Last line of the protocol, which is the last thing read before the player's
   // action — the recency slot, spent on the two failures that cost the player
   // something visible rather than on a list of prohibitions.
-  const checklist = settings.showActionOptions
+  const checklist = features.options
     ? 'Before you finish, check your own output: prose first, then exactly one <<<LOOM>>> … <<<END>>> pair, and "options" inside it with 3–4 strings. A beat that ends without options is an unfinished turn.'
     : "Before you finish, check your own output: prose first, then exactly one <<<LOOM>>> … <<<END>>> pair.";
+
+  // The JSON fields, each gated on the feature that owns it. Order is the one
+  // it has always been — options first because it is the field weak models drop
+  // most — with the disabled ones simply absent.
+  const fields = [
+    optionsLine,
+    features.weather ? '- "weather": the current scene (string).' : "",
+    features.clock
+      ? '- "duration": how much time your prose just took, as ONE of these words — "moment" (a blow lands, a door opens), "brief" (a short exchange), "scene" (a conversation, a search of one room), "hour", "hours" (a thorough search, a long negotiation), "halfday" (a journey across the region), "day" (a long haul), "night" (the player sleeps until morning). Always send it. The day and the time of day are counted from this, so guess honestly — never send a number, and never try to set the day yourself.'
+      : "",
+    features.location
+      ? '- "location": the name of the place the scene is in, and NOTHING else — one name, the most specific one. Never join two place names: "Damp Cellar", not "Boars Head Tavern - Damp Cellar"; "Market Square", not "Rodstroke: Market Square". No dash, colon, slash or parent place, and no description.'
+      : "",
+    features.places
+      ? `- "area": the wider place the scene sits ${features.location ? 'INSIDE — the one "location" is a part of' : "in"} — the settlement, the wood, the dungeon, the stretch of road. Send it on EVERY turn. Where an area is already shown to you under CURRENT AREA, repeat that name exactly as written; send a different one only when the player has actually travelled somewhere else, because a name this adventure has not seen before is treated as a new place and written up.`
+      : "",
+    ...(features.characters
+      ? [
+          '- "party": array of character ops, each { "op": "add|update|remove", "name", "standing" }. Add a character when they enter the player\'s story; remove when they leave it. "name" is always the name you have been calling them — an op naming somebody new creates them.',
+          '- An op may also carry "newName" to RENAME the character "name" resolves to. Their sheet, portrait and standing all stay; only what you call them changes, and the old name keeps working.',
+          `- A NEW character's "add" also carries "species", "sex", "description", "personality", "drive", "strengths", "flaws" (all strings) and "equipment": [ { "label", "description" } ] — this is the only op that writes them. ${appearanceRule}`,
+          ...characterLines,
+        ]
+      : []),
+    ...conditionLines(settings),
+    ...(features.inventory
+      ? [
+          '- "inventory": array of { "op": "add|update|remove", "label", "description", "quantity" }.',
+          '- An inventory "add" means the player TOOK it, in the prose you just wrote — picked it up, was handed it, pulled it free. An object they can merely see is NOT theirs: something lying in a chest, resting on a table, held by someone else, or waiting at the end of an action you are OFFERING them gets no op at all. If "Take the X" is one of your "options", X does not go in the inventory this turn. Wait for them to take it.',
+          '- An inventory "add" is also a NEW acquisition. If the label is already listed under INVENTORY above, the player HAS it — do not add it again, however often the scene mentions it. When the count changes, emit "update" with the new "quantity"; when it is gone, "remove". Use the label already in INVENTORY, exactly as written.',
+          '- Gold is the permanent currency item in "inventory" — never remove it. Emit a Gold op ONLY on a turn where your prose has money actually change hands — the player is paid, robbed, finds coin, buys something — and then emit { "op": "update", "label": "Gold", "quantity": <new total> }. The total in INVENTORY is already authoritative and is shown back to you every turn: never restate it, and never move it for a beat that says nothing about money.',
+        ]
+      : []),
+    features.quests
+      ? '- "quests": array of { "op": "add|update|remove", "label", "description", "reward", "status": "active"|"done" }. Update a quest with status "done" when the player completes it.'
+      : "",
+    features.notes
+      ? '- "notes": array of { "op": "add|update", "title", "content", "keywords": [ … ] } — YOUR OWN MEMORY. Only the last few turns are shown back to you; anything else is forgotten unless you write it down here. Note a place, person, faction, promise, or revelation the moment it matters, and add to a note when you learn more. "keywords" are the words that should bring it back — names and aliases; the title always counts. Keep each note to a couple of factual sentences.'
+      : "",
+    features.spotlight
+      ? '- "spoke": array of member names you gave a spoken line this turn (a hint only).'
+      : "",
+  ].filter(Boolean);
+
+  // The lines that close the protocol. The first two speak about state the
+  // narrator can write and companions it can voice, so both go when there is
+  // nothing left to write and nobody left to voice.
+  const closing = [
+    fields.length
+      ? "Every op is a CHANGE your prose just made. The blocks above already tell you what the player has, who travels with them, what marks they carry and what quests are open — none of it needs confirming, and an op that sets something to what it already is will be discarded. When a turn changes nothing, emit an empty object."
+      : "There are no fields this turn: emit the marker pair with an empty object between them, every turn, and put everything else in the prose.",
+    features.characters
+      ? 'Party dialogue uses the convention `Name: "…"` — the name must be an in-company member.'
+      : "",
+    "Never put the JSON before the prose. Never emit more than one block. Never wrap it in code fences.",
+    checklist,
+  ].filter(Boolean);
+
+  // The field list with its heading and its trailing blank line, or nothing at
+  // all: with every channel off there is no list to head, and a heading over an
+  // empty list reads as an instruction whose contents got lost.
+  const fieldsBlock = fields.length
+    ? ["JSON fields (include only what changed this turn):", ...fields, ""]
+    : [];
 
   return [
     "OUTPUT PROTOCOL — every turn, emit narration prose FIRST, then exactly one machine block.",
@@ -680,29 +816,8 @@ function buildOutputProtocol(settings: Settings): string {
     example,
     "<<<END>>>",
     "",
-    "JSON fields (include only what changed this turn):",
-    optionsLine,
-    '- "weather": the current scene (string).',
-    '- "duration": how much time your prose just took, as ONE of these words — "moment" (a blow lands, a door opens), "brief" (a short exchange), "scene" (a conversation, a search of one room), "hour", "hours" (a thorough search, a long negotiation), "halfday" (a journey across the region), "day" (a long haul), "night" (the player sleeps until morning). Always send it. The day and the time of day are counted from this, so guess honestly — never send a number, and never try to set the day yourself.',
-    '- "location": the name of the place the scene is in, and NOTHING else — one name, the most specific one. Never join two place names: "Damp Cellar", not "Boars Head Tavern - Damp Cellar"; "Market Square", not "Rodstroke: Market Square". No dash, colon, slash or parent place, and no description.',
-    '- "area": the wider place that "location" is INSIDE — the settlement, the wood, the dungeon, the stretch of road. Send it on EVERY turn. Where an area is already shown to you under CURRENT AREA, repeat that name exactly as written; send a different one only when the player has actually travelled somewhere else, because a name this adventure has not seen before is treated as a new place and written up.',
-    '- "party": array of character ops, each { "op": "add|update|remove", "name", "standing" }. Add a character when they enter the player\'s story; remove when they leave it. "name" is always the name you have been calling them — an op naming somebody new creates them.',
-    '- An op may also carry "newName" to RENAME the character "name" resolves to. Their sheet, portrait and standing all stay; only what you call them changes, and the old name keeps working.',
-    `- A NEW character's "add" also carries "species", "sex", "description", "personality", "drive", "strengths", "flaws" (all strings) and "equipment": [ { "label", "description" } ] — this is the only op that writes them. ${appearanceRule}`,
-    ...characterLines,
-    ...conditionLines(settings),
-    '- "inventory": array of { "op": "add|update|remove", "label", "description", "quantity" }.',
-    '- An inventory "add" means the player TOOK it, in the prose you just wrote — picked it up, was handed it, pulled it free. An object they can merely see is NOT theirs: something lying in a chest, resting on a table, held by someone else, or waiting at the end of an action you are OFFERING them gets no op at all. If "Take the X" is one of your "options", X does not go in the inventory this turn. Wait for them to take it.',
-    '- An inventory "add" is also a NEW acquisition. If the label is already listed under INVENTORY above, the player HAS it — do not add it again, however often the scene mentions it. When the count changes, emit "update" with the new "quantity"; when it is gone, "remove". Use the label already in INVENTORY, exactly as written.',
-    '- Gold is the permanent currency item in "inventory" — never remove it. Emit a Gold op ONLY on a turn where your prose has money actually change hands — the player is paid, robbed, finds coin, buys something — and then emit { "op": "update", "label": "Gold", "quantity": <new total> }. The total in INVENTORY is already authoritative and is shown back to you every turn: never restate it, and never move it for a beat that says nothing about money.',
-    '- "quests": array of { "op": "add|update|remove", "label", "description", "reward", "status": "active"|"done" }. Update a quest with status "done" when the player completes it.',
-    '- "notes": array of { "op": "add|update", "title", "content", "keywords": [ … ] } — YOUR OWN MEMORY. Only the last few turns are shown back to you; anything else is forgotten unless you write it down here. Note a place, person, faction, promise, or revelation the moment it matters, and add to a note when you learn more. "keywords" are the words that should bring it back — names and aliases; the title always counts. Keep each note to a couple of factual sentences.',
-    '- "spoke": array of member names you gave a spoken line this turn (a hint only).',
-    "",
-    "Every op is a CHANGE your prose just made. The blocks above already tell you what the player has, who travels with them, what marks they carry and what quests are open — none of it needs confirming, and an op that sets something to what it already is will be discarded. When a turn changes nothing, emit an empty object.",
-    'Party dialogue uses the convention `Name: "…"` — the name must be an in-company member.',
-    "Never put the JSON before the prose. Never emit more than one block. Never wrap it in code fences.",
-    checklist,
+    ...fieldsBlock,
+    ...closing,
   ].join("\n");
 }
 

@@ -108,6 +108,7 @@ import {
   truncateForDisplay,
 } from "./lib/loomBlock";
 import { applyDeltas, reconcileBlock } from "./lib/deltas";
+import { filterBlock, type FeatureKey } from "./lib/features";
 import { withRename } from "./lib/names";
 import { addNeighbourStubs, ensurePlace, fillPlace, placeStub } from "./lib/places";
 import {
@@ -260,6 +261,13 @@ export interface LoomStore {
   setBackHandler: (handler: (() => boolean) | null) => void;
   openMember: (id: string) => void;
   updateSettings: (patch: Partial<Settings>) => void;
+  /**
+   * Flip one narrator feature (Narrator → Features). Its own action rather than
+   * `updateSettings({ features })` at every call site: `updateSettings` merges
+   * SHALLOWLY, so a caller that forgot to spread the other thirteen flags would
+   * switch them all off at once.
+   */
+  setFeature: (key: FeatureKey, on: boolean) => void;
 
   /** True while a Google Web Font is downloading (Appearance → Font → Add). */
   fontPending: boolean;
@@ -937,6 +945,10 @@ export const useStore = create<LoomStore>((set, get) => {
     set({ settings });
   },
 
+  setFeature(key, on) {
+    get().updateSettings({ features: { ...get().settings.features, [key]: on } });
+  },
+
   fontPending: false,
   fontError: null,
 
@@ -1074,7 +1086,7 @@ export const useStore = create<LoomStore>((set, get) => {
   },
 
   async writeJournalEntry(id, replace = false) {
-    if (get().journalPending || !get().settings.journalEnabled) return;
+    if (get().journalPending || !get().settings.features.journal) return;
     const game = get().game;
     const entry = game.journal.find((e) => e.id === id);
     if (!entry) return;
@@ -1674,7 +1686,7 @@ export const useStore = create<LoomStore>((set, get) => {
     // The roll as it will be recorded on the beat — computed once, so the dice
     // thrown across the screen, the chip on the message, and the block the
     // narrator was handed are all the same numbers by construction.
-    const record = get().settings.stakesEnabled ? rollRecord(stakes) : null;
+    const record = get().settings.features.stakes ? rollRecord(stakes) : null;
 
     // Throw them NOW rather than when the turn lands: the result is already
     // decided, so the toss plays over the wait for the model's first token
@@ -1736,16 +1748,23 @@ export const useStore = create<LoomStore>((set, get) => {
 
       const g = get().game;
       const library = get().game.characters;
+      const features = get().settings.features;
+      // Strip the channels this game has switched off, FIRST — before the fold
+      // and before the apply. A model keeps emitting what the history window
+      // shows it doing, so quest ops arrive for several turns after Quests goes
+      // off; without this they would apply, and be recorded on the beat where
+      // `toasts.ts` chips them.
+      const kept = block ? filterBlock(block, features) : null;
       // Fold restated ops and no-ops out BEFORE applying — and record the folded
       // block, not the raw one, so the transcript's chips report what actually
       // happened. The prose rides along for the one check that reads it: a Gold
       // total that moves on a beat with no money in it.
-      const applied = block ? reconcileBlock(g, library, block, prose) : null;
+      const applied = kept ? reconcileBlock(g, library, kept, prose) : null;
       // Applied even with NO block: an unreadable turn still has to move the
       // clock, or a parse failure freezes time. An empty block writes nothing
       // and returns the same slice references, so reversal still captures
       // nothing — it only advances the clock by the default duration.
-      const scene = applyDeltas(g, library, applied ?? {});
+      const scene = applyDeltas(g, library, applied ?? {}, features);
 
       // The area this turn is in, as a `Place`. The stub is written
       // SYNCHRONOUSLY — before the reversal snapshot below — for exactly the
@@ -1753,7 +1772,7 @@ export const useStore = create<LoomStore>((set, get) => {
       // snapshot taken after an async fill would restore the place to a state it
       // was already in, stranding the fill. Returns the same array on an area
       // this adventure already knows, so re-entering a place costs nothing.
-      const places = ensurePlace(g.places, scene.area, uid());
+      const places = features.places ? ensurePlace(g.places, scene.area, uid()) : g.places;
       const discovered = places !== g.places ? places[places.length - 1] : null;
 
       // Party deltas apply first, THEN deterministic speaker detection bumps
@@ -1762,9 +1781,13 @@ export const useStore = create<LoomStore>((set, get) => {
       // members in the scene carry a spotlight debt worth tracking.
       const characters = scene.characters;
       let roster = scene.roster;
-      const party = activeMembers(characters, roster);
-      const spokeIds = new Set(detectSpeakers(prose, party));
-      for (const id of spokeIds) roster = setEntry(roster, id, { lastSpokeTurn: turn });
+      // Gated on the spotlight, the only reader of `lastSpokeTurn`: with it off
+      // the scan is a per-turn cost buying a number nothing looks at.
+      if (features.spotlight) {
+        const party = activeMembers(characters, roster);
+        const spokeIds = new Set(detectSpeakers(prose, party));
+        for (const id of spokeIds) roster = setEntry(roster, id, { lastSpokeTurn: turn });
+      }
 
       // A turn may have written new characters into the cast; it rides into
       // `nextGame` below with every other slice the turn touched, so there is
@@ -1778,7 +1801,7 @@ export const useStore = create<LoomStore>((set, get) => {
         content: prose || raw.trim(),
         turn,
         outcome:
-          get().settings.stakesEnabled && stakes.outcome ? stakes.outcome : undefined,
+          get().settings.features.stakes && stakes.outcome ? stakes.outcome : undefined,
         // The arithmetic beside the verdict — see `TurnRoll`. Same gate, so a
         // game with stakes off records neither.
         roll: record ?? undefined,
@@ -1841,7 +1864,7 @@ export const useStore = create<LoomStore>((set, get) => {
 
       set({
         game: nextGame,
-        options: block?.options ?? [],
+        options: kept?.options ?? [],
         streaming: false,
         streamText: "",
       });

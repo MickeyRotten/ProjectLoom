@@ -1,4 +1,5 @@
 import type { LoomBlock, Settings } from "../types";
+import { writesBlock } from "./features";
 
 /**
  * The <<<LOOM>>> turn contract — parsing + streaming truncation.
@@ -474,8 +475,12 @@ export function extractProseOptions(
  */
 export function needsBlockRepair(settings: Settings, block: LoomBlock | null): boolean {
   if (!settings.repairBlock) return false;
+  // A game with every narrator channel switched off loses nothing when a block
+  // goes missing: there was nothing for it to carry. Buying back an empty
+  // object is the one repair that can never pay for itself.
+  if (!writesBlock(settings.features)) return false;
   if (!block) return true;
-  return settings.showActionOptions && !block.options?.length;
+  return settings.features.options && !block.options?.length;
 }
 
 /**

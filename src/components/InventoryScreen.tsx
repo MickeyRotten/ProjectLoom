@@ -4,6 +4,7 @@ import { isGold } from "../lib/defaults";
 import { canEquip } from "../lib/equip";
 import type { Item } from "../types";
 import { OverlayHeader } from "./OverlayHeader";
+import { FeatureOffNotice } from "./FeatureOffNotice";
 import { EquipModal } from "./EquipModal";
 import { GenerateItemModal } from "./GenerateItemModal";
 import { EditToolbar, btn, btnSmall } from "./fields";
@@ -51,6 +52,11 @@ export function InventoryScreen() {
       <OverlayHeader title="Inventory" />
 
       <div className="flex-1 space-y-3 overflow-y-auto p-3">
+        <FeatureOffNotice feature="inventory">
+          The narrator no longer sees your pack or adds to it, and gold has stopped
+          moving. Everything below is kept, and still yours to edit —
+        </FeatureOffNotice>
+
         <EditToolbar editing={editing} onEdit={startEdit} onSave={save} onDiscard={discard} />
 
         {list.length === 0 && (

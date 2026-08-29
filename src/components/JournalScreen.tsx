@@ -3,7 +3,7 @@ import type { JournalEntry } from "../types";
 import { useStore } from "../store";
 import { OverlayHeader } from "./OverlayHeader";
 import { AreaField, btnSmall } from "./fields";
-import { MenuLink } from "./SubMenuScreen";
+import { FeatureOffNotice } from "./FeatureOffNotice";
 import { useConfirm } from "./useConfirm";
 
 /**
@@ -26,22 +26,16 @@ import { useConfirm } from "./useConfirm";
  */
 export function JournalScreen() {
   const journal = useStore((s) => s.game.journal);
-  const enabled = useStore((s) => s.settings.journalEnabled);
 
   return (
     <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
       <OverlayHeader title="Journal" />
 
       <div className="flex-1 space-y-4 overflow-y-auto p-3">
-        {!enabled && (
-          <p className="border-2 border-ink p-3 text-xs uppercase tracking-widest opacity-70">
-            Journal is off —{" "}
-            <MenuLink screen="narrator" section="memory">
-              Narrator → Memory
-            </MenuLink>
-            . Entries below are kept and return when it is switched back on.
-          </p>
-        )}
+        <FeatureOffNotice feature="journal">
+          Journal is off. Entries below are kept and return when it is switched back on
+          —
+        </FeatureOffNotice>
 
         {journal.length === 0 && (
           <p className="uppercase tracking-widest opacity-60">Nothing written yet.</p>

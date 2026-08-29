@@ -1,6 +1,7 @@
 import { useStore, uid } from "../store";
 import type { Quest } from "../types";
 import { OverlayHeader } from "./OverlayHeader";
+import { FeatureOffNotice } from "./FeatureOffNotice";
 import { TextField, AreaField, EditToolbar, btn, btnSmall } from "./fields";
 import { useEditBuffer } from "./useEditBuffer";
 
@@ -31,6 +32,11 @@ export function QuestsScreen() {
       <OverlayHeader title="Quests" />
 
       <div className="flex-1 space-y-4 overflow-y-auto p-3">
+        <FeatureOffNotice feature="quests">
+          The narrator no longer opens or closes quests, and is not shown the board.
+          Everything below is kept, and still yours to edit —
+        </FeatureOffNotice>
+
         <EditToolbar editing={editing} onEdit={startEdit} onSave={save} onDiscard={discard} />
 
         {list.length === 0 && (

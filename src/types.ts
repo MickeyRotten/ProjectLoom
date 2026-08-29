@@ -760,8 +760,86 @@ export interface DiceRules {
   mixedThreshold: number;
 }
 
+/**
+ * Which of the narrator's machinery is switched on (Narrator → Features).
+ *
+ * Every one of these is a subsystem the narrator drives: a prompt block telling
+ * it what is true, a `<<<LOOM>>>` channel letting it write back, and a rule in
+ * the output protocol joining the two. A flag switches off ALL THREE — the block
+ * is not built, the protocol never documents the channel, and
+ * `features.ts → filterBlock` strips the ops anyway, since a model that read the
+ * old shape out of the history window will keep emitting them for a few turns.
+ *
+ * Off means the fact stops existing for the narrator, not that it is hidden from
+ * the player: an adventure with `quests` off keeps every quest on the board, and
+ * the player still edits them by hand. What stops is the story writing them.
+ *
+ * Everything ships ON, so a game that never opens the screen behaves exactly as
+ * it did before the screen existed. Switching the lot off leaves the narrator
+ * with the player's own words — the Narrator Instructions, the Scenario, the
+ * World Notes and the player character's sheet — and nothing the app invented.
+ */
+export interface FeatureFlags {
+  /**
+   * The suggested next actions under each beat. Off asks for none, renders
+   * none, and never spends a repair call chasing them.
+   */
+  options: boolean;
+  /**
+   * The cast: `party` ops, the sheets they write, the PARTY roster, the roll
+   * call and the keyword-gated NPC block. Off, the narrator can neither create
+   * a character nor move one — the party is the player's to assemble on the
+   * Characters screen. The player character's own sheet is NOT gated by this:
+   * a narrator that does not know who it is narrating for is broken, not
+   * simpler.
+   */
+  characters: boolean;
+  /** Who speaks this turn — the spotlight signals, its rule, and `spoke`. */
+  spotlight: boolean;
+  /** The RELEVANT GEAR block: equipped items that bear on the action. */
+  gear: boolean;
+  /** Lasting marks on people — the `conditions` channel and its block. */
+  conditions: boolean;
+  /** The shared pack: `inventory` ops and the INVENTORY block. */
+  inventory: boolean;
+  /** The quest board: `quests` ops and the ACTIVE QUESTS block. */
+  quests: boolean;
+  /**
+   * The narrator writing its OWN World Notes (`notes` ops). Injection of the
+   * notes themselves is never gated — they are lore the player authored, and
+   * they are the last thing left when everything here is off.
+   */
+  notes: boolean;
+  /** Areas: the `area` op, the place sheets, and the authoring side call. */
+  places: boolean;
+  /** The scene's location name. */
+  location: boolean;
+  /** The scene's weather. */
+  weather: boolean;
+  /** Time: the `duration` op, the day counter and the phase word. */
+  clock: boolean;
+  /**
+   * The journal. Off leaves existing entries alone: they stay on the screen and
+   * return when it is switched back on.
+   */
+  journal: boolean;
+  /**
+   * On-device outcome rolls (`stakes.ts`). Off restores the pure-sandbox
+   * behaviour: the narrator decides how everything goes.
+   */
+  stakes: boolean;
+}
+
 export interface Settings extends DiceRules, ComfySettings {
   openRouterKey: string;
+  /**
+   * Which parts of the narrator's machinery are switched on — see
+   * `FeatureFlags`. Nested rather than fourteen flat booleans because the
+   * question "what is the narrator allowed to do?" has exactly one answer, and
+   * `features.ts → normalizeFeatures` is the one place that answers it for a
+   * stored blob written by any older build.
+   */
+  features: FeatureFlags;
   /**
    * Cloud sync (Menu → Cloud Sync). Off is the shipped state and the whole app
    * behaves exactly as it did before it existed — no client is constructed, no
@@ -811,8 +889,6 @@ export interface Settings extends DiceRules, ComfySettings {
    * field (or omits it).
    */
   reasoningLevel: ReasoningLevel;
-  /** When false, the narrator is not asked for action options and none render. */
-  showActionOptions: boolean;
   /**
    * Whether a turn that came back with no usable machine block gets ONE repair
    * request (`loomBlock.ts → needsBlockRepair`, `prompt.ts →
@@ -896,12 +972,6 @@ export interface Settings extends DiceRules, ComfySettings {
   departureInstructions: string;
   optionInstructions: string;
   spotlightRule: string;
-  /**
-   * Whether risky actions are resolved on-device into an outcome band the
-   * narrator must honour (`stakes.ts`). Off restores the pure-sandbox
-   * behaviour: the narrator decides how everything goes.
-   */
-  stakesEnabled: boolean;
   /** What the narrator does with the band it is handed — the editable half. */
   stakesRule: string;
   /**
@@ -946,12 +1016,6 @@ export interface Settings extends DiceRules, ComfySettings {
   historyBudget: number;
   /** Cap on a beat's length, in tokens. 0 sends no cap at all. */
   maxTokens: number;
-  /**
-   * Whether the journal exists at all — writing entries and injecting them.
-   * Off leaves existing entries alone: they stay on the screen and return when
-   * it is switched back on.
-   */
-  journalEnabled: boolean;
   /**
    * Approximate token budget for the injected journal block. Sits beside
    * `historyBudget` because they compete for the same context, and past a

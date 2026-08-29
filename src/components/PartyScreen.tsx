@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useStore } from "../store";
 import type { PartyMember } from "../types";
 import { OverlayHeader } from "./OverlayHeader";
+import { FeatureOffNotice } from "./FeatureOffNotice";
 import { CharacterRow } from "./CharacterRow";
 import { Section, btn } from "./fields";
 import { PARTY_LIMIT, activeMembers, benchedMembers } from "../lib/roster";
@@ -51,6 +52,11 @@ export function PartyScreen() {
       <OverlayHeader title={`Party ${active.length}/${PARTY_LIMIT}`} />
 
       <div className="flex-1 space-y-3 overflow-y-auto p-3">
+        <FeatureOffNotice feature="characters">
+          The narrator no longer adds, renames or dismisses anyone — the party is yours
+          to assemble on the Characters screen —
+        </FeatureOffNotice>
+
         {active.length === 0 && benched.length === 0 && (
           <>
             <p className="uppercase tracking-widest opacity-60">

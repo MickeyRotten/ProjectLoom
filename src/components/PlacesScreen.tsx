@@ -11,6 +11,7 @@ import {
   tagValues,
 } from "../lib/places";
 import { OverlayHeader } from "./OverlayHeader";
+import { FeatureOffNotice } from "./FeatureOffNotice";
 import { AreaField, Collapsible, SegmentedRow, TextField, btn, btnSmall } from "./fields";
 import { useConfirm } from "./useConfirm";
 
@@ -42,6 +43,11 @@ export function PlacesScreen() {
       <OverlayHeader title="Places" />
 
       <div className="flex-1 space-y-3 overflow-y-auto p-3">
+        <FeatureOffNotice feature="places">
+          The narrator no longer writes up areas or reads them back. Everything below is
+          kept, and still yours to edit —
+        </FeatureOffNotice>
+
         {places.length === 0 && (
           <p className="uppercase tracking-widest opacity-60">
             No places yet — one is written each time you travel somewhere new.

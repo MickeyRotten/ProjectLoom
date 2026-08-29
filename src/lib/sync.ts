@@ -16,6 +16,7 @@
  */
 
 import type { Settings } from "../types";
+import { normalizeFeatures, type LegacyFeatureSettings } from "./features";
 
 /* ------------------------------------------------------------------ *
  * Keys
@@ -328,9 +329,32 @@ export function stripLocalSettings(settings: Settings): SyncedSettings {
  * again here rather than trusted, since a doc written by an older build (or a
  * hand-edited row) may still hold them.
  */
-export function mergeSettings(current: Settings, incoming: Partial<Settings>): Settings {
+export function mergeSettings(
+  current: Settings,
+  incoming: Partial<Settings> & LegacyFeatureSettings,
+): Settings {
   const clean = { ...incoming } as Partial<Settings>;
   for (const key of DEVICE_LOCAL_SETTINGS) delete clean[key];
-  return { ...current, ...clean };
+  const merged = { ...current, ...clean };
+  // The narrator's feature flags, through the same READ normalizer the stored
+  // blob goes through — a doc pushed by a build that predates them carries the
+  // three retired flat keys and no `features` object, and taking that verbatim
+  // would leave `settings.features` undefined on a device mid-turn.
+  return {
+    ...merged,
+    features:
+      "features" in clean || hasLegacyFeatures(incoming)
+        ? normalizeFeatures(clean.features, incoming)
+        : current.features,
+  };
+}
+
+/** Whether a pulled blob carries any of the retired flat feature keys. */
+function hasLegacyFeatures(incoming: LegacyFeatureSettings): boolean {
+  return (
+    typeof incoming.showActionOptions === "boolean" ||
+    typeof incoming.journalEnabled === "boolean" ||
+    typeof incoming.stakesEnabled === "boolean"
+  );
 }
 

@@ -17,6 +17,7 @@ import { SCENE_TILT } from "./diceAnim";
 import { DEFAULT_DICE, RISK_KEYWORDS } from "./stakes";
 import { DEFAULT_COMFY } from "./comfyui";
 import { builtinTemplates, PROSE_TEMPLATE_ID } from "./imageTemplates";
+import { defaultFeatures } from "./features";
 
 /**
  * Ship-time defaults. The pre-made scenario is intentionally minimal for
@@ -242,7 +243,9 @@ export function defaultSettings(): Settings {
     ...DEFAULT_COMFY,
     temperature: 0.8,
     reasoningLevel: DEFAULT_REASONING_LEVEL,
-    showActionOptions: true,
+    // Every narrator subsystem on — the app as it was before the switches
+    // existed. See `features.ts`.
+    features: defaultFeatures(),
     // On, because it costs nothing on a model that follows the contract — it
     // fires only when a turn arrives with no block and no salvageable options.
     repairBlock: true,
@@ -269,7 +272,6 @@ export function defaultSettings(): Settings {
     departureInstructions: DEFAULT_DEPARTURE_INSTRUCTIONS,
     optionInstructions: DEFAULT_OPTION_INSTRUCTIONS,
     spotlightRule: DEFAULT_SPOTLIGHT_RULE,
-    stakesEnabled: true,
     stakesRule: DEFAULT_STAKES_RULE,
     // The 1d6 system stakes.ts used to hardcode — spread so "the default rules"
     // has exactly one definition.
@@ -284,7 +286,6 @@ export function defaultSettings(): Settings {
     dicePerspective: true,
     historyBudget: DEFAULT_HISTORY_BUDGET_SETTING,
     maxTokens: DEFAULT_MAX_TOKENS,
-    journalEnabled: true,
     journalBudget: DEFAULT_JOURNAL_BUDGET,
     journalMaxTurns: DEFAULT_JOURNAL_MAX_TURNS,
     journalMinTurns: DEFAULT_JOURNAL_MIN_TURNS,
