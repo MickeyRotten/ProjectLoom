@@ -766,6 +766,27 @@ retired `Settings` key is ignored on read. The composer sets `text-base`
 explicitly because it now sits inside the log's reading-size container (prose
 scales with Text Size; chrome does not), and focus nudges the form into view
 once the soft keyboard's `resizes-content` shrink settles.
+Post-MVP also: **the composer is a terminal line** — inline was half of it; the
+input was still a bordered box with a ⋯ menu in it, which is a form field on a
+web page, not a text adventure. The **border** and the **⋯ context menu** are
+both gone (the gear menu already routes to Party · Inventory · Quests · World
+Notes · Saves, and ⋯ was a second navigation model living in the reading area),
+leaving `>` · text · cursor, plus a bracketed **[Stop]** mid-turn. Which puts
+the whole affordance on the caret, so it is **drawn**: the native one is hidden
+(`caret-transparent`) and a `▊` painted at the text offset — measured off a
+hidden mirror span holding the text left of the selection, since `ch` assumes a
+monospaced face and neither Jersey 15 nor an added Google font is one, minus the
+input's `scrollLeft` so it holds on a line longer than the field. It blinks on a
+hard `step-end` (`.loom-blink`, theme.css — Tailwind's eased `animate-pulse`
+reads as a glow, and this app is 1-bit for the same reason), the streaming
+beat's trailing cursor now shares the class, and `prefers-reduced-motion` stops
+the blink rather than hiding the block. It is the **focus indicator** too —
+solid + blinking focused, dim + still not — because a text input matches
+`:focus-visible` on ANY focus, tap included, so the app-wide ring was redrawing
+the exact box that was just removed (`.loom-bare` opts this one input out). The
+placeholder is rendered beside the cursor instead of under it, and reads *type
+your action*, not "what do you do?" — which is how a narrator beat very often
+ends, the shipped opening included.
 Post-MVP also: **narrator feature toggles** (`features.ts`, `Settings.features`,
 Narrator → **Features**) — the app had grown fourteen narrator subsystems and
 switches for three of them (`showActionOptions`, `journalEnabled`,
