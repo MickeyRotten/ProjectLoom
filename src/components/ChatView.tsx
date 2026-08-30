@@ -246,10 +246,11 @@ export function ChatView() {
         )}
 
         {/* The turn input, inline — the last thing in the log rather than a
-            strip pinned under it. See `Composer`: a text game spends most of
-            its time reading, and a fixed box charged the prose for a control
-            that is only ever used at the tail, which is where the reader
-            already is. */}
+            strip pinned under it, and drawn as a bare `>` prompt with a
+            blinking block rather than a boxed field. See `Composer`: a text
+            game spends most of its time reading, and a fixed box charged the
+            prose for a control only ever used at the tail — which is where the
+            reader already is. */}
         <Composer />
 
         <div ref={bottomRef} />
@@ -416,7 +417,7 @@ function Beat({
           </p>
         ),
       )}
-      {pending && <span className="animate-pulse"> ▊</span>}
+      {pending && <span className="loom-blink"> ▊</span>}
     </div>
   );
 }

@@ -315,3 +315,49 @@ body {
   outline: 2px solid var(--ink) !important;
   outline-offset: 2px !important;
 }
+
+/*
+ * The cursor blink — a hard on/off at 1Hz, `step-end` rather than a fade.
+ * Tailwind's `animate-pulse` eases the opacity, which reads as a soft glow: a
+ * terminal cursor is a block that is either drawn or not, and this app is
+ * 1-bit everywhere else for the same reason. Shared by the composer's caret and
+ * the cursor the streaming beat trails, so "the game is waiting on this" looks
+ * like one thing in both places.
+ *
+ * `prefers-reduced-motion` stops the blink rather than hiding the block: it is
+ * the only thing marking where typing lands.
+ */
+@keyframes loom-blink {
+  0%,
+  50% {
+    opacity: 1;
+  }
+  50.01%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.loom-blink {
+  animation: loom-blink 1s step-end infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loom-blink {
+    animation: none;
+  }
+}
+
+/*
+ * The composer's input, drawn as a terminal line rather than a form field.
+ * `:focus-visible` above is `!important` because every other input in the app
+ * wants a ring — but a text input matches `:focus-visible` on ANY focus, tap
+ * included, so here the rule drew exactly the box the bare `> ` prompt exists
+ * to be rid of. The blinking block replaces it as the focus indicator: solid
+ * and blinking when the field has focus, dim and still when it does not, which
+ * is what a terminal cursor has always done.
+ */
+.loom-bare:focus,
+.loom-bare:focus-visible {
+  outline: none !important;
+}
