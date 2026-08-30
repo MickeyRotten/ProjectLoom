@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useStore } from "../store";
 import { Options } from "./Options";
+import { Composer } from "./Composer";
 import { TurnControls } from "./TurnControls";
 import { segmentDialogue } from "../lib/spotlight";
 import { parseInline } from "../lib/markdown";
@@ -19,9 +20,11 @@ const isNearBottom = (el: HTMLElement) =>
 
 /**
  * The message log. Renders the opening narration, each turn, the live
- * streaming beat, and — tethered under the latest beat — the AI options and
- * quick actions (loom-turn-protocol: options ride the same beat). Runs from the
- * party strip down to the composer, uninterrupted.
+ * streaming beat, and — tethered under the latest beat — the AI options
+ * (loom-turn-protocol: options ride the same beat) and, last of all, the
+ * **composer itself**. Runs from the party strip to the bottom of the shell,
+ * uninterrupted: the input scrolls with the conversation instead of standing
+ * over it.
  * Tapping the latest beat reveals its controls: Regen/Edit/Undo
  * on the narrator beat, Edit on the player beat.
  *
@@ -95,7 +98,7 @@ export function ChatView() {
 
   // Only follow the tail when the reader is already near the bottom — scrolling
   // up to reread must not get yanked back on every streaming delta. The bottom
-  // marker sits below the quick actions, so following it keeps them in view.
+  // marker sits below the composer, so following it keeps the input in view.
   //
   // The exception is a COMPLETED beat that is taller than the viewport: pinning
   // its end puts the player at the last paragraph of prose they have not read
@@ -241,6 +244,13 @@ export function ChatView() {
             )}
           </div>
         )}
+
+        {/* The turn input, inline — the last thing in the log rather than a
+            strip pinned under it. See `Composer`: a text game spends most of
+            its time reading, and a fixed box charged the prose for a control
+            that is only ever used at the tail, which is where the reader
+            already is. */}
+        <Composer />
 
         <div ref={bottomRef} />
       </section>

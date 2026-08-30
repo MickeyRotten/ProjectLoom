@@ -76,7 +76,7 @@ export function defaultFeatures(): FeatureFlags {
 /**
  * The flags as they arrive from storage, in the shape the app can use.
  *
- * Sanitized at READ, like `normalizeDice` and `normalizeQuickActions`: a stored
+ * Sanitized at READ, like `normalizeDice`: a stored
  * blob may be missing (every build before this one), partial (a build before the
  * newest flag), or hold anything at all under a key. A missing flag reads as ON,
  * which is what makes adding a fifteenth feature a non-event for every saved

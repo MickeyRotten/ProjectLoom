@@ -299,10 +299,9 @@ const list = (value: unknown): unknown[] =>
 /**
  * Fold whatever is stored onto the current shape, at READ time.
  *
- * Sanitizing on read rather than on write is the same rule `normalizeDice` and
- * `normalizeQuickActions` follow: the editor can then write one field without
- * having to rewrite the next, and a document hand-edited or written by an older
- * build still loads. Blank stays blank — an empty description is a place the
+ * Sanitizing on read rather than on write is the same rule `normalizeDice`
+ * follows: the editor can then write one field without having to rewrite the
+ * next, and a document hand-edited or written by an older build still loads. Blank stays blank — an empty description is a place the
  * player emptied, not a place to refill.
  */
 export function normalizePlace(raw: unknown, fallbackId = ""): Place | null {

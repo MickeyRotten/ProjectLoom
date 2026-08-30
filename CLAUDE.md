@@ -275,10 +275,8 @@ Notes, never the beats) shares `parseGeneratedField` and the new
 note** (`prompt.ts → formatRegenerateNote`, `sendTurn(text, { note })`) — one
 line of direction, injected as its own system block beside the roll call and
 never folded into the player's message, which is also the stakes seed; blank is
-byte-for-byte the old re-roll. **Quick actions are editable**
-(`Settings.quickActions` + `settings.ts → normalizeQuickActions` /
-`usableQuickActions`, ✎ beside them → `QuickActionsModal`): label + sent text per
-row, blanking a row drops that button. **Saves** joined the ⋯ quick menu and
+byte-for-byte the old re-roll. (Quick actions were made editable here and are
+since **removed** — see *the composer is inline* below.) **Saves** joined the ⋯ quick menu and
 moved up the gear menu with the other play screens. The **member sheet** was
 reordered — portrait → *Image Options* (a closed `fields.tsx → Collapsible`
 holding upload/download/remove + the portrait prompt) → Edit → the sheet →
@@ -750,6 +748,24 @@ merged by `mergeTags` in schema order with the nested answer winning — while
 `parseTagObject` also takes a flat array of bare values, `{slot,value}` rows or
 prefixed strings (`"Prosperity: Poor"`, `"Defenses(Militia)"`); a payload tag
 like `Resource(grain)` names no slot and stays whole in the free list.
+Post-MVP also: **the composer is inline** — the turn input was a fixed footer
+under the log, so a text game spent a permanent slice of a phone screen on a box
+it only uses at the tail. `ChatView` renders `Composer` as the **last thing in
+the scrolling log**, after the action options; `App`'s shell is header · party
+strip · log, and the reading area runs to the bottom of the screen. **Return
+sends** on PC and Android alike (single-line `<input>` in a `<form>`,
+`enterKeyHint="send"`), so the **GO button is gone** — a button duplicating the
+key every player already presses was chrome the prose was paying for. **Stop**
+stays, since interrupting a running turn has no key. The **quick actions are
+removed** outright: `Settings.quickActions`, `QuickAction`, `QuickActionsModal`,
+`normalizeQuickActions`/`usableQuickActions` and
+`DEFAULT_QUICK_ACTIONS`/`QUICK_ACTION_COUNT` are all deleted — the narrator's
+own options are the same affordance written for the beat in front of you, where
+the shortcut row repeated LOOK · WAIT · INVESTIGATE forever. No migration: the
+retired `Settings` key is ignored on read. The composer sets `text-base`
+explicitly because it now sits inside the log's reading-size container (prose
+scales with Text Size; chrome does not), and focus nudges the form into view
+once the soft keyboard's `resizes-content` shrink settles.
 Post-MVP also: **narrator feature toggles** (`features.ts`, `Settings.features`,
 Narrator → **Features**) — the app had grown fourteen narrator subsystems and
 switches for three of them (`showActionOptions`, `journalEnabled`,

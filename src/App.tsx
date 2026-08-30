@@ -4,7 +4,6 @@ import { fontTheme, isDarkPaper, scrimFrom } from "./lib/settings";
 import { Header } from "./components/Header";
 import { ChatView } from "./components/ChatView";
 import { PartyStrip } from "./components/PartyStrip";
-import { Composer } from "./components/Composer";
 import { MenuScreen } from "./components/MenuScreen";
 import { SetupScreen } from "./components/SetupScreen";
 import { NarratorScreen } from "./components/NarratorScreen";
@@ -26,14 +25,15 @@ import { DiceOverlay } from "./components/DiceOverlay";
 
 /**
  * Phase 2 shell — the core loop plus party, top to bottom: the header (the PC —
- * portrait · name · hearts · menu), the party portrait strip, the scrolling
- * narration log with AI options under the latest beat, and a composer (quick
- * actions · freeform input · GO · ⋯ context menu). Full-screen overlays (member
- * sheet, party, inventory, settings) open over the chat.
+ * portrait · name · hearts · menu), the party portrait strip, and the
+ * scrolling narration log — which carries the AI options under the latest beat
+ * and the composer (freeform input · ⋯ context menu) at its very end, inline
+ * rather than pinned below it. Full-screen overlays (member sheet, party,
+ * inventory, settings) open over the chat.
  *
  * The cast sits TOGETHER at the top now — the strip used to hang below the log,
  * a screen's height away from the PC it was showing alongside — and the reading
- * area runs uninterrupted from there to the composer.
+ * area runs uninterrupted from there to the bottom of the screen.
  */
 export default function App() {
   const hydrate = useStore((s) => s.hydrate);
@@ -166,7 +166,6 @@ export default function App() {
         <Header />
         <PartyStrip />
         <ChatView />
-        <Composer />
       </main>
     );
   };

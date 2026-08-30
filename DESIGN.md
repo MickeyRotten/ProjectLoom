@@ -98,7 +98,7 @@ always did.
   `worldNotes.ts → keywordHits`, so "mentioned" means one thing across lore,
   cast, and risk). Deliberately about *attempts*, not violence — a haggle and a
   lie are gambles, "I look around" is not. A non-risky turn injects **no block
-  at all**: no tokens, no melodrama, and the three quick actions never roll. The
+  at all**: no tokens and no melodrama on a turn that is not a gamble. The
   list is `Settings.riskKeywords` (comma/newline text, `parseKeywords`, shipped
   as `RISK_KEYWORDS`); `Settings.alwaysRoll` skips the gate entirely for a table
   where every turn is a check.
@@ -271,7 +271,7 @@ One isolated function returning the OpenRouter `messages[]`. It is built in **ti
 ### Narrator features — `src/lib/features.ts`
 `Settings.features` is one boolean per subsystem the narrator drives, edited on **Narrator → Features**. Everything ships **on**, so a game that never opens the screen behaves exactly as it did before the screen existed.
 
-The app had grown fourteen narrator subsystems and switches for three of them (`showActionOptions`, `journalEnabled`, `stakesEnabled`), scattered across three screens. Everything else — writing characters, opening quests, moving items, naming places, keeping time — was simply *what the narrator did*, and a player who wanted a pure prose sandbox had no way to say so. The three flat keys are folded onto the flags at READ (`normalizeFeatures`, alongside `normalizeDice` and `normalizeQuickActions`), so nobody's choice moves on upgrade; a flag a stored blob has never heard of reads as **on**, which makes adding a fifteenth feature a non-event for every settings document in the world.
+The app had grown fourteen narrator subsystems and switches for three of them (`showActionOptions`, `journalEnabled`, `stakesEnabled`), scattered across three screens. Everything else — writing characters, opening quests, moving items, naming places, keeping time — was simply *what the narrator did*, and a player who wanted a pure prose sandbox had no way to say so. The three flat keys are folded onto the flags at READ (`normalizeFeatures`, alongside `normalizeDice`), so nobody's choice moves on upgrade; a flag a stored blob has never heard of reads as **on**, which makes adding a fifteenth feature a non-event for every settings document in the world.
 
 **Three things have to agree for a feature to be off**, and skipping any one of them leaks:
 1. `prompt.ts` does not build the block that states the fact — no `INVENTORY` list, no roll call, no `CURRENT AREA`.
@@ -608,7 +608,7 @@ Layout top-to-bottom (the reference screenshot is a **style guide, not literal t
 - **AI options:** 3–4 contextual choices from the `<<<LOOM>>>` block, rendered **in the chat view, directly under the latest narration beat**; number keys submit; each just sends its text as a normal turn. They scroll with the chat, tethered to the beat that produced them.
 - **Chat scrolling:** the log opens on the newest beat and follows the tail while the reader is parked there; scrolling up into the history stops the follow and shows a **↓ LATEST** button back to the live edge.
 - **Party strip** sits **directly under the top bar, above the reading area**; always visible; tapping a portrait opens that member's **full-screen sheet** (info · edit fields · **regenerate portrait** · **auto-update**). Strip portraits are zoomed 50% and top-aligned so the face fills the slot; the sheet's portrait frame is **2:3**. It holds **companions only** — the PC is the top bar now, which put the whole cast together at the top of the screen (the strip used to hang below the log, a screen's height from the PC it was showing alongside) and left the reading area running uninterrupted from there to the composer. The freed slot went back to the cap, so `PARTY_LIMIT` and the strip's width are the same number again.
-- **Quick actions (`Settings.quickActions`)** are the three buttons above the input, shipped as LOOK · WAIT · INVESTIGATE and **editable in place**: a ✎ beside them opens a modal with a **label** and an **action** per row (the label is what the button says; the action is what gets sent as the turn, word for word), plus *Reset to Defaults*. What counts as "the thing I do every other turn" is a property of the table, not of the app — a dungeon crawl wants LISTEN, a courtly game wants BOW. **Clearing both halves drops that button**, so a player can run two shortcuts or none; the row is fixed at three because a fourth either shrinks them below a comfortable tap or wraps. `settings.ts → normalizeQuickActions` folds anything stored (a short array, a row with no `input`, junk) onto exactly three well-formed rows at READ time — but never fills a **blank** row back in, since blank is how a button is deleted. ✎ is never disabled: editing a button is not a turn, so it works mid-stream and without a key.
+- **Composer** is **inline**: `ChatView` renders it as the last thing in the scrolling log, after the action options, not as a strip pinned under it. It is a freeform input, a **⋯** context menu (Party · Inventory · Quests · World Notes · Saves) and — only mid-turn — **Stop**. **Return sends**, on desktop and on Android alike (single-line `<input>` inside a `<form>`, `enterKeyHint="send"` so the soft keyboard's action key says so), so there is **no GO button**: a button that duplicates the key every player already presses was chrome the reading area was paying for. The **quick actions are gone** with it (`Settings.quickActions`, `QuickAction`, `QuickActionsModal`, `normalizeQuickActions`/`usableQuickActions`, `DEFAULT_QUICK_ACTIONS`/`QUICK_ACTION_COUNT` all deleted) — the narrator's own action options are the same affordance, written for the beat in front of you, and the shortcut row was three permanently-visible buttons repeating LOOK · WAIT · INVESTIGATE at every beat of a game that is meant to be read. The retired key is simply ignored on read, so no save or settings blob migrates. The composer sets `text-base` explicitly because it now lives inside the log's reading-size container: **prose** scales with Text Size, chrome does not.
 - **Inventory view:** a list of `Label · Description · Quantity` rows, editable inline, each with an **Equip** button in read mode (see *Equip ⇄ Inventory*) and a **✦ generate** button beside Remove in Edit mode (see *Item generation*).
 - **Quests view:** a list of `Label · Description · Reward` rows (+ active/done status), editable inline; reached from the menu/header (kept off the 3-button row to preserve the screenshot's layout).
 
@@ -663,7 +663,9 @@ The third ✦, and the only one that writes a **whole row**. The two places a pl
   would miss it and the next back would exit.
 - **Soft keyboard**: `#root` is `100dvh` (with `height: 100%` as the fallback)
   plus `interactive-widget=resizes-content`, so the keyboard shrinks the shell
-  instead of pushing the composer off-screen.
+  instead of pushing the composer off-screen. With the composer *inline* the log
+  is what shrinks, and since it follows its own tail the input stays on screen;
+  focus also nudges the form into view after the resize settles.
 - **Touch targets** are `min-h-11` (44px) on `btn`/`btnSmall`, the turn
   controls and the header gear. `btnSmall` — used for Restore
   / Delete / Remove / Reset, i.e. exactly the mis-taps worth avoiding — was
@@ -855,9 +857,10 @@ All secondary screens — **member sheet, Party, Inventory, Quests, and every Se
 ### Reading area
 
 This is a text game, and its chrome had grown to eat more than half a phone:
-header + a 1:2 party strip + composer left roughly 350px for
-prose, with the action options rendering *inside* that same scroll region so a
-fresh beat was often pushed above the fold by its own suggestions. The fixes are
+header + a 1:2 party strip + a fixed composer (quick actions, input, GO) left
+roughly 350px for prose, with the action options rendering *inside* that same
+scroll region so a fresh beat was often pushed above the fold by its own
+suggestions. The fixes are
 all about handing that space back:
 
 - **Party strip** slots are **4:5**, not 1:2 — portraits are face-cropped
