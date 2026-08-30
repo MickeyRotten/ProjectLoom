@@ -1,7 +1,6 @@
 import { FONT_CHOICES } from "../types";
 import type {
   FontChoice,
-  QuickAction,
   ReasoningEffort,
   ReasoningLevel,
   Settings,
@@ -13,7 +12,6 @@ import {
   DEFAULT_JOURNAL_MAX_TURNS,
   DEFAULT_JOURNAL_MIN_TURNS,
   DEFAULT_PAPER,
-  DEFAULT_QUICK_ACTIONS,
   DEFAULT_TEXT_SIZE,
   defaultSettings,
 } from "./defaults";
@@ -101,15 +99,10 @@ export function loadSettings(): Settings {
       // holding a key has plainly been through it, and must not be handed a
       // setup screen for an app they have been playing.
       setupDone: stored.setupDone ?? Boolean(stored.openRouterKey?.trim()),
-      // Spreading `stored` would hand the composer whatever shape localStorage
-      // happens to hold — an array of two, of objects with no `input`, of
-      // nulls. Normalized at READ time, like `normalizeDice`, so the editor and
-      // the composer can both assume three well-formed rows.
-      quickActions: normalizeQuickActions(stored.quickActions),
       // Which parts of the narrator are switched on. Normalized at READ like
-      // the dice and the quick actions, so a settings blob written by ANY older
-      // build — including one that predates the flags entirely — loads with the
-      // features it actually had, and a flag added later reads as on.
+      // the dice, so a settings blob written by ANY older build — including one
+      // that predates the flags entirely — loads with the features it actually
+      // had, and a flag added later reads as on.
       features: normalizeFeatures(stored.features, stored),
       // Same discipline for the journal's numbers: sanitized at READ, so the
       // screen can edit one field without having to rewrite the next, and a
@@ -170,31 +163,6 @@ export function loadSettings(): Settings {
 export function normalizeSupabaseUrl(stored: unknown): string {
   if (typeof stored !== "string") return "";
   return stored.trim().replace(/\/+$/, "");
-}
-
-/**
- * Fold anything stored under `quickActions` onto exactly one row per shipped
- * shortcut. A missing entry (every save written before the row was editable)
- * takes the default; a present one is kept as the player wrote it, INCLUDING
- * blank — a blank label or input is how a shortcut is removed, so falling back
- * to the default there would make the third button undeletable.
- */
-export function normalizeQuickActions(stored: unknown): QuickAction[] {
-  const list = Array.isArray(stored) ? stored : [];
-  return DEFAULT_QUICK_ACTIONS.map((fallback, i) => {
-    const raw = list[i];
-    if (!raw || typeof raw !== "object") return { ...fallback };
-    const { label, input } = raw as Partial<QuickAction>;
-    return {
-      label: typeof label === "string" ? label.trim() : fallback.label,
-      input: typeof input === "string" ? input.trim() : fallback.input,
-    };
-  });
-}
-
-/** The shortcuts that actually render — both halves written in. */
-export function usableQuickActions(actions: QuickAction[]): QuickAction[] {
-  return actions.filter((a) => a.label.trim() && a.input.trim());
 }
 
 /** Picker copy for each bundled font — label plus what it actually looks like. */

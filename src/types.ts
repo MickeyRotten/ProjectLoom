@@ -721,21 +721,6 @@ export const REASONING_LEVELS = [
 export type ReasoningEffort = Exclude<ReasoningLevel, "auto" | "off">;
 
 /**
- * One always-visible composer shortcut — the caption on the button and the line
- * it sends as the player's action. Shipped as LOOK · WAIT · INVESTIGATE and
- * editable behind the ✎ beside them (`QuickActionsModal`), because what counts
- * as "the thing I do every other turn" is a property of the table, not of the
- * app: a dungeon crawl wants LISTEN, a courtly game wants BOW.
- *
- * A row with a blank `label` or `input` renders no button, so the player can run
- * two shortcuts, or none.
- */
-export interface QuickAction {
-  label: string;
-  input: string;
-}
-
-/**
  * The dice a risky action is resolved with (Menu → RPG System). These six
  * numbers were hardcoded in `stakes.ts` — one d6, ±1 for Strengths/Flaws, bands
  * at 5+ / 3–4 / 2− — which made "the system" a thing only the app knew. They are
@@ -903,12 +888,6 @@ export interface Settings extends DiceRules, ComfySettings {
    * per turn, which is why it is a switch rather than a constant.
    */
   repairBlock: boolean;
-  /**
-   * The composer's always-visible shortcuts — see `QuickAction`. Always exactly
-   * `QUICK_ACTION_COUNT` entries after `settings.ts → normalizeQuickActions`, so
-   * the editor can address them by index without ever growing the row.
-   */
-  quickActions: QuickAction[];
   /**
    * The two colors the whole app is drawn in — `--paper` behind everything,
    * `--ink` for every glyph, border and fill. They replace the old

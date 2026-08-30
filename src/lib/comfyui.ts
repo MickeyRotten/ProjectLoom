@@ -163,7 +163,7 @@ function text(v: unknown, fallback: string): string {
 
 /**
  * Fold whatever localStorage holds onto a usable ComfyUI config. Sanitized at
- * READ time, the way `normalizeDice` and `normalizeQuickActions` are, so the
+ * READ time, the way `normalizeDice` is, so the
  * settings screen can edit one field without having to rewrite the next — a
  * half-typed "10" in the width box must not be able to persist a 10px latent
  * that then fails every generation until someone notices.
