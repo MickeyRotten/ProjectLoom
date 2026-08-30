@@ -9,7 +9,7 @@ export function Options() {
   const options = useStore((s) => s.options);
   const sendTurn = useStore((s) => s.sendTurn);
   const streaming = useStore((s) => s.streaming);
-  const showActionOptions = useStore((s) => s.settings.showActionOptions);
+  const showActionOptions = useStore((s) => s.settings.features.options);
 
   useEffect(() => {
     if (!showActionOptions || !options.length) return;

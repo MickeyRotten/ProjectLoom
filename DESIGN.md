@@ -267,6 +267,34 @@ One isolated function returning the OpenRouter `messages[]`. It is built in **ti
 - **Output-protocol instruction** — how to emit prose + the `<<<LOOM>>>` block, and the `option` instruction (player-editable). Directly before the action, so the shape is the last thing read.
 - **Player's new message.**
 
+
+### Narrator features — `src/lib/features.ts`
+`Settings.features` is one boolean per subsystem the narrator drives, edited on **Narrator → Features**. Everything ships **on**, so a game that never opens the screen behaves exactly as it did before the screen existed.
+
+The app had grown fourteen narrator subsystems and switches for three of them (`showActionOptions`, `journalEnabled`, `stakesEnabled`), scattered across three screens. Everything else — writing characters, opening quests, moving items, naming places, keeping time — was simply *what the narrator did*, and a player who wanted a pure prose sandbox had no way to say so. The three flat keys are folded onto the flags at READ (`normalizeFeatures`, alongside `normalizeDice` and `normalizeQuickActions`), so nobody's choice moves on upgrade; a flag a stored blob has never heard of reads as **on**, which makes adding a fifteenth feature a non-event for every settings document in the world.
+
+**Three things have to agree for a feature to be off**, and skipping any one of them leaks:
+1. `prompt.ts` does not build the block that states the fact — no `INVENTORY` list, no roll call, no `CURRENT AREA`.
+2. `prompt.ts` does not document the channel in the **output protocol**. A named field is an *invitation*: a model shown `"quests"` will find a quest to open. This is why the worked example is **built** from the flags rather than written out (an example is the strongest instruction in the protocol, and one showing `"duration"` teaches the field back after every rule above has dropped it), and why the two cross-references that name another channel — `conditions` pointing at `"inventory"`, `area` pointing at `"location"` — reword themselves when their referent is gone.
+3. `features.ts → filterBlock` strips the channel from whatever came back **anyway**. Not belt-and-braces: the history window is full of turns from before the switch was thrown, and a model reads its own past output as the example of what a turn looks like, so quest ops keep arriving for several turns. Without the filter they would apply — and, worse, be **recorded** on the beat, where `toasts.ts` turns them into chips and reversal replays them forever.
+
+`filterBlock` runs in `sendTurn` before `reconcileBlock` → `applyDeltas`, so a disabled channel takes the same path as any other absent field. The one thing absence cannot express is the **clock**: a block with no `duration` deliberately advances time by the default step, so an unparseable turn cannot freeze the world, and with the clock off that same absence has to mean the opposite. So `applyDeltas` takes the flags too, and holds `day`/`minutes`/`rested` still itself — the only feature it reads.
+
+**The flags**, grouped as the screen groups them:
+
+| Group | Flag | Off means |
+| --- | --- | --- |
+| The World | `location` · `places` · `weather` · `clock` | The scene is not stated and not written back. `CURRENT SCENE` is built from the three independently, so with all three off the line — and, if nothing else survives in the tier, the whole **STATE OF PLAY** message — is not emitted at all. |
+| The Cast | `characters` · `spotlight` · `gear` · `conditions` | No party ops, no roster, no roll call, no NPC sheets, no spotlight, no gear reminders, no marks. |
+| Play | `inventory` · `quests` · `stakes` · `options` | No pack, no board, no rolls, no action buttons. |
+| Memory | `notes` · `journal` | The narrator stops writing its own World Notes and its own journal. |
+
+Two things are **never** gated. The player's **World Notes** are injected regardless — they are lore the player authored, and with every switch off they are what is left. And the **PC's own sheet** always rides in tier 1: a narrator that does not know who it is narrating for is broken, not simpler. So "everything off" means the narrator has the Narrator Instructions, the Scenario, the World Notes and the player's sheet, and writes nothing but prose.
+
+**Off never deletes and never hides.** A quest board with `quests` off keeps every quest and the player still edits it by hand; the play screens stay reachable and carry a `FeatureOffNotice` banner saying what stopped and linking back to the switch. The three relocated flags are still shown on their old screens (Voice & Actions, Memory, RPG System) beside the settings that configure them — the same key, rendered twice: Features is the map, those are the rooms.
+
+One knock-on: with **every** channel off a missing block has lost nothing, so `writesBlock` short-circuits the `repairBlock` call rather than spending a request buying back an empty object.
+
 ---
 
 ## Image Generation — `src/lib/images.ts`

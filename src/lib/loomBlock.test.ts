@@ -342,7 +342,7 @@ describe("needsBlockRepair", () => {
   });
 
   it("does not fire for missing options when the player turned them off", () => {
-    const off = { ...settings, showActionOptions: false };
+    const off = { ...settings, features: { ...settings.features, options: false } };
     expect(needsBlockRepair(off, { day: 3 })).toBe(false);
     // A missing BLOCK still costs the turn its state changes.
     expect(needsBlockRepair(off, null)).toBe(true);

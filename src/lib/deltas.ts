@@ -2,6 +2,7 @@ import type {
   Character,
   ConditionDelta,
   Equipment,
+  FeatureFlags,
   GameState,
   InventoryDelta,
   Item,
@@ -15,6 +16,7 @@ import type {
   Standing,
 } from "../types";
 import { advanceClock, normalizeDuration } from "./clock";
+import { defaultFeatures } from "./features";
 import { isGold } from "./defaults";
 import { findByName, slug, withRename } from "./names";
 import {
@@ -575,11 +577,25 @@ export function applyDeltas(
   game: GameState,
   characters: Character[],
   block: LoomBlock,
+  /**
+   * Which narrator subsystems are on. Only the CLOCK is read here — every other
+   * feature is enforced by `features.ts → filterBlock`, which strips the channel
+   * before this runs, and an absent field already means "no change".
+   *
+   * The clock is the exception because absence is not neutral for it: a block
+   * with no `duration` deliberately advances time by the default step, so that
+   * an unparseable turn cannot freeze the world. With the clock switched off
+   * that same absence has to mean the opposite, and only a flag can tell the
+   * two apart.
+   */
+  features: FeatureFlags = defaultFeatures(),
 ): AppliedScene {
   // The clock, not the narrator. `block.day` is deliberately ignored: it is the
   // field that used to freeze, jump and run backwards, and a second writer for
   // one number is exactly what this replaces.
-  const clock = advanceClock(game.day, game.minutes, normalizeDuration(block.duration));
+  const clock = features.clock
+    ? advanceClock(game.day, game.minutes, normalizeDuration(block.duration))
+    : { day: game.day, minutes: game.minutes, rested: false };
   const location =
     block.location === undefined ? game.location : simplifyLocation(block.location) || game.location;
   const weather = block.weather ?? game.weather;

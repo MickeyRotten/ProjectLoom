@@ -19,6 +19,7 @@ import {
   type DocStamp,
 } from "./sync";
 import { defaultSettings } from "./defaults";
+import type { Settings } from "../types";
 
 const stamp = (patch: Partial<DocStamp> = {}): DocStamp => ({
   localAt: 0,
@@ -339,5 +340,38 @@ describe("newStamp", () => {
     const s = newStamp(42);
     expect(s).toEqual({ localAt: 42, syncedAt: 0, remoteAt: "" });
     expect(planDoc(s, true, null)).toBe("push");
+  });
+});
+
+describe("mergeSettings — narrator features", () => {
+  const local = defaultSettings();
+
+  it("leaves the local flags alone when the blob carries none", () => {
+    const mine = { ...local, features: { ...local.features, quests: false } };
+    const merged = mergeSettings(mine, { temperature: 0.5 });
+    expect(merged.features.quests).toBe(false);
+  });
+
+  it("takes the flags a blob carries", () => {
+    const merged = mergeSettings(local, {
+      features: { ...local.features, inventory: false },
+    });
+    expect(merged.features.inventory).toBe(false);
+    expect(merged.features.quests).toBe(true);
+  });
+
+  it("folds the retired flat keys out of a blob an older build pushed", () => {
+    // Verbatim, this blob would leave `features` as whatever the device had —
+    // and silently lose the choice the other device actually made.
+    const merged = mergeSettings(local, {
+      stakesEnabled: false,
+    } as Partial<Settings>);
+    expect(merged.features.stakes).toBe(false);
+    expect(merged.features.quests).toBe(true);
+  });
+
+  it("never leaves features undefined, whatever the blob holds", () => {
+    const merged = mergeSettings(local, { features: undefined } as Partial<Settings>);
+    expect(merged.features).toEqual(defaultSettings().features);
   });
 });

@@ -92,7 +92,11 @@ export function RpgSystemScreen() {
   const settings = useStore((s) => s.settings);
   const update = useStore((s) => s.updateSettings);
   const testRoll = useStore((s) => s.testRoll);
-  const { stakesEnabled, alwaysRoll, riskKeywords, stakesRule } = settings;
+  const setFeature = useStore((s) => s.setFeature);
+  // The same switch as Narrator → Features → Outcome Rolls, shown here because
+  // this is where the system it switches on is configured. One key, two rooms.
+  const stakesEnabled = settings.features.stakes;
+  const { alwaysRoll, riskKeywords, stakesRule } = settings;
 
   // The widest a threshold can meaningfully sit: an unreachable STRONG makes
   // every gamble a disaster, which reads as a bug rather than a house rule.
@@ -107,7 +111,7 @@ export function RpgSystemScreen() {
         <ToggleRow
           label="Stakes"
           state={stakesEnabled ? "ON" : "OFF"}
-          onClick={() => update({ stakesEnabled: !stakesEnabled })}
+          onClick={() => setFeature("stakes", !stakesEnabled)}
         />
 
         {!stakesEnabled ? (

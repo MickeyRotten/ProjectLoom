@@ -18,6 +18,7 @@ import {
   defaultSettings,
 } from "./defaults";
 import { normalizeComfy } from "./comfyui";
+import { normalizeFeatures } from "./features";
 import { touchDoc } from "./db";
 import { SETTINGS_DOC } from "./sync";
 import {
@@ -49,6 +50,15 @@ interface LegacySettings {
   appearanceInstructions?: string;
   /** Pre-`imageTemplates`: the negative prompt sat with the ComfyUI machine config. */
   comfyNegativePrompt?: string;
+  /**
+   * Pre-`features`: three narrator subsystems had a flat switch of their own
+   * while the other eleven had none. Folded onto the flags by
+   * `features.ts → normalizeFeatures`, so a player who turned one off keeps it
+   * off across the upgrade.
+   */
+  showActionOptions?: boolean;
+  journalEnabled?: boolean;
+  stakesEnabled?: boolean;
 }
 
 /** The old flat image-prompt fields, keyed the way a template holds them. */
@@ -96,6 +106,11 @@ export function loadSettings(): Settings {
       // nulls. Normalized at READ time, like `normalizeDice`, so the editor and
       // the composer can both assume three well-formed rows.
       quickActions: normalizeQuickActions(stored.quickActions),
+      // Which parts of the narrator are switched on. Normalized at READ like
+      // the dice and the quick actions, so a settings blob written by ANY older
+      // build — including one that predates the flags entirely — loads with the
+      // features it actually had, and a flag added later reads as on.
+      features: normalizeFeatures(stored.features, stored),
       // Same discipline for the journal's numbers: sanitized at READ, so the
       // screen can edit one field without having to rewrite the next, and a
       // stored 0 for the gap can never make every turn a boundary.

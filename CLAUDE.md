@@ -63,6 +63,7 @@ Layout: pure logic in `src/lib/` (`loomBlock.ts` parse/truncate · `deltas.ts` o
 `openrouter.ts` streaming + `completeChat` side calls ·
 `autoUpdate.ts` sheet auto-update · `spotlight.ts` **Phase 2** ·
 `stakes.ts` outcome rolls + conditions ·
+`features.ts` narrator feature flags + block filter ·
 `sync.ts` cloud-save merge decisions · `places.ts` area kinds/tags/rooms ·
 `images.ts` **Phase 3**), colocated `*.test.ts`; UI in `src/components/`; store in
 `src/store.ts`; types in `src/types.ts`; 1-bit tokens in `src/theme.css`. Keep `lib/`
@@ -749,6 +750,34 @@ merged by `mergeTags` in schema order with the nested answer winning — while
 `parseTagObject` also takes a flat array of bare values, `{slot,value}` rows or
 prefixed strings (`"Prosperity: Poor"`, `"Defenses(Militia)"`); a payload tag
 like `Resource(grain)` names no slot and stays whole in the free list.
+Post-MVP also: **narrator feature toggles** (`features.ts`, `Settings.features`,
+Narrator → **Features**) — the app had grown fourteen narrator subsystems and
+switches for three of them (`showActionOptions`, `journalEnabled`,
+`stakesEnabled`), scattered across three screens; everything else — writing
+characters, opening quests, moving items, naming places, keeping time — was
+simply *what the narrator did*, and a player who wanted a prose sandbox had no
+way to say so. Now one boolean per subsystem, all shipping **on**, with the three
+flat keys folded in at READ (`normalizeFeatures`, beside `normalizeDice`) so
+nobody's choice moves and a flag a stored blob predates reads as on. **Three
+things have to agree** for a feature to be off: `prompt.ts` does not build the
+block, `prompt.ts` does not document the channel — a named field is an
+*invitation*, so the worked example is BUILT from the flags and the two
+cross-references that name another channel (`conditions` → `"inventory"`, `area`
+→ `"location"`) reword themselves — and `filterBlock` strips it from what came
+back anyway, since the history window keeps teaching the model the old shape for
+several turns and an applied op is also a `toasts.ts` chip and a replayed
+reversal. `filterBlock` runs before `reconcileBlock` → `applyDeltas`; the one
+thing absence can't express is the **clock** (a missing `duration` deliberately
+advances time so an unparseable turn can't freeze the world), so `applyDeltas`
+takes the flags too. `CURRENT SCENE` is built from `location`/`clock`/`weather`
+independently, and an empty state tier emits no message at all. Never gated: the
+player's **World Notes** and the **PC's sheet** — everything off leaves the
+narrator the Narrator Instructions, the Scenario, the notes and the sheet, and
+nothing but prose. Off never deletes or hides: the play screens stay reachable
+behind a `FeatureOffNotice` banner, and the three relocated flags still render on
+their old screens beside the settings that configure them (Features is the map,
+those are the rooms). `writesBlock` skips the `repairBlock` call when no channel
+is on — buying back an empty object is the one repair that can't pay for itself.
 Deferred (post-MVP): rolling LLM summarization of the beats themselves,
 NPC/item art, TTS, weather animation, multi-world. Track scope in
 `DESIGN.md → Build Phases`.

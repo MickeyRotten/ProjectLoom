@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { Character, GameState, JournalEntry, Message, Settings } from "../types";
 import { defaultSettings, newCharacter, newGame } from "./defaults";
+import { defaultFeatures } from "./features";
 import { formatJournalBlock, JOURNAL_PROSE_ENTRIES } from "./prompt";
 import {
   JOURNAL_MAX_LINES,
@@ -75,7 +76,8 @@ describe("shouldJournal", () => {
   });
 
   it("is off entirely when the setting is off", () => {
-    expect(shouldJournal(opts({ settings: settings({ journalEnabled: false }) }))).toBe(false);
+    const off = settings({ features: { ...defaultFeatures(), journal: false } });
+    expect(shouldJournal(opts({ settings: off }))).toBe(false);
   });
 });
 

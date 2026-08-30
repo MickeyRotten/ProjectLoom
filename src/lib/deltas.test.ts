@@ -8,6 +8,7 @@ import {
   simplifyLocation,
 } from "./deltas";
 import { defaultPC, newGame } from "./defaults";
+import { defaultFeatures } from "./features";
 import { PARTY_LIMIT, activeMembers, getEntry, partyMembers, resolve } from "./roster";
 import type { Character, GameState } from "../types";
 
@@ -82,6 +83,23 @@ describe("applyDeltas — scene", () => {
     const g = game();
     g.minutes = 9 * 60;
     expect(applyDeltas(g, lib(), {}).minutes).toBe(9 * 60 + 1);
+  });
+
+  it("holds the clock still with the clock feature off", () => {
+    // Absence is not neutral for the clock — a block with no `duration`
+    // deliberately advances by the default step, so an unparseable turn cannot
+    // freeze the world. Only the flag can say the opposite.
+    const g = game();
+    g.day = 5;
+    g.minutes = 9 * 60;
+    const off = { ...defaultFeatures(), clock: false };
+    const scene = applyDeltas(g, lib(), { duration: "night" }, off);
+    expect(scene.day).toBe(5);
+    expect(scene.minutes).toBe(9 * 60);
+    expect(scene.rested).toBe(false);
+    // And everything else the block carried still applies.
+    const other = applyDeltas(g, lib(), { location: "Damp Cellar" }, off);
+    expect(other.location).toBe("Damp Cellar");
   });
 
   it("rolls the day and flags the rest on a night's sleep", () => {

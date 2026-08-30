@@ -1,6 +1,7 @@
 import { useStore } from "../store";
 import { SubMenuScreen, type SubMenuSection } from "./SubMenuScreen";
 import { Field, SegmentedRow, ToggleRow, btnSmall } from "./fields";
+import { FeaturesSection } from "./FeaturesSection";
 import { KeyField } from "./KeyField";
 import { ModelPicker } from "./ModelPicker";
 import { splitModels, useModelCatalog } from "./useModelCatalog";
@@ -283,16 +284,19 @@ function ModelSection() {
 
 /** How a beat is written, and whether the narrator suggests what to do next. */
 function VoiceSection() {
-  const showActionOptions = useStore((s) => s.settings.showActionOptions);
+  const showActionOptions = useStore((s) => s.settings.features.options);
   const repairBlock = useStore((s) => s.settings.repairBlock);
+  const setFeature = useStore((s) => s.setFeature);
   const update = useStore((s) => s.updateSettings);
   return (
     <>
       <InstrField spec={NARRATOR_FIELD} />
+      {/* The same switch as Features → Suggested Actions, shown here because
+          this is where the wording it steers is edited. One key, two rooms. */}
       <ToggleRow
         label="AI Suggested Actions"
         state={showActionOptions ? "ON" : "OFF"}
-        onClick={() => update({ showActionOptions: !showActionOptions })}
+        onClick={() => setFeature("options", !showActionOptions)}
       />
       {showActionOptions && <InstrField spec={OPTION_FIELD} />}
       <ToggleRow
@@ -320,10 +324,11 @@ function VoiceSection() {
  */
 function MemorySection() {
   const historyBudget = useStore((s) => s.settings.historyBudget);
-  const journalEnabled = useStore((s) => s.settings.journalEnabled);
+  const journalEnabled = useStore((s) => s.settings.features.journal);
   const journalBudget = useStore((s) => s.settings.journalBudget);
   const journalMaxTurns = useStore((s) => s.settings.journalMaxTurns);
   const journalMinTurns = useStore((s) => s.settings.journalMinTurns);
+  const setFeature = useStore((s) => s.setFeature);
   const update = useStore((s) => s.updateSettings);
   return (
     <>
@@ -349,7 +354,7 @@ function MemorySection() {
       <ToggleRow
         label="Journal"
         state={journalEnabled ? "ON" : "OFF"}
-        onClick={() => update({ journalEnabled: !journalEnabled })}
+        onClick={() => setFeature("journal", !journalEnabled)}
       />
 
       {journalEnabled && (
@@ -440,6 +445,12 @@ function WritingCharactersSection() {
 }
 
 const SECTIONS: SubMenuSection[] = [
+  {
+    id: "features",
+    label: "Features",
+    note: "Which parts of the story the narrator writes",
+    Body: FeaturesSection,
+  },
   {
     id: "model",
     label: "Model",

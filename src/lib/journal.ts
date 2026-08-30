@@ -81,7 +81,7 @@ export function nextFromTurn(journal: JournalEntry[]): number {
  */
 export function shouldJournal(opts: OpenEntryOptions): boolean {
   const { settings, game, turn, day, rested } = opts;
-  if (!settings.journalEnabled) return false;
+  if (!settings.features.journal) return false;
 
   const from = nextFromTurn(game.journal);
   const span = turn - from + 1;

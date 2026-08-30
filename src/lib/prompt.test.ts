@@ -12,7 +12,16 @@ import { defaultPC, newGame, defaultSettings } from "./defaults";
 import { PARTY_LIMIT } from "./roster";
 import { DEFAULT_DICE } from "./stakes";
 import { builtinTemplates } from "./imageTemplates";
-import type { Character, GameState, Message, Place, RosterEntry, Settings } from "../types";
+import { defaultFeatures } from "./features";
+import type {
+  Character,
+  FeatureFlags,
+  GameState,
+  Message,
+  Place,
+  RosterEntry,
+  Settings,
+} from "../types";
 
 /** Settings whose SELECTED image template carries this appearance rule. */
 function appearanceRule(text: string): Partial<Settings> {
@@ -24,6 +33,11 @@ function appearanceRule(text: string): Partial<Settings> {
 }
 
 const settings = defaultSettings();
+
+/** The same settings with some narrator features switched off. */
+function withFeatures(base: Settings, patch: Partial<FeatureFlags>): Settings {
+  return { ...base, features: { ...base.features, ...patch } };
+}
 
 /**
  * The prompt now reads from BOTH halves of the cast model, so every call needs
@@ -618,9 +632,10 @@ describe("output protocol — action options toggle", () => {
     expect(protocol(settings)).toContain("never number them in your prose");
   });
 
-  it("tells the model to omit options when disabled", () => {
-    const proto = protocol({ ...settings, showActionOptions: false });
-    expect(proto).toContain("OMIT this field entirely");
+  it("drops the options field entirely when disabled", () => {
+    const proto = protocol(withFeatures(settings, { options: false }));
+    // The field is not documented at all — not even as something to omit. A
+    // named field is an invitation, and `filterBlock` would drop it anyway.
     expect(proto).not.toContain('"options": REQUIRED');
     // The example and the checklist follow the toggle — a protocol that says
     // "omit options" must not also show them and then demand them.
@@ -893,7 +908,9 @@ describe("journal injection", () => {
 
   it("injects nothing when the setting is off, entries or not", () => {
     const game = { ...newGame(), journal: [entry(1, "Crossed the marsh at dusk.")] };
-    expect(contents({ journalEnabled: false }, game)).not.toContain("JOURNAL");
+    expect(
+      contents({ features: { ...defaultFeatures(), journal: false } }, game),
+    ).not.toContain("JOURNAL");
   });
 
   it("sits after the history and before the roll call", () => {
@@ -940,7 +957,7 @@ describe("stakes + conditions blocks", () => {
 
   it("injects nothing when stakes are off", () => {
     const msgs = buildMessages({
-      settings: { ...settings, stakesEnabled: false },
+      settings: withFeatures(settings, { stakes: false }),
       game: newGame(),
       characters: [defaultPC()],
       playerMessage: "I attack the bandit",
@@ -1019,7 +1036,7 @@ describe("stakes + conditions blocks", () => {
       playerMessage: "go",
     });
     const off = buildMessages({
-      settings: { ...settings, stakesEnabled: false },
+      settings: withFeatures(settings, { conditions: false }),
       game: newGame(),
       characters: [defaultPC()],
       playerMessage: "go",
@@ -1137,5 +1154,167 @@ describe("places in the prompt", () => {
     const protocol = msgs.find((m) => m.content.includes("OUTPUT PROTOCOL"));
     expect(protocol?.content).toContain('"area"');
     expect(protocol?.content).toContain("CURRENT AREA");
+  });
+});
+
+/**
+ * Narrator features (`features.ts`). The prompt is one of the three places a
+ * disabled feature has to disappear from, and it is the one that costs tokens
+ * every turn: a block still built, or a field still documented, is an invitation
+ * the model takes and `filterBlock` then throws away.
+ */
+describe("narrator features", () => {
+  const populated = (): GameState => ({
+    ...newGame(),
+    location: "Damp Cellar",
+    area: "Boars Head Tavern",
+    weather: "close and still",
+    inventory: [{ label: "Rusty Key", description: "bent", quantity: 1 }],
+    quests: [
+      { id: "q1", label: "Find the cellar door", description: "", reward: "", status: "active" },
+    ],
+    places: [
+      {
+        id: "p1",
+        name: "Boars Head Tavern",
+        kind: "steading",
+        type: "tavern",
+        description: "A low tavern.",
+        tags: [],
+        rumours: [],
+        rooms: [],
+        keywords: [],
+      },
+    ],
+  });
+
+  const all = (s: Settings, game = populated()) =>
+    build({ settings: s, game, playerMessage: "I look around" })
+      .map((m) => m.content)
+      .join("\n\n");
+
+  const proto = (s: Settings, game = populated()) =>
+    build({ settings: s, game, playerMessage: "I look around" }).find((m) =>
+      m.content.includes("OUTPUT PROTOCOL"),
+    )!.content;
+
+  it("states every block and documents every field with the shipped settings", () => {
+    const text = all(settings);
+    expect(text).toContain("INVENTORY —");
+    expect(text).toContain("ACTIVE QUESTS —");
+    expect(text).toContain("ACTIVE PARTY");
+    expect(text).toContain("CURRENT AREA");
+    expect(text).toContain("CURRENT SCENE — location: Damp Cellar");
+    expect(text).toContain("day: 1");
+    expect(text).toContain("weather: close and still");
+  });
+
+  it("drops the pack, its rules and nothing else with inventory off", () => {
+    const off = withFeatures(settings, { inventory: false });
+    expect(all(off)).not.toContain("INVENTORY —");
+    expect(proto(off)).not.toContain('"inventory"');
+    expect(proto(off)).not.toContain("Gold is the permanent currency");
+    // Its neighbour in the state tier is untouched.
+    expect(all(off)).toContain("ACTIVE QUESTS —");
+  });
+
+  it("drops the board and its rule with quests off", () => {
+    const off = withFeatures(settings, { quests: false });
+    expect(all(off)).not.toContain("ACTIVE QUESTS —");
+    expect(proto(off)).not.toContain('"quests"');
+  });
+
+  it("drops the roster, the roll call and the authoring rules with characters off", () => {
+    const off = withFeatures(settings, { characters: false });
+    const text = all(off);
+    expect(text).not.toContain("ACTIVE PARTY");
+    expect(text).not.toContain("PARTY — in your company");
+    expect(proto(off)).not.toContain('"party"');
+    expect(proto(off)).not.toContain("Party dialogue uses the convention");
+    // The PLAYER's own sheet is never gated — a narrator that does not know who
+    // it narrates for is broken, not simpler.
+    expect(text).toContain("PLAYER CHARACTER —");
+  });
+
+  it("drops the places blocks and the area field with places off", () => {
+    const off = withFeatures(settings, { places: false });
+    expect(all(off)).not.toContain("CURRENT AREA");
+    expect(proto(off)).not.toContain('"area"');
+  });
+
+  it("drops the notes field but never the notes themselves", () => {
+    const game = {
+      ...populated(),
+      worldNotes: [
+        { id: "n1", title: "Rodstroke", keywords: ["cellar"], content: "A small village." },
+      ],
+    };
+    const off = withFeatures(settings, { notes: false });
+    expect(proto(off, game)).not.toContain('"notes"');
+    // The player's own lore is what is LEFT when every feature is off.
+    expect(all(off, game)).toContain("Rodstroke");
+    expect(all(allOff, game)).toContain("Rodstroke");
+  });
+
+  it("builds the scene line from the three facts independently", () => {
+    expect(all(withFeatures(settings, { clock: false }))).toContain(
+      "CURRENT SCENE — location: Damp Cellar; weather: close and still",
+    );
+    expect(all(withFeatures(settings, { location: false, weather: false }))).toContain(
+      "CURRENT SCENE — day: 1;",
+    );
+  });
+
+  it("states no scene at all when all three are off", () => {
+    const off = withFeatures(settings, { location: false, weather: false, clock: false });
+    expect(all(off)).not.toContain("CURRENT SCENE");
+    const p = proto(off);
+    expect(p).not.toContain('"duration"');
+    expect(p).not.toContain('"weather"');
+    expect(p).not.toContain('"location"');
+  });
+
+  const allOff: Settings = {
+    ...settings,
+    features: {
+      options: false,
+      characters: false,
+      spotlight: false,
+      gear: false,
+      conditions: false,
+      inventory: false,
+      quests: false,
+      notes: false,
+      places: false,
+      location: false,
+      weather: false,
+      clock: false,
+      journal: false,
+      stakes: false,
+    },
+  };
+
+  it("asks for prose and an empty block with everything off", () => {
+    const p = proto(allOff);
+    expect(p).not.toContain("JSON fields");
+    expect(p).toContain("There are no fields this turn");
+    expect(p).toContain("<<<LOOM>>>");
+    // The worked example carries no field the protocol just stopped documenting.
+    expect(p).toContain("{}");
+    expect(p).not.toContain('"duration": "scene"');
+  });
+
+  it("leaves the narrator its instructions, the scenario and the notes", () => {
+    const game = {
+      ...populated(),
+      worldNotes: [
+        { id: "n1", title: "Rodstroke", keywords: ["cellar"], content: "A small village." },
+      ],
+    };
+    const text = all(allOff, game);
+    expect(text).toContain(settings.customInstructions.trim().slice(0, 40));
+    expect(text).toContain("SCENARIO —");
+    expect(text).toContain("Rodstroke");
+    expect(text).not.toContain("STATE OF PLAY");
   });
 });
