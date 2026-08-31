@@ -1188,8 +1188,8 @@ describe("narrator features", () => {
     ],
   });
 
-  const all = (s: Settings, game = populated()) =>
-    build({ settings: s, game, playerMessage: "I look around" })
+  const all = (s: Settings, game = populated(), playerMessage = "I look around") =>
+    build({ settings: s, game, playerMessage })
       .map((m) => m.content)
       .join("\n\n");
 
@@ -1251,9 +1251,11 @@ describe("narrator features", () => {
     };
     const off = withFeatures(settings, { notes: false });
     expect(proto(off, game)).not.toContain('"notes"');
-    // The player's own lore is what is LEFT when every feature is off.
-    expect(all(off, game)).toContain("Rodstroke");
-    expect(all(allOff, game)).toContain("Rodstroke");
+    // The player's own lore is what is LEFT when every feature is off. The
+    // action has to NAME the note's keyword — the gate scans the turn, not the
+    // scene — or this passes on whatever else happens to say "Rodstroke".
+    expect(all(off, game, "I search the cellar")).toContain("Rodstroke");
+    expect(all(allOff, game, "I search the cellar")).toContain("Rodstroke");
   });
 
   it("builds the scene line from the three facts independently", () => {
@@ -1311,7 +1313,7 @@ describe("narrator features", () => {
         { id: "n1", title: "Rodstroke", keywords: ["cellar"], content: "A small village." },
       ],
     };
-    const text = all(allOff, game);
+    const text = all(allOff, game, "I search the cellar");
     expect(text).toContain(settings.customInstructions.trim().slice(0, 40));
     expect(text).toContain("SCENARIO —");
     expect(text).toContain("Rodstroke");
