@@ -813,6 +813,14 @@ export interface FeatureFlags {
    * behaviour: the narrator decides how everything goes.
    */
   stakes: boolean;
+  /**
+   * The post-turn op-verification gate (`verifyOps.ts`) — a cheap second
+   * model call that checks a genuinely NEW party/inventory `add` against the
+   * prose that just ran, and drops it when the prose doesn't support it. Off
+   * skips the call entirely: every survives-`reconcileBlock` op applies as
+   * written, same as before this existed.
+   */
+  opVerification: boolean;
 }
 
 export interface Settings extends DiceRules, ComfySettings {
@@ -859,6 +867,14 @@ export interface Settings extends DiceRules, ComfySettings {
   imageKey: string;
   textModelId: string;
   imageModelId: string;
+  /**
+   * Model for the op-verification side call (`verifyOps.ts`) — deliberately
+   * separate from `textModelId` since the check is cheap and structured
+   * (does the prose support this new character/item?), not narration.
+   * Blank falls back to `textModelId`, so an unset field never breaks the
+   * gate, only makes it cost the same as narration.
+   */
+  cheapModelId: string;
   /**
    * Master switch for image GENERATION (Images). Off means no request ever
    * reaches the image model — no automatic portrait and no ⟳ — while

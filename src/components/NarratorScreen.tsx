@@ -231,6 +231,20 @@ function ModelSection() {
         error={error}
       />
 
+      <ModelPicker
+        label="Verification Model"
+        value={settings.cheapModelId}
+        onChange={(v) => update({ cheapModelId: v })}
+        models={text}
+        loading={loading}
+        error={error}
+      />
+      <p className="text-xs opacity-70">
+        Runs the Verify New Characters &amp; Items check (Features → Play) — a short,
+        structured question, not narration, so a cheap or free model is plenty. Blank
+        falls back to the Text Model above.
+      </p>
+
       <SegmentedRow
         label="Reasoning"
         value={settings.reasoningLevel}

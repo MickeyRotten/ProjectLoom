@@ -178,6 +178,11 @@ export interface CompleteOptions {
   signal?: AbortSignal;
   /** Sampling override — side calls (sheet updates) run tighter than narration. */
   temperature?: number;
+  /**
+   * Model override — every side call but the op-verification gate leaves this
+   * unset and runs on `settings.textModelId`, "one model, one behaviour".
+   */
+  model?: string;
 }
 
 /**
@@ -209,7 +214,7 @@ export async function completeChat(opts: CompleteOptions): Promise<string> {
 }
 
 async function completeOnce(opts: CompleteOptions): Promise<string> {
-  const { settings, messages, signal, temperature } = opts;
+  const { settings, messages, signal, temperature, model } = opts;
 
   const res = await fetch(ENDPOINT, {
     method: "POST",
@@ -220,7 +225,7 @@ async function completeOnce(opts: CompleteOptions): Promise<string> {
       "X-Title": "Project Loom",
     },
     body: JSON.stringify({
-      model: settings.textModelId,
+      model: model ?? settings.textModelId,
       temperature: temperature ?? settings.temperature,
       stream: false,
       // Side calls run on the text model, so they answer to the same thinking

@@ -109,6 +109,12 @@ const FEATURES: Record<FeatureKey, FeatureSpec & { group: FeatureGroup }> = {
     label: "Suggested Actions",
     note: "Off: no action buttons under a beat, and none are asked for. Wording lives under Voice & Actions.",
   },
+  opVerification: {
+    key: "opVerification",
+    group: "play",
+    label: "Verify New Characters & Items",
+    note: "Off: a new character or a taken item the narrator writes applies as-is, with no second check. On, a cheap model call reviews it against the prose first and drops it if the prose doesn't back it up. Model lives under Model.",
+  },
   notes: {
     key: "notes",
     group: "memory",

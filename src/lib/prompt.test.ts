@@ -12,7 +12,7 @@ import { defaultPC, newGame, defaultSettings } from "./defaults";
 import { PARTY_LIMIT } from "./roster";
 import { DEFAULT_DICE } from "./stakes";
 import { builtinTemplates } from "./imageTemplates";
-import { defaultFeatures } from "./features";
+import { allFeatures, defaultFeatures } from "./features";
 import type {
   Character,
   FeatureFlags,
@@ -1278,22 +1278,7 @@ describe("narrator features", () => {
 
   const allOff: Settings = {
     ...settings,
-    features: {
-      options: false,
-      characters: false,
-      spotlight: false,
-      gear: false,
-      conditions: false,
-      inventory: false,
-      quests: false,
-      notes: false,
-      places: false,
-      location: false,
-      weather: false,
-      clock: false,
-      journal: false,
-      stakes: false,
-    },
+    features: allFeatures(false),
   };
 
   it("asks for prose and an empty block with everything off", () => {

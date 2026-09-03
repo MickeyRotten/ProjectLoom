@@ -109,6 +109,7 @@ import {
 } from "./lib/loomBlock";
 import { applyDeltas, reconcileBlock } from "./lib/deltas";
 import { filterBlock, type FeatureKey } from "./lib/features";
+import { verifyOps } from "./lib/verifyOps";
 import { withRename } from "./lib/names";
 import { addNeighbourStubs, ensurePlace, fillPlace, placeStub } from "./lib/places";
 import {
@@ -1760,11 +1761,27 @@ export const useStore = create<LoomStore>((set, get) => {
       // happened. The prose rides along for the one check that reads it: a Gold
       // total that moves on a beat with no money in it.
       const applied = kept ? reconcileBlock(g, library, kept, prose) : null;
+      // A second, cheap model call — checks a genuinely NEW party/inventory
+      // `add` against the prose that just ran and drops the ones it doesn't
+      // support. Skips the call entirely when there is nothing new to ask
+      // about, and fails open (returns `applied` unchanged) on any error, so
+      // a broken or slow verifier can only leave today's behavior in place,
+      // never block the turn.
+      const verified =
+        applied && features.opVerification
+          ? await verifyOps({
+              settings: get().settings,
+              prose,
+              characters: library,
+              block: applied,
+              signal: turnAbort.signal,
+            })
+          : applied;
       // Applied even with NO block: an unreadable turn still has to move the
       // clock, or a parse failure freezes time. An empty block writes nothing
       // and returns the same slice references, so reversal still captures
       // nothing — it only advances the clock by the default duration.
-      const scene = applyDeltas(g, library, applied ?? {}, features);
+      const scene = applyDeltas(g, library, verified ?? {}, features);
 
       // The area this turn is in, as a `Place`. The stub is written
       // SYNCHRONOUSLY — before the reversal snapshot below — for exactly the
@@ -1805,7 +1822,7 @@ export const useStore = create<LoomStore>((set, get) => {
         // The arithmetic beside the verdict — see `TurnRoll`. Same gate, so a
         // game with stakes off records neither.
         roll: record ?? undefined,
-        appliedDeltas: applied ?? undefined,
+        appliedDeltas: verified ?? undefined,
         day: scene.day,
         minutes: scene.minutes,
         location: scene.location,

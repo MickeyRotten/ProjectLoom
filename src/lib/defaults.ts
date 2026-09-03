@@ -30,6 +30,12 @@ export const DEFAULT_TEXT_MODEL = "deepseek/deepseek-v4-pro";
  * "google/gemini-3.1-flash-image", then "google/gemini-3-pro-image-preview".
  */
 export const DEFAULT_IMAGE_MODEL = "google/gemini-3.1-flash-lite-image";
+/**
+ * The op-verification gate (`verifyOps.ts`) is a small structured check, not
+ * narration — a cheap open-weights model is plenty, and keeps the check from
+ * doubling narration spend.
+ */
+export const DEFAULT_CHEAP_MODEL = "openai/gpt-oss-120b";
 
 /* ------------------------------------------------------------------ *
  * Gold — the permanent currency item. Every game carries exactly one Gold
@@ -288,6 +294,7 @@ export function defaultSettings(): Settings {
     supabaseAnonKey: "",
     textModelId: DEFAULT_TEXT_MODEL,
     imageModelId: DEFAULT_IMAGE_MODEL,
+    cheapModelId: DEFAULT_CHEAP_MODEL,
     // On by default — portraits have always drawn themselves, and shipping the
     // switch OFF would read as the image pipeline having broken. Location
     // images stay separately opt-in below.

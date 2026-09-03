@@ -46,3 +46,42 @@ hand, so old snapshots still restore.
   reset.
 
 ---
+[x] Research: Add a cheap model layer (default: gpt-oss 120b) that'll help determine if the narrator should write a new NPC, item, add items, take items, etc.
+
+Built as a post-turn verifier (`src/lib/verifyOps.ts`), the sibling of the
+existing block-repair side call: it runs AFTER `deltas.ts → reconcileBlock`
+(which already folds out restatements/no-ops for free) and BEFORE
+`applyDeltas`, so it only has to judge ops that already survived that
+deterministic filter. `pendingVerification` picks out the two shapes worth
+asking about — a party `add` naming nobody in the cast (a genuinely NEW
+character, companion or NPC alike) and every inventory `add` (an already-
+deduped claimed pickup) — and skips the call entirely on the ordinary turn
+with neither. When there's something to ask, a cheap model checks each claim
+against the beat's own prose and returns per-claim verdicts; unsupported ones
+are dropped from the block before it applies, records, or gets chipped by
+`toasts.ts`.
+- `Settings.cheapModelId` (default `openai/gpt-oss-120b`) is a new,
+  deliberately separate model field — Narrator → Model → **Verification
+  Model** — since the check is short and structured, not narration, and
+  blank falls back to the Text Model. `openrouter.ts → completeChat` gained
+  an optional `model` override to make this possible without touching any
+  other side call.
+- Gated by a new `Settings.features.opVerification` flag (Narrator →
+  Features → Play), on by default like every other feature — off skips the
+  call entirely and every op applies exactly as it did before this existed.
+- **Fails open everywhere**: no candidates → no call; a missing key, timeout,
+  aborted turn (Stop), or an unparseable reply all mean nothing is vetoed.
+  The gate can only subtract a proposed op, never add one, so a broken
+  verifier is never worse than no verifier — same discipline as every other
+  side call in the app (`generateField`/`autoUpdate`/`repairBlock`).
+- Pure core is unit-tested (`verifyOps.test.ts`): candidate extraction,
+  tolerant reply parsing (fail-open per-entry on a missing/malformed verdict,
+  not just per-call), and the block-filtering apply step.
+
+---
+[ ] Items, character names, etc. should be bolded and coloured (e.g. yellow or red by default), like in Zelda games. When characters talk (text in quotes), that too should be a different colour. These colours should be adjustable in Appearance settings.
+
+---
+[ ] Research: I want the engine to keep better track of the world and locations. Spawn point (start point) is coordinate 0,0,0 and moving will update the coordinates in that direction. Whenever moving to a new location, a description of that location is generated, and cached. The cheap model layer could determine roughly the distanced traveled, e.g. if I write "I travel to X", that might add more than 1 to the coordinates. If I ever come back to the same location, the cached description is used. For example, but not necessarily this exactly. Whatever gets the job done.
+
+---
