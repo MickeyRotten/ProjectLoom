@@ -1,10 +1,11 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useStore } from "../store";
 import { Options } from "./Options";
 import { Composer } from "./Composer";
 import { TurnControls } from "./TurnControls";
 import { segmentDialogue } from "../lib/spotlight";
 import { parseInline } from "../lib/markdown";
+import { collectEntityNames, highlightEntities, highlightWithinQuote } from "../lib/highlight";
 import { deriveToasts } from "../lib/toasts";
 import { OUTCOME_LABEL, bandScale, formatRoll, modifierNote } from "../lib/stakes";
 import type { Character, Message } from "../types";
@@ -38,6 +39,11 @@ export function ChatView() {
   // Every character, not just the party: scrollback dialogue must keep its
   // speaker styling after someone has been kicked or has left.
   const party = useStore((s) => s.game.characters);
+  const inventory = useStore((s) => s.game.inventory);
+  // The names/labels highlighted in prose (Appearance → Colors: Names &
+  // Items). Recomputed only when the cast or pack actually changes, not on
+  // every streamed token — `streamText` isn't in this dependency list.
+  const entityNames = useMemo(() => collectEntityNames(party, inventory), [party, inventory]);
   const streaming = useStore((s) => s.streaming);
   const streamText = useStore((s) => s.streamText);
   const error = useStore((s) => s.error);
@@ -137,7 +143,7 @@ export function ChatView() {
         style={{ fontSize: `${textSize}px` }}
         className="flex-1 space-y-4 overflow-y-auto px-3 pb-3"
       >
-        <Beat role="narrator" text={opening} party={party} />
+        <Beat role="narrator" text={opening} party={party} names={entityNames} />
 
         {messages.map((m, i) => {
           const tappable = m.id === lastNarratorId || m.id === lastPlayerId;
@@ -166,7 +172,7 @@ export function ChatView() {
                   onClick={tappable ? () => toggle(m.id) : undefined}
                   className={tappable ? "cursor-pointer" : undefined}
                 >
-                  <Beat role={m.role} text={m.content} party={party} />
+                  <Beat role={m.role} text={m.content} party={party} names={entityNames} />
                 </div>
               )}
 
@@ -188,7 +194,9 @@ export function ChatView() {
           );
         })}
 
-        {streaming && <Beat role="narrator" text={streamText || "…"} party={party} pending />}
+        {streaming && (
+          <Beat role="narrator" text={streamText || "…"} party={party} names={entityNames} pending />
+        )}
 
         {/*
           Narrator beat controls. Tapping the beat still reveals them, but that
@@ -381,11 +389,13 @@ function Beat({
   role,
   text,
   party,
+  names,
   pending,
 }: {
   role: "player" | "narrator";
   text: string;
   party: Character[];
+  names: string[];
   pending?: boolean;
 }) {
   if (role === "player") {
@@ -409,16 +419,71 @@ function Beat({
         seg.speaker ? (
           <p key={i} className="border-l-2 border-ink pl-2">
             <span className="mr-1 font-bold uppercase tracking-wide">{seg.speaker}:</span>
-            <span>“<Formatted text={seg.text} />”</span>
+            <span className="text-dialogue">
+              “<HighlightedQuote text={seg.text} names={names} />”
+            </span>
           </p>
         ) : (
           <p key={i} className="whitespace-pre-wrap">
-            <Formatted text={seg.text} />
+            <Highlighted text={seg.text} names={names} />
           </p>
         ),
       )}
       {pending && <span className="loom-blink"> ▊</span>}
     </div>
+  );
+}
+
+/**
+ * Prose highlighting layer (see lib/highlight.ts): splits `text` into plain
+ * runs, known-entity runs (bold + Names & Items color) and quoted-dialogue
+ * runs (Dialogue color, bolding any entity mentioned inside). Runs BEFORE
+ * markdown — only the leftover `plain` spans get `Formatted`'s `**bold**`
+ * treatment, so an entity/quote match is never re-split by a stray `*`.
+ */
+function Highlighted({ text, names }: { text: string; names: string[] }) {
+  return (
+    <>
+      {highlightEntities(text, names).map((s, i) => {
+        if (s.kind === "plain") return <Formatted key={i} text={s.text} />;
+        if (s.kind === "entity") {
+          return (
+            <span key={i} className="font-bold text-highlight">
+              {s.text}
+            </span>
+          );
+        }
+        // "quote" and "entity-in-quote" both take the dialogue color; an
+        // entity mentioned inside dialogue additionally bolds.
+        const cls = s.kind === "entity-in-quote" ? "font-bold text-dialogue" : "text-dialogue";
+        return (
+          <span key={i} className={cls}>
+            {s.text}
+          </span>
+        );
+      })}
+    </>
+  );
+}
+
+/**
+ * Same highlighting, for text already known to be dialogue (spotlight.ts's
+ * unwrapped `Name: "…"` segment bodies) — no quote glyphs to find, so every
+ * entity match bolds within the parent `<span className="text-dialogue">`.
+ */
+function HighlightedQuote({ text, names }: { text: string; names: string[] }) {
+  return (
+    <>
+      {highlightWithinQuote(text, names).map((s, i) =>
+        s.kind === "entity-in-quote" ? (
+          <span key={i} className="font-bold">
+            {s.text}
+          </span>
+        ) : (
+          <Formatted key={i} text={s.text} />
+        ),
+      )}
+    </>
   );
 }
 

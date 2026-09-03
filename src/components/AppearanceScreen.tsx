@@ -29,6 +29,8 @@ export function AppearanceScreen() {
   const webFonts = useStore((s) => s.settings.webFonts);
   const paper = useStore((s) => s.settings.paper);
   const ink = useStore((s) => s.settings.ink);
+  const highlightColor = useStore((s) => s.settings.highlightColor);
+  const dialogueColor = useStore((s) => s.settings.dialogueColor);
   const fontPending = useStore((s) => s.fontPending);
   const fontError = useStore((s) => s.fontError);
   const updateSettings = useStore((s) => s.updateSettings);
@@ -163,6 +165,16 @@ export function AppearanceScreen() {
             onChange={(v) => updateSettings({ paper: v })}
           />
           <ColorRow label="Text" value={ink} onChange={(v) => updateSettings({ ink: v })} />
+          <ColorRow
+            label="Names & Items"
+            value={highlightColor}
+            onChange={(v) => updateSettings({ highlightColor: v })}
+          />
+          <ColorRow
+            label="Dialogue"
+            value={dialogueColor}
+            onChange={(v) => updateSettings({ dialogueColor: v })}
+          />
 
           <span className="block pt-1 text-sm uppercase tracking-widest opacity-60">
             Presets
@@ -191,8 +203,10 @@ export function AppearanceScreen() {
             })}
           </div>
           <p className="text-sm opacity-60">
-            Both colors apply everywhere. Portrait art is stored as the image
-            model drew it and does not change with the colors you pick.
+            All four colors apply everywhere. Names & Items highlights known
+            characters and item names in the story text; Dialogue colors
+            quoted speech. Portrait art is stored as the image model drew it
+            and does not change with the colors you pick.
           </p>
         </div>
       </div>

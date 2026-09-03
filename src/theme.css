@@ -4,8 +4,14 @@
  * no color. Everything in the app references these tokens (directly or via the
  * Tailwind `ink`/`paper` aliases) so the visual system stays coherent.
  *
+ * `--highlight` and `--dialogue` below are a deliberate, player-confirmed
+ * exception: Zelda-style bold+color for known character/item names and
+ * quoted dialogue (`lib/highlight.ts`, Appearance → Colors). They layer on
+ * top of the ink/paper base rather than replacing it — the rest of the app's
+ * chrome stays strictly two-color.
+ *
  * The values below are the SHIPPED pair and the pre-hydration fallback. The
- * player picks their own two colors in Settings → Appearance, and `App.tsx`
+ * player picks their own colors in Settings → Appearance, and `App.tsx`
  * writes them (plus the derived `--scrim`) straight onto <html> as inline
  * custom properties — one place a color is chosen, one mechanism to override
  * it. There is deliberately no second selector holding a second palette: the
@@ -24,6 +30,9 @@
    * flips with the ink/paper swap like everything else.
    */
   --scrim: rgb(0 0 0 / 0.6);
+  /* Names & Items / Dialogue — Appearance → Colors. See the header comment. */
+  --highlight: #c99a2e;
+  --dialogue: #3a6ea5;
   --font-mono: ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas,
     "Liberation Mono", monospace;
 

@@ -916,6 +916,15 @@ export interface Settings extends DiceRules, ComfySettings {
   paper: string;
   ink: string;
   /**
+   * Zelda-style prose highlighting (Appearance → Colors): known character
+   * names and item labels render bold in `highlightColor`; double-quoted
+   * dialogue renders in `dialogueColor`. Layered on top of the ink/paper
+   * pair, not a replacement for it — see `lib/highlight.ts`. Always
+   * `#rrggbb` after `settings.ts → normalizeHex`.
+   */
+  highlightColor: string;
+  dialogueColor: string;
+  /**
    * Reading size for narration, in pixels. Chrome (buttons, labels) never
    * scales. Sanitized at READ time by `settings.ts → clampTextSize`.
    */

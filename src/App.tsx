@@ -41,6 +41,8 @@ export default function App() {
   const screen = useStore((s) => s.screen);
   const paper = useStore((s) => s.settings.paper);
   const ink = useStore((s) => s.settings.ink);
+  const highlightColor = useStore((s) => s.settings.highlightColor);
+  const dialogueColor = useStore((s) => s.settings.dialogueColor);
   const font = useStore((s) => s.settings.font);
   const webFonts = useStore((s) => s.settings.webFonts);
   const setupDone = useStore((s) => s.settings.setupDone);
@@ -107,14 +109,20 @@ export default function App() {
   // own theming, so a dark-OS WebView won't run its own force-dark pass over
   // the generated portrait bitmaps, which are real pixels no token
   // touches. The browser chrome (theme-color) matches the paper too.
+  //
+  // `--highlight`/`--dialogue` are NOT derived like `--scrim` — they're
+  // independent player-set values (Appearance → Colors), written straight
+  // through for `lib/highlight.ts`'s prose highlighting.
   useEffect(() => {
     const root = document.documentElement;
     root.style.setProperty("--paper", paper);
     root.style.setProperty("--ink", ink);
     root.style.setProperty("--scrim", scrimFrom(ink));
+    root.style.setProperty("--highlight", highlightColor);
+    root.style.setProperty("--dialogue", dialogueColor);
     root.style.colorScheme = isDarkPaper(paper) ? "dark" : "light";
     document.querySelector('meta[name="theme-color"]')?.setAttribute("content", paper);
-  }, [paper, ink]);
+  }, [paper, ink, highlightColor, dialogueColor]);
 
   // Font choice rides a one-attribute mechanism of its own: `data-font`
   // repoints `--font-mono` for the whole app — from theme.css for the bundled

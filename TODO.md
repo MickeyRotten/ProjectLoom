@@ -79,7 +79,35 @@ are dropped from the block before it applies, records, or gets chipped by
   not just per-call), and the block-filtering apply step.
 
 ---
-[ ] Items, character names, etc. should be bolded and coloured (e.g. yellow or red by default), like in Zelda games. When characters talk (text in quotes), that too should be a different colour. These colours should be adjustable in Appearance settings.
+[x] Items, character names, etc. should be bolded and coloured (e.g. yellow or red by default), like in Zelda games. When characters talk (text in quotes), that too should be a different colour. These colours should be adjustable in Appearance settings.
+
+New pure module `src/lib/highlight.ts` (colocated `highlight.test.ts`, 22
+cases) splits narrator prose into plain / entity / quote /
+`entity-in-quote` runs and renders alongside the existing
+`segmentDialogue` → `parseInline` pipeline in `ChatView.tsx` — highlighting
+runs first on the raw text, and only the leftover plain runs still get
+`**bold**`-style markdown treatment.
+- `collectEntityNames` gathers every character's `nameForms` (every
+  standing, not just active party) plus pack `inventory` and per-character
+  `equipment` labels, deduped by `slug`; matched word-boundary-anchored
+  (`worldNotes.ts`'s `(?<!\w)...(?!\w)` pattern) and longest-first so
+  "Rusty Key" wins over a bare "Key".
+- Precedence: a quoted clause stays ONE colour throughout (no flicker
+  mid-sentence), but an entity name mentioned inside it still bolds — color
+  is quote > entity, weight is entity > quote. Verified end-to-end in a
+  live browser (Playwright): `'"Give me the Rusty Key," Hiro demanded.'`
+  renders "Rusty Key" bold+dialogue-coloured (inside the quote) and "Hiro"
+  bold+highlight-coloured (outside it).
+- Two new `Settings` fields, `highlightColor`/`dialogueColor`
+  (`normalizeHex`-sanitized, zero migration), two new `ColorRow`s in
+  `AppearanceScreen.tsx` beside the existing paper/ink pickers, and two new
+  CSS custom properties (`--highlight`/`--dialogue`) written onto `<html>`
+  by `App.tsx` the same way `--paper`/`--ink` already are — confirmed live
+  in-browser that changing Dialogue in Appearance repaints the open beat
+  immediately.
+- `theme.css`'s "two colors only" header comment now notes these two as a
+  deliberate, player-requested exception layered on top of the ink/paper
+  base, not a retraction of it for the rest of the app's chrome.
 
 ---
 [ ] Research: I want the engine to keep better track of the world and locations. Spawn point (start point) is coordinate 0,0,0 and moving will update the coordinates in that direction. Whenever moving to a new location, a description of that location is generated, and cached. The cheap model layer could determine roughly the distanced traveled, e.g. if I write "I travel to X", that might add more than 1 to the coordinates. If I ever come back to the same location, the cached description is used. For example, but not necessarily this exactly. Whatever gets the job done.

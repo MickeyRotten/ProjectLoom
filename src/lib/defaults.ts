@@ -274,6 +274,14 @@ export const DEFAULT_PAPER = "#ffffff";
 export const DEFAULT_INK = "#000000";
 
 /**
+ * Shipped highlight colors (Appearance → Colors) — a warm gold for
+ * recognized names/items and a cooler blue for quoted dialogue, legible
+ * against the default paper/ink pair and distinct from both.
+ */
+export const DEFAULT_HIGHLIGHT = "#c99a2e";
+export const DEFAULT_DIALOGUE = "#3a6ea5";
+
+/**
  * Shipped reading size, in pixels. 16 is what the old `textScale: "m"` resolved
  * to through Tailwind's `text-base`, so the setting means the same thing across
  * the change.
@@ -312,6 +320,8 @@ export function defaultSettings(): Settings {
     repairBlock: true,
     paper: DEFAULT_PAPER,
     ink: DEFAULT_INK,
+    highlightColor: DEFAULT_HIGHLIGHT,
+    dialogueColor: DEFAULT_DIALOGUE,
     textSize: DEFAULT_TEXT_SIZE,
     font: "system",
     webFonts: [],

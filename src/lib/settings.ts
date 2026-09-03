@@ -7,6 +7,8 @@ import type {
   WebFont,
 } from "../types";
 import {
+  DEFAULT_DIALOGUE,
+  DEFAULT_HIGHLIGHT,
   DEFAULT_INK,
   DEFAULT_JOURNAL_BUDGET,
   DEFAULT_JOURNAL_MAX_TURNS,
@@ -120,6 +122,8 @@ export function loadSettings(): Settings {
       // carries `invert`, which is exactly one point in the new space.
       paper: normalizeHex(stored.paper, stored.invert ? "#000000" : DEFAULT_PAPER),
       ink: normalizeHex(stored.ink, stored.invert ? "#ffffff" : DEFAULT_INK),
+      highlightColor: normalizeHex(stored.highlightColor, DEFAULT_HIGHLIGHT),
+      dialogueColor: normalizeHex(stored.dialogueColor, DEFAULT_DIALOGUE),
       // Same discipline for the reading size. The legacy four-step scale maps to
       // the pixel values its Tailwind classes already resolved to, so nobody's
       // setting moves on upgrade.
