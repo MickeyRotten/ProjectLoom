@@ -357,7 +357,11 @@ and the lore already written (`formatKnownLoreBlock`, "write a DIFFERENT note"),
 never the beats — with a `draft` block that keeps a working title the player
 typed. Like the Scenario screen the World Notes screen has no Edit gate, so an
 accepted note commits at once; `GenerateNoteModal` binds the shared
-`GenerateModal` (title bold, content, keyword line).
+`GenerateModal` (title bold, content, keyword line). A **Use the Scenario as
+context** box (`GenerateNoteModal` state → `buildNoteMessages` `useScenario`, on
+by default, off keeps the premise out for lore that sits apart) rides the modal's
+new `options` slot — a caller-owned control under the guidance box, the caller
+threading its own state into `run`.
 Post-MVP also: **the clock + the journal** (`clock.ts`, `journal.ts`) — the two
 halves of long-game memory. `day` was a field the *narrator* wrote and nothing
 validated, so it could freeze, jump or run backwards; now the narrator emits a

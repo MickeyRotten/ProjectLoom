@@ -368,12 +368,14 @@ export interface LoomStore {
    *
    * `existing` is the lore already written WITHOUT the note being generated, and
    * `draft` is that note as shown on screen, so a working title the player typed
-   * is kept rather than overwritten.
+   * is kept rather than overwritten. `useScenario` is the modal's box — off keeps
+   * the Scenario out, for lore that sits apart from the adventure's premise.
    */
   generateNote: (
     hint: string,
     existing: Note[],
     draft?: Note,
+    useScenario?: boolean,
   ) => Promise<GeneratedNote | null>;
   /** Clear a stale field-generation failure (modal close / new run). */
   clearFieldGenError: () => void;
@@ -1299,7 +1301,7 @@ export const useStore = create<LoomStore>((set, get) => {
     }
   },
 
-  async generateNote(hint, existing, draft) {
+  async generateNote(hint, existing, draft, useScenario) {
     // Single-flight, and nothing else — same reasoning as `generateItem`: this
     // writes no game state, and the note is handed back to a modal.
     if (get().fieldGenPending) return null;
@@ -1312,6 +1314,7 @@ export const useStore = create<LoomStore>((set, get) => {
           game: get().game,
           existing,
           draft,
+          useScenario,
           hint,
         }),
         temperature: GENERATE_NOTE_TEMPERATURE,

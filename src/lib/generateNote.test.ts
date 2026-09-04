@@ -27,12 +27,19 @@ function note(patch: Partial<Note> & { id: string; title: string }): Note {
 }
 
 function joined(
-  opts: { game?: GameState; existing?: Note[]; draft?: Note; hint?: string } = {},
+  opts: {
+    game?: GameState;
+    existing?: Note[];
+    draft?: Note;
+    hint?: string;
+    useScenario?: boolean;
+  } = {},
 ) {
   return buildNoteMessages({
     game: opts.game ?? gameWith(),
     existing: opts.existing ?? [],
     draft: opts.draft,
+    useScenario: opts.useScenario,
     hint: opts.hint,
   })
     .map((m) => m.content)
@@ -48,8 +55,13 @@ describe("buildNoteMessages — the contract", () => {
     expect(text).toContain("no code fences");
   });
 
-  it("sends the scenario as setting", () => {
+  it("sends the scenario as setting by default", () => {
     expect(joined()).toContain("A premise about airships.");
+    expect(joined({ useScenario: true })).toContain("A premise about airships.");
+  });
+
+  it("leaves the scenario out when the box is unchecked", () => {
+    expect(joined({ useScenario: false })).not.toContain("A premise about airships.");
   });
 
   it("never sends the story — this is authoring, not a turn", () => {

@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { useStore } from "../store";
 import { GenerateModal } from "./GenerateModal";
+import { ToggleField } from "./fields";
 import type { GeneratedNote } from "../lib/generateNote";
 import type { Note } from "../types";
 
@@ -28,14 +30,25 @@ export function GenerateNoteModal({
 }) {
   const run = useStore((s) => s.generateNote);
   const replacing = !!(draft.title.trim() || draft.content.trim() || draft.keywords.length);
+  // On by default — the scenario is good grounding — with a box to keep it out
+  // for lore meant to sit apart from the adventure's own premise.
+  const [useScenario, setUseScenario] = useState(true);
 
   return (
     <GenerateModal<GeneratedNote>
       label="Note"
-      blurb="The model writes a world note — title, lore and keywords — from the scenario, the lore you have already written, and anything you type in as guidance."
+      blurb="The model writes a world note — title, lore and keywords — from the lore you have already written and anything you type in as guidance."
       replacing={replacing}
       replacingNote="Replaces this note's title, content and keywords immediately — this screen has no Edit gate. Copy the old text first if you want it back."
-      run={(hint) => run(hint, existing, draft)}
+      options={
+        <ToggleField
+          label="Use the Scenario as context"
+          hint="Ground the note in the adventure's premise and setting"
+          value={useScenario}
+          onChange={setUseScenario}
+        />
+      }
+      run={(hint) => run(hint, existing, draft, useScenario)}
       preview={(note) => (
         <>
           <span className="font-bold">{note.title}</span>

@@ -60,6 +60,13 @@ export interface GenerateNoteOptions {
    * treated as an empty slot.
    */
   draft?: Note;
+  /**
+   * Send the Scenario as setting context. The player's box on the modal, since
+   * some lore is meant to sit apart from the adventure's own premise. Defaults to
+   * on — leaving it out keeps the scenario, so callers that never ask are
+   * unchanged.
+   */
+  useScenario?: boolean;
   /** The player's optional "what I want in it" note. */
   hint?: string;
 }
@@ -132,8 +139,10 @@ export function buildNoteMessages(opts: GenerateNoteOptions): ChatMessage[] {
     ].join("\n"),
   });
 
-  const scenario = formatScenarioBlock(game.scenario);
-  if (scenario) messages.push({ role: "system", content: scenario });
+  if (opts.useScenario ?? true) {
+    const scenario = formatScenarioBlock(game.scenario);
+    if (scenario) messages.push({ role: "system", content: scenario });
+  }
 
   const lore = formatKnownLoreBlock(existing);
   if (lore) messages.push({ role: "system", content: lore });
