@@ -1453,7 +1453,7 @@ export const useStore = create<LoomStore>((set, get) => {
     const place = current.places.find((p) => p.id === placeId);
     if (!place) return;
 
-    const coords = applyMovement(fromCoords, estimate.direction, estimate.distance);
+    const coords = applyMovement(fromCoords, estimate);
     const updated = withLocationPoint(place, location, coords);
     const places = current.places.map((p) =>
       p.id === placeId ? (isEntry ? { ...updated, coords } : updated) : p,
