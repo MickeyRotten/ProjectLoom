@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { useStore, type PurgeSummary } from "../store";
-import { MenuLink, SUBMENU_INDEX, SubMenuScreen, type SubMenuSection } from "./SubMenuScreen";
+import { MenuLink, SubMenuScreen, type SubMenuSection } from "./SubMenuScreen";
 import { Field, SegmentedRow, ToggleRow, btnSmall } from "./fields";
 import { KeyField } from "./KeyField";
 import { ModelPicker } from "./ModelPicker";
@@ -96,11 +96,10 @@ function GenerationOffNote() {
   return (
     <p className="border-2 border-ink p-3 text-sm">
       Image generation is switched off — see{" "}
-      <MenuLink screen="images" section={SUBMENU_INDEX}>
-        Image Generation
-      </MenuLink>{" "}
-      at the top of this screen. These settings are kept and take effect the moment you
-      switch it back on.
+      <MenuLink screen="narrator" section="features">
+        Narrator → Features
+      </MenuLink>
+      . These settings are kept and take effect the moment you switch it back on.
     </p>
   );
 }
@@ -539,29 +538,24 @@ const SECTIONS: SubMenuSection[] = [
 ];
 
 /**
- * The one setting that applies to every image, wherever it came from, so it sits
- * above the sub-menus rather than inside one of them.
+ * The one setting that applies to every image, wherever it came from — the
+ * master switch itself now lives under Narrator → Features, so this is just
+ * the reminder for a player who lands here with it off.
  */
 function ImagesHeader() {
   const imagesEnabled = useStore((s) => s.settings.imagesEnabled);
-  const update = useStore((s) => s.updateSettings);
+  if (imagesEnabled) return null;
   return (
-    <>
-      <ToggleRow
-        label="Image Generation"
-        state={imagesEnabled ? "ON" : "OFF"}
-        onClick={() => update({ imagesEnabled: !imagesEnabled })}
-      />
-
-      {!imagesEnabled && (
-        <p className="border-2 border-ink p-3 text-sm opacity-70">
-          Off: nothing is sent to an image model — no portraits are drawn, and the
-          regenerate button is hidden. Pictures you already have still show, and you
-          can still upload your own art on a character's sheet. Nothing is deleted;
-          switching this back on picks up where you left off.
-        </p>
-      )}
-    </>
+    <p className="border-2 border-ink p-3 text-sm opacity-70">
+      Image generation is off — see{" "}
+      <MenuLink screen="narrator" section="features">
+        Narrator → Features
+      </MenuLink>
+      . Nothing is sent to an image model — no portraits are drawn, and the regenerate
+      button is hidden. Pictures you already have still show, and you can still upload
+      your own art on a character's sheet. Nothing is deleted; switching it back on
+      picks up where you left off.
+    </p>
   );
 }
 

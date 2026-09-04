@@ -153,6 +153,33 @@ function FeatureToggle({ spec }: { spec: FeatureSpec }) {
   );
 }
 
+/**
+ * Image generation's master switch. Not a `FeatureKey` — it gates a whole
+ * side call rather than a `<<<LOOM>>>` channel — so it lives beside
+ * `Settings.imagesEnabled` rather than in `features.ts`, but it is the same
+ * shape of switch and the player looks for it here first. Model, prompts and
+ * stored art stay under Menu → Images.
+ */
+function ImageGenerationToggle() {
+  const on = useStore((s) => s.settings.imagesEnabled);
+  const update = useStore((s) => s.updateSettings);
+  return (
+    <div className="space-y-1">
+      <ToggleRow
+        label="Image Generation"
+        state={on ? "ON" : "OFF"}
+        onClick={() => update({ imagesEnabled: !on })}
+      />
+      <p className="text-xs opacity-70">
+        Off: nothing is sent to an image model — no portraits are drawn, and the
+        regenerate button is hidden. Pictures you already have still show, and you can
+        still upload your own art on a character's sheet. Model, prompts and stored art
+        live under Menu → Images.
+      </p>
+    </div>
+  );
+}
+
 export function FeaturesSection() {
   const features = useStore((s) => s.settings.features);
   const update = useStore((s) => s.updateSettings);
@@ -188,6 +215,14 @@ export function FeaturesSection() {
           ))}
         </div>
       ))}
+
+      {/* Not a FeatureKey (see ImageGenerationToggle) — its own group rather
+          than folded into one of the four above, which are all narrator
+          subsystems and this isn't. */}
+      <div className="space-y-3">
+        <Section label="Media" />
+        <ImageGenerationToggle />
+      </div>
     </>
   );
 }

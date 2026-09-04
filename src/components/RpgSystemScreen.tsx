@@ -1,5 +1,6 @@
 import { useStore } from "../store";
 import { OverlayHeader } from "./OverlayHeader";
+import { MenuLink } from "./SubMenuScreen";
 import { Field, Section, ToggleRow, btnSmall } from "./fields";
 import { DEFAULT_RISK_KEYWORDS, DEFAULT_STAKES_RULE } from "../lib/defaults";
 import {
@@ -92,9 +93,8 @@ export function RpgSystemScreen() {
   const settings = useStore((s) => s.settings);
   const update = useStore((s) => s.updateSettings);
   const testRoll = useStore((s) => s.testRoll);
-  const setFeature = useStore((s) => s.setFeature);
-  // The same switch as Narrator → Features → Outcome Rolls, shown here because
-  // this is where the system it switches on is configured. One key, two rooms.
+  // The switch itself lives at Narrator → Features → Outcome Rolls; this
+  // screen only configures the system it turns on.
   const stakesEnabled = settings.features.stakes;
   const { alwaysRoll, riskKeywords, stakesRule } = settings;
 
@@ -108,16 +108,14 @@ export function RpgSystemScreen() {
     <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
       <OverlayHeader title="RPG System" />
       <div className="flex-1 space-y-5 overflow-y-auto p-3">
-        <ToggleRow
-          label="Stakes"
-          state={stakesEnabled ? "ON" : "OFF"}
-          onClick={() => setFeature("stakes", !stakesEnabled)}
-        />
-
         {!stakesEnabled ? (
           <p className="border-2 border-ink p-3 text-sm opacity-70">
             Off: nothing is rolled, and the narrator decides how every action goes.
-            Turn it on to resolve risky actions with dice the narrator has to honour.
+            Turn on Outcome Rolls under{" "}
+            <MenuLink screen="narrator" section="features">
+              Features
+            </MenuLink>{" "}
+            to resolve risky actions with dice the narrator has to honour.
           </p>
         ) : (
           <>

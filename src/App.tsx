@@ -4,6 +4,7 @@ import { fontTheme, isDarkPaper, scrimFrom } from "./lib/settings";
 import { Header } from "./components/Header";
 import { ChatView } from "./components/ChatView";
 import { PartyStrip } from "./components/PartyStrip";
+import { BottomNav } from "./components/BottomNav";
 import { MenuScreen } from "./components/MenuScreen";
 import { SetupScreen } from "./components/SetupScreen";
 import { NarratorScreen } from "./components/NarratorScreen";
@@ -174,6 +175,7 @@ export default function App() {
         <Header />
         <PartyStrip />
         <ChatView />
+        <BottomNav />
       </main>
     );
   };

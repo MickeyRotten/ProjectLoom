@@ -1,5 +1,5 @@
 import { useStore } from "../store";
-import { SubMenuScreen, type SubMenuSection } from "./SubMenuScreen";
+import { MenuLink, SubMenuScreen, type SubMenuSection } from "./SubMenuScreen";
 import { Field, SegmentedRow, ToggleRow, btnSmall } from "./fields";
 import { FeaturesSection } from "./FeaturesSection";
 import { KeyField } from "./KeyField";
@@ -297,23 +297,13 @@ function ModelSection() {
   );
 }
 
-/** How a beat is written, and whether the narrator suggests what to do next. */
-function VoiceSection() {
-  const showActionOptions = useStore((s) => s.settings.features.options);
+/** How a beat is written, and how a broken one is salvaged. */
+function CoreInstructionsSection() {
   const repairBlock = useStore((s) => s.settings.repairBlock);
-  const setFeature = useStore((s) => s.setFeature);
   const update = useStore((s) => s.updateSettings);
   return (
     <>
       <InstrField spec={NARRATOR_FIELD} />
-      {/* The same switch as Features → Suggested Actions, shown here because
-          this is where the wording it steers is edited. One key, two rooms. */}
-      <ToggleRow
-        label="AI Suggested Actions"
-        state={showActionOptions ? "ON" : "OFF"}
-        onClick={() => setFeature("options", !showActionOptions)}
-      />
-      {showActionOptions && <InstrField spec={OPTION_FIELD} />}
       <ToggleRow
         label="Ask Again On A Bad Turn"
         state={repairBlock ? "ON" : "OFF"}
@@ -331,6 +321,27 @@ function VoiceSection() {
 }
 
 /**
+ * Wording for the suggested-action buttons. The switch itself lives under
+ * Features — this is only where its wording is edited, so it's hidden rather
+ * than duplicated when that switch is off.
+ */
+function SuggestedActionsSection() {
+  const showActionOptions = useStore((s) => s.settings.features.options);
+  if (!showActionOptions) {
+    return (
+      <p className="border-2 border-ink p-3 text-sm opacity-70">
+        Off — turn on Suggested Actions under{" "}
+        <MenuLink screen="narrator" section="features">
+          Features
+        </MenuLink>{" "}
+        to edit this wording.
+      </p>
+    );
+  }
+  return <InstrField spec={OPTION_FIELD} />;
+}
+
+/**
  * What the narrator is shown of the past. The rolling history window and the
  * journal sit together on purpose: they compete for the same context, and the
  * trade only makes sense read together — past a certain age it favours the
@@ -343,7 +354,6 @@ function MemorySection() {
   const journalBudget = useStore((s) => s.settings.journalBudget);
   const journalMaxTurns = useStore((s) => s.settings.journalMaxTurns);
   const journalMinTurns = useStore((s) => s.settings.journalMinTurns);
-  const setFeature = useStore((s) => s.setFeature);
   const update = useStore((s) => s.updateSettings);
   return (
     <>
@@ -366,13 +376,17 @@ function MemorySection() {
         </p>
       </Field>
 
-      <ToggleRow
-        label="Journal"
-        state={journalEnabled ? "ON" : "OFF"}
-        onClick={() => setFeature("journal", !journalEnabled)}
-      />
-
-      {journalEnabled && (
+      {/* The switch itself lives under Features — this is where its budgets
+          are configured, so it's hidden rather than duplicated when off. */}
+      {!journalEnabled ? (
+        <p className="border-2 border-ink p-3 text-sm opacity-70">
+          Journal is off — turn it on under{" "}
+          <MenuLink screen="narrator" section="features">
+            Features
+          </MenuLink>{" "}
+          to configure it.
+        </p>
+      ) : (
         <>
           <Field label="Memory — Journal">
             <input
@@ -438,7 +452,7 @@ function MemorySection() {
 }
 
 /** The rules the story writes your cast by — not the cast itself (Menu → Characters). */
-function WritingCharactersSection() {
+function CharacterInstructionsSection() {
   return (
     <>
       <p className="border-2 border-ink p-3 text-sm">
@@ -473,22 +487,28 @@ const SECTIONS: SubMenuSection[] = [
     Body: ModelSection,
   },
   {
-    id: "voice",
-    label: "Voice & Actions",
-    note: "How a beat is written · suggested actions",
-    Body: VoiceSection,
+    id: "core",
+    label: "Core Instructions",
+    note: "How a beat is written · retrying a broken one",
+    Body: CoreInstructionsSection,
+  },
+  {
+    id: "characterInstructions",
+    label: "Character Instructions",
+    note: "Creation · the freeze rule · standings · spotlight",
+    Body: CharacterInstructionsSection,
+  },
+  {
+    id: "actions",
+    label: "Suggested Actions",
+    note: "How the buttons under a beat are written",
+    Body: SuggestedActionsSection,
   },
   {
     id: "memory",
     label: "Memory",
     note: "How much of the past the narrator is shown · journal",
     Body: MemorySection,
-  },
-  {
-    id: "characters",
-    label: "Writing Characters",
-    note: "Creation · the freeze rule · standings · spotlight",
-    Body: WritingCharactersSection,
   },
 ];
 

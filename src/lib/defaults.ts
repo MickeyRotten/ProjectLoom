@@ -303,10 +303,10 @@ export function defaultSettings(): Settings {
     textModelId: DEFAULT_TEXT_MODEL,
     imageModelId: DEFAULT_IMAGE_MODEL,
     cheapModelId: DEFAULT_CHEAP_MODEL,
-    // On by default — portraits have always drawn themselves, and shipping the
-    // switch OFF would read as the image pipeline having broken. Location
-    // images stay separately opt-in below.
-    imagesEnabled: true,
+    // Off by default (UI restructuring, TODO.md) — image generation now sits
+    // under Narrator → Features beside the rest of the narrator's subsystems,
+    // and costs real money the moment a key is entered, so it opts in.
+    imagesEnabled: false,
     // OpenRouter, plus an unconfigured ComfyUI sitting behind it — the whole
     // group from `comfyui.ts`, so "the default ComfyUI setup" is defined once.
     ...DEFAULT_COMFY,

@@ -5,26 +5,17 @@ import { OverlayHeader } from "./OverlayHeader";
 import { Section } from "./fields";
 
 /**
- * The gear menu (DESIGN.md → Menu): a full-screen list routing to every
- * authoring + settings sub-screen. Everything edits the active game directly
- * (no Edit mode). New Adventure opens `NewAdventureModal`, which asks what to
- * carry over — the cast belongs to the adventure being replaced, so nothing
- * survives implicitly any more.
- */
-/**
- * Every screen, in one place, play-facing first. Party / Inventory / Quests /
- * World Notes / **Saves** also have the faster ⋯ shortcut beside GO, but they
- * used to live ONLY there — which meant the gear menu, the one thing that looks
- * like navigation, pointed at barely half the app, and four screens were
- * reachable solely through a glyph that reads as "overflow".
+ * The gear menu (DESIGN.md → Menu): a full-screen list routing to the
+ * authoring + settings sub-screens that don't live in `BottomNav` (Party /
+ * Inventory / Quests / Journal / Saves — those are one tap away on every play
+ * screen now). Everything edits the active game directly (no Edit mode). New
+ * Adventure opens `NewAdventureModal`, which asks what to carry over — the
+ * cast belongs to the adventure being replaced, so nothing survives implicitly
+ * any more.
  *
- * Saves sits with them rather than last: snapshotting is something you do
- * *during* play, right before the fight, not a settings chore.
- *
- * **Grouped**, because the list holds two unlike kinds of thing and used to draw
- * them as thirteen identical buttons with nothing to chunk them by. The split is
- * the one already load-bearing in the data model: the first group lives in
- * `GameState` and is replaced by the next New Adventure, the second lives in
+ * **Grouped**, because the list holds two unlike kinds of thing. The split is
+ * the one already load-bearing in the data model: **World Lore** lives in
+ * `GameState` and is replaced by the next New Adventure, **Settings** lives in
  * `Settings` and outlives every adventure. Captions rather than a nested
  * *Settings* screen — the depth would cost a tap on every visit and buy nothing
  * the caption doesn't.
@@ -32,20 +23,17 @@ import { Section } from "./fields";
 type Group = "adventure" | "settings";
 
 const GROUP_LABELS: Record<Group, string> = {
-  adventure: "This Adventure",
+  adventure: "World Lore",
   settings: "Settings",
 };
 
+// Party / Inventory / Quests / Journal / Saves moved to the bottom nav bar —
+// this group is now just the adventure's lore, in the order it's authored.
 const ENTRIES: { screen: Screen; label: string; note: string; group: Group }[] = [
-  { group: "adventure", screen: "party", label: "Party", note: "Who travels with you · bench" },
-  { group: "adventure", screen: "inventory", label: "Inventory", note: "Carried items · gold" },
-  { group: "adventure", screen: "quests", label: "Quests", note: "Active + finished objectives" },
-  { group: "adventure", screen: "worldnotes", label: "World Notes", note: "Lore the story remembers" },
-  { group: "adventure", screen: "places", label: "Places", note: "Areas you have been · rooms · tags" },
-  { group: "adventure", screen: "journal", label: "Journal", note: "What has happened, day by day" },
-  { group: "adventure", screen: "saves", label: "Saves", note: "Snapshot · restore slots" },
-  { group: "adventure", screen: "characters", label: "Characters", note: "Full cast · add to party" },
   { group: "adventure", screen: "scenario", label: "Scenario", note: "Title · premise · opening" },
+  { group: "adventure", screen: "worldnotes", label: "World Notes", note: "Lore the story remembers" },
+  { group: "adventure", screen: "characters", label: "Characters", note: "Full cast · add to party" },
+  { group: "adventure", screen: "places", label: "Places", note: "Areas you have been · rooms · tags" },
   { group: "settings", screen: "narrator", label: "Narrator", note: "API key · model · voice · memory" },
   { group: "settings", screen: "images", label: "Images", note: "Portraits · prompts · storage" },
   { group: "settings", screen: "rpg", label: "RPG System", note: "Dice · outcomes · what counts as risky" },
