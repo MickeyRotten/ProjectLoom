@@ -103,6 +103,12 @@ import {
   type ItemRow,
 } from "./lib/generateItem";
 import {
+  GENERATE_NOTE_TEMPERATURE,
+  buildNoteMessages,
+  parseGeneratedNote,
+  type GeneratedNote,
+} from "./lib/generateNote";
+import {
   mergeRepairBlock,
   needsBlockRepair,
   normalizeOptions,
@@ -352,6 +358,25 @@ export interface LoomStore {
     existing: ItemRow[],
     character?: Character,
   ) => Promise<GeneratedItem | null>;
+  /**
+   * Ask the text model to write ONE world note for the ✦ button on the World
+   * Notes screen. Same shape as its ✦ siblings — no writes, the note comes back
+   * for the modal to preview, and it shares the `fieldGenPending` /
+   * `fieldGenError` pair — and, like `generateItem`, it resolves to several
+   * values at once (title, content and keywords), since keywords for a note the
+   * model never titled would match nothing.
+   *
+   * `existing` is the lore already written WITHOUT the note being generated, and
+   * `draft` is that note as shown on screen, so a working title the player typed
+   * is kept rather than overwritten. `useScenario` is the modal's box — off keeps
+   * the Scenario out, for lore that sits apart from the adventure's premise.
+   */
+  generateNote: (
+    hint: string,
+    existing: Note[],
+    draft?: Note,
+    useScenario?: boolean,
+  ) => Promise<GeneratedNote | null>;
   /** Clear a stale field-generation failure (modal close / new run). */
   clearFieldGenError: () => void;
   /** Delete a character from the library entirely (and from every adventure). */
@@ -1266,6 +1291,40 @@ export const useStore = create<LoomStore>((set, get) => {
       if (!item) throw new Error("The model returned nothing usable. Try again.");
       set({ fieldGenPending: false });
       return item;
+    } catch (err) {
+      const message =
+        err instanceof OpenRouterError || err instanceof Error
+          ? err.message
+          : "Generation failed.";
+      set({ fieldGenPending: false, fieldGenError: message });
+      return null;
+    }
+  },
+
+  async generateNote(hint, existing, draft, useScenario) {
+    // Single-flight, and nothing else — same reasoning as `generateItem`: this
+    // writes no game state, and the note is handed back to a modal.
+    if (get().fieldGenPending) return null;
+
+    set({ fieldGenPending: true, fieldGenError: null });
+    try {
+      const raw = await completeChat({
+        settings: get().settings,
+        messages: buildNoteMessages({
+          game: get().game,
+          existing,
+          draft,
+          useScenario,
+          hint,
+        }),
+        temperature: GENERATE_NOTE_TEMPERATURE,
+      });
+      // Title, content and keywords together, so it has a parser of its own — a
+      // title is the part that can't be missing.
+      const note = parseGeneratedNote(raw);
+      if (!note) throw new Error("The model returned nothing usable. Try again.");
+      set({ fieldGenPending: false });
+      return note;
     } catch (err) {
       const message =
         err instanceof OpenRouterError || err instanceof Error

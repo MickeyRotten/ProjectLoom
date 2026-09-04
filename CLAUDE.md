@@ -342,6 +342,26 @@ the scenario, what is carried, and keyword-matched World Notes — never the bea
 screens are Edit-gated, so Discard Changes is the undo; Gold gets neither ✦ nor
 Remove. `GenerateModal` is now generic over its result with a `preview` render
 prop; string callers pass none.
+Post-MVP also: **model-assisted world notes** (`generateNote.ts`) — the fourth ✦,
+and the second (after items) to write a whole record: a `Note` is a
+`title`/`content`/`keywords` triple, so one ✦ on each note's title row writes all
+three at once — the "suggest name and keywords" is the point, since a note with no
+title matches nothing (`worldNotes.ts → noteKeywords` folds the title in). One
+call, `parseGeneratedNote` of its own (keywords are an array, not a string, and
+the three stand together), a missing title fails (the note is left as the player
+had it) while a blank content / empty keyword list is just a blank field.
+`normalizeNoteKeywords` reads the array, a comma/newline string, or a list with
+stray non-strings, drops the title and blanks, de-dupes case-insensitively and
+caps at `MAX_NOTE_KEYWORDS`. AUTHORING like its ✦ siblings — reads the scenario
+and the lore already written (`formatKnownLoreBlock`, "write a DIFFERENT note"),
+never the beats — with a `draft` block that keeps a working title the player
+typed. Like the Scenario screen the World Notes screen has no Edit gate, so an
+accepted note commits at once; `GenerateNoteModal` binds the shared
+`GenerateModal` (title bold, content, keyword line). A **Use the Scenario as
+context** box (`GenerateNoteModal` state → `buildNoteMessages` `useScenario`, on
+by default, off keeps the premise out for lore that sits apart) rides the modal's
+new `options` slot — a caller-owned control under the guidance box, the caller
+threading its own state into `run`.
 Post-MVP also: **the clock + the journal** (`clock.ts`, `journal.ts`) — the two
 halves of long-game memory. `day` was a field the *narrator* wrote and nothing
 validated, so it could freeze, jump or run backwards; now the narrator emits a
