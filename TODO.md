@@ -173,7 +173,7 @@ gap was coordinates, closed by new module `src/lib/travel.ts`.
   reference-stability reason it already had to for `coords`.
 
 ---
-[ ] UI restructuring:
+[x] UI restructuring:
 - TOP BAR changes:
   - Remove player avatar, and hearts
   - Remove MENU button (moved to Nav Bar)
@@ -216,5 +216,22 @@ gap was coordinates, closed by new module `src/lib/travel.ts`.
 
 - RPG SYSTEM menu changes:
   - Remove STAKES toggle from here, it's now in FEATURES
+
+`Header.tsx` is now one status line (name · day · turn · weather), no
+portrait/hearts/menu button. New `BottomNav.tsx` carries Party / Inventory /
+Quests / Journal / Save + a MENU square, mounted under `ChatView` in
+`App.tsx`. `MenuScreen`'s adventure group is renamed World Lore and trimmed to
+Scenario / World Notes / Characters / Places — Saves was dropped from it too
+(not explicitly listed, but the given button order left it out and it's
+redundant with the nav bar). `NarratorScreen`'s Voice & Actions is now Core
+Instructions + Suggested Actions, Writing Characters is Character
+Instructions, and the local Options/Journal toggles are gone in favor of a
+`MenuLink` to Features when off. `RpgSystemScreen` lost its local Stakes
+toggle the same way. `FeaturesSection` gained an Image Generation toggle
+(`Settings.imagesEnabled`, its own "Media" group since it isn't a
+`FeatureKey`) and `imagesEnabled` now defaults to `false`
+(`lib/defaults.ts`). Not visually verified in a browser/emulator — no
+screenshot tool was available, so this rests on typecheck/lint/tests/build
+passing plus code review.
 
 ---
