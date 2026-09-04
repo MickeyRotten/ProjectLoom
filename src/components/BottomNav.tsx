@@ -33,8 +33,13 @@ function NavIcon({ src }: { src: string }) {
       aria-hidden="true"
       className="h-5 w-5 bg-current"
       style={{
-        WebkitMaskImage: `url(${src})`,
-        maskImage: `url(${src})`,
+        // Quoted: the SVG source data URI Vite emits contains unescaped
+        // parens (e.g. `translate(0,0)`), which — unquoted — terminate the
+        // CSS `url()` token early and silently invalidate the whole
+        // property (mask-image falls back to `none`, so the icon just
+        // never appears; no error, nothing to catch).
+        WebkitMaskImage: `url("${src}")`,
+        maskImage: `url("${src}")`,
         WebkitMaskRepeat: "no-repeat",
         maskRepeat: "no-repeat",
         WebkitMaskPosition: "center",
