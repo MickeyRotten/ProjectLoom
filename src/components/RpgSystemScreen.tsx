@@ -93,8 +93,8 @@ export function RpgSystemScreen() {
   const settings = useStore((s) => s.settings);
   const update = useStore((s) => s.updateSettings);
   const testRoll = useStore((s) => s.testRoll);
-  // The switch itself lives at Narrator → Features → Outcome Rolls; this
-  // screen only configures the system it turns on.
+  // The switch itself lives at Menu → Features → Outcome Rolls; this screen
+  // only configures the system it turns on.
   const stakesEnabled = settings.features.stakes;
   const { alwaysRoll, riskKeywords, stakesRule } = settings;
 
@@ -112,9 +112,7 @@ export function RpgSystemScreen() {
           <p className="border-2 border-ink p-3 text-sm opacity-70">
             Off: nothing is rolled, and the narrator decides how every action goes.
             Turn on Outcome Rolls under{" "}
-            <MenuLink screen="narrator" section="features">
-              Features
-            </MenuLink>{" "}
+            <MenuLink screen="features">Features</MenuLink>{" "}
             to resolve risky actions with dice the narrator has to honour.
           </p>
         ) : (

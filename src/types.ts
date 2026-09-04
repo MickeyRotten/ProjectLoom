@@ -791,7 +791,7 @@ export interface DiceRules {
 }
 
 /**
- * Which of the narrator's machinery is switched on (Narrator → Features).
+ * Which of the narrator's machinery is switched on (Menu → Features).
  *
  * Every one of these is a subsystem the narrator drives: a prompt block telling
  * it what is true, a `<<<LOOM>>>` channel letting it write back, and a rule in

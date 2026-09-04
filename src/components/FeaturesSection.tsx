@@ -3,7 +3,7 @@ import { allFeatures, FEATURE_KEYS, type FeatureKey } from "../lib/features";
 import { Section, ToggleRow, btn } from "./fields";
 
 /**
- * Narrator → Features: one switch per subsystem the narrator drives.
+ * Menu → Features: one switch per subsystem the narrator drives.
  *
  * The screen exists because the app had grown fourteen narrator subsystems and
  * switches for three of them, scattered across three screens. Everything else —

@@ -96,9 +96,7 @@ function GenerationOffNote() {
   return (
     <p className="border-2 border-ink p-3 text-sm">
       Image generation is switched off — see{" "}
-      <MenuLink screen="narrator" section="features">
-        Narrator → Features
-      </MenuLink>
+      <MenuLink screen="features">Features</MenuLink>
       . These settings are kept and take effect the moment you switch it back on.
     </p>
   );
@@ -539,8 +537,8 @@ const SECTIONS: SubMenuSection[] = [
 
 /**
  * The one setting that applies to every image, wherever it came from — the
- * master switch itself now lives under Narrator → Features, so this is just
- * the reminder for a player who lands here with it off.
+ * master switch itself now lives under Menu → Features, so this is just the
+ * reminder for a player who lands here with it off.
  */
 function ImagesHeader() {
   const imagesEnabled = useStore((s) => s.settings.imagesEnabled);
@@ -548,9 +546,7 @@ function ImagesHeader() {
   return (
     <p className="border-2 border-ink p-3 text-sm opacity-70">
       Image generation is off — see{" "}
-      <MenuLink screen="narrator" section="features">
-        Narrator → Features
-      </MenuLink>
+      <MenuLink screen="features">Features</MenuLink>
       . Nothing is sent to an image model — no portraits are drawn, and the regenerate
       button is hidden. Pictures you already have still show, and you can still upload
       your own art on a character's sheet. Nothing is deleted; switching it back on

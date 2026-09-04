@@ -177,6 +177,7 @@ interface EnsureImageOptions {
 export type Screen =
   | null
   | "menu"
+  | "features"
   | "narrator"
   | "images"
   | "scenario"
@@ -275,7 +276,7 @@ export interface LoomStore {
   openMember: (id: string) => void;
   updateSettings: (patch: Partial<Settings>) => void;
   /**
-   * Flip one narrator feature (Narrator → Features). Its own action rather than
+   * Flip one narrator feature (Menu → Features). Its own action rather than
    * `updateSettings({ features })` at every call site: `updateSettings` merges
    * SHALLOWLY, so a caller that forgot to spread the other thirteen flags would
    * switch them all off at once.

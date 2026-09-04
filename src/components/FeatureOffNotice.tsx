@@ -12,7 +12,7 @@ import { MenuLink } from "./SubMenuScreen";
  *
  * One component rather than the same paragraph pasted into five files, and it
  * carries the route back — the Journal's banner already proved that a sentence
- * naming a path ("Narrator → Features") wants to be the button that goes there.
+ * naming a path ("Menu → Features") wants to be the button that goes there.
  */
 export function FeatureOffNotice({
   feature,
@@ -26,11 +26,7 @@ export function FeatureOffNotice({
   if (on) return null;
   return (
     <p className="border-2 border-ink p-3 text-xs uppercase tracking-widest opacity-70">
-      {children}{" "}
-      <MenuLink screen="narrator" section="features">
-        Narrator → Features
-      </MenuLink>
-      .
+      {children} <MenuLink screen="features">Features</MenuLink>.
     </p>
   );
 }

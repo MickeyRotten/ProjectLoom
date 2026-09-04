@@ -234,4 +234,11 @@ toggle the same way. `FeaturesSection` gained an Image Generation toggle
 screenshot tool was available, so this rests on typecheck/lint/tests/build
 passing plus code review.
 
+Follow-up: Features moved again, out of Narrator entirely and onto Menu
+itself (`FeaturesScreen.tsx`, new `"features"` `Screen`), listed above
+Narrator in Settings. Every `MenuLink` that pointed at
+`screen="narrator" section="features"` (`FeatureOffNotice`, `NarratorScreen`,
+`ImagesScreen`, `RpgSystemScreen`) now points at the standalone screen
+instead.
+
 ---

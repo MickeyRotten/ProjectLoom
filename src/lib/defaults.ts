@@ -304,8 +304,8 @@ export function defaultSettings(): Settings {
     imageModelId: DEFAULT_IMAGE_MODEL,
     cheapModelId: DEFAULT_CHEAP_MODEL,
     // Off by default (UI restructuring, TODO.md) — image generation now sits
-    // under Narrator → Features beside the rest of the narrator's subsystems,
-    // and costs real money the moment a key is entered, so it opts in.
+    // under Menu → Features beside the rest of the narrator's subsystems, and
+    // costs real money the moment a key is entered, so it opts in.
     imagesEnabled: false,
     // OpenRouter, plus an unconfigured ComfyUI sitting behind it — the whole
     // group from `comfyui.ts`, so "the default ComfyUI setup" is defined once.

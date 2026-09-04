@@ -34,6 +34,7 @@ const ENTRIES: { screen: Screen; label: string; note: string; group: Group }[] =
   { group: "adventure", screen: "worldnotes", label: "World Notes", note: "Lore the story remembers" },
   { group: "adventure", screen: "characters", label: "Characters", note: "Full cast · add to party" },
   { group: "adventure", screen: "places", label: "Places", note: "Areas you have been · rooms · tags" },
+  { group: "settings", screen: "features", label: "Features", note: "Which parts of the story the narrator writes" },
   { group: "settings", screen: "narrator", label: "Narrator", note: "API key · model · voice · memory" },
   { group: "settings", screen: "images", label: "Images", note: "Portraits · prompts · storage" },
   { group: "settings", screen: "rpg", label: "RPG System", note: "Dice · outcomes · what counts as risky" },

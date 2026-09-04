@@ -7,6 +7,7 @@ import { PartyStrip } from "./components/PartyStrip";
 import { BottomNav } from "./components/BottomNav";
 import { MenuScreen } from "./components/MenuScreen";
 import { SetupScreen } from "./components/SetupScreen";
+import { FeaturesScreen } from "./components/FeaturesScreen";
 import { NarratorScreen } from "./components/NarratorScreen";
 import { ImagesScreen } from "./components/ImagesScreen";
 import { ScenarioScreen } from "./components/ScenarioScreen";
@@ -154,6 +155,7 @@ export default function App() {
 
   const current = () => {
     if (screen === "menu") return <MenuScreen />;
+    if (screen === "features") return <FeaturesScreen />;
     if (screen === "narrator") return <NarratorScreen />;
     if (screen === "images") return <ImagesScreen />;
     if (screen === "scenario") return <ScenarioScreen />;

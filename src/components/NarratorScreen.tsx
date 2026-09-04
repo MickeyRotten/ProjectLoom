@@ -1,7 +1,6 @@
 import { useStore } from "../store";
 import { MenuLink, SubMenuScreen, type SubMenuSection } from "./SubMenuScreen";
 import { Field, SegmentedRow, ToggleRow, btnSmall } from "./fields";
-import { FeaturesSection } from "./FeaturesSection";
 import { KeyField } from "./KeyField";
 import { ModelPicker } from "./ModelPicker";
 import { splitModels, useModelCatalog } from "./useModelCatalog";
@@ -331,9 +330,7 @@ function SuggestedActionsSection() {
     return (
       <p className="border-2 border-ink p-3 text-sm opacity-70">
         Off — turn on Suggested Actions under{" "}
-        <MenuLink screen="narrator" section="features">
-          Features
-        </MenuLink>{" "}
+        <MenuLink screen="features">Features</MenuLink>{" "}
         to edit this wording.
       </p>
     );
@@ -380,10 +377,7 @@ function MemorySection() {
           are configured, so it's hidden rather than duplicated when off. */}
       {!journalEnabled ? (
         <p className="border-2 border-ink p-3 text-sm opacity-70">
-          Journal is off — turn it on under{" "}
-          <MenuLink screen="narrator" section="features">
-            Features
-          </MenuLink>{" "}
+          Journal is off — turn it on under <MenuLink screen="features">Features</MenuLink>{" "}
           to configure it.
         </p>
       ) : (
@@ -474,12 +468,6 @@ function CharacterInstructionsSection() {
 }
 
 const SECTIONS: SubMenuSection[] = [
-  {
-    id: "features",
-    label: "Features",
-    note: "Which parts of the story the narrator writes",
-    Body: FeaturesSection,
-  },
   {
     id: "model",
     label: "Model",
