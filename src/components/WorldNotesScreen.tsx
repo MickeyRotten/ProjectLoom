@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { useStore } from "../store";
 import { OverlayHeader } from "./OverlayHeader";
+import { GenerateNoteModal } from "./GenerateNoteModal";
 import { TextField, AreaField, ToggleField, btn, btnSmall } from "./fields";
 
 /**
@@ -7,12 +9,20 @@ import { TextField, AreaField, ToggleField, btn, btnSmall } from "./fields";
  * title + comma-separated keywords are matched against recent turns; matches
  * inject into the prompt (see lib/worldNotes.ts). A note marked Permanent
  * skips matching and injects on every turn. Fully editable in place.
+ *
+ * Each note carries a ✦ generate button, the same one the member sheet's fields
+ * and the Scenario screen have (`generateNote.ts`) — it writes the whole note,
+ * title and keywords included, since a note with no title matches nothing. Like
+ * the Scenario screen there is no Edit gate, so an accepted note commits at once.
  */
 export function WorldNotesScreen() {
   const notes = useStore((s) => s.game.worldNotes);
   const addNote = useStore((s) => s.addNote);
   const updateNote = useStore((s) => s.updateNote);
   const removeNote = useStore((s) => s.removeNote);
+  const [genNoteId, setGenNoteId] = useState<string | null>(null);
+
+  const genNote = notes.find((n) => n.id === genNoteId) ?? null;
 
   return (
     <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
@@ -29,6 +39,16 @@ export function WorldNotesScreen() {
               label="Title (implicit keyword)"
               value={n.title}
               placeholder="The Old Well"
+              action={
+                <button
+                  type="button"
+                  aria-label="Generate note"
+                  onClick={() => setGenNoteId(n.id)}
+                  className="border-2 border-ink px-2 py-1 leading-none active:bg-ink active:text-paper"
+                >
+                  ✦
+                </button>
+              }
               onChange={(v) => updateNote(n.id, { title: v })}
             />
             <ToggleField
@@ -71,6 +91,21 @@ export function WorldNotesScreen() {
           + Add Note
         </button>
       </div>
+
+      {genNote && (
+        <GenerateNoteModal
+          draft={genNote}
+          existing={notes.filter((n) => n.id !== genNote.id)}
+          onAccept={(note) =>
+            updateNote(genNote.id, {
+              title: note.title,
+              content: note.content,
+              keywords: note.keywords,
+            })
+          }
+          onClose={() => setGenNoteId(null)}
+        />
+      )}
     </main>
   );
 }
