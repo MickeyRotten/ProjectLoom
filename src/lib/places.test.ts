@@ -1,12 +1,14 @@
 import { describe, it, expect } from "vitest";
-import type { Place } from "../types";
+import { ORIGIN, type Place } from "../types";
 import {
   MAX_ROOMS,
   MAX_RUMOURS,
   PLACE_KINDS,
   addNeighbourStubs,
+  currentPoint,
   ensurePlace,
   fillPlace,
+  findLocationPoint,
   findPlace,
   formatCurrentPlaceBlock,
   formatKnownPlacesBlock,
@@ -21,6 +23,7 @@ import {
   setTagValues,
   slotsOf,
   tagValues,
+  withLocationPoint,
 } from "./places";
 
 function place(patch: Partial<Place> & { id: string; name: string }): Place {
@@ -32,6 +35,8 @@ function place(patch: Partial<Place> & { id: string; name: string }): Place {
     rumours: [],
     rooms: [],
     keywords: [],
+    coords: ORIGIN,
+    locations: [],
     ...patch,
   };
 }
@@ -171,6 +176,55 @@ describe("normalizePlace", () => {
   it("keeps blank blank — an emptied description is not a description to refill", () => {
     expect(normalizePlace({ id: "p1", name: "Rodstroke", description: "" })?.description).toBe("");
   });
+
+  it("defaults missing coords to the origin — the migration for a pre-coordinate save", () => {
+    expect(normalizePlace({ id: "p1", name: "Rodstroke" })?.coords).toEqual({ x: 0, y: 0, z: 0 });
+  });
+
+  it("keeps valid coords", () => {
+    const p = normalizePlace({ id: "p1", name: "Rodstroke", coords: { x: 3, y: -2, z: 1 } });
+    expect(p?.coords).toEqual({ x: 3, y: -2, z: 1 });
+  });
+
+  it("sanitizes a non-numeric or missing axis to 0 rather than dropping the point", () => {
+    const p = normalizePlace({ id: "p1", name: "Rodstroke", coords: { x: "far", y: 5 } });
+    expect(p?.coords).toEqual({ x: 0, y: 5, z: 0 });
+  });
+
+  it("defaults missing locations to an empty list — the migration for a pre-location save", () => {
+    expect(normalizePlace({ id: "p1", name: "Rodstroke" })?.locations).toEqual([]);
+  });
+
+  it("keeps valid location points", () => {
+    const p = normalizePlace({
+      id: "p1",
+      name: "Rodstroke",
+      locations: [{ name: "The Wend Mill", coords: { x: 2, y: 0, z: 0 } }],
+    });
+    expect(p?.locations).toEqual([{ name: "The Wend Mill", coords: { x: 2, y: 0, z: 0 } }]);
+  });
+
+  it("drops a location point with no name", () => {
+    const p = normalizePlace({
+      id: "p1",
+      name: "Rodstroke",
+      locations: [{ coords: { x: 1, y: 1, z: 1 } }],
+    });
+    expect(p?.locations).toEqual([]);
+  });
+
+  it("de-duplicates a location restated under a different name — same slug", () => {
+    const p = normalizePlace({
+      id: "p1",
+      name: "Rodstroke",
+      locations: [
+        { name: "The Wend Mill", coords: { x: 2, y: 0, z: 0 } },
+        { name: "the wend mill", coords: { x: 9, y: 9, z: 9 } },
+      ],
+    });
+    expect(p?.locations).toHaveLength(1);
+    expect(p?.locations[0].coords).toEqual({ x: 2, y: 0, z: 0 });
+  });
 });
 
 describe("normalizePlaces", () => {
@@ -195,6 +249,34 @@ describe("normalizePlaces", () => {
   it("reads a missing list as none", () => {
     expect(normalizePlaces(undefined)).toEqual([]);
   });
+
+  it("backfills a legacy place with no coords, rather than returning it unchanged", () => {
+    // Regression: `same()` must compare coords too, or a stored row missing
+    // `coords` entirely reads as "unchanged" and the raw, coords-less row
+    // survives instead of the normalized one — crashing the first read of
+    // `place.coords.x` anywhere downstream.
+    const legacy = { ...rodstroke } as Partial<Place>;
+    delete legacy.coords;
+    const stored = [legacy];
+    const out = normalizePlaces(stored);
+    expect(out).not.toBe(stored);
+    expect(out[0].coords).toEqual({ x: 0, y: 0, z: 0 });
+  });
+
+  it("still treats a place with explicit origin coords as unchanged", () => {
+    const stored = [{ ...rodstroke, coords: { x: 0, y: 0, z: 0 } }];
+    expect(normalizePlaces(stored)).toBe(stored);
+  });
+
+  it("backfills a legacy place with no locations, rather than returning it unchanged", () => {
+    const withPoint = { ...rodstroke, locations: [{ name: "The Wend Mill", coords: { x: 2, y: 0, z: 0 } }] };
+    const legacy = { ...withPoint } as Partial<Place>;
+    delete legacy.locations;
+    const stored = [legacy];
+    const out = normalizePlaces(stored);
+    expect(out).not.toBe(stored);
+    expect(out[0].locations).toEqual([]);
+  });
 });
 
 describe("findPlace", () => {
@@ -213,11 +295,85 @@ describe("findPlace", () => {
   });
 });
 
+describe("findLocationPoint", () => {
+  const withMill = { ...rodstroke, locations: [{ name: "The Wend Mill", coords: { x: 2, y: 0, z: 0 } }] };
+
+  it("finds a cached point by name", () => {
+    expect(findLocationPoint(withMill, "The Wend Mill")).toEqual({ x: 2, y: 0, z: 0 });
+  });
+
+  it("matches case and punctuation insensitively, like findPlace", () => {
+    expect(findLocationPoint(withMill, "the wend mill")).toEqual({ x: 2, y: 0, z: 0 });
+  });
+
+  it("is undefined for a room with no cached point yet", () => {
+    expect(findLocationPoint(withMill, "The Cellar")).toBeUndefined();
+  });
+
+  it("is undefined for a blank name", () => {
+    expect(findLocationPoint(withMill, "")).toBeUndefined();
+  });
+});
+
+describe("withLocationPoint", () => {
+  it("appends a point for a room not yet known", () => {
+    const grown = withLocationPoint(rodstroke, "The Wend Mill", { x: 2, y: 0, z: 0 });
+    expect(grown.locations).toEqual([{ name: "The Wend Mill", coords: { x: 2, y: 0, z: 0 } }]);
+    // Pure: the input is untouched.
+    expect(rodstroke.locations).toEqual([]);
+  });
+
+  it("replaces the coords of a room already known, matched by slug", () => {
+    const withMill = withLocationPoint(rodstroke, "The Wend Mill", { x: 2, y: 0, z: 0 });
+    const moved = withLocationPoint(withMill, "the wend mill", { x: 9, y: 9, z: 9 });
+    expect(moved.locations).toEqual([{ name: "The Wend Mill", coords: { x: 9, y: 9, z: 9 } }]);
+  });
+
+  it("leaves other rooms' points untouched", () => {
+    const withMill = withLocationPoint(rodstroke, "The Wend Mill", { x: 2, y: 0, z: 0 });
+    const withBoth = withLocationPoint(withMill, "The Cellar", { x: 5, y: 5, z: 5 });
+    expect(withBoth.locations).toEqual([
+      { name: "The Wend Mill", coords: { x: 2, y: 0, z: 0 } },
+      { name: "The Cellar", coords: { x: 5, y: 5, z: 5 } },
+    ]);
+  });
+
+  it("no-ops on a blank name", () => {
+    expect(withLocationPoint(rodstroke, "   ", { x: 1, y: 1, z: 1 })).toBe(rodstroke);
+  });
+});
+
+describe("currentPoint", () => {
+  it("is the origin when the area resolves to no known place", () => {
+    expect(currentPoint([rodstroke], "Nowhere", "Nowhere")).toEqual({ x: 0, y: 0, z: 0 });
+  });
+
+  it("falls back to the place's own coords when the room has no cached point", () => {
+    const placed = { ...rodstroke, coords: { x: 4, y: 4, z: 4 } };
+    expect(currentPoint([placed], "Rodstroke", "The Cellar")).toEqual({ x: 4, y: 4, z: 4 });
+  });
+
+  it("prefers the room's own cached point over the place's coords", () => {
+    const withMill = withLocationPoint(
+      { ...rodstroke, coords: { x: 0, y: 0, z: 0 } },
+      "The Wend Mill",
+      { x: 2, y: 0, z: 0 },
+    );
+    expect(currentPoint([withMill], "Rodstroke", "The Wend Mill")).toEqual({ x: 2, y: 0, z: 0 });
+  });
+});
+
 describe("ensurePlace", () => {
   it("appends a stub for somewhere new", () => {
     const grown = ensurePlace([rodstroke], "Korvenhald", "p9");
     expect(grown).toHaveLength(2);
     expect(grown[1]).toMatchObject({ id: "p9", name: "Korvenhald", pending: true });
+  });
+
+  it("stubs at the origin, with no cached room points yet — `store.ts` places it for real afterwards", () => {
+    const grown = ensurePlace([rodstroke], "Korvenhald", "p9");
+    expect(grown[1].coords).toEqual({ x: 0, y: 0, z: 0 });
+    expect(grown[1].locations).toEqual([]);
   });
 
   it("returns the same array for a place already known — re-entry costs nothing", () => {
@@ -254,6 +410,19 @@ describe("fillPlace", () => {
   it("keeps aliases the player had already given the stub", () => {
     const stub = { ...placeStub("p9", "Korvenhald"), aliases: ["the Hold"] };
     expect(fillPlace([stub], "p9", authored)[0].aliases).toEqual(["the Hold"]);
+  });
+
+  it("keeps the stub's coords, not the authored reply's — coordinates are never the model's to write", () => {
+    const stub = { ...placeStub("p9", "Korvenhald"), coords: { x: 8, y: -3, z: 0 } };
+    const authoredWithCoords = { ...authored, coords: { x: 99, y: 99, z: 99 } };
+    const filled = fillPlace([stub], "p9", authoredWithCoords);
+    expect(filled[0].coords).toEqual({ x: 8, y: -3, z: 0 });
+  });
+
+  it("keeps the stub's cached room points too, for the same reason", () => {
+    const stub = withLocationPoint(placeStub("p9", "Korvenhald"), "Korvenhald", { x: 8, y: -3, z: 0 });
+    const filled = fillPlace([stub], "p9", authored);
+    expect(filled[0].locations).toEqual([{ name: "Korvenhald", coords: { x: 8, y: -3, z: 0 } }]);
   });
 });
 

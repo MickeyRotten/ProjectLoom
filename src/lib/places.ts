@@ -1,4 +1,12 @@
-import type { Place, PlaceKind, PlaceTag, Room } from "../types";
+import {
+  ORIGIN,
+  type Coords,
+  type LocationPoint,
+  type Place,
+  type PlaceKind,
+  type PlaceTag,
+  type Room,
+} from "../types";
 import { slug } from "./names";
 import { keywordHits } from "./worldNotes";
 
@@ -283,6 +291,8 @@ export const MAX_ROOMS = 14;
 export const MAX_RUMOURS = 6;
 /** Tags one place may hold, across every slot. */
 export const MAX_TAGS = 18;
+/** Distinct room-level locations one place may cache a point for. */
+export const MAX_LOCATIONS = 100;
 /** Characters kept off any one free-text value. */
 const MAX_VALUE_CHARS = 200;
 
@@ -304,6 +314,36 @@ const list = (value: unknown): unknown[] =>
  * next, and a document hand-edited or written by an older build still loads. Blank stays blank — an empty description is a place the
  * player emptied, not a place to refill.
  */
+/**
+ * A stored place from before coordinates existed carries no `coords` at all —
+ * this IS the migration, same sanitize-at-read posture as `normalizeDuration`:
+ * default to `ORIGIN`, no batch script. A malformed axis (not a finite number)
+ * reads as 0 rather than poisoning the whole point.
+ */
+function normalizeCoords(raw: unknown): Coords {
+  if (!raw || typeof raw !== "object") return ORIGIN;
+  const c = raw as Partial<Coords>;
+  const axis = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+  return { x: axis(c.x), y: axis(c.y), z: axis(c.z) };
+}
+
+/** A stored place from before per-location points existed carries none — same migration posture as `normalizeCoords`. */
+function normalizeLocations(raw: unknown): LocationPoint[] {
+  const points: LocationPoint[] = [];
+  const seen = new Set<string>();
+  for (const row of list(raw)) {
+    if (points.length >= MAX_LOCATIONS) break;
+    if (!row || typeof row !== "object") continue;
+    const p = row as Partial<LocationPoint>;
+    const name = text(p.name, 80);
+    const key = slug(name);
+    if (!name || !key || seen.has(key)) continue;
+    seen.add(key);
+    points.push({ name, coords: normalizeCoords(p.coords) });
+  }
+  return points;
+}
+
 export function normalizePlace(raw: unknown, fallbackId = ""): Place | null {
   if (!raw || typeof raw !== "object") return null;
   const p = raw as Partial<Place> & { tags?: unknown; rooms?: unknown };
@@ -362,6 +402,8 @@ export function normalizePlace(raw: unknown, fallbackId = ""): Place | null {
       .map((k) => text(k, 60))
       .filter(Boolean)
       .slice(0, MAX_TAGS),
+    coords: normalizeCoords(p.coords),
+    locations: normalizeLocations(p.locations),
   };
 
   const aliases = list(p.aliases)
@@ -416,6 +458,17 @@ function same(a: Place, b: Partial<Place> | undefined): boolean {
     a.type === b.type &&
     a.description === b.description &&
     Boolean(a.pending) === Boolean(b.pending) &&
+    a.coords.x === (b as Partial<Place>).coords?.x &&
+    a.coords.y === (b as Partial<Place>).coords?.y &&
+    a.coords.z === (b as Partial<Place>).coords?.z &&
+    a.locations.length === (Array.isArray(b.locations) ? b.locations.length : -1) &&
+    a.locations.every(
+      (pt, i) =>
+        pt.name === b.locations?.[i]?.name &&
+        pt.coords.x === b.locations?.[i]?.coords?.x &&
+        pt.coords.y === b.locations?.[i]?.coords?.y &&
+        pt.coords.z === b.locations?.[i]?.coords?.z,
+    ) &&
     strings(a.rumours, b.rumours) &&
     strings(a.keywords, b.keywords) &&
     strings(a.aliases ?? [], b.aliases ?? []) &&
@@ -491,6 +544,42 @@ export function findPlace(places: Place[], name: string): Place | undefined {
   return places.find((p) => placeNames(p).some((n) => slug(n) === key));
 }
 
+/** The cached point for one room-level `location` inside a place, matched by slug like a place's own name. */
+export function findLocationPoint(place: Place, location: string): Coords | undefined {
+  const key = slug(location);
+  if (!key) return undefined;
+  return place.locations.find((p) => slug(p.name) === key)?.coords;
+}
+
+/**
+ * A place with `location`'s point set or replaced. Pure and used both to add a
+ * newly-visited room's first (deterministic) guess and, later, to overwrite it
+ * with the cheap model's refined answer — the same point, reached twice.
+ */
+export function withLocationPoint(place: Place, location: string, coords: Coords): Place {
+  const trimmed = location.trim();
+  const key = slug(trimmed);
+  if (!key) return place;
+  const i = place.locations.findIndex((p) => slug(p.name) === key);
+  const locations =
+    i === -1
+      ? [...place.locations, { name: trimmed, coords }].slice(0, MAX_LOCATIONS)
+      : place.locations.map((p, j) => (j === i ? { ...p, coords } : p));
+  return { ...place, locations };
+}
+
+/**
+ * Wherever the player currently stands, as a point — the room-level location
+ * inside the current area when one has been cached, else the area's own entry
+ * point, else the world's origin for a game that has not moved yet (or with
+ * `places`/`trackCoords` off, where nothing was ever cached).
+ */
+export function currentPoint(places: Place[], area: string, location: string): Coords {
+  const place = findPlace(places, area);
+  if (!place) return ORIGIN;
+  return findLocationPoint(place, location) ?? place.coords;
+}
+
 /**
  * A named-but-unauthored place. Everything is blank except the name: a stub is
  * a fact ("there is somewhere called Rodstroke") standing in for a description
@@ -509,6 +598,8 @@ export function placeStub(id: string, name: string): Place {
     rooms: [],
     keywords: [],
     pending: true,
+    coords: ORIGIN,
+    locations: [],
   };
 }
 
@@ -583,6 +674,12 @@ export function fillPlace(places: Place[], id: string, authored: Place): Place[]
     name: found.name,
     aliases: found.aliases,
     pending: undefined,
+    // Coordinates are never the model's to write (`Coords`'s doc comment) — the
+    // authored reply always carries a placeholder ORIGIN, since parseGeneratedPlace
+    // has no coords of its own to read. Keep whatever the stub already had, so an
+    // arrival's deterministic/refined placement survives its own sheet landing.
+    coords: found.coords,
+    locations: found.locations,
   };
   if (!merged.aliases?.length) delete merged.aliases;
   delete merged.pending;

@@ -8,6 +8,7 @@ import { parseInline } from "../lib/markdown";
 import { collectEntityNames, highlightEntities, highlightWithinQuote } from "../lib/highlight";
 import { deriveToasts } from "../lib/toasts";
 import { OUTCOME_LABEL, bandScale, formatRoll, modifierNote } from "../lib/stakes";
+import { findLocationPoint, findPlace } from "../lib/places";
 import type { Character, Message } from "../types";
 
 /** Which message (id) is being edited, and the working draft. */
@@ -280,21 +281,30 @@ export function ChatView() {
 }
 
 /**
- * A rule naming the place and day, drawn only where they CHANGE. Every message
- * has carried `day`/`location` since Phase 5 and nothing ever rendered them, so
- * scrolling back through a long game gave no clue where or when a beat
- * happened. Messages written before that carry neither and simply get no mark.
+ * A rule naming the place, drawn only where it CHANGES — so scrolling back
+ * through a long game gives a clue where a beat happened. Messages written
+ * before `location` was kept carry none and simply get no mark.
+ *
+ * The room's own cached point rides alongside the name (`travel.ts`'s
+ * per-location tracking) — read off the CURRENT `game.places`, not a
+ * historical snapshot, since a point is frozen the moment it's set and so is
+ * always the right answer for any beat naming that room. Messages recorded
+ * before `Message.area` existed, an area this adventure no longer knows, or a
+ * room with no cached point yet, simply show the location alone.
  */
 function SceneMark({ msg, prev }: { msg: Message; prev?: Message }) {
-  if (!msg.location && msg.day === undefined) return null;
+  const places = useStore((s) => s.game.places);
+  if (!msg.location) return null;
   // First marked message in the log always earns one; after that, only changes.
-  const movedTo = msg.location && msg.location !== prev?.location ? msg.location : "";
-  const newDay = msg.day !== undefined && msg.day !== prev?.day ? msg.day : undefined;
-  if (!movedTo && newDay === undefined) return null;
+  const movedTo = msg.location !== prev?.location ? msg.location : "";
+  if (!movedTo) return null;
 
-  const label = [movedTo, newDay !== undefined ? `Day ${newDay}` : ""]
-    .filter(Boolean)
-    .join(" · ");
+  // A room with no cached point of its own (an older save, or one visited
+  // while `trackCoords` was off) falls back to its area's entry point — still
+  // real cached data, just coarser — rather than showing nothing.
+  const place = findPlace(places, msg.area ?? "");
+  const point = place ? (findLocationPoint(place, msg.location) ?? place.coords) : undefined;
+  const label = point ? `${movedTo} (${point.x}, ${point.y}, ${point.z})` : movedTo;
 
   return (
     <div className="flex items-center gap-2 pt-2 text-xs uppercase tracking-widest opacity-60">

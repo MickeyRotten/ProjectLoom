@@ -110,6 +110,111 @@ runs first on the raw text, and only the leftover plain runs still get
   base, not a retraction of it for the rest of the app's chrome.
 
 ---
-[ ] Research: I want the engine to keep better track of the world and locations. Spawn point (start point) is coordinate 0,0,0 and moving will update the coordinates in that direction. Whenever moving to a new location, a description of that location is generated, and cached. The cheap model layer could determine roughly the distanced traveled, e.g. if I write "I travel to X", that might add more than 1 to the coordinates. If I ever come back to the same location, the cached description is used. For example, but not necessarily this exactly. Whatever gets the job done.
+[x] Research: I want the engine to keep better track of the world and locations. Spawn point (start point) is coordinate 0,0,0 and moving will update the coordinates in that direction. Whenever moving to a new location, a description of that location is generated, and cached. The cheap model layer could determine roughly the distanced traveled, e.g. if I write "I travel to X", that might add more than 1 to the coordinates. If I ever come back to the same location, the cached description is used. For example, but not necessarily this exactly. Whatever gets the job done.
+
+The "generate a description once, cache it, reuse on revisit" half was already
+built (`places.ts`'s `Place`/`ensurePlace`/`fillPlace` lifecycle) — the actual
+gap was coordinates, closed by new module `src/lib/travel.ts`.
+
+- `Place.coords: {x,y,z}` (`types.ts`), assigned in two phases, mirroring how
+  a place's own sheet is authored: the instant a new place is stubbed,
+  `store.ts` gives it a position for free — a deterministic guess seeded off
+  `(turn, action text)` (`travel.ts → fallbackCoords`, reusing `stakes.ts`'s
+  `seedHash`/exported `avalanche`, the same key `rollDice` seeds on so it
+  reproduces exactly on regenerate) — then a cheap-model call
+  (`Settings.cheapModelId`, `travel.ts → estimateTravel`, `verifyOps.ts`'s
+  shape) reads the arrival prose and may refine it into a direction (one of
+  six — north/south/east/west/up/down, a closed ladder, no diagonals, for
+  reliable cheap-model classification) and a distance label (`step` ·
+  `short` · `moderate` · `long` · `epic`, `clock.ts → DurationLabel`'s
+  template: the model only ever names a label, the client owns the numbers).
+  The very first place an adventure ever creates gets exact `{0,0,0}`, never
+  computed. Once set, a place's coordinates are frozen exactly like the rest
+  of its sheet — `fillPlace` preserves the stub's coords through its own
+  async sheet-fill rather than letting the authored reply's placeholder
+  overwrite them.
+- New flag `Settings.features.trackCoords` (Features → Play → "Track World
+  Coordinates"), separate from `places` and off with no LOOM channel of its
+  own — coordinates are never something the narrator sees or writes, so
+  there is nothing for `filterBlock` to strip.
+- Migration is sanitize-at-read (`places.ts → normalizeCoords`), same
+  posture as `normalizeDuration`/`normalizeDice`: a place stored before this
+  existed defaults to the origin on next load, no batch script. `same()`
+  (the reference-stability check behind `normalizePlaces`) now compares
+  coords too, so a legacy row missing them is correctly seen as changed and
+  backfilled rather than passed through coords-less.
+- Backend tracking only, by design — no map. Position shows as plain
+  `(x, y, z)` on each place's entry in the Places screen (`ReadBlock`,
+  read-only for now).
+- Follow-up: the scene mark in scrollback (`ChatView.tsx → SceneMark`) that
+  used to read `LOCATION · Day N` now reads `LOCATION (x, y, z)` — day is
+  dropped from it entirely. First cut paired the coordinate with the AREA's
+  single point, which read as broken in play: walking down a road inside the
+  same town (a `location` change with no new `Place`) showed the identical
+  number every time, because nothing below the area level had a point of its
+  own.
+- Follow-up #2: coordinates are now tracked per ROOM, not just per area —
+  `Place.locations: {name, coords}[]` (`types.ts`), a cache of every distinct
+  `location` string visited inside that place, each frozen the same
+  two-phase way `Place.coords` already was (deterministic guess, then a
+  cheap-model refine from the beat's own prose). `Place.coords` keeps its
+  old meaning — the entry room's point — and stays in sync with that room's
+  entry in `locations`; every OTHER room in the same area gets its own point
+  computed relative to wherever the player just stood
+  (`places.ts → currentPoint`/`findLocationPoint`/`withLocationPoint`), so
+  crossing between two known rooms without discovering a new area still
+  moves the number, and returning to a room already visited reuses its
+  cached point rather than rolling a new one. `store.ts`'s discovery block
+  now fires on any `location` change, not only a new `Place`; `Message.area`
+  (added for the first cut) still stamps each beat so the scene mark can
+  resolve the right area's cache. Migration is the same sanitize-at-read
+  posture as everything else here — a place stored before this existed reads
+  `locations: []` — and `same()` compares the list too, for the identical
+  reference-stability reason it already had to for `coords`.
+
+---
+[ ] UI restructuring:
+- TOP BAR changes:
+  - Remove player avatar, and hearts
+  - Remove MENU button (moved to Nav Bar)
+  - Make the top bar 50% thinner vertically
+  - Show: "PLAYER NAME | DAY # | TURN # (how many turns have passed since start) | (WEATHER) (the current weather)"
+
+- Introduce a BOTTOM NAV BAR, which contains buttons for:
+  - PARTY (Rectangle, label)
+  - INVENTORY (Rectangle, label)
+  - QUESTS (Rectangle, label)
+  - JOURNAL (Rectangle, label)
+  - SAVE (Rectangle, label)
+  - MENU (Square, icon)
+ 
+- MENU changes:
+  - Remove Party, Inventory, Quests and Journal buttons
+  - Rename "This Adventure" into "World Lore"
+  - Order of buttons:
+    - Scenario
+    - World Notes
+    - Characters
+    - Places
+
+- NARRATOR menu changes:
+  - Voice & Actions split into two: CORE INSTRUCTIONS and SUGGESTED ACTIONS
+  - WRITING CHARACTERS renamed to CHARACTER INSTRUCTIONS
+  - SUGGESTED ACTIONS: Remove AI SUGGESTED ACTIONS toggle from here, it's now in FEATURES
+  - MEMORY: Remove JOURNAL toggle, it's now in FEATURES
+  - New order:
+    - FEATURES
+    - MODEL
+    - CORE INSTRUCTIONS
+    - CHARACTER INSTRUCTIONS
+    - SUGGESTED ACTIONS
+    - MEMORY
+
+- IMAGES menu changes:
+  - Remove IMAGE GENERATION toggle from here, it's now in FEATURES
+  - Set OFF by default
+
+- RPG SYSTEM menu changes:
+  - Remove STAKES toggle from here, it's now in FEATURES
 
 ---

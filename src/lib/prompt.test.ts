@@ -1109,6 +1109,8 @@ describe("places in the prompt", () => {
     rumours: ["The miller's boy is missing."],
     rooms: [{ name: "The Wend Mill", description: "Wheel still.", unique: true }],
     keywords: [],
+    coords: { x: 0, y: 0, z: 0 },
+    locations: [],
   };
   const torsea: Place = { ...rodstroke, id: "p2", name: "Torsea", rumours: [], rooms: [] };
 
@@ -1184,6 +1186,8 @@ describe("narrator features", () => {
         rumours: [],
         rooms: [],
         keywords: [],
+        coords: { x: 0, y: 0, z: 0 },
+        locations: [],
       },
     ],
   });

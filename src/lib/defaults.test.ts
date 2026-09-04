@@ -361,6 +361,8 @@ describe("places across saves and adventures", () => {
         rumours: [],
         rooms: [],
         keywords: [],
+        coords: { x: 0, y: 0, z: 0 },
+        locations: [],
       }],
     };
     expect(seedAdventure(prev, { ...DEFAULT_ADVENTURE_IMPORTS, places: true }).places).toHaveLength(1);

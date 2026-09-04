@@ -243,6 +243,33 @@ export interface Room {
 }
 
 /**
+ * A point in the world grid. Spawn is `ORIGIN`; every later place's coords are
+ * an offset from wherever the player stood when it was discovered — see
+ * `travel.ts`. Units are abstract (not feet or meters); only relative distance
+ * and direction mean anything.
+ */
+export interface Coords {
+  x: number;
+  y: number;
+  z: number;
+}
+
+export const ORIGIN: Coords = { x: 0, y: 0, z: 0 };
+
+/**
+ * One room-level `location` this adventure has visited inside a `Place`, and
+ * where it sits — set once, the first time that name comes up inside this
+ * area, and frozen after, exactly like `Place.coords` itself. Matched by name
+ * the same tolerant way a place's own name is (`places.ts → findLocationPoint`,
+ * `slug()`), so a narrator's slightly different phrasing of the same room
+ * still resolves to its one cached point instead of minting a new one.
+ */
+export interface LocationPoint {
+  name: string;
+  coords: Coords;
+}
+
+/**
  * An AREA — the place the scene is in, one level above the room named by
  * `GameState.location`.
  *
@@ -272,6 +299,22 @@ export interface Place {
    * and still injects (its name is a fact); it simply has nothing to say yet.
    */
   pending?: boolean;
+  /**
+   * Where this place sits in the world grid — set once, on discovery, and
+   * frozen after (`travel.ts`), like the rest of a place's sheet. Never shown
+   * to the narrator and never written by it; player-visible only. Equal to
+   * this area's entry in `locations` for the room the player first arrived
+   * through — the two are the same point, kept in sync deliberately.
+   */
+  coords: Coords;
+  /**
+   * Every room-level `location` visited inside this area, each with its own
+   * frozen point — `coords` alone was one point per whole area (a town, a
+   * dungeon, a stretch of wild), which read as broken once displayed beside
+   * the finer `GameState.location` label: walking down a road inside the same
+   * area moved nothing. This is the finer layer underneath it.
+   */
+  locations: LocationPoint[];
 }
 
 export type MessageRole = "player" | "narrator";
@@ -353,6 +396,8 @@ export interface Message {
   minutes?: number;
   location?: string;
   weather?: string;
+  /** The area this beat was in — absent on messages recorded before this existed. */
+  area?: string;
 }
 
 /**
@@ -821,6 +866,14 @@ export interface FeatureFlags {
    * written, same as before this existed.
    */
   opVerification: boolean;
+  /**
+   * Whether a newly discovered place gets an (x, y, z) — `travel.ts`. Off: no
+   * position is computed for a new arrival, and places already positioned keep
+   * what they have. Has no effect with `places` off — there is nowhere to
+   * record one. Not a `<<<LOOM>>>` channel: the narrator never sees or writes
+   * coordinates, so there is nothing for `filterBlock` to strip.
+   */
+  trackCoords: boolean;
 }
 
 export interface Settings extends DiceRules, ComfySettings {

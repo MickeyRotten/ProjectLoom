@@ -40,6 +40,7 @@ export const FEATURE_KEYS = [
   "journal",
   "stakes",
   "opVerification",
+  "trackCoords",
 ] as const satisfies readonly (keyof FeatureFlags)[];
 
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
@@ -72,6 +73,7 @@ export function defaultFeatures(): FeatureFlags {
     journal: true,
     stakes: true,
     opVerification: true,
+    trackCoords: true,
   };
 }
 

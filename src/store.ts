@@ -3,6 +3,7 @@ import type {
   AdventureImports,
   Character,
   CharacterOverride,
+  Coords,
   DiceCast,
   Equipment,
   GameState,
@@ -16,6 +17,7 @@ import type {
   Settings,
   Standing,
 } from "./types";
+import { ORIGIN } from "./types";
 import { ensureGold, newCharacter, newGame, seedAdventure, withPC } from "./lib/defaults";
 import { loadSettings, saveSettings } from "./lib/settings";
 import {
@@ -111,7 +113,17 @@ import { applyDeltas, reconcileBlock } from "./lib/deltas";
 import { filterBlock, type FeatureKey } from "./lib/features";
 import { verifyOps } from "./lib/verifyOps";
 import { withRename } from "./lib/names";
-import { addNeighbourStubs, ensurePlace, fillPlace, placeStub } from "./lib/places";
+import {
+  addNeighbourStubs,
+  currentPoint,
+  ensurePlace,
+  fillPlace,
+  findLocationPoint,
+  findPlace,
+  placeStub,
+  withLocationPoint,
+} from "./lib/places";
+import { applyMovement, estimateTravel, fallbackCoords } from "./lib/travel";
 import {
   GENERATE_PLACE_TEMPERATURE,
   buildPlaceMessages,
@@ -370,6 +382,23 @@ export interface LoomStore {
    * Never on the turn's critical path, and its failure is never a turn error.
    */
   writePlace: (id: string) => Promise<void>;
+  /**
+   * Refine `location`'s point (inside place `placeId`) from the beat's own
+   * prose — the cheap-model half of `travel.ts`. Fired automatically right
+   * after a location changes; never on the turn's critical path. A
+   * synchronous, deterministic guess (`travel.ts → fallbackCoords`) already
+   * placed the point before this runs, so a failure here simply leaves that
+   * guess as-is. `isEntry` says whether `location` is also the place's own
+   * entry room, in which case `Place.coords` is kept in sync with it too.
+   */
+  refineTravel: (
+    placeId: string,
+    location: string,
+    isEntry: boolean,
+    fromCoords: Coords,
+    action: string,
+    prose: string,
+  ) => Promise<void>;
   addQuest: () => void;
   updateQuest: (id: string, patch: Partial<Quest>) => void;
   removeQuest: (id: string) => void;
@@ -1413,6 +1442,26 @@ export const useStore = create<LoomStore>((set, get) => {
     }
   },
 
+  async refineTravel(placeId, location, isEntry, fromCoords, action, prose) {
+    const estimate = await estimateTravel({ settings: get().settings, action, prose });
+    if (!estimate) return;
+
+    // Re-read the store: the player may have undone the turn that visited
+    // this place, or deleted it outright, while the call was in flight.
+    const current = get().game;
+    const place = current.places.find((p) => p.id === placeId);
+    if (!place) return;
+
+    const coords = applyMovement(fromCoords, estimate.direction, estimate.distance);
+    const updated = withLocationPoint(place, location, coords);
+    const places = current.places.map((p) =>
+      p.id === placeId ? (isEntry ? { ...updated, coords } : updated) : p,
+    );
+    const next = { ...current, places };
+    set({ game: next });
+    void saveActiveGame(next);
+  },
+
   addQuest() {
     const g = get().game;
     const quest: Quest = { id: uid(), label: "", description: "", reward: "", status: "active" };
@@ -1789,8 +1838,48 @@ export const useStore = create<LoomStore>((set, get) => {
       // snapshot taken after an async fill would restore the place to a state it
       // was already in, stranding the fill. Returns the same array on an area
       // this adventure already knows, so re-entering a place costs nothing.
-      const places = features.places ? ensurePlace(g.places, scene.area, uid()) : g.places;
+      let places = features.places ? ensurePlace(g.places, scene.area, uid()) : g.places;
       const discovered = places !== g.places ? places[places.length - 1] : null;
+
+      // Coordinates: every distinct room-level `location` gets its own point,
+      // cached inside the owning Place (`travel.ts`/`places.ts`). Gated on its
+      // own flag AND on Places, since a point has nowhere to live without the
+      // Place it's attached to. Fires on ANY change to `location`, not only a
+      // brand-new area — a point bound to the area alone reads as broken once
+      // shown beside the finer per-turn location label: walking down a road
+      // inside the same town moved nothing. Assigned SYNCHRONOUSLY, zero
+      // network cost, off a seed of (turn, action text), so it reproduces
+      // identically on regenerate and a position always exists even with the
+      // cheap model disabled, failing, or timing out.
+      let travelTarget:
+        | { placeId: string; location: string; isEntry: boolean; fromPoint: Coords }
+        | undefined;
+      if (features.places && features.trackCoords && scene.location && scene.location !== g.location) {
+        const isFirstEver = g.places.length === 0;
+        const fromPoint = currentPoint(g.places, g.area, g.location);
+        const coords = isFirstEver ? ORIGIN : fallbackCoords(fromPoint, turn, trimmed);
+
+        if (discovered) {
+          // A brand-new area: its own entry point and this first room's point
+          // are the same spot, kept in sync (`Place.coords`'s doc comment).
+          places = places.map((p) =>
+            p.id === discovered.id ? withLocationPoint({ ...p, coords }, scene.location, coords) : p,
+          );
+          // Skipped for the very first place this adventure ever creates —
+          // there is no FROM to refine relative to.
+          if (!isFirstEver) {
+            travelTarget = { placeId: discovered.id, location: scene.location, isEntry: true, fromPoint };
+          }
+        } else {
+          const here = findPlace(places, scene.area);
+          if (here && !findLocationPoint(here, scene.location)) {
+            places = places.map((p) =>
+              p.id === here.id ? withLocationPoint(p, scene.location, coords) : p,
+            );
+            travelTarget = { placeId: here.id, location: scene.location, isEntry: false, fromPoint };
+          }
+        }
+      }
 
       // Party deltas apply first, THEN deterministic speaker detection bumps
       // lastSpokeTurn — the model's `spoke` hint never overrides the prose
@@ -1827,6 +1916,7 @@ export const useStore = create<LoomStore>((set, get) => {
         minutes: scene.minutes,
         location: scene.location,
         weather: scene.weather,
+        area: scene.area,
       };
       const transcript = [...g.messages, beat];
 
@@ -1903,6 +1993,22 @@ export const useStore = create<LoomStore>((set, get) => {
       // landed and can fail without the player ever seeing it. The arrival beat
       // itself is improvised — every beat after it has the place in hand.
       if (discovered) void get().writePlace(discovered.id);
+
+      // Same two-phase shape for its point: the synchronous placement above
+      // always gave it SOME position; this cheap-model call may refine the
+      // direction and distance from the beat's own prose, but only if it
+      // lands before the player undoes the turn — same "place still exists"
+      // guard `writePlace` uses.
+      if (travelTarget) {
+        void get().refineTravel(
+          travelTarget.placeId,
+          travelTarget.location,
+          travelTarget.isEntry,
+          travelTarget.fromPoint,
+          trimmed,
+          prose,
+        );
+      }
     } catch (err) {
       const aborted =
         err instanceof DOMException

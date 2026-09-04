@@ -12,7 +12,7 @@ import {
 } from "../lib/places";
 import { OverlayHeader } from "./OverlayHeader";
 import { FeatureOffNotice } from "./FeatureOffNotice";
-import { AreaField, Collapsible, SegmentedRow, TextField, btn, btnSmall } from "./fields";
+import { AreaField, Collapsible, ReadBlock, SegmentedRow, TextField, btn, btnSmall } from "./fields";
 import { useConfirm } from "./useConfirm";
 
 /**
@@ -107,6 +107,18 @@ function PlaceCard({
         placeholder="the village, Rodstroke-on-Wend"
         onChange={(v) => updatePlace(place.id, { aliases: splitList(v) })}
       />
+      <ReadBlock
+        label="Position"
+        value={`(${place.coords.x}, ${place.coords.y}, ${place.coords.z})`}
+      />
+      {place.locations.length > 0 && (
+        <ReadBlock
+          label="Known Points"
+          value={place.locations
+            .map((p) => `${p.name} (${p.coords.x}, ${p.coords.y}, ${p.coords.z})`)
+            .join("\n")}
+        />
+      )}
 
       {/* Changing the kind changes which slots exist, so the tags are rebuilt
           against the new schema — `normalizePlace` would drop the orphans on the

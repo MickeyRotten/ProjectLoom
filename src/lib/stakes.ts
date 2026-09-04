@@ -220,7 +220,7 @@ export function seedHash(seed: string): number {
  * The shifts here mix the high bits down, so the low bits of the result depend
  * on the whole word and the lockstep disappears.
  */
-function avalanche(h: number): number {
+export function avalanche(h: number): number {
   let x = h >>> 0;
   x ^= x >>> 16;
   x = Math.imul(x, 0x85ebca6b);

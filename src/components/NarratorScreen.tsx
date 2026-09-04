@@ -240,8 +240,9 @@ function ModelSection() {
         error={error}
       />
       <p className="text-xs opacity-70">
-        Runs the Verify New Characters &amp; Items check (Features → Play) — a short,
-        structured question, not narration, so a cheap or free model is plenty. Blank
+        Runs the Verify New Characters &amp; Items check and the Track World
+        Coordinates refinement (Features → Play) — both short, structured
+        questions, not narration, so a cheap or free model is plenty. Blank
         falls back to the Text Model above.
       </p>
 

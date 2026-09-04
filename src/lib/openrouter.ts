@@ -179,7 +179,8 @@ export interface CompleteOptions {
   /** Sampling override — side calls (sheet updates) run tighter than narration. */
   temperature?: number;
   /**
-   * Model override — every side call but the op-verification gate leaves this
+   * Model override — every side call but the op-verification gate and the
+   * travel-estimate refinement (`verifyOps.ts`, `travel.ts`) leaves this
    * unset and runs on `settings.textModelId`, "one model, one behaviour".
    */
   model?: string;
