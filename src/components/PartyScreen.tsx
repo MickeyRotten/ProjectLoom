@@ -5,13 +5,14 @@ import { OverlayHeader } from "./OverlayHeader";
 import { FeatureOffNotice } from "./FeatureOffNotice";
 import { CharacterRow } from "./CharacterRow";
 import { Section, btn } from "./fields";
-import { PARTY_LIMIT, activeMembers, benchedMembers } from "../lib/roster";
+import { PARTY_LIMIT, activeMembers, benchedMembers, playerCharacter } from "../lib/roster";
 
 /**
- * Full-screen PARTY view — the company, in two halves: who is in the scene
- * (capped at PARTY_LIMIT companions) and who is BENCHED, still one of yours but
- * waiting elsewhere. The bench is uncapped, so this is where a long-running
- * adventure keeps its stable.
+ * Full-screen PARTY view — the player character up top (never absent from the
+ * scene, so no standing to move and nothing to kick), then the company in two
+ * halves: who is in the scene (capped at PARTY_LIMIT companions) and who is
+ * BENCHED, still one of yours but waiting elsewhere. The bench is uncapped, so
+ * this is where a long-running adventure keeps its stable.
  *
  * The full cast lives on the Characters screen, which is also where you
  * recruit from. Kicking someone here drops them out of the party entirely —
@@ -25,6 +26,7 @@ export function PartyScreen() {
   const setStanding = useStore((s) => s.setStanding);
   const setScreen = useStore((s) => s.setScreen);
 
+  const pc = useMemo(() => playerCharacter(characters, roster), [characters, roster]);
   const active = useMemo(() => activeMembers(characters, roster), [characters, roster]);
   const benched = useMemo(() => benchedMembers(characters, roster), [characters, roster]);
   const full = active.length >= PARTY_LIMIT;
@@ -56,6 +58,18 @@ export function PartyScreen() {
           The narrator no longer adds, renames or dismisses anyone — the party is yours
           to assemble on the Characters screen —
         </FeatureOffNotice>
+
+        {pc && (
+          <>
+            <Section label="Player" />
+            <CharacterRow
+              name={pc.name || "(unnamed)"}
+              sub={pc.species}
+              detail={pc.strengths ? `Strengths — ${pc.strengths}` : undefined}
+              onOpen={() => openMember(pc.id)}
+            />
+          </>
+        )}
 
         {active.length === 0 && benched.length === 0 && (
           <>
