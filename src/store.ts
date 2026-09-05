@@ -1843,8 +1843,14 @@ export const useStore = create<LoomStore>((set, get) => {
       // read into an error they have to retry.
       if (needsBlockRepair(get().settings, block)) {
         try {
+          const repairSettings = get().settings;
           const repairRaw = await completeChat({
-            settings: get().settings,
+            settings: repairSettings,
+            // The narration model just failed to follow the output shape —
+            // asking it again risks the same miss. The cheap model exists
+            // for exactly this: a narrow, structured task (given the prose
+            // already written, emit the block) rather than narration.
+            model: repairSettings.cheapModelId.trim() || repairSettings.textModelId,
             messages: buildRepairMessages(messages, raw, block !== null),
             signal: turnAbort.signal,
             temperature: BLOCK_REPAIR_TEMPERATURE,
