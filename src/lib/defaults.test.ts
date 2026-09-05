@@ -354,15 +354,8 @@ describe("places across saves and adventures", () => {
       places: [{
         id: "p1",
         name: "Rodstroke",
-        kind: "steading",
-        type: "village",
         description: "",
-        tags: [],
-        rumours: [],
-        rooms: [],
         keywords: [],
-        coords: { x: 0, y: 0, z: 0 },
-        locations: [],
       }],
     };
     expect(seedAdventure(prev, { ...DEFAULT_ADVENTURE_IMPORTS, places: true }).places).toHaveLength(1);
@@ -372,5 +365,57 @@ describe("places across saves and adventures", () => {
   it("never carries the position, however much of the map is kept", () => {
     const prev: GameState = { ...newGame(), area: "Rodstroke" };
     expect(seedAdventure(prev, { ...DEFAULT_ADVENTURE_IMPORTS, places: true }).area).toBe("");
+  });
+});
+
+describe("world seed across saves", () => {
+  it("reads a save written before the world seed expanded as having none of the new fields", () => {
+    // A save from before this change carries only the original five keys.
+    const legacy = {
+      title: "My Homebrew",
+      premise: "A homebrew setting.",
+      openingNarration: "You wake.",
+      startDay: 1,
+      startLocation: "Somewhere",
+    };
+    const { game } = loadGame({ ...newGame(), scenario: legacy })!;
+    expect(game.scenario.title).toBe("My Homebrew");
+    expect(game.scenario.premise).toBe("A homebrew setting.");
+    // Blank, not backfilled from DEFAULT_SCENARIO's own demo factions/fixed
+    // points — that would bleed the shipped example into an unrelated save.
+    expect(game.scenario.tone).toEqual([]);
+    expect(game.scenario.factions).toEqual([]);
+    expect(game.scenario.fixedPoints).toEqual([]);
+    expect(game.scenario.threads).toEqual([]);
+    expect(game.scenario.dangerCurve).toEqual([]);
+    expect(game.scenario.physicalLogic).toEqual([]);
+  });
+
+  it("keeps a stored world seed's own fields", () => {
+    const stored = {
+      ...newGame().scenario,
+      tone: ["Grim but not hopeless"],
+      factions: [{ name: "The Wardens", description: "Underfunded but not corrupt." }],
+    };
+    const { game } = loadGame({ ...newGame(), scenario: stored })!;
+    expect(game.scenario.tone).toEqual(["Grim but not hopeless"]);
+    expect(game.scenario.factions).toEqual([
+      { name: "The Wardens", description: "Underfunded but not corrupt." },
+    ]);
+  });
+
+  it("drops a row with no name, and blanks left off a row", () => {
+    const stored = {
+      ...newGame().scenario,
+      factions: [{ name: "  ", description: "no name" }, { name: "Real Faction" }],
+    };
+    const { game } = loadGame({ ...newGame(), scenario: stored })!;
+    expect(game.scenario.factions).toEqual([{ name: "Real Faction", description: "" }]);
+  });
+
+  it("drops blank strings out of a list field", () => {
+    const stored = { ...newGame().scenario, tone: ["Grim", "  ", ""] };
+    const { game } = loadGame({ ...newGame(), scenario: stored })!;
+    expect(game.scenario.tone).toEqual(["Grim"]);
   });
 });

@@ -291,16 +291,9 @@ describe("reversal — places", () => {
   const stub: Place = {
     id: "p9",
     name: "Rodstroke",
-    kind: "wild",
-    type: "",
     description: "",
-    tags: [],
-    rumours: [],
-    rooms: [],
     keywords: [],
     pending: true,
-    coords: { x: 0, y: 0, z: 0 },
-    locations: [],
   };
 
   it("captures the area and the places a turn discovered", () => {

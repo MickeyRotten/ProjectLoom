@@ -208,113 +208,31 @@ export interface Note {
 }
 
 /**
- * What KIND of place this is — the one field that decides which tag slots the
- * place even has (`places.ts → PLACE_KINDS`). A dungeon has no prosperity and a
- * wilderness has no trade partners, so the conditional rule lives in one table
- * rather than scattered through the editor, the generator and the prompt.
- */
-export type PlaceKind = "steading" | "dungeon" | "wild";
-
-/**
- * One tag on a place. `slot` is a key from the kind's schema ("prosperity",
- * "themes", "denizens"); `value` is free text, because the schema's options are
- * suggestions rather than a whitelist — a model answering "Destitute" keeps its
- * word instead of being clamped onto the nearest shipped rung.
- */
-export interface PlaceTag {
-  slot: string;
-  value: string;
-}
-
-/**
- * A named part of a place — a room in a dungeon, a building in a town, a
- * landmark in the wilds.
- *
- * `unique` is the whole of what the Perilous Wilds common/unique split buys us
- * here: a common room is a palette the narrator may reuse (another guardroom,
- * another game trail), a unique one exists exactly once and must not be
- * duplicated. Nothing tracks whether it has been visited — the label is context
- * for the narrator, not a map the client walks.
- */
-export interface Room {
-  name: string;
-  description: string;
-  unique?: boolean;
-}
-
-/**
- * A point in the world grid. Spawn is `ORIGIN`; every later place's coords are
- * an offset from wherever the player stood when it was discovered — see
- * `travel.ts`. Units are abstract (not feet or meters); only relative distance
- * and direction mean anything.
- */
-export interface Coords {
-  x: number;
-  y: number;
-  z: number;
-}
-
-export const ORIGIN: Coords = { x: 0, y: 0, z: 0 };
-
-/**
- * One room-level `location` this adventure has visited inside a `Place`, and
- * where it sits — set once, the first time that name comes up inside this
- * area, and frozen after, exactly like `Place.coords` itself. Matched by name
- * the same tolerant way a place's own name is (`places.ts → findLocationPoint`,
- * `slug()`), so a narrator's slightly different phrasing of the same room
- * still resolves to its one cached point instead of minting a new one.
- */
-export interface LocationPoint {
-  name: string;
-  coords: Coords;
-}
-
-/**
  * An AREA — the place the scene is in, one level above the room named by
  * `GameState.location`.
  *
- * Authored once by a side call the first time the player arrives somewhere new
- * (`generatePlace.ts`), then frozen against the model and editable by the
- * player, exactly like a character sheet. There is no place delta channel: the
- * narrator reads places, it never writes them.
+ * Slim on purpose: what a place needs to give the narrator consistency now
+ * lives one level up, in the world seed (`Scenario`'s tone/factions/etc) —
+ * this only has to remember one specific area, not carry a whole per-kind tag
+ * taxonomy for it. Authored once by a side call the first time the player
+ * arrives somewhere new (`generatePlace.ts`), then frozen against the model
+ * and editable by the player, exactly like a character sheet. There is no
+ * place delta channel: the narrator reads places, it never writes them.
  */
 export interface Place {
   id: string;
   name: string;
   /** Other names this area answers to — resolution matches these too. */
   aliases?: string[];
-  kind: PlaceKind;
-  /** village · town · keep · city · tomb · lair · forest · road … */
-  type: string;
   description: string;
-  tags: PlaceTag[];
-  /** What is said about this place locally. Believed, not necessarily true. */
-  rumours: string[];
-  rooms: Room[];
   /** Extra words that pull this place into the prompt when it is not the scene. */
   keywords: string[];
   /**
-   * Named but not yet authored — an arrival whose side call has not landed, or
-   * a neighbour some other place's `trade` tag mentioned. A stub still resolves
-   * and still injects (its name is a fact); it simply has nothing to say yet.
+   * Named but not yet authored — an arrival whose side call has not landed.
+   * A stub still resolves and still injects (its name is a fact); it simply
+   * has nothing to say yet.
    */
   pending?: boolean;
-  /**
-   * Where this place sits in the world grid — set once, on discovery, and
-   * frozen after (`travel.ts`), like the rest of a place's sheet. Never shown
-   * to the narrator and never written by it; player-visible only. Equal to
-   * this area's entry in `locations` for the room the player first arrived
-   * through — the two are the same point, kept in sync deliberately.
-   */
-  coords: Coords;
-  /**
-   * Every room-level `location` visited inside this area, each with its own
-   * frozen point — `coords` alone was one point per whole area (a town, a
-   * dungeon, a stretch of wild), which read as broken once displayed beside
-   * the finer `GameState.location` label: walking down a road inside the same
-   * area moved nothing. This is the finer layer underneath it.
-   */
-  locations: LocationPoint[];
 }
 
 export type MessageRole = "player" | "narrator";
@@ -455,9 +373,53 @@ export type LegacyCharacter = Omit<Character, "sex" | "notes"> & {
   portraitKey?: string;
 };
 
+/** One named power already in tension with others — a `Scenario.factions` row. */
+export interface Faction {
+  name: string;
+  /** 1-2 lines: what they want, who they are already in tension with. */
+  description: string;
+}
+
+/**
+ * A proper noun the world seed treats as already existing — a `Scenario.fixedPoints`
+ * row. Small in number by design: its job is to anchor early generation, not to
+ * pre-populate the map.
+ */
+export interface FixedPoint {
+  name: string;
+  /** One line: what it is, or who they are. */
+  description: string;
+}
+
+/**
+ * The world seed: the one small, always-injected document that keeps
+ * lazily-generated content (areas, NPCs, events) consistent with itself,
+ * instead of each side call improvising the setting fresh. See DESIGN.md →
+ * World Seed. Every field beyond `premise` is a short bullet list, not a
+ * paragraph — the moment a field grows past what fits on a screen it is
+ * becoming a location spec, not a seed, and belongs on a `Place` or a World
+ * Note instead.
+ *
+ * The narrator never writes any of this: it is authored once, by the player
+ * (✦-assisted), and grown deliberately by promoting a World Note into
+ * `threads`/`fixedPoints` — never implicitly, from inside narration.
+ */
 export interface Scenario {
   title: string;
+  /** The world this adventure happens in, who lives in it, its tone. */
   premise: string;
+  /** Mood and hard boundaries — what this world is, and is not. */
+  tone: string[];
+  /** Scale, tech/magic level, rules that shouldn't be broken. */
+  physicalLogic: string[];
+  /** 2-4 named powers already in tension. */
+  factions: Faction[];
+  /** 1-3 open questions that can resurface later — phrased as questions, not answers. */
+  threads: string[];
+  /** Roughly how dangerous early vs. late areas should feel. */
+  dangerCurve: string[];
+  /** A handful of proper nouns (places/people) that already exist. */
+  fixedPoints: FixedPoint[];
   openingNarration: string;
   startDay: number;
   /** Location name the game opens in; seeds GameState.location on New Adventure. */
@@ -867,14 +829,6 @@ export interface FeatureFlags {
    * written, same as before this existed.
    */
   opVerification: boolean;
-  /**
-   * Whether a newly discovered place gets an (x, y, z) — `travel.ts`. Off: no
-   * position is computed for a new arrival, and places already positioned keep
-   * what they have. Has no effect with `places` off — there is nowhere to
-   * record one. Not a `<<<LOOM>>>` channel: the narrator never sees or writes
-   * coordinates, so there is nothing for `filterBlock` to strip.
-   */
-  trackCoords: boolean;
 }
 
 export interface Settings extends DiceRules, ComfySettings {
@@ -923,12 +877,11 @@ export interface Settings extends DiceRules, ComfySettings {
   imageModelId: string;
   /**
    * Model for the narrow, structured side calls — op verification
-   * (`verifyOps.ts`), travel-estimate refinement (`travel.ts`), and block
-   * repair (`store.ts`) — deliberately separate from `textModelId` since none
-   * of them narrate: each is "given this passage, answer a specific,
-   * checkable question" rather than "write the next beat." Blank falls back
-   * to `textModelId`, so an unset field never breaks any of them, only makes
-   * them cost the same as narration.
+   * (`verifyOps.ts`) and block repair (`store.ts`) — deliberately separate
+   * from `textModelId` since neither narrates: each is "given this passage,
+   * answer a specific, checkable question" rather than "write the next beat."
+   * Blank falls back to `textModelId`, so an unset field never breaks either
+   * of them, only makes them cost the same as narration.
    */
   cheapModelId: string;
   /**

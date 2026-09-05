@@ -2,7 +2,10 @@ import { describe, it, expect } from "vitest";
 import {
   SCENARIO_FIELDS,
   SCENARIO_FIELD_LABEL,
+  SCENARIO_LIST_FIELDS,
   buildScenarioMessages,
+  buildSeedRowMessages,
+  parseGeneratedSeedRow,
   scenarioScanText,
   type ScenarioField,
 } from "./generateScenario";
@@ -152,5 +155,77 @@ describe("parseGeneratedField — scenario keys", () => {
   it("reads a reply for the wrong field as nothing", () => {
     expect(parseGeneratedField('{"premise": "A drowned empire."}', "openingNarration")).toBe("");
     expect(parseGeneratedField("sorry, I can't help with that", "premise")).toBe("");
+  });
+
+  it("reads a list field the same way, as one newline-joined string", () => {
+    expect(parseGeneratedField('{"tone": "Grim\\nHopeful"}', "tone")).toBe("Grim\nHopeful");
+  });
+});
+
+describe("buildSeedRowMessages / parseGeneratedSeedRow — factions and fixed points", () => {
+  const game = gameWith({ title: "The Salt Reach", premise: "A grim coast." });
+
+  it("asks for exactly one entry with a name and a description", () => {
+    const messages = buildSeedRowMessages({ game, kind: "faction", existing: [] });
+    expect(messages[0].content).toContain("ONE FACTION");
+    expect(messages[0].content).toContain('"name"');
+    expect(messages[0].content).toContain('"description"');
+    const last = messages[messages.length - 1];
+    expect(last.role).toBe("user");
+  });
+
+  it("carries the world seed, so the entry belongs in this world", () => {
+    const messages = buildSeedRowMessages({ game, kind: "fixedPoint", existing: [] });
+    expect(messages.some((m) => m.content.includes("A grim coast."))).toBe(true);
+  });
+
+  it("lists the other rows already written, and asks not to repeat them", () => {
+    const messages = buildSeedRowMessages({
+      game,
+      kind: "faction",
+      existing: [{ name: "The Wardens", description: "Law, such as it is." }],
+    });
+    const known = messages.find((m) => m.content.includes("ALREADY IN THE WORLD"));
+    expect(known?.content).toContain("The Wardens");
+    expect(known?.content).toContain("Do not repeat");
+  });
+
+  it("says nothing extra with no other rows yet", () => {
+    const messages = buildSeedRowMessages({ game, kind: "faction", existing: [] });
+    expect(messages.some((m) => m.content.includes("ALREADY IN THE WORLD"))).toBe(false);
+  });
+
+  it("puts the hint last", () => {
+    const messages = buildSeedRowMessages({
+      game,
+      kind: "fixedPoint",
+      existing: [],
+      hint: "a ruined lighthouse",
+    });
+    const idx = messages.findIndex((m) => m.content.includes("a ruined lighthouse"));
+    expect(idx).toBe(messages.length - 2);
+  });
+
+  it("parses a row with a name and description", () => {
+    const row = parseGeneratedSeedRow(
+      JSON.stringify({ name: "The Wardens", description: "Underfunded but not corrupt." }),
+    );
+    expect(row).toEqual({ name: "The Wardens", description: "Underfunded but not corrupt." });
+  });
+
+  it("fails on a reply with no name — nothing came back", () => {
+    expect(parseGeneratedSeedRow(JSON.stringify({ description: "no name" }))).toBeNull();
+    expect(parseGeneratedSeedRow("not json")).toBeNull();
+  });
+
+  it("survives fences and preamble", () => {
+    const messy = 'Sure!\n```json\n{ "name": "The Wardens", "description": "Law." }\n```';
+    expect(parseGeneratedSeedRow(messy)).toEqual({ name: "The Wardens", description: "Law." });
+  });
+});
+
+describe("SCENARIO_LIST_FIELDS", () => {
+  it("names exactly the three bullet-list fields", () => {
+    expect(SCENARIO_LIST_FIELDS).toEqual(["tone", "physicalLogic", "dangerCurve"]);
   });
 });

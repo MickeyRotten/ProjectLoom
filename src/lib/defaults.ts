@@ -1,6 +1,7 @@
 import type {
   AdventureImports,
   Character,
+  Faction,
   GameState,
   Item,
   LegacyCharacter,
@@ -367,10 +368,76 @@ export const DEFAULT_SCENARIO: Scenario = {
   title: "Legend of Mesmeria",
   premise:
     "The world of Mesmeria is a world of fantasy and adventure, where magic and technology coexist. Ruins and relics of an ancient, hyper-advanced civilization dot the landscape, magic is commonplace, and the species of Mesmeria are diverse and fantastical. You'll find humans, elves, gnomes, dwarves, fairies, goblins, beastkin, slimefolk, lizardkind, zombies, ghosts, and many, many more — some friendly, some hostile, and some just plain weird. The world is full of danger, but also opportunity. Scholars toil away on unlocking the secrets of ancient magitech, while adventurers seek fame and fortune in the ruins of the past. The world is alive with stories waiting to be told, and the player is about to embark on one of their own. Along the way they'll meet a cast of colorful characters, each with their own goals, motivations, and secrets. Some will become allies, some will become rivals, and some will become enemies. The choices the player makes will shape the world around them, and the story that unfolds will be uniquely their own.",
+  tone: [
+    "Adventurous and hopeful — the world is dangerous, but never hopeless.",
+    "High fantasy played straight: magic, monsters and ancient wonders are ordinary background, not a twist.",
+  ],
+  physicalLogic: [
+    "Magic is common and mostly safe to use; ancient magitech is rarer and far less understood.",
+    "Ruins of the old hyper-advanced civilization hide relics beyond what anyone alive can build today.",
+  ],
+  factions: [
+    {
+      name: "The Adventurers' Guild",
+      description: "Licenses and outfits adventurers across Mesmeria; wants ruins explored, not looted.",
+    },
+    {
+      name: "The Magitech Concord",
+      description: "Scholars racing to unlock ancient relics before rival powers do.",
+    },
+  ],
+  threads: ["What woke the old magitech beneath the ruins after all these centuries?"],
+  dangerCurve: [
+    "Near the crossroads: bandits, wild beasts, small-time trouble.",
+    "Deeper ruins: ancient guardians and magic gone wrong.",
+    "The old civilization's furthest sites: dangers nobody alive has answers for.",
+  ],
+  fixedPoints: [
+    { name: "Rodstroke", description: "The nearest town to the crossroads where the adventure begins." },
+  ],
   openingNarration: "The signpost has been repainted, badly, over something else. RODSTROKE, one mile, and an arrow that points slightly into the field rather than down the road. Wheat on both sides, high enough to hide a man kneeling. The crow on the scarecrow watches you go past and does not bother to fly.",
   startDay: 1,
   startLocation: "Crossroads",
 };
+
+/**
+ * Fold a stored scenario onto the current shape, at READ time — same posture
+ * as `normalizePlace`/`normalizeDice`. A save written before the world seed
+ * expanded carries none of the new fields; they default to empty rather than
+ * to `DEFAULT_SCENARIO`'s own demo content, which would otherwise bleed a
+ * shipped example faction into somebody's unrelated homebrew scenario.
+ */
+function normalizeScenario(raw: Partial<Scenario> | undefined): Scenario {
+  const s = raw ?? {};
+  const strings = (v: unknown): string[] =>
+    Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.trim() !== "") : [];
+  const rows = (v: unknown): Faction[] =>
+    Array.isArray(v)
+      ? v
+          .filter(
+            (r): r is Faction =>
+              !!r && typeof r === "object" && typeof (r as Faction).name === "string" && (r as Faction).name.trim() !== "",
+          )
+          .map((r) => ({
+            name: r.name.trim(),
+            description: typeof r.description === "string" ? r.description.trim() : "",
+          }))
+      : [];
+  return {
+    title: typeof s.title === "string" ? s.title : DEFAULT_SCENARIO.title,
+    premise: typeof s.premise === "string" ? s.premise : DEFAULT_SCENARIO.premise,
+    tone: strings(s.tone),
+    physicalLogic: strings(s.physicalLogic),
+    factions: rows(s.factions),
+    threads: strings(s.threads),
+    dangerCurve: strings(s.dangerCurve),
+    fixedPoints: rows(s.fixedPoints),
+    openingNarration:
+      typeof s.openingNarration === "string" ? s.openingNarration : DEFAULT_SCENARIO.openingNarration,
+    startDay: typeof s.startDay === "number" ? s.startDay : DEFAULT_SCENARIO.startDay,
+    startLocation: typeof s.startLocation === "string" ? s.startLocation : DEFAULT_SCENARIO.startLocation,
+  };
+}
 
 export function defaultPC(): Character {
   return {
@@ -536,7 +603,7 @@ export function loadGame(saved: unknown): LoadedGame | null {
     game: {
       ...base,
       ...partial,
-      scenario: { ...base.scenario, ...(partial.scenario ?? {}) },
+      scenario: normalizeScenario(partial.scenario),
       characters,
       roster,
       // Saves from before Gold existed gain the permanent currency row.

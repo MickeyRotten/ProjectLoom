@@ -182,12 +182,11 @@ export interface CompleteOptions {
    * Model override — authoring side calls (sheet/field/item/note/place
    * generation, Auto-Update) leave this unset and run on `settings.textModelId`,
    * since they write narrative content. The structured, narrow-question calls
-   * — op verification (`verifyOps.ts`), travel-estimate refinement
-   * (`travel.ts`), and block repair (`store.ts`, re-asking for the
-   * `<<<LOOM>>>` shape a failed turn dropped) — pass `settings.cheapModelId`
-   * instead: a strict-JSON-on-demand task is what a cheap instruct model is
-   * good at, and asking the SAME model that just missed the shape risks the
-   * same miss twice.
+   * — op verification (`verifyOps.ts`) and block repair (`store.ts`, re-asking
+   * for the `<<<LOOM>>>` shape a failed turn dropped) — pass
+   * `settings.cheapModelId` instead: a strict-JSON-on-demand task is what a
+   * cheap instruct model is good at, and asking the SAME model that just
+   * missed the shape risks the same miss twice.
    */
   model?: string;
 }
