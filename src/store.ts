@@ -91,8 +91,10 @@ import {
 } from "./lib/generateField";
 import {
   GENERATE_SCENARIO_TEMPERATURE,
+  buildScenarioBundleMessages,
   buildScenarioMessages,
   buildSeedRowMessages,
+  parseGeneratedScenarioBundle,
   parseGeneratedSeedRow,
   type ScenarioField,
   type SeedRowKind,
@@ -347,6 +349,16 @@ export interface LoomStore {
     existing: Faction[],
     hint: string,
   ) => Promise<Faction | null>;
+  /**
+   * "Auto-Generate Other Fields", under Premise: one call that writes the rest
+   * of the world seed — Title, Starting Location, Tone, Physical Logic, Danger
+   * Curve, two Factions, and the Opening Narration — from the Premise alone.
+   * Unlike its siblings above this WRITES straight into the scenario with no
+   * preview and no confirmation (the screen already has no Edit gate), so a
+   * boolean return is enough: true on success, false on failure (the message
+   * lands in `fieldGenError` as usual).
+   */
+  generateScenarioBundle: () => Promise<boolean>;
   /**
    * Ask the text model to write ONE inventory / equipment row for the ✦ button
    * beside it. Same shape as its two siblings — no writes, the row comes back
@@ -1288,6 +1300,37 @@ export const useStore = create<LoomStore>((set, get) => {
           : "Generation failed.";
       set({ fieldGenPending: false, fieldGenError: message });
       return null;
+    }
+  },
+
+  async generateScenarioBundle() {
+    // Single-flight, shared with every other ✦ flow. Unlike them this writes
+    // the scenario directly on success — no modal, no preview — since the
+    // button that calls it exists precisely to skip the per-field round trips.
+    if (get().fieldGenPending) return false;
+
+    set({ fieldGenPending: true, fieldGenError: null });
+    try {
+      const raw = await completeChat({
+        settings: get().settings,
+        messages: buildScenarioBundleMessages({
+          game: get().game,
+          characters: get().game.characters,
+        }),
+        temperature: GENERATE_SCENARIO_TEMPERATURE,
+      });
+      const patch = parseGeneratedScenarioBundle(raw);
+      if (!patch) throw new Error("The model returned nothing usable. Try again.");
+      get().updateScenario(patch);
+      set({ fieldGenPending: false });
+      return true;
+    } catch (err) {
+      const message =
+        err instanceof OpenRouterError || err instanceof Error
+          ? err.message
+          : "Generation failed.";
+      set({ fieldGenPending: false, fieldGenError: message });
+      return false;
     }
   },
 
