@@ -860,8 +860,9 @@ export interface FeatureFlags {
   stakes: boolean;
   /**
    * The post-turn op-verification gate (`verifyOps.ts`) — a cheap second
-   * model call that checks a genuinely NEW party/inventory `add` against the
-   * prose that just ran, and drops it when the prose doesn't support it. Off
+   * model call that checks specific claims a block just made — a NEW
+   * character, a rename, a death/departure, an item taken — against the
+   * prose that just ran, and drops or trims the ones it doesn't support. Off
    * skips the call entirely: every survives-`reconcileBlock` op applies as
    * written, same as before this existed.
    */
@@ -921,11 +922,13 @@ export interface Settings extends DiceRules, ComfySettings {
   textModelId: string;
   imageModelId: string;
   /**
-   * Model for the op-verification side call (`verifyOps.ts`) — deliberately
-   * separate from `textModelId` since the check is cheap and structured
-   * (does the prose support this new character/item?), not narration.
-   * Blank falls back to `textModelId`, so an unset field never breaks the
-   * gate, only makes it cost the same as narration.
+   * Model for the narrow, structured side calls — op verification
+   * (`verifyOps.ts`), travel-estimate refinement (`travel.ts`), and block
+   * repair (`store.ts`) — deliberately separate from `textModelId` since none
+   * of them narrate: each is "given this passage, answer a specific,
+   * checkable question" rather than "write the next beat." Blank falls back
+   * to `textModelId`, so an unset field never breaks any of them, only makes
+   * them cost the same as narration.
    */
   cheapModelId: string;
   /**

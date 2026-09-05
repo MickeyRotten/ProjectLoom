@@ -112,8 +112,8 @@ const FEATURES: Record<FeatureKey, FeatureSpec & { group: FeatureGroup }> = {
   opVerification: {
     key: "opVerification",
     group: "play",
-    label: "Verify New Characters & Items",
-    note: "Off: a new character or a taken item the narrator writes applies as-is, with no second check. On, a cheap model call reviews it against the prose first and drops it if the prose doesn't back it up. Model lives under Model.",
+    label: "Verify Ops Against Prose",
+    note: "Off: a new character, a rename, a death/departure, or a taken item the narrator writes applies as-is, with no second check. On, a cheap model call reviews each against the prose first and drops (or, for a rename, trims) it if the prose doesn't back it up. Model lives under Model.",
   },
   trackCoords: {
     key: "trackCoords",

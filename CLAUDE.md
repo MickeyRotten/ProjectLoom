@@ -835,6 +835,26 @@ behind a `FeatureOffNotice` banner, and the three relocated flags still render o
 their old screens beside the settings that configure them (Features is the map,
 those are the rooms). `writesBlock` skips the `repairBlock` call when no channel
 is on — buying back an empty object is the one repair that can't pay for itself.
+Post-MVP also: **op verification widened, and repair leans on it too**
+(`verifyOps.ts`) — the post-turn gate covered exactly two claims (a new
+party member, a taken item); a narrator creating a character before the
+scene had named them, or claiming a death/departure the prose never
+showed, went unchecked, since `reconcileBlock` only judges an op against
+STATE and the OUTPUT PROTOCOL rules for both are prose-only. `verifyOps`
+now also checks a `newName` landing on somebody found (`claim: "rename"`)
+and a `remove` resolving to `fallen`/`departed` for somebody found
+(`claim: "exit"`) — `npc`/`none` exits stay unchecked, a routine standing
+change rather than an irreversible beat worth a veto. Same fail-open,
+subtract-only contract: a failed `create`/`exit`/`taken` drops the whole
+op, a failed `rename` strips only `newName` (`applyVerification →
+omitNewName`), since a standing change riding the same op made no
+unsupported claim of its own. Separately, `store.ts`'s block-repair call
+— fired when a turn drops the `<<<LOOM>>>` block entirely — now runs on
+`settings.cheapModelId` instead of re-asking the model that just missed
+the shape: the task at that point is narrow and structured ("given the
+prose already written, emit the block"), which is what the cheap model is
+already trusted with elsewhere. `CompleteOptions.model`'s doc comment
+names all three structured-question callers now.
 Deferred (post-MVP): rolling LLM summarization of the beats themselves,
 NPC/item art, TTS, weather animation, multi-world. Track scope in
 `DESIGN.md → Build Phases`.
