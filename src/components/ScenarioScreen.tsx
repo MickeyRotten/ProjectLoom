@@ -31,6 +31,9 @@ export function ScenarioScreen() {
   const update = useStore((s) => s.updateScenario);
   const generate = useStore((s) => s.generateScenarioField);
   const generateRow = useStore((s) => s.generateSeedRow);
+  const generateBundle = useStore((s) => s.generateScenarioBundle);
+  const bundlePending = useStore((s) => s.fieldGenPending);
+  const bundleError = useStore((s) => s.fieldGenError);
   const [genField, setGenField] = useState<ScenarioField | null>(null);
   const [genRow, setGenRow] = useState<{ kind: SeedRowKind; index: number } | null>(null);
 
@@ -73,12 +76,6 @@ export function ScenarioScreen() {
 
       <div className="flex-1 space-y-5 overflow-y-auto p-3">
         <TextField label="Title" value={scenario.title} onChange={(v) => update({ title: v })} />
-        <TextField
-          label="Starting Location"
-          value={scenario.startLocation ?? ""}
-          onChange={(v) => update({ startLocation: v })}
-          placeholder="Where the adventure opens"
-        />
         <AreaField
           label="Premise"
           value={scenario.premise}
@@ -86,6 +83,26 @@ export function ScenarioScreen() {
           action={genButton("premise")}
           onChange={(v) => update({ premise: v })}
         />
+
+        <div className="space-y-1">
+          <button
+            type="button"
+            disabled={bundlePending || !scenario.premise.trim()}
+            onClick={() => void generateBundle()}
+            className={`w-full border-2 border-ink px-2 py-2 leading-none active:bg-ink active:text-paper disabled:opacity-40`}
+          >
+            {bundlePending ? "Generating…" : "✦ Auto-Generate Other Fields"}
+          </button>
+          <p className="text-xs uppercase tracking-widest opacity-60">
+            Writes Title, Starting Location, Tone, Physical Logic, Danger Curve, two Factions and
+            Opening Narration from the Premise above — no preview, replaces them immediately.
+          </p>
+          {bundleError && (
+            <p className="border-2 border-ink p-2 text-sm" role="alert">
+              {bundleError}
+            </p>
+          )}
+        </div>
 
         {(["tone", "physicalLogic", "dangerCurve"] as const).map((field) => (
           <AreaField
@@ -124,6 +141,13 @@ export function ScenarioScreen() {
           rows={3}
           placeholder="What happened to the missing captain?"
           onChange={(v) => update({ threads: splitLines(v) })}
+        />
+
+        <TextField
+          label="Starting Location"
+          value={scenario.startLocation ?? ""}
+          onChange={(v) => update({ startLocation: v })}
+          placeholder="Where the adventure opens"
         />
 
         <AreaField

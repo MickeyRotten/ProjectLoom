@@ -3,8 +3,10 @@ import {
   SCENARIO_FIELDS,
   SCENARIO_FIELD_LABEL,
   SCENARIO_LIST_FIELDS,
+  buildScenarioBundleMessages,
   buildScenarioMessages,
   buildSeedRowMessages,
+  parseGeneratedScenarioBundle,
   parseGeneratedSeedRow,
   scenarioScanText,
   type ScenarioField,
@@ -227,5 +229,118 @@ describe("buildSeedRowMessages / parseGeneratedSeedRow — factions and fixed po
 describe("SCENARIO_LIST_FIELDS", () => {
   it("names exactly the three bullet-list fields", () => {
     expect(SCENARIO_LIST_FIELDS).toEqual(["tone", "physicalLogic", "dangerCurve"]);
+  });
+});
+
+describe("buildScenarioBundleMessages — Auto-Generate Other Fields", () => {
+  it("asks for every bundle field and exactly two factions", () => {
+    const game = gameWith({ premise: "A grim coast under a dying sun." });
+    const messages = buildScenarioBundleMessages({ game, characters: [defaultPC()] });
+    const head = messages[0].content;
+    for (const key of [
+      '"title"',
+      '"startLocation"',
+      '"tone"',
+      '"physicalLogic"',
+      '"dangerCurve"',
+      '"factions"',
+      '"openingNarration"',
+    ]) {
+      expect(head).toContain(key);
+    }
+    expect(head).toContain("exactly 2");
+    const last = messages[messages.length - 1];
+    expect(last.role).toBe("user");
+  });
+
+  it("sends the Premise, but nothing else already written — this fills an empty seed", () => {
+    const game = gameWith({
+      premise: "A grim coast under a dying sun.",
+      title: "Should Not Appear",
+      openingNarration: "Should Not Appear Either",
+    });
+    const text = buildScenarioBundleMessages({ game, characters: [defaultPC()] })
+      .map((m) => m.content)
+      .join("\n");
+    expect(text).toContain("A grim coast under a dying sun.");
+    expect(text).not.toContain("Should Not Appear");
+  });
+
+  it("carries the player character and the World Notes the Premise touches", () => {
+    const pc = { ...defaultPC(), name: "Hiro" };
+    const game = gameWith(
+      { premise: "The Sunken Choir still sings under the harbour." },
+      [note({ id: "n1", title: "Sunken Choir", content: "Drowned singers, not ghosts." })],
+    );
+    const text = buildScenarioBundleMessages({ game, characters: [pc] })
+      .map((m) => m.content)
+      .join("\n");
+    expect(text).toContain("Hiro");
+    expect(text).toContain("Drowned singers, not ghosts.");
+  });
+});
+
+describe("parseGeneratedScenarioBundle", () => {
+  it("reads every field from a full reply", () => {
+    const bundle = parseGeneratedScenarioBundle(
+      JSON.stringify({
+        title: "The Salt Reach",
+        startLocation: "Harbor Watch",
+        tone: ["Grim", "Hopeful"],
+        physicalLogic: ["Low magic", "Iron age tech"],
+        dangerCurve: ["Early: petty crime", "Late: open war"],
+        factions: [
+          { name: "The Wardens", description: "Law, such as it is." },
+          { name: "The Drowned Court", description: "Smugglers who worship the tide." },
+        ],
+        openingNarration: "You wake on a moving deck.",
+      }),
+    );
+    expect(bundle).toEqual({
+      title: "The Salt Reach",
+      startLocation: "Harbor Watch",
+      tone: ["Grim", "Hopeful"],
+      physicalLogic: ["Low magic", "Iron age tech"],
+      dangerCurve: ["Early: petty crime", "Late: open war"],
+      factions: [
+        { name: "The Wardens", description: "Law, such as it is." },
+        { name: "The Drowned Court", description: "Smugglers who worship the tide." },
+      ],
+      openingNarration: "You wake on a moving deck.",
+    });
+  });
+
+  it("caps factions at two, dropping unnamed rows", () => {
+    const bundle = parseGeneratedScenarioBundle(
+      JSON.stringify({
+        factions: [
+          { name: "A", description: "" },
+          { description: "no name, dropped" },
+          { name: "B", description: "" },
+          { name: "C", description: "" },
+        ],
+      }),
+    );
+    expect(bundle?.factions).toEqual([
+      { name: "A", description: "" },
+      { name: "B", description: "" },
+    ]);
+  });
+
+  it("keeps the fields it can read even when others are missing or malformed", () => {
+    const bundle = parseGeneratedScenarioBundle(
+      JSON.stringify({ title: "Only This", tone: "not an array", factions: "nope" }),
+    );
+    expect(bundle).toEqual({ title: "Only This" });
+  });
+
+  it("fails on a reply with nothing usable", () => {
+    expect(parseGeneratedScenarioBundle("not json")).toBeNull();
+    expect(parseGeneratedScenarioBundle(JSON.stringify({ tone: [], factions: [] }))).toBeNull();
+  });
+
+  it("survives fences and preamble", () => {
+    const messy = 'Sure!\n```json\n{ "title": "The Salt Reach" }\n```';
+    expect(parseGeneratedScenarioBundle(messy)).toEqual({ title: "The Salt Reach" });
   });
 });

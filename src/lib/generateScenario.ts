@@ -1,4 +1,4 @@
-import type { Character, Faction, GameState } from "../types";
+import type { Character, Faction, GameState, Scenario } from "../types";
 import { type ChatMessage, formatScenarioBlock } from "./prompt";
 import { extractFirstJsonObject, parseJsonTolerant } from "./loomBlock";
 import { formatIdentity, playerCharacter } from "./roster";
@@ -319,4 +319,125 @@ export function parseGeneratedSeedRow(raw: string): Faction | null {
     name,
     description: typeof parsed.description === "string" ? parsed.description.trim() : "",
   };
+}
+
+/* ------------------------------------------------------------------ *
+ * "Auto-Generate Other Fields" — the whole rest of the seed, one call
+ * ------------------------------------------------------------------ */
+
+/** How many Factions the bundle writes. Fixed Points and Open Threads are excluded by design. */
+const BUNDLE_FACTION_COUNT = 2;
+
+const SCENARIO_BUNDLE_RULES = [
+  '- "title" is the adventure\'s title: a few words, no subtitle.',
+  '- "startLocation" is the one proper-noun place the opening beat stands in — short, no compound joiners (no " - " or "/").',
+  `- "tone" is the world's MOOD and its hard boundaries — what this world is, and what it deliberately is NOT — as a JSON array of 2-4 short strings.`,
+  `- "physicalLogic" is how this world WORKS — its scale, its tech/magic level, and any rule that should not be broken — as a JSON array of 3-5 short strings.`,
+  `- "dangerCurve" is roughly how dangerous EARLY areas should feel versus LATE ones — as a JSON array of 2-3 short strings.`,
+  `- "factions" is a JSON array of exactly ${BUNDLE_FACTION_COUNT} named powers already in tension, each an object {"name": ..., "description": ...} — description is one or two lines: what they want, and who or what they are already in tension with.`,
+  '- "openingNarration" is the FIRST BEAT the player reads: second person ("you"), present tense, a few tight sentences of concrete sensory detail that put the player somewhere specific with something in front of them, ending on the question of what they do. No backstory dump, no title, no menu text.',
+].join("\n");
+
+export interface GenerateScenarioBundleOptions {
+  /** The adventure as it stands — read only for its Premise and its World Notes. */
+  game: GameState;
+  /** The cast library, for the player character the opening has to feature. */
+  characters: Character[];
+}
+
+/**
+ * The messages[] for the "Auto-Generate Other Fields" button under Premise:
+ * one call that writes the rest of the world seed — Title, Starting Location,
+ * Tone, Physical Logic, Danger Curve, two Factions, and the Opening Narration
+ * — from the Premise alone. Fixed Points and Open Threads are deliberately
+ * left out (DESIGN.md decision: those stay player-authored), and nothing else
+ * already written rides along as context, since this button exists to fill a
+ * scenario in from just its Premise.
+ */
+export function buildScenarioBundleMessages(opts: GenerateScenarioBundleOptions): ChatMessage[] {
+  const { game, characters } = opts;
+  const premise = game.scenario.premise.trim();
+
+  const messages: ChatMessage[] = [
+    {
+      role: "system",
+      content: [
+        "WORLD SEED — you are writing the REST of the setup for a single-player text adventure, from its Premise alone.",
+        `Reply with a single JSON object and nothing else — no prose, no commentary, no code fences. It has exactly these keys: "title", "startLocation", "tone", "physicalLogic", "dangerCurve", "factions", "openingNarration".`,
+        "",
+        "THE FIELDS",
+        SCENARIO_BUNDLE_RULES,
+        "",
+        "RULES",
+        "- Every field must agree with the Premise below and with each other.",
+        "- Write all seven fields. Do not omit any.",
+      ].join("\n"),
+    },
+    { role: "system", content: `PREMISE\n${premise}` },
+  ];
+
+  const player = playerBlock(game, characters);
+  if (player) messages.push({ role: "system", content: player });
+
+  const notes = formatWorldNotesBlock(matchWorldNotes(game.worldNotes, premise));
+  if (notes) messages.push({ role: "system", content: notes });
+
+  messages.push({
+    role: "user",
+    content: "Write the rest of the world seed from this Premise. Emit the JSON object now.",
+  });
+
+  return messages;
+}
+
+/**
+ * Pull the bundle out of a model reply. Tolerant per-field, like every other
+ * parser here: a missing or malformed field is simply absent from the result
+ * rather than failing the whole call, so a model that forgets "title" still
+ * hands back six usable fields instead of none.
+ */
+export function parseGeneratedScenarioBundle(raw: string): Partial<Scenario> | null {
+  const json = extractFirstJsonObject(raw);
+  if (!json) return null;
+  const parsed = parseJsonTolerant<Record<string, unknown>>(json);
+  if (!parsed) return null;
+
+  const result: Partial<Scenario> = {};
+
+  if (typeof parsed.title === "string" && parsed.title.trim()) result.title = parsed.title.trim();
+  if (typeof parsed.startLocation === "string" && parsed.startLocation.trim())
+    result.startLocation = parsed.startLocation.trim();
+  if (typeof parsed.openingNarration === "string" && parsed.openingNarration.trim())
+    result.openingNarration = parsed.openingNarration.trim();
+
+  const stringList = (v: unknown): string[] =>
+    Array.isArray(v)
+      ? v.filter((x): x is string => typeof x === "string" && x.trim() !== "").map((x) => x.trim())
+      : [];
+
+  const tone = stringList(parsed.tone);
+  if (tone.length) result.tone = tone;
+  const physicalLogic = stringList(parsed.physicalLogic);
+  if (physicalLogic.length) result.physicalLogic = physicalLogic;
+  const dangerCurve = stringList(parsed.dangerCurve);
+  if (dangerCurve.length) result.dangerCurve = dangerCurve;
+
+  if (Array.isArray(parsed.factions)) {
+    const factions = parsed.factions
+      .map((f): Faction | null => {
+        if (!f || typeof f !== "object") return null;
+        const row = f as Record<string, unknown>;
+        const name = typeof row.name === "string" ? row.name.trim() : "";
+        if (!name) return null;
+        return {
+          name,
+          description: typeof row.description === "string" ? row.description.trim() : "",
+        };
+      })
+      .filter((f): f is Faction => f !== null)
+      .slice(0, BUNDLE_FACTION_COUNT);
+    if (factions.length) result.factions = factions;
+  }
+
+  return Object.keys(result).length ? result : null;
 }
