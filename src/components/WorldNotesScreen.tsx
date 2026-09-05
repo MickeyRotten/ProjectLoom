@@ -3,6 +3,7 @@ import { useStore } from "../store";
 import { OverlayHeader } from "./OverlayHeader";
 import { GenerateNoteModal } from "./GenerateNoteModal";
 import { TextField, AreaField, ToggleField, btn, btnSmall } from "./fields";
+import { useConfirm } from "./useConfirm";
 
 /**
  * World Notes (DESIGN.md → Menu): the single-category lorebook. Each note's
@@ -14,13 +15,22 @@ import { TextField, AreaField, ToggleField, btn, btnSmall } from "./fields";
  * and the Scenario screen have (`generateNote.ts`) — it writes the whole note,
  * title and keywords included, since a note with no title matches nothing. Like
  * the Scenario screen there is no Edit gate, so an accepted note commits at once.
+ *
+ * A note also carries the world seed's "letting the seed grow" action
+ * (DESIGN.md → World Seed): Promote to Thread / Promote to Fixed Point copies
+ * it onto `Scenario.threads`/`.fixedPoints` and removes the note, so a fact
+ * that has earned a permanent place in the world seed is not also stated in
+ * the lorebook. Deliberately a player-pressed button, never something the
+ * narrator's own prose triggers.
  */
 export function WorldNotesScreen() {
   const notes = useStore((s) => s.game.worldNotes);
   const addNote = useStore((s) => s.addNote);
   const updateNote = useStore((s) => s.updateNote);
   const removeNote = useStore((s) => s.removeNote);
+  const promoteNote = useStore((s) => s.promoteNote);
   const [genNoteId, setGenNoteId] = useState<string | null>(null);
+  const { ask, dialog } = useConfirm();
 
   const genNote = notes.find((n) => n.id === genNoteId) ?? null;
 
@@ -81,9 +91,43 @@ export function WorldNotesScreen() {
               placeholder="Lore injected when a keyword is mentioned."
               onChange={(v) => updateNote(n.id, { content: v })}
             />
-            <button type="button" onClick={() => removeNote(n.id)} className={btnSmall}>
-              Remove
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() =>
+                  ask(
+                    {
+                      title: `Promote "${n.title || "Untitled"}" to a Thread?`,
+                      body: "Copies its content into the world seed's Open Threads and removes this note.",
+                      confirmLabel: "Promote",
+                    },
+                    () => promoteNote(n.id, "thread", true),
+                  )
+                }
+                className={btnSmall}
+              >
+                → Thread
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  ask(
+                    {
+                      title: `Promote "${n.title || "Untitled"}" to a Fixed Point?`,
+                      body: "Copies its title and content into the world seed's Fixed Points and removes this note.",
+                      confirmLabel: "Promote",
+                    },
+                    () => promoteNote(n.id, "fixedPoint", true),
+                  )
+                }
+                className={btnSmall}
+              >
+                → Fixed Point
+              </button>
+              <button type="button" onClick={() => removeNote(n.id)} className={btnSmall}>
+                Remove
+              </button>
+            </div>
           </div>
         ))}
 
@@ -91,6 +135,7 @@ export function WorldNotesScreen() {
           + Add Note
         </button>
       </div>
+      {dialog}
 
       {genNote && (
         <GenerateNoteModal

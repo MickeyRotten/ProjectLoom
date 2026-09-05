@@ -117,14 +117,44 @@ export function approxTokens(text: string): number {
 }
 
 /**
- * The SCENARIO block. Exported because every side call needs the setting's
- * idiom too (`autoUpdate.ts`, `generateField.ts`) and three hand-rolled copies
- * had already started to drift apart. Blank when there is nothing to say, so a
- * caller can skip the message entirely.
+ * The SCENARIO block — the world seed. Exported because every side call needs
+ * the setting's idiom too (`autoUpdate.ts`, `generateField.ts`, `generatePlace.ts`)
+ * and three hand-rolled copies had already started to drift apart. Blank when
+ * there is nothing to say, so a caller can skip the message entirely.
+ *
+ * Every field beyond premise is optional and printed only when non-empty, so a
+ * scenario that never filled them in (or a save from before they existed) reads
+ * exactly as it always did. Always the full text, every turn — DESIGN.md →
+ * World Seed: it is short by design, and consistency comes from it being read
+ * in full rather than trimmed or keyword-matched.
  */
 export function formatScenarioBlock(scenario: Scenario): string {
   if (!scenario.title.trim() && !scenario.premise.trim()) return "";
-  return `SCENARIO — ${scenario.title}\n${scenario.premise}`.trim();
+  return join([
+    `SCENARIO — ${scenario.title}\n${scenario.premise}`.trim(),
+    scenario.tone.length ? ["Tone:", ...scenario.tone.map((t) => `- ${t}`)].join("\n") : "",
+    scenario.physicalLogic.length
+      ? ["How this world works:", ...scenario.physicalLogic.map((p) => `- ${p}`)].join("\n")
+      : "",
+    scenario.factions.length
+      ? [
+          "Powers already in tension:",
+          ...scenario.factions.map((f) => `- ${f.name}${f.description ? `: ${f.description}` : ""}`),
+        ].join("\n")
+      : "",
+    scenario.threads.length
+      ? ["Open threads:", ...scenario.threads.map((t) => `- ${t}`)].join("\n")
+      : "",
+    scenario.dangerCurve.length
+      ? ["Danger curve:", ...scenario.dangerCurve.map((d) => `- ${d}`)].join("\n")
+      : "",
+    scenario.fixedPoints.length
+      ? [
+          "Already exists:",
+          ...scenario.fixedPoints.map((f) => `- ${f.name}${f.description ? `: ${f.description}` : ""}`),
+        ].join("\n")
+      : "",
+  ]);
 }
 
 /**

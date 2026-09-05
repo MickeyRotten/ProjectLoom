@@ -115,12 +115,6 @@ const FEATURES: Record<FeatureKey, FeatureSpec & { group: FeatureGroup }> = {
     label: "Verify Ops Against Prose",
     note: "Off: a new character, a rename, a death/departure, or a taken item the narrator writes applies as-is, with no second check. On, a cheap model call reviews each against the prose first and drops (or, for a rename, trims) it if the prose doesn't back it up. Model lives under Model.",
   },
-  trackCoords: {
-    key: "trackCoords",
-    group: "play",
-    label: "Track World Coordinates",
-    note: "Off: no position is computed for a new place, and existing ones are kept as-is. On, every place gets an (x, y, z) the moment the player arrives — a deterministic guess from the turn, refined by a cheap model call reading how far and which way the arrival prose says they went. Requires Places — with it off there is nowhere to keep a position. No map; positions show as plain numbers on the Places screen.",
-  },
   notes: {
     key: "notes",
     group: "memory",

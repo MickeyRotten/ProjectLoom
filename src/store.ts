@@ -3,9 +3,9 @@ import type {
   AdventureImports,
   Character,
   CharacterOverride,
-  Coords,
   DiceCast,
   Equipment,
+  Faction,
   GameState,
   Item,
   JournalLine,
@@ -17,7 +17,6 @@ import type {
   Settings,
   Standing,
 } from "./types";
-import { ORIGIN } from "./types";
 import { ensureGold, newCharacter, newGame, seedAdventure, withPC } from "./lib/defaults";
 import { loadSettings, saveSettings } from "./lib/settings";
 import {
@@ -93,7 +92,10 @@ import {
 import {
   GENERATE_SCENARIO_TEMPERATURE,
   buildScenarioMessages,
+  buildSeedRowMessages,
+  parseGeneratedSeedRow,
   type ScenarioField,
+  type SeedRowKind,
 } from "./lib/generateScenario";
 import {
   GENERATE_ITEM_TEMPERATURE,
@@ -119,17 +121,7 @@ import { applyDeltas, reconcileBlock } from "./lib/deltas";
 import { filterBlock, type FeatureKey } from "./lib/features";
 import { verifyOps } from "./lib/verifyOps";
 import { withRename } from "./lib/names";
-import {
-  addNeighbourStubs,
-  currentPoint,
-  ensurePlace,
-  fillPlace,
-  findLocationPoint,
-  findPlace,
-  placeStub,
-  withLocationPoint,
-} from "./lib/places";
-import { applyMovement, estimateTravel, fallbackCoords } from "./lib/travel";
+import { ensurePlace, fillPlace, placeStub } from "./lib/places";
 import {
   GENERATE_PLACE_TEMPERATURE,
   buildPlaceMessages,
@@ -343,6 +335,19 @@ export interface LoomStore {
    */
   generateScenarioField: (field: ScenarioField, hint: string) => Promise<string | null>;
   /**
+   * Ask the text model to write ONE faction / fixed point row for the ✦
+   * button beside it — the world seed's row-shaped fields. Same shape as
+   * `generateScenarioField`'s other flows: no writes, the row comes back for
+   * the modal to preview, and it shares the `fieldGenPending` / `fieldGenError`
+   * pair. `existing` is the OTHER rows of that same kind, excluding the one
+   * being replaced.
+   */
+  generateSeedRow: (
+    kind: SeedRowKind,
+    existing: Faction[],
+    hint: string,
+  ) => Promise<Faction | null>;
+  /**
    * Ask the text model to write ONE inventory / equipment row for the ✦ button
    * beside it. Same shape as its two siblings — no writes, the row comes back
    * for the modal to preview, and it shares the `fieldGenPending` /
@@ -395,6 +400,15 @@ export interface LoomStore {
   addNote: () => void;
   updateNote: (id: string, patch: Partial<Note>) => void;
   removeNote: (id: string) => void;
+  /**
+   * Fold a World Note into the world seed — the doc's "letting the seed grow"
+   * rule made concrete: a deliberate, player-pressed action, never something
+   * the narrator's own prose does on its own. A `thread` promotion takes the
+   * note's content as one open question; a `fixedPoint` promotion takes its
+   * title and content as name/description. `removeSource` deletes the note
+   * once folded in, so the fact is not stated in two channels at once.
+   */
+  promoteNote: (id: string, target: "thread" | "fixedPoint", removeSource: boolean) => void;
   /** A blank area for the player to write by hand (Places screen). */
   addPlace: () => void;
   updatePlace: (id: string, patch: Partial<Place>) => void;
@@ -408,23 +422,6 @@ export interface LoomStore {
    * Never on the turn's critical path, and its failure is never a turn error.
    */
   writePlace: (id: string) => Promise<void>;
-  /**
-   * Refine `location`'s point (inside place `placeId`) from the beat's own
-   * prose — the cheap-model half of `travel.ts`. Fired automatically right
-   * after a location changes; never on the turn's critical path. A
-   * synchronous, deterministic guess (`travel.ts → fallbackCoords`) already
-   * placed the point before this runs, so a failure here simply leaves that
-   * guess as-is. `isEntry` says whether `location` is also the place's own
-   * entry room, in which case `Place.coords` is kept in sync with it too.
-   */
-  refineTravel: (
-    placeId: string,
-    location: string,
-    isEntry: boolean,
-    fromCoords: Coords,
-    action: string,
-    prose: string,
-  ) => Promise<void>;
   addQuest: () => void;
   updateQuest: (id: string, patch: Partial<Quest>) => void;
   removeQuest: (id: string) => void;
@@ -1268,6 +1265,32 @@ export const useStore = create<LoomStore>((set, get) => {
     }
   },
 
+  async generateSeedRow(kind, existing, hint) {
+    // Single-flight, and nothing else — same reasoning as `generateScenarioField`:
+    // this writes no game state, and the row is handed back to a modal.
+    if (get().fieldGenPending) return null;
+
+    set({ fieldGenPending: true, fieldGenError: null });
+    try {
+      const raw = await completeChat({
+        settings: get().settings,
+        messages: buildSeedRowMessages({ game: get().game, kind, existing, hint }),
+        temperature: GENERATE_SCENARIO_TEMPERATURE,
+      });
+      const row = parseGeneratedSeedRow(raw);
+      if (!row) throw new Error("The model returned nothing usable. Try again.");
+      set({ fieldGenPending: false });
+      return row;
+    } catch (err) {
+      const message =
+        err instanceof OpenRouterError || err instanceof Error
+          ? err.message
+          : "Generation failed.";
+      set({ fieldGenPending: false, fieldGenError: message });
+      return null;
+    }
+  },
+
   async generateItem(hint, existing, character) {
     // Single-flight, and nothing else — same reasoning as `generateField`: this
     // writes no game state, and the row is handed back to a modal.
@@ -1433,6 +1456,28 @@ export const useStore = create<LoomStore>((set, get) => {
     void saveActiveGame(game);
   },
 
+  promoteNote(id, target, removeSource) {
+    const g = get().game;
+    const note = g.worldNotes.find((n) => n.id === id);
+    if (!note) return;
+
+    const scenario: Scenario =
+      target === "thread"
+        ? { ...g.scenario, threads: [...g.scenario.threads, note.content || note.title].filter(Boolean) }
+        : {
+            ...g.scenario,
+            fixedPoints: [
+              ...g.scenario.fixedPoints,
+              { name: note.title || "Untitled", description: note.content },
+            ],
+          };
+
+    const worldNotes = removeSource ? g.worldNotes.filter((n) => n.id !== id) : g.worldNotes;
+    const game = { ...g, scenario, worldNotes };
+    set({ game });
+    void saveActiveGame(game);
+  },
+
   addPlace() {
     const g = get().game;
     // A stub, exactly like the one an arrival writes — a place the player is
@@ -1483,13 +1528,9 @@ export const useStore = create<LoomStore>((set, get) => {
       // this area, or deleted it outright, while the call was in flight.
       // `fillPlace` no-ops on a missing id, so a late write can't resurrect it.
       const current = get().game;
-      const filled = fillPlace(current.places, id, authored);
-      if (filled === current.places) return;
+      const places = fillPlace(current.places, id, authored);
+      if (places === current.places) return;
 
-      // The trade tags name other settlements. Each becomes a stub — a name the
-      // keyword matcher can already inject, and an area that authors itself the
-      // day the player walks there. No extra call, so no extra spend.
-      const places = addNeighbourStubs(filled, authored, uid);
       const next = { ...current, places };
       set({ game: next });
       void saveActiveGame(next);
@@ -1500,26 +1541,6 @@ export const useStore = create<LoomStore>((set, get) => {
     } finally {
       set({ placePending: false });
     }
-  },
-
-  async refineTravel(placeId, location, isEntry, fromCoords, action, prose) {
-    const estimate = await estimateTravel({ settings: get().settings, action, prose });
-    if (!estimate) return;
-
-    // Re-read the store: the player may have undone the turn that visited
-    // this place, or deleted it outright, while the call was in flight.
-    const current = get().game;
-    const place = current.places.find((p) => p.id === placeId);
-    if (!place) return;
-
-    const coords = applyMovement(fromCoords, estimate);
-    const updated = withLocationPoint(place, location, coords);
-    const places = current.places.map((p) =>
-      p.id === placeId ? (isEntry ? { ...updated, coords } : updated) : p,
-    );
-    const next = { ...current, places };
-    set({ game: next });
-    void saveActiveGame(next);
   },
 
   addQuest() {
@@ -1904,48 +1925,8 @@ export const useStore = create<LoomStore>((set, get) => {
       // snapshot taken after an async fill would restore the place to a state it
       // was already in, stranding the fill. Returns the same array on an area
       // this adventure already knows, so re-entering a place costs nothing.
-      let places = features.places ? ensurePlace(g.places, scene.area, uid()) : g.places;
+      const places = features.places ? ensurePlace(g.places, scene.area, uid()) : g.places;
       const discovered = places !== g.places ? places[places.length - 1] : null;
-
-      // Coordinates: every distinct room-level `location` gets its own point,
-      // cached inside the owning Place (`travel.ts`/`places.ts`). Gated on its
-      // own flag AND on Places, since a point has nowhere to live without the
-      // Place it's attached to. Fires on ANY change to `location`, not only a
-      // brand-new area — a point bound to the area alone reads as broken once
-      // shown beside the finer per-turn location label: walking down a road
-      // inside the same town moved nothing. Assigned SYNCHRONOUSLY, zero
-      // network cost, off a seed of (turn, action text), so it reproduces
-      // identically on regenerate and a position always exists even with the
-      // cheap model disabled, failing, or timing out.
-      let travelTarget:
-        | { placeId: string; location: string; isEntry: boolean; fromPoint: Coords }
-        | undefined;
-      if (features.places && features.trackCoords && scene.location && scene.location !== g.location) {
-        const isFirstEver = g.places.length === 0;
-        const fromPoint = currentPoint(g.places, g.area, g.location);
-        const coords = isFirstEver ? ORIGIN : fallbackCoords(fromPoint, turn, trimmed);
-
-        if (discovered) {
-          // A brand-new area: its own entry point and this first room's point
-          // are the same spot, kept in sync (`Place.coords`'s doc comment).
-          places = places.map((p) =>
-            p.id === discovered.id ? withLocationPoint({ ...p, coords }, scene.location, coords) : p,
-          );
-          // Skipped for the very first place this adventure ever creates —
-          // there is no FROM to refine relative to.
-          if (!isFirstEver) {
-            travelTarget = { placeId: discovered.id, location: scene.location, isEntry: true, fromPoint };
-          }
-        } else {
-          const here = findPlace(places, scene.area);
-          if (here && !findLocationPoint(here, scene.location)) {
-            places = places.map((p) =>
-              p.id === here.id ? withLocationPoint(p, scene.location, coords) : p,
-            );
-            travelTarget = { placeId: here.id, location: scene.location, isEntry: false, fromPoint };
-          }
-        }
-      }
 
       // Party deltas apply first, THEN deterministic speaker detection bumps
       // lastSpokeTurn — the model's `spoke` hint never overrides the prose
@@ -2059,22 +2040,6 @@ export const useStore = create<LoomStore>((set, get) => {
       // landed and can fail without the player ever seeing it. The arrival beat
       // itself is improvised — every beat after it has the place in hand.
       if (discovered) void get().writePlace(discovered.id);
-
-      // Same two-phase shape for its point: the synchronous placement above
-      // always gave it SOME position; this cheap-model call may refine the
-      // direction and distance from the beat's own prose, but only if it
-      // lands before the player undoes the turn — same "place still exists"
-      // guard `writePlace` uses.
-      if (travelTarget) {
-        void get().refineTravel(
-          travelTarget.placeId,
-          travelTarget.location,
-          travelTarget.isEntry,
-          travelTarget.fromPoint,
-          trimmed,
-          prose,
-        );
-      }
     } catch (err) {
       const aborted =
         err instanceof DOMException

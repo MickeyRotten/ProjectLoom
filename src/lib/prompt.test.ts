@@ -7,6 +7,7 @@ import {
   formatPartyRoster,
   formatPartyComposition,
   formatRegenerateNote,
+  formatScenarioBlock,
 } from "./prompt";
 import { defaultPC, newGame, defaultSettings } from "./defaults";
 import { PARTY_LIMIT } from "./roster";
@@ -1102,17 +1103,10 @@ describe("places in the prompt", () => {
   const rodstroke: Place = {
     id: "p1",
     name: "Rodstroke",
-    kind: "steading",
-    type: "village",
     description: "A muddy village of forty souls.",
-    tags: [{ slot: "prosperity", value: "Poor" }],
-    rumours: ["The miller's boy is missing."],
-    rooms: [{ name: "The Wend Mill", description: "Wheel still.", unique: true }],
     keywords: [],
-    coords: { x: 0, y: 0, z: 0 },
-    locations: [],
   };
-  const torsea: Place = { ...rodstroke, id: "p2", name: "Torsea", rumours: [], rooms: [] };
+  const torsea: Place = { ...rodstroke, id: "p2", name: "Torsea" };
 
   /** A game standing in Rodstroke, which also knows of Torsea. */
   function here(): GameState {
@@ -1122,9 +1116,8 @@ describe("places in the prompt", () => {
   it("puts the current area in the state tier, in full", () => {
     const msgs = build({ game: here(), playerMessage: "I look around" });
     const state = msgs.find((m) => m.content.includes("STATE OF PLAY"));
-    expect(state?.content).toContain("CURRENT AREA — Rodstroke — village");
-    expect(state?.content).toContain("Prosperity: Poor");
-    expect(state?.content).toContain("The Wend Mill");
+    expect(state?.content).toContain("CURRENT AREA — Rodstroke");
+    expect(state?.content).toContain("A muddy village of forty souls.");
   });
 
   it("says nothing when the scene is in no known area", () => {
@@ -1179,15 +1172,8 @@ describe("narrator features", () => {
       {
         id: "p1",
         name: "Boars Head Tavern",
-        kind: "steading",
-        type: "tavern",
         description: "A low tavern.",
-        tags: [],
-        rumours: [],
-        rooms: [],
         keywords: [],
-        coords: { x: 0, y: 0, z: 0 },
-        locations: [],
       },
     ],
   });
@@ -1307,5 +1293,59 @@ describe("narrator features", () => {
     expect(text).toContain("SCENARIO —");
     expect(text).toContain("Rodstroke");
     expect(text).not.toContain("STATE OF PLAY");
+  });
+});
+
+/**
+ * The world seed (`formatScenarioBlock`). It is short by design and always
+ * injected in full, unconditionally — see DESIGN.md → World Seed — so every
+ * field beyond premise is optional and printed only when non-empty.
+ */
+describe("formatScenarioBlock — the world seed", () => {
+  const bare = { ...newGame().scenario, tone: [], physicalLogic: [], factions: [], threads: [], dangerCurve: [], fixedPoints: [] };
+
+  it("is empty with no title and no premise", () => {
+    expect(formatScenarioBlock({ ...bare, title: "", premise: "" })).toBe("");
+  });
+
+  it("prints only title and premise when the rest is blank", () => {
+    const block = formatScenarioBlock({ ...bare, title: "The Salt Reach", premise: "A grim coast." });
+    expect(block).toBe("SCENARIO — The Salt Reach\nA grim coast.");
+  });
+
+  it("adds tone, physical logic and danger curve as labelled bullet lists", () => {
+    const block = formatScenarioBlock({
+      ...bare,
+      title: "The Salt Reach",
+      premise: "A grim coast.",
+      tone: ["Grim but not hopeless", "Folk-horror undercurrent"],
+      physicalLogic: ["Pre-industrial tech"],
+      dangerCurve: ["Coastal towns: mundane danger"],
+    });
+    expect(block).toContain("Tone:\n- Grim but not hopeless\n- Folk-horror undercurrent");
+    expect(block).toContain("How this world works:\n- Pre-industrial tech");
+    expect(block).toContain("Danger curve:\n- Coastal towns: mundane danger");
+  });
+
+  it("adds factions and fixed points as name-and-description bullets", () => {
+    const block = formatScenarioBlock({
+      ...bare,
+      title: "The Salt Reach",
+      premise: "A grim coast.",
+      factions: [{ name: "The Tideless Company", description: "A smuggling guild." }],
+      fixedPoints: [{ name: "Gulls' Reach", description: "The largest town." }],
+    });
+    expect(block).toContain("Powers already in tension:\n- The Tideless Company: A smuggling guild.");
+    expect(block).toContain("Already exists:\n- Gulls' Reach: The largest town.");
+  });
+
+  it("adds open threads as bare bullets, no answer implied", () => {
+    const block = formatScenarioBlock({
+      ...bare,
+      title: "The Salt Reach",
+      premise: "A grim coast.",
+      threads: ["What happened to the missing captain?"],
+    });
+    expect(block).toContain("Open threads:\n- What happened to the missing captain?");
   });
 });

@@ -1,18 +1,9 @@
-import type { Place, Room } from "../types";
+import type { Place } from "../types";
 import { useStore } from "../store";
-import {
-  MAX_ROOMS,
-  PLACE_KINDS,
-  findPlace,
-  kindDef,
-  placeHeading,
-  setTagValues,
-  slotsOf,
-  tagValues,
-} from "../lib/places";
+import { findPlace } from "../lib/places";
 import { OverlayHeader } from "./OverlayHeader";
 import { FeatureOffNotice } from "./FeatureOffNotice";
-import { AreaField, Collapsible, ReadBlock, SegmentedRow, TextField, btn, btnSmall } from "./fields";
+import { AreaField, Collapsible, TextField, btn, btnSmall } from "./fields";
 import { useConfirm } from "./useConfirm";
 
 /**
@@ -22,14 +13,14 @@ import { useConfirm } from "./useConfirm";
  * character sheet: the narrator reads a place every turn and never writes one,
  * so this screen is the only way a place changes after it is authored.
  *
+ * Slim by design: what a place needs to give the narrator consistency now
+ * mostly lives one level up, on the Scenario screen's world seed (tone,
+ * factions, physical logic). This screen only ever remembers one specific
+ * area — a name, a description, and the words that bring it to mind again.
+ *
  * Every place is a closed `Collapsible`: an adventure accumulates them, each is
  * a long form, and the list is what the player came here to read. The one the
  * scene is in opens first and says so.
- *
- * The KIND picker is the load-bearing control. It decides which tag slots exist
- * (`places.ts → PLACE_KINDS`), so switching it re-draws the form and drops tags
- * the new kind has no slot for — which is the honest behaviour: prosperity on a
- * swamp was never going to be printed.
  */
 export function PlacesScreen() {
   const places = useStore((s) => s.game.places);
@@ -85,13 +76,8 @@ function PlaceCard({
   const pending = useStore((s) => s.placePending);
   const { ask, dialog } = useConfirm();
 
-  const def = kindDef(place.kind);
   const label = place.name.trim() || "Unnamed place";
-  const heading = `${current ? "▸ " : ""}${place.name.trim() ? placeHeading(place) : label}${
-    place.pending ? " (name only)" : ""
-  }`;
-
-  const setRooms = (rooms: Room[]) => updatePlace(place.id, { rooms });
+  const heading = `${current ? "▸ " : ""}${label}${place.pending ? " (name only)" : ""}`;
 
   return (
     <Collapsible label={heading} defaultOpen={current}>
@@ -107,40 +93,6 @@ function PlaceCard({
         placeholder="the village, Rodstroke-on-Wend"
         onChange={(v) => updatePlace(place.id, { aliases: splitList(v) })}
       />
-      <ReadBlock
-        label="Position"
-        value={`(${place.coords.x}, ${place.coords.y}, ${place.coords.z})`}
-      />
-      {place.locations.length > 0 && (
-        <ReadBlock
-          label="Known Points"
-          value={place.locations
-            .map((p) => `${p.name} (${p.coords.x}, ${p.coords.y}, ${p.coords.z})`)
-            .join("\n")}
-        />
-      )}
-
-      {/* Changing the kind changes which slots exist, so the tags are rebuilt
-          against the new schema — `normalizePlace` would drop the orphans on the
-          next read anyway, and doing it here keeps the form honest. */}
-      <SegmentedRow
-        label="Kind"
-        value={place.kind}
-        options={PLACE_KINDS.map((k) => ({ value: k.id, label: k.label }))}
-        onChange={(kind) =>
-          updatePlace(place.id, {
-            kind,
-            tags: place.tags.filter((t) => slotsOf(kind).some((s) => s.key === t.slot)),
-          })
-        }
-      />
-
-      <TextField
-        label="Type"
-        value={place.type}
-        placeholder={def.types.slice(0, 4).join(" · ")}
-        onChange={(v) => updatePlace(place.id, { type: v })}
-      />
 
       <AreaField
         label="Description"
@@ -150,82 +102,12 @@ function PlaceCard({
         onChange={(v) => updatePlace(place.id, { description: v })}
       />
 
-      {slotsOf(place.kind).map((slot) => (
-        <TextField
-          key={slot.key}
-          label={slot.single ? slot.label : `${slot.label} (comma-separated)`}
-          value={tagValues(place, slot.key).join(", ")}
-          placeholder={slot.options?.slice(0, 4).join(" · ") ?? slot.hint}
-          onChange={(v) =>
-            updatePlace(place.id, {
-              tags: setTagValues(place, slot.key, slot.single ? [v] : splitList(v)),
-            })
-          }
-        />
-      ))}
-
-      <AreaField
-        label="Rumours (one per line)"
-        value={place.rumours.join("\n")}
-        rows={3}
-        placeholder="Believed locally — they do not have to be true."
-        onChange={(v) => updatePlace(place.id, { rumours: splitLines(v) })}
-      />
-
       <TextField
         label="Extra Keywords (comma-separated)"
         value={place.keywords.join(", ")}
         placeholder="the village, Wend, Mayor Halloway"
         onChange={(v) => updatePlace(place.id, { keywords: splitList(v) })}
       />
-
-      <div className="space-y-2">
-        <p className="uppercase tracking-widest text-sm">{def.roomLabel}</p>
-        {place.rooms.length === 0 && <p className="text-sm opacity-60">None yet.</p>}
-        {place.rooms.map((room, i) => (
-          <div key={i} className="space-y-2 border-2 border-ink p-2">
-            <TextField
-              label="Name"
-              value={room.name}
-              onChange={(v) => setRooms(patchRoom(place.rooms, i, { name: v }))}
-            />
-            <TextField
-              label="Description"
-              value={room.description}
-              onChange={(v) => setRooms(patchRoom(place.rooms, i, { description: v }))}
-            />
-            <div className="flex flex-wrap gap-2">
-              {/* One of / recurring, as a two-state button rather than a
-                  checkbox: it is the only thing distinguishing the two lists the
-                  narrator is shown, and it reads better as a label than as a
-                  tick nobody notices. */}
-              <button
-                type="button"
-                onClick={() => setRooms(patchRoom(place.rooms, i, { unique: !room.unique }))}
-                className={btnSmall}
-              >
-                {room.unique ? "One of these" : "Recurring"}
-              </button>
-              <button
-                type="button"
-                onClick={() => setRooms(place.rooms.filter((_, j) => j !== i))}
-                className={btnSmall}
-              >
-                Remove
-              </button>
-            </div>
-          </div>
-        ))}
-        {place.rooms.length < MAX_ROOMS && (
-          <button
-            type="button"
-            onClick={() => setRooms([...place.rooms, { name: "", description: "" }])}
-            className={`w-full ${btnSmall}`}
-          >
-            + Add {def.roomLabel.replace(/s$/, "")}
-          </button>
-        )}
-      </div>
 
       <div className="flex flex-wrap gap-2 border-t-2 border-ink pt-3">
         <button
@@ -267,18 +149,8 @@ function PlaceCard({
   );
 }
 
-function patchRoom(rooms: Room[], index: number, patch: Partial<Room>): Room[] {
-  return rooms.map((r, i) => (i === index ? { ...r, ...patch } : r));
-}
-
 const splitList = (value: string): string[] =>
   value
     .split(",")
-    .map((v) => v.trim())
-    .filter(Boolean);
-
-const splitLines = (value: string): string[] =>
-  value
-    .split("\n")
     .map((v) => v.trim())
     .filter(Boolean);
