@@ -26,6 +26,7 @@ export function GenerateModal<T = string>({
   blurb,
   replacing,
   replacingNote,
+  options,
   run,
   preview,
   onAccept,
@@ -40,6 +41,10 @@ export function GenerateModal<T = string>({
   /** What accepting costs, when the caller has something better to say — the
    *  member sheet's accepted text lands in a draft, so it has an undo. */
   replacingNote?: string;
+  /** Extra controls under the guidance box — a caller's own toggles (e.g. the
+   *  note flow's "use the Scenario"). The caller owns their state and threads it
+   *  into `run`; this only finds them a place on the form. */
+  options?: React.ReactNode;
   /** Ask the model, with the player's guidance. Null means it failed. */
   run: (hint: string) => Promise<T | null>;
   /** How the result reads in the preview box. Omit for a plain string result. */
@@ -96,6 +101,8 @@ export function GenerateModal<T = string>({
             className="w-full resize-y border-2 border-ink bg-paper p-2 focus:outline-none"
           />
         </label>
+
+        {options}
 
         {result !== null && (
           <div className="space-y-2">

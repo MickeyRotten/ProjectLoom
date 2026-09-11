@@ -244,7 +244,7 @@ One isolated function returning the OpenRouter `messages[]`. It is built in **ti
 
 **Tier 2 — turn context** (one `system` message, skipped entirely when nothing matched): the keyword-gated material *this* action pulled in. Four derivations of one scan text — the new message plus the last `CONTEXT_TURNS` beats — so they travel together. All four gate through `worldNotes.ts → keywordHits` and share **one** window constant, because "mentioned" has to mean the same thing in all four.
 - **World Notes** (single-category, simplified `match_entries`; titles are implicit keywords). Notes flagged **permanent** skip matching and inject every turn.
-- **Known places** (`places.ts → matchPlaces`) — the areas the turn *named*, trimmed to name, kind and description, capped at `PLACE_LIMIT`. The area the scene is actually **in** is excluded here and rides in tier 4 in full: "you have heard of this" and "you are standing in it" are different amounts of context, and shipping a room list for a town three days away is how a narrator ends up narrating it.
+- **Known places** (`places.ts → matchPlaces`) — the areas the turn *named*, trimmed to name and description, capped at `PLACE_LIMIT`. The area the scene is actually **in** is excluded here and rides in tier 4 in full: "you have heard of this" and "you are standing in it" are different amounts of context.
 - **Known characters** (`cast.ts`) — the sheets of `npc`-standing allies the scene just named, capped at `NPC_LIMIT`. Gated, not always-on: an adventure can know fifty people without any of them costing a turn they're absent from.
 - **Spotlight block** (`spotlight.ts`) — over the `active` members only.
 - **Relevant gear** — equipped items of the PC + `active` members whose keywords surface in the action.
@@ -255,7 +255,7 @@ One isolated function returning the OpenRouter `messages[]`. It is built in **ti
 
 **Tier 4 — state of play** (one `system` message, always emitted): what is true *right now*. Everything here is re-read from `GameState` each turn, and everything here is something the history actively misremembers — a companion who has since left, a purse already spent, a room already walked out of. They sit under **one** authority line; three blocks each claiming to override the beats read as three arguments, and the model picks one.
 - **Current scene** — location · day · **phase** · weather. Time reaches the model as a phase word only, never a clock face (`clock.ts → phaseOf`).
-- **Current area** (`places.ts → formatCurrentPlaceBlock`) — the `Place` the location sits inside, in full: what it is, its tags, what is said about it, and which parts of it exist. Here rather than in tier 1 for the same reason the pack is: the beats remember a place already walked out of. It deliberately does **not** restate the room — that is one block up.
+- **Current area** (`places.ts → formatCurrentPlaceBlock`) — the `Place` the location sits inside, in full: its name and description. Here rather than in tier 1 for the same reason the pack is: the beats remember a place already walked out of. It deliberately does **not** restate the room — that is one block up.
 - **Active-party roll call** (`formatPartyComposition`) — the composition, re-read from the roster **every turn**. Names the `active` members `n/PARTY_LIMIT`, the `benched` ones under an explicit "NOT in this scene", the most recent departures with their `standing` (`partedMembers`) so the narrator stops writing them in — and never resurrects a `fallen` one — and every `npc` by name, so an ally is never forgotten between the turns that reach them. **Always emitted, even for an empty party** ("the player is ALONE") — the empty case is exactly where the history drifts.
 - **Conditions** (`stakes.ts → formatConditionsBlock`) — the marks this adventure has left on the PC + `active` members, and the only place a mark is printed or explained.
 - **Inventory** (compact `label ×qty — description` list) — here rather than in tier 1 because the output protocol's inventory rules point straight at it ("use the label already in INVENTORY, exactly as written"), and up top the rule and the list it names were a whole history window apart.
@@ -430,12 +430,14 @@ Character {                   // one authored sheet — lives in GameState.chara
 }
 
 GameState {                   // the active adventure (autosaved) + what each save slot stores
-  scenario: { title, premise, openingNarration, startDay }   // the editable pre-made scenario
+  scenario: { title, premise, tone[], physicalLogic[], factions[], threads[],
+              dangerCurve[], fixedPoints[], openingNarration, startDay }
+                              // the world seed — see The world seed
   characters: Character[]     // THIS adventure's cast — the PC among them
   roster: RosterEntry[]       // per-adventure character state (SPARSE — absent = defaults)
   worldNotes: Note[]          // { id, title, keywords[], content }  — single-category lorebook
-  places: Place[]             // { id, name, aliases?, kind, type, description, tags[],
-                              //   rumours[], rooms[], keywords[], pending? } — see Places
+  places: Place[]             // { id, name, aliases?, description, keywords[], pending? }
+                              //   — see Places
   inventory: Item[]           // { label, description, quantity }  — shared party inventory
   quests: Quest[]             // { id, label, description, reward, status }
   messages: Message[]         // { role, content, turn, appliedDeltas, day, minutes, location, weather }
@@ -631,14 +633,60 @@ Auto-Update's sibling, and the difference is **where it reads from**. Auto-Updat
 - **✦ only in Edit mode.** An accepted generation lands in the sheet's **edit draft**, not the character — so **Discard Changes is the undo** and **Save Changes** is what commits it (through `updateCharacter`, which retires that field's story override). The generation reads the draft too, so a Flaws written right after the player typed a Personality reads that Personality.
 - The store action writes nothing and takes the character **by value**; it needs no `streaming` guard for that reason, only single-flight.
 
-### Scenario fields — `src/lib/generateScenario.ts`
+### The world seed — `Scenario`, `src/lib/generateScenario.ts`
 
-The same ✦ one level up: **Premise** and **Opening Narration** on the Scenario screen each carry a generate button, running through the shared `GenerateModal` (guidance in, preview back, *Use This / Generate Again / Cancel*) and the same one-key JSON contract, parsed by `parseGeneratedField` — one tolerant parser rather than two that drift.
+`Scenario` is the world seed: one small document, always read in full, every
+turn, that keeps everything the narrator lazily generates — areas, NPCs,
+events — consistent with itself instead of each side call improvising the
+setting fresh. `formatScenarioBlock` (`prompt.ts`) is unconditional tier-1
+standing context, exactly like the premise paragraph it grew out of.
 
-- **Context is the scenario, never the beats.** The title, the starting location, the *other* field, the player character, and the World Notes those words trigger. This is the text a **new** adventure starts from, so reading the one being played would be backwards. The field being written is not sent as context either — it is a draft to replace.
-- **Premise** is asked for as the world (background the narrator re-reads every turn); **Opening Narration** as the first beat, second person, ending on the question — the same shape a turn is written in.
-- **No Edit gate here.** The Scenario screen writes as you type, so an accepted generation commits immediately; the modal says so before it lands, rather than implying a Discard Changes that this screen does not have.
-- Shares `fieldGenPending` / `fieldGenError` with the character generator — one generate modal is open at a time app-wide, which is the assumption the single-flight guards already make.
+- **`premise`** — the world, in a paragraph: who lives in it, what makes it
+  worth playing in, its tone. Unchanged from before the seed expanded.
+- **`tone`** — 2-4 short lines: mood, and hard boundaries (what this world is
+  *not*).
+- **`physicalLogic`** — 3-5 short lines: scale, tech/magic level, rules that
+  should not be broken.
+- **`factions`** — 2-4 `{ name, description }` rows: named powers already in
+  tension.
+- **`threads`** — 1-3 open questions that can resurface later, phrased as
+  questions ("what happened to X"), not pre-decided answers.
+- **`dangerCurve`** — 2-3 short lines: roughly how dangerous early areas
+  should feel next to late ones.
+- **`fixedPoints`** — a handful of `{ name, description }` proper nouns that
+  already exist, so the world has history before the player does anything.
+
+Every field beyond `premise` is optional and printed only when non-empty, so
+an unfilled seed (or a save from before it existed) reads exactly as it always
+did. Every field is short by design: one that grows past a screen's worth of
+text has stopped being a seed and become a location spec, which belongs on a
+`Place` or a World Note instead.
+
+**Growing the seed is deliberate, never automatic.** The narrator never writes
+any of `tone`/`physicalLogic`/`factions`/`threads`/`dangerCurve`/`fixedPoints`
+— there is no `<<<LOOM>>>` channel for the world seed, the same posture a
+`Place` has. The World Notes screen carries the one way it grows: **Promote to
+Thread** / **Promote to Fixed Point** copies a note's text onto the seed and
+removes the note, so a fact that has earned a permanent place in the world's
+background is not also stated in the lorebook — "every fact is stated once"
+holds for the seed too.
+
+**Generation.** Premise / Tone / Physical Logic / Danger Curve / Opening
+Narration each carry a ✦ button on the Scenario screen, running through the
+shared `GenerateModal` and the same one-key JSON contract `generateField.ts`
+already parses (`parseGeneratedField`) — a list field's reply is one string of
+newline-separated lines, split on accept, so it costs the same one-key
+contract as a prose field. **Factions** and **Fixed Points** are row-shaped
+(`{ name, description }`), so each row carries its own ✦, generating one row
+at a time (`buildSeedRowMessages` / `parseGeneratedSeedRow`) — the same "three
+keys, one call" reasoning as `generateItem.ts`, just two keys. Every flow here
+is **authoring, never the beats**: context is the rest of the seed, the player
+character, and the World Notes those words trigger — this is the text a
+**new** adventure starts from, so reading the one being played would be
+backwards. No Edit gate on the Scenario screen: an accepted generation commits
+immediately, which the modal says before it lands. All of it shares
+`fieldGenPending` / `fieldGenError` with every other ✦ flow — one generate
+modal open at a time app-wide.
 
 ### Item generation — `src/lib/generateItem.ts`
 
@@ -1015,86 +1063,67 @@ of those stay inspectable, which a rolling summary never is.
 
 `location` has always been ONE name, the most specific one (`deltas.ts →
 simplifyLocation` enforces it), which is right for a scene label and useless as
-context. The narrator knows it is in the "Damp Cellar" and has to improvise the
-tavern, the town, the region and everyone in them, fresh, every turn — and
-improvise them *differently* every turn, because nothing was written down.
+context on its own. The narrator knows it is in the "Damp Cellar" and needs
+somewhere to hang the tavern, the town and the region around it — but with the
+world seed (`Scenario`, above) now carrying the setting's tone, factions and
+physical logic *globally*, a place does not have to re-establish a whole
+taxonomy of its own to give the narrator that context. It only has to remember
+one specific area.
 
-A **`Place`** is the area that room is inside, authored once by a side call the
-first time the player walks into it, and read back every turn as authority.
-`GameState.area` names it; `GameState.location` is still the room. The narrator
-emits both (`"area"` joins `"location"` in the block) and the client resolves the
-name against what it already knows.
+A **`Place`** is that area — the one `location` sits inside — authored once by
+a side call the first time the player walks into it, and read back every turn
+as authority. `GameState.area` names it; `GameState.location` is still the
+room, untouched by any of this: `simplifyLocation` / `locationParent` /
+`resolveArea` (`deltas.ts`) work exactly as they always have. The narrator
+emits both (`"area"` joins `"location"` in the block) and the client resolves
+the name against what it already knows.
 
-**Three kinds, one shape.** A dungeon has no prosperity; a wilderness has no
-trade partners. What differs is *which tag slots exist*, so the conditional rule
-lives in **one table** — `PLACE_KINDS` — that drives the generator's prompt, the
-editor's fields and the prompt block alike, rather than three `if (kind === …)`
-ladders that drift apart. Storage never varies: `tags: { slot, value }[]`, plus
-rooms, rumours and keywords, whatever the kind.
+**Deliberately slim: a name, a description, and keywords.** No kind, no tag
+schema, no rooms, no rumours, no coordinates — the per-kind taxonomy those used
+to be (`PLACE_KINDS`: steading/dungeon/wild, each with its own tag slots) was
+reaching for exactly the consistency job the world seed now does once, globally,
+instead of being reinvented per area behind an LLM side call. What is left is
+the doc-sized amount of memory a place actually needs: enough that the narrator
+does not re-improvise the same town differently every visit, no more.
 
-| kind | type | slots |
-| --- | --- | --- |
-| **steading** | village · town · keep · city … | prosperity · population · defenses · **trade** · tags |
-| **dungeon** | tomb · prison · lair · ruin … | builder · ruination · themes · tags |
-| **wild** | forest · swamp · road · waste … | travel · features · denizens · tags |
-
-The vocabularies are Dungeon World's steading tags and the Perilous Wilds
-dungeon tables, reduced to what a narrator can read in a prompt. `builder` ×
-`type` *is* what a dungeon is ("dwarven prison", "cult archive"), which is why
-the heading prints them together and the tag list then omits `builder` — a fact
-printed twice is a fact the narrator re-states.
-
-**Options are suggestions, not a whitelist.** They are shown to the model as a
-vocabulary and to the player as a placeholder, and a value outside them is kept
-verbatim — a model answering `Destitute` keeps its word instead of being clamped
-onto the nearest shipped rung. Only the slot *key* is validated; a tag naming a
-slot the kind does not have is dropped, because prosperity on a swamp is exactly
-the confusion the kinds exist to prevent.
-
-**Rooms are common ⟂ unique**, which is the whole of what the Perilous Wilds
-split buys here. A **common** room is a palette the narrator may reuse — another
-guardroom, another market stall, another game trail — so it never runs out of
-places to put a scene without inventing a new *kind* of place. A **unique** room
-exists exactly once and must not be duplicated. Nothing tracks whether one has
-been visited: the label is context, not a map the client walks.
-
-**Rumours are believed, not true.** The block says so. That is a gift to an LLM
-narrator rather than a hedge — hooks it can play with and no obligation to be
-consistent with, so a contradiction becomes a twist instead of a bug.
+```ts
+interface Place {
+  id: string;
+  name: string;
+  aliases?: string[];
+  description: string;
+  keywords: string[];
+  pending?: boolean;
+}
+```
 
 **Written on arrival, asynchronously.** A turn whose `area` resolves to nothing
 known appends a **stub** — the name, `pending: true` — *synchronously*, before
 `captureReversal`, for exactly the reason the journal entry is
-(`store → sendTurn`). The sheet is then fetched after the beat has landed, and
-`fillPlace` no-ops on a missing id, so undoing the turn that discovered a place
-un-discovers it and a late write cannot resurrect it. The arrival beat itself is
-improvised — it is arrival prose, which a narrator writes well — and every beat
-after it has the place in hand. Re-entering a known area costs nothing: no call,
-no allocation, `ensurePlace` returns the same array.
+(`store → sendTurn`). The sheet (a description and some keywords) is then
+fetched after the beat has landed, and `fillPlace` no-ops on a missing id, so
+undoing the turn that discovered a place un-discovers it and a late write
+cannot resurrect it. The arrival beat itself is improvised — it is arrival
+prose, which a narrator writes well — and every beat after it has the place in
+hand. Re-entering a known area costs nothing: no call, no allocation,
+`ensurePlace` returns the same array.
 
 **The call reads the beats**, unlike every ✦ flow (`generateField.ts`,
 `generateScenario.ts`, `generateItem.ts`), which are forbidden them. The
 inversion is the point: what the player is walking into was just described in
-the prose, and the sheet has to agree with it. It also carries the narrator's
-own standing instructions, so an area reads as part of the same world.
+the prose, and the sheet has to agree with it. It reads the world seed in full,
+the narrator's own standing instructions, and the names of places already
+known — so an area reads as part of the same world without needing its own copy
+of that world's rules. **Surprise budget:** at most one hook or twist per area;
+beyond that, it is just a place — most of what exists is not secretly
+significant.
 
-**Trade tags name neighbours**, and each becomes a stub of its own
-(`addNeighbourStubs`). Free world-building: authoring one town names three more,
-each already injectable by keyword, each fully authored the day the player walks
-there. No extra call, no extra spend.
-
-**Emit is canonical, the read is lenient.** The kind menu is generated from
-`PLACE_KINDS`, and it first listed the slots at the same indent as `"type"` —
-which reads as top-level keys, so a model put them there, `parseGeneratedPlace`
-looked only in `"tags"`, and every place came back with a description and
-nothing else. The menu now nests them under `"tags"` and ships a **worked
-example** of the whole object (the fix that made `options` reliable in the turn
-block, for the same reason: one exemplar beats another paragraph of rules). The
-parser reads the reply twice regardless — the documented nesting first, then the
-top level, merged by `mergeTags` with the nested answer winning — and tolerates
-a flat array of bare values, `{ slot, value }` rows, or prefixed strings
-(`"Prosperity: Poor"`, `"Defenses(Militia)"`). A payload tag stays whole:
-`Resource(grain)` names no slot, so it lands in the free list.
+**Injection, unchanged in shape.** The area the scene is actually **in** rides
+in the state tier (`formatCurrentPlaceBlock`), in full, after the history —
+name and description, since there is nothing else to print. Places the turn
+merely *named* are keyword-matched into the turn tier
+(`matchPlaces` / `formatKnownPlacesBlock`), trimmed to name and description,
+capped at `PLACE_LIMIT`, excluding wherever the scene already is.
 
 **Frozen against the model, owned by the player.** There is no place delta
 channel — the narrator reads places, it never writes them — so the **Places**
@@ -1102,15 +1131,11 @@ screen is the only thing that changes one after it is authored, with *Rewrite
 With Model* to throw a sheet away and ask again. Same posture as a character
 sheet, for the same reason.
 
-**Deliberately not built:** ladders with arithmetic (nothing updates a
-steading), theme countdowns (nothing advances them), fronts and grim portents,
-and a `See What They Find` roll. Every one was considered. This exists to give
-the narrator context, not to simulate a world.
-
-**Attribution.** The steading tag vocabulary is from **Dungeon World** by Sage
-LaTorra and Adam Koebel, used under **CC BY 3.0**. The dungeon and wilderness
-vocabularies are our own wording, informed by *The Perilous Wilds* (Jason
-Lutes, Lampblack & Brimstone) — the mechanic, not its text.
+**Deliberately not built:** a tag taxonomy, rooms, rumours, coordinates,
+ladders with arithmetic, theme countdowns, fronts and grim portents, and a
+`See What They Find` roll. Every one was considered — several were shipped and
+then retired once the world seed took over their job. This exists to give the
+narrator context, not to simulate a world.
 
 ---
 
