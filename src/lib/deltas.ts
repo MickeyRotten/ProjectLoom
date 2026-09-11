@@ -6,6 +6,7 @@ import type {
   GameState,
   InventoryDelta,
   Item,
+  ItemBlock,
   LoomBlock,
   Note,
   NoteDelta,
@@ -17,7 +18,8 @@ import type {
 } from "../types";
 import { advanceClock, normalizeDuration } from "./clock";
 import { defaultFeatures } from "./features";
-import { isGold } from "./defaults";
+import { buildDefaultBlocks, isGold } from "./defaults";
+import { makeItemBlock } from "./blocks";
 import { findByName, slug, withRename } from "./names";
 import {
   getEntry,
@@ -802,40 +804,44 @@ function makeCharacter(d: PartyDelta, id: string): Character {
     name: d.name,
     species: d.species ?? "",
     sex: d.sex ?? "",
-    description: d.description ?? "",
-    personality: d.personality ?? "",
-    drive: d.drive ?? "",
-    strengths: strengthsText(d.strengths),
-    flaws: d.flaws ?? "",
-    // Player notes are not the narrator's to seed either — `PartyDelta` has no
-    // `notes` at all, so a character is born with an empty one and stays that
-    // way until the player writes in it.
-    notes: "",
-    equipment: startingEquipment(d.equipment),
+    blocks: [
+      // Player notes are not the narrator's to seed either — `PartyDelta` has
+      // no `notes` at all, so the Notes block is born blank and stays that
+      // way until the player writes in it.
+      ...buildDefaultBlocks({
+        description: d.description,
+        personality: d.personality,
+        drive: d.drive,
+        strengths: strengthsText(d.strengths),
+        flaws: d.flaws,
+      }),
+      ...startingEquipment(d.equipment),
+    ],
   };
 }
 
 /**
- * The delta's equipment, sanitized: labelless rows are dropped (nothing can
- * render or keyword-match them) and a missing description is blank, not
- * undefined. A non-array — the model wrote a string, or nothing — is no gear.
+ * The delta's equipment, sanitized into Item blocks: labelless rows are
+ * dropped (nothing can render or keyword-match them) and a missing
+ * description is blank, not undefined. A non-array — the model wrote a
+ * string, or nothing — is no gear.
  *
  * A `quantity` is kept only when the model volunteered a sane one — the
  * narrator is never asked for counts, and a garbage value would ride onto the
  * sheet and into the pack the first time the player unequipped the row.
  */
-function startingEquipment(equipment: PartyDelta["equipment"]): Equipment[] {
+function startingEquipment(equipment: PartyDelta["equipment"]): ItemBlock[] {
   if (!Array.isArray(equipment)) return [];
   return equipment
     .filter((e): e is Equipment => !!e && typeof e.label === "string" && !!e.label.trim())
     .map((e) => {
-      const out: Equipment = {
-        label: e.label,
-        description: typeof e.description === "string" ? e.description : "",
-      };
+      const description = typeof e.description === "string" ? e.description : "";
       const quantity = Math.floor(Number(e.quantity));
-      if (Number.isFinite(quantity) && quantity > 1) out.quantity = quantity;
-      return out;
+      return makeItemBlock(
+        e.label,
+        description,
+        Number.isFinite(quantity) && quantity > 1 ? quantity : 1,
+      );
     });
 }
 

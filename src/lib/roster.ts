@@ -1,4 +1,6 @@
 import type {
+  Block,
+  BlockKind,
   Character,
   CharacterOverride,
   GameState,
@@ -9,6 +11,7 @@ import type {
 } from "../types";
 import { PARTED_STANDINGS, PARTY_STANDINGS } from "../types";
 import { formatAka } from "./names";
+import { firstBlockId } from "./blocks";
 
 /**
  * Max companions in the scene at once. The BENCH is uncapped — it is the
@@ -51,15 +54,16 @@ export const DEFAULT_ENTRY: Omit<RosterEntry, "id"> = {
 /**
  * Read an entry written in ANY shape this app has shipped. Saves and — more
  * stubbornly — reversal snapshots buried in old messages carry the pre-ladder
- * `inParty` + `status` pair, so this keeps arriving forever.
+ * `inParty` + `status` pair, so this keeps arriving forever. `characters` is
+ * needed only to migrate a pre-block override (see `migrateOverrides`).
  */
-export function normalizeEntry(entry: LegacyRosterEntry): RosterEntry {
+export function normalizeEntry(entry: LegacyRosterEntry, characters: Character[]): RosterEntry {
   const out: RosterEntry = {
     id: entry.id,
     standing: entry.standing ?? legacyStanding(entry),
     lastSpokeTurn: entry.lastSpokeTurn ?? 0,
   };
-  if (entry.overrides) out.overrides = normalizeOverrides(entry.overrides);
+  if (entry.overrides) out.overrides = migrateOverrides(entry.overrides, entry.id, characters);
   if (entry.condition) out.condition = entry.condition;
   return out;
 }
@@ -103,44 +107,68 @@ export function formatIdentity(
   return traits ? `${name} (${traits})` : name;
 }
 
-/** The sheet fields `formatTraits` prints, on anything shaped like a sheet. */
-type SheetTraits = Partial<
-  Pick<Character, "personality" | "drive" | "strengths" | "flaws" | "notes">
->;
+/**
+ * Overrides as written before the block refactor stored the five sheet
+ * fields directly rather than under `blocks`. Read-only, migration-only.
+ */
+const LEGACY_OVERRIDE_KINDS = ["description", "personality", "drive", "strengths", "flaws"] as const;
+type LegacyOverrideKind = (typeof LEGACY_OVERRIDE_KINDS)[number];
+const LEGACY_OVERRIDE_KIND_MAP: Record<LegacyOverrideKind, BlockKind> = {
+  description: "appearance",
+  personality: "personality",
+  drive: "drive",
+  strengths: "strengths",
+  flaws: "flaws",
+};
 
 /**
- * The sheet lines every character block prints, in one order — Personality,
- * Drive, Strengths, Flaws, Notes — with blank fields dropping out. Callers
- * join and indent them; only the list and its order live here.
+ * Fold a stored override onto the current shape. Returns the SAME object
+ * when nothing needed changing — `normalizeRoster` reference-diffs it.
  *
- * Shared for the same reason `formatIdentity` is: the PC block, the party
- * roster and the NPC block are three views of one sheet and used to hold three
- * copies of this list, so a field added to one was silently missing from the
- * others.
- *
- * `condition` is deliberately NOT here. A mark is per-adventure state, not a
- * sheet field, and it is printed exactly once — in its own CONDITIONS block,
- * which is also the only place that says how to clear one.
+ * A pre-block override carries the five legacy field keys directly; this
+ * resolves each to the matching character's CURRENT block of that kind
+ * (`blocks.ts → firstBlockId`) and rewrites it under `blocks[id]`. A key
+ * whose character or block can no longer be found is simply dropped — the
+ * override has nothing left to apply to.
  */
-export function formatTraits(c: SheetTraits): string[] {
-  return [
-    c.personality ? `Personality: ${c.personality}` : "",
-    c.drive ? `Drive: ${c.drive}` : "",
-    c.strengths ? `Strengths: ${c.strengths}` : "",
-    c.flaws ? `Flaws: ${c.flaws}` : "",
-    // The player's own field. Read by the narrator, written by nobody but them.
-    c.notes ? `Notes: ${c.notes}` : "",
-  ].filter(Boolean);
+function migrateOverrides(
+  overrides: CharacterOverride & Partial<Record<LegacyOverrideKind, unknown>>,
+  id: string,
+  characters: Character[],
+): CharacterOverride {
+  const legacyKeys = LEGACY_OVERRIDE_KINDS.filter((k) => overrides[k] !== undefined);
+  if (!legacyKeys.length) return overrides;
+  const character = characters.find((c) => c.id === id);
+  const blocks: Record<string, string> = { ...(overrides.blocks ?? {}) };
+  if (character) {
+    for (const k of legacyKeys) {
+      const blockId = firstBlockId(character.blocks, LEGACY_OVERRIDE_KIND_MAP[k]);
+      if (!blockId) continue;
+      blocks[blockId] = k === "strengths" ? strengthsText(overrides[k]) : String(overrides[k] ?? "");
+    }
+  }
+  const next: CharacterOverride = {};
+  if (typeof overrides.species === "string") next.species = overrides.species;
+  if (typeof overrides.sex === "string") next.sex = overrides.sex;
+  if (Object.keys(blocks).length) next.blocks = blocks;
+  return next;
 }
 
 /**
- * Fold a stored override onto the current field shapes. Returns the SAME
- * object when nothing needed changing — `normalizeRoster` reference-diffs it.
+ * Apply this adventure's block-text overrides onto the base blocks. Returns
+ * the SAME array when nothing changed.
  */
-function normalizeOverrides(overrides: CharacterOverride): CharacterOverride {
-  const strengths = overrides.strengths;
-  if (strengths === undefined || typeof strengths === "string") return overrides;
-  return { ...overrides, strengths: strengthsText(strengths) };
+function mergeBlockOverrides(blocks: Block[], overrides?: Record<string, string>): Block[] {
+  if (!overrides || !Object.keys(overrides).length) return blocks;
+  let changed = false;
+  const out = blocks.map((b) => {
+    if (b.type !== "text") return b;
+    const text = overrides[b.id];
+    if (text === undefined || text === b.text) return b;
+    changed = true;
+    return { ...b, text };
+  });
+  return changed ? out : blocks;
 }
 
 /** `inParty` won; otherwise a non-active `status` is how they left. */
@@ -153,12 +181,13 @@ function legacyStanding(entry: LegacyRosterEntry): Standing {
 /**
  * Normalize a whole roster, returning the SAME array reference when every
  * entry was already current — `captureReversal` reference-diffs the roster, so
- * loading a modern save must not look like a change.
+ * loading a modern save must not look like a change. `characters` is the
+ * already block-migrated cast, needed only for `migrateOverrides`.
  */
-export function normalizeRoster(roster: LegacyRosterEntry[]): RosterEntry[] {
+export function normalizeRoster(roster: LegacyRosterEntry[], characters: Character[]): RosterEntry[] {
   let changed = false;
   const out = roster.map((e) => {
-    const next = normalizeEntry(e);
+    const next = normalizeEntry(e, characters);
     if (
       e.standing !== next.standing ||
       e.lastSpokeTurn !== next.lastSpokeTurn ||
@@ -193,9 +222,12 @@ export function standingOf(roster: RosterEntry[], id: string): Standing {
 /** Base ⊕ this adventure's overrides ⊕ its per-run state. */
 export function resolve(base: Character, entry?: RosterEntry): PartyMember {
   const e = entry ?? { id: base.id, ...DEFAULT_ENTRY };
+  const o = e.overrides;
   return {
     ...base,
-    ...(e.overrides ?? {}),
+    species: o?.species ?? base.species,
+    sex: o?.sex ?? base.sex,
+    blocks: mergeBlockOverrides(base.blocks, o?.blocks),
     lastSpokeTurn: e.lastSpokeTurn,
     standing: e.standing,
     condition: e.condition ?? "",
@@ -413,34 +445,59 @@ export function setCondition(
   return out;
 }
 
-/** Merge story-written field changes onto an entry's overrides. */
+/**
+ * Merge story-written field changes onto an entry's overrides. `blocks` is
+ * merged key-by-key rather than replaced whole — every text-block override
+ * now lives under this one nested object, so a shallow spread of the top
+ * level would let a later call (Auto-Update run again for a different field)
+ * silently drop an earlier one's block override.
+ */
 export function mergeOverrides(
   roster: RosterEntry[],
   id: string,
   overrides: CharacterOverride,
 ): RosterEntry[] {
   if (!Object.keys(overrides).length) return roster;
-  const cur = getEntry(roster, id);
-  return setEntry(roster, id, { overrides: { ...(cur.overrides ?? {}), ...overrides } });
+  const cur = getEntry(roster, id).overrides ?? {};
+  const merged: CharacterOverride = { ...cur, ...overrides };
+  if (cur.blocks || overrides.blocks) {
+    merged.blocks = { ...(cur.blocks ?? {}), ...(overrides.blocks ?? {}) };
+  }
+  return setEntry(roster, id, { overrides: merged });
+}
+
+/** What to drop from an entry's overrides — `clearOverrides`'s partial-clear shape. */
+export interface OverrideClear {
+  species?: boolean;
+  sex?: boolean;
+  /** Block ids whose text override should be dropped. */
+  blockIds?: string[];
 }
 
 /**
- * Drop the given keys from an entry's overrides — used when the player saves a
+ * Drop the given pieces of an entry's overrides — used when the player saves a
  * sheet, so their own text isn't immediately masked by an older story change.
- * Passing no keys clears every override ("Revert Story Changes").
+ * Passing no `clear` wipes every override ("Revert Story Changes").
  */
 export function clearOverrides(
   roster: RosterEntry[],
   id: string,
-  keys?: (keyof CharacterOverride)[],
+  clear?: OverrideClear,
 ): RosterEntry[] {
   const i = roster.findIndex((e) => e.id === id);
   if (i === -1 || !roster[i].overrides) return roster;
 
   let overrides: CharacterOverride | undefined;
-  if (keys) {
+  if (clear) {
     overrides = { ...roster[i].overrides };
-    for (const k of keys) delete overrides[k];
+    if (clear.species) delete overrides.species;
+    if (clear.sex) delete overrides.sex;
+    if (clear.blockIds?.length && overrides.blocks) {
+      const blocks = { ...overrides.blocks };
+      for (const bid of clear.blockIds) delete blocks[bid];
+      if (Object.keys(blocks).length) overrides.blocks = blocks;
+      else delete overrides.blocks;
+    }
     if (!Object.keys(overrides).length) overrides = undefined;
   }
   if (overrides === roster[i].overrides) return roster;

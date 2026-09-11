@@ -1,25 +1,37 @@
 import { describe, it, expect } from "vitest";
 import { NPC_LIMIT, formatNpcBlock, matchNpcs } from "./cast";
+import { fixedFieldBlocks } from "./testFixtures";
 import type { PartyMember } from "../types";
 
-function npc(name: string, patch: Partial<PartyMember> = {}): PartyMember {
+interface NpcPatch extends Partial<Omit<PartyMember, "blocks">> {
+  description?: string;
+  personality?: string;
+  drive?: string;
+  strengths?: string;
+  flaws?: string;
+  notes?: string;
+}
+
+function npc(name: string, patch: NpcPatch = {}): PartyMember {
+  const { description, personality, drive, strengths, flaws, notes, ...rest } = patch;
   return {
     id: `m-${name.toLowerCase().replace(/\s+/g, "-")}`,
     role: "member",
     name,
     species: "human",
     sex: "female",
-    description: "weathered",
-    personality: "Blunt.",
-    drive: "Keep the forge lit.",
-    strengths: "Smithing — reforges anything",
-    flaws: "Short-tempered with fools.",
-    notes: "",
-    equipment: [],
+    blocks: fixedFieldBlocks({
+      description: description ?? "weathered",
+      personality: personality ?? "Blunt.",
+      drive: drive ?? "Keep the forge lit.",
+      strengths: strengths ?? "Smithing — reforges anything",
+      flaws: flaws ?? "Short-tempered with fools.",
+      notes: notes ?? "",
+    }),
     lastSpokeTurn: 0,
     standing: "npc",
     condition: "",
-    ...patch,
+    ...rest,
   };
 }
 
@@ -81,7 +93,8 @@ describe("formatNpcBlock", () => {
   it("carries the sheet and forbids walking them alongside the player", () => {
     const block = formatNpcBlock([npc("Mira Aldgate")]);
     expect(block).toContain("KNOWN CHARACTERS");
-    expect(block).toContain("- Mira Aldgate (human, female) — weathered");
+    expect(block).toContain("- Mira Aldgate (human, female)");
+    expect(block).toContain("Appearance: weathered");
     expect(block).toContain("Personality: Blunt.");
     expect(block).toContain("Drive: Keep the forge lit.");
     expect(block).toContain("Strengths: Smithing — reforges anything");

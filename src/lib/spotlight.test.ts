@@ -10,25 +10,28 @@ import {
   segmentDialogue,
   extractKeywords,
 } from "./spotlight";
-import type { PartyMember } from "../types";
+import type { Equipment, PartyMember } from "../types";
+import { fixedFieldBlocks } from "./testFixtures";
+
+interface MemberPatch extends Partial<Omit<PartyMember, "blocks">> {
+  id: string;
+  name: string;
+  strengths?: string;
+  equipment?: Equipment[];
+}
 
 /** A character already resolved against an adventure — what the party is. */
-function member(patch: Partial<PartyMember> & { id: string; name: string }): PartyMember {
+function member(patch: MemberPatch): PartyMember {
+  const { strengths, equipment, ...rest } = patch;
   return {
     role: "member",
     species: "human",
     sex: "",
-    description: "",
-    personality: "",
-    drive: "",
-    strengths: "",
-    flaws: "",
-    notes: "",
-    equipment: [],
+    blocks: fixedFieldBlocks({ strengths, equipment }),
     lastSpokeTurn: 0,
     standing: "active",
     condition: "",
-    ...patch,
+    ...rest,
   };
 }
 

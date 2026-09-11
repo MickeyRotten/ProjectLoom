@@ -15,7 +15,29 @@ import {
   DEFAULT_SCENARIO,
   STARTING_GOLD,
 } from "./defaults";
-import type { AdventureImports, GameState } from "../types";
+import { blockText } from "./testFixtures";
+import type { AdventureImports, GameState, LegacyCharacter } from "../types";
+
+/** A raw pre-block PC record, as `migrateCharacter` expects to receive it. */
+function legacyPC(patch: Record<string, unknown> = {}): LegacyCharacter {
+  return {
+    id: "pc",
+    role: "pc",
+    name: "Hiro",
+    species: "Human",
+    sex: "Male",
+    description: "A young adventurer.",
+    personality: "Optimistic.",
+    drive: "Adventure.",
+    strengths: "Strong.",
+    flaws: "Reckless.",
+    notes: "",
+    equipment: [],
+    useCustomPortraitPrompt: false,
+    customPortraitPrompt: "",
+    ...patch,
+  } as unknown as LegacyCharacter;
+}
 
 describe("newGame — a fresh adventure", () => {
   it("starts with an empty party", () => {
@@ -55,11 +77,11 @@ describe("newCharacter", () => {
 
 describe("migrateCharacter — player notes", () => {
   it("loads a record written before Notes existed with a blank one", () => {
-    expect(migrateCharacter({ ...newCharacter("m-1"), notes: undefined }).notes).toBe("");
+    expect(migrateCharacter(legacyPC({ id: "m-1", notes: undefined })).notes).toBe("");
   });
 
   it("keeps what the player wrote", () => {
-    const stored = { ...newCharacter("m-1"), notes: "do not let him die" };
+    const stored = legacyPC({ id: "m-1", notes: "do not let him die" });
     expect(migrateCharacter(stored).notes).toBe("do not let him die");
   });
 });
@@ -163,50 +185,48 @@ describe("loadGame", () => {
   it("folds a legacy fieldSkill into the one-line strengths and drops likes/dislikes", () => {
     const legacy = {
       characters: [
-        {
-          ...defaultPC(),
+        legacyPC({
           strengths: undefined,
           fieldSkill: { name: "Superhuman Strength", description: "lifts anything" },
           likes: "Adventure",
           dislikes: "Boredom",
-        },
+        }),
       ],
     };
     const c = loadGame(legacy)!.game.characters[0];
-    expect(c.strengths).toBe("Superhuman Strength — lifts anything");
+    expect(blockText(c.blocks, "strengths")).toBe("Superhuman Strength — lifts anything");
     expect(c).not.toHaveProperty("fieldSkill");
     expect(c).not.toHaveProperty("likes");
     expect(c).not.toHaveProperty("dislikes");
   });
 
   it("gives a character with neither field a blank strengths", () => {
-    const legacy = { characters: [{ ...defaultPC(), strengths: undefined }] };
-    expect(loadGame(legacy)!.game.characters[0].strengths).toBe("");
+    const legacy = { characters: [legacyPC({ strengths: undefined })] };
+    expect(blockText(loadGame(legacy)!.game.characters[0].blocks, "strengths")).toBe("");
   });
 
   it("loads a character written before sex existed with a blank sex", () => {
-    const legacy = { characters: [{ ...defaultPC(), sex: undefined }] };
+    const legacy = { characters: [legacyPC({ sex: undefined })] };
     expect(loadGame(legacy)!.game.characters[0].sex).toBe("");
   });
 
   it("keeps a stored sex", () => {
-    const legacy = { characters: [{ ...defaultPC(), sex: "female" }] };
+    const legacy = { characters: [legacyPC({ sex: "female" })] };
     expect(loadGame(legacy)!.game.characters[0].sex).toBe("female");
   });
 
   it("folds a labelled strengths object into one line and loads flaws blank", () => {
     const legacy = {
       characters: [
-        {
-          ...defaultPC(),
+        legacyPC({
           strengths: { name: "Lockpicking", description: "opens anything" },
           flaws: undefined,
-        },
+        }),
       ],
     };
     const c = loadGame(legacy)!.game.characters[0];
-    expect(c.strengths).toBe("Lockpicking — opens anything");
-    expect(c.flaws).toBe("");
+    expect(blockText(c.blocks, "strengths")).toBe("Lockpicking — opens anything");
+    expect(blockText(c.blocks, "flaws")).toBe("");
   });
 
   it("keeps an existing Gold row (and its quantity) on migrate", () => {
@@ -257,7 +277,11 @@ describe("seedAdventure — what a New Adventure carries over", () => {
       imports({ scenario: false, pc: false, characters: false, worldNotes: false }),
     );
     expect(next.scenario).toEqual(DEFAULT_SCENARIO);
-    expect(next.characters).toEqual([defaultPC()]);
+    // Not `toEqual([defaultPC()])` — each call mints fresh block ids.
+    expect(next.characters.map((c) => c.name)).toEqual([defaultPC().name]);
+    expect(next.characters.map((c) => c.blocks.map((b) => b.text))).toEqual([
+      defaultPC().blocks.map((b) => b.text),
+    ]);
     expect(next.worldNotes).toEqual([]);
   });
 

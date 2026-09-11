@@ -197,8 +197,10 @@ export function joinPromptParts(parts: string[], format: PromptFormat): string {
  * come out of a 77-token budget the appearance needs.
  */
 export function buildPortraitPrompt(
-  member: Pick<Character, "name" | "species" | "description"> &
+  member: Pick<Character, "name" | "species"> &
     Partial<Pick<Character, "sex" | "useCustomPortraitPrompt" | "customPortraitPrompt">>,
+  /** The character's Appearance-kind block text — `blocks.ts → firstBlockText(member.blocks, "appearance")`. */
+  appearance: string,
   template: ImagePromptTemplate,
   withRefs = false,
 ): string {
@@ -215,7 +217,7 @@ export function buildPortraitPrompt(
 
   const subject: string[] = [];
   if (template.format === "tags") {
-    subject.push(member.species, member.sex ?? "", member.description);
+    subject.push(member.species, member.sex ?? "", appearance);
   } else {
     const who = [
       member.name.trim() && `Name: ${member.name.trim()}.`,
@@ -225,7 +227,7 @@ export function buildPortraitPrompt(
       .filter(Boolean)
       .join(" ");
     if (who) subject.push(who);
-    if (member.description.trim()) subject.push(`Appearance: ${member.description.trim()}`);
+    if (appearance.trim()) subject.push(`Appearance: ${appearance.trim()}`);
   }
   return joinPromptParts([...subject, ...trailer], template.format);
 }

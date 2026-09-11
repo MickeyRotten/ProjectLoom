@@ -9,6 +9,7 @@ import {
   type ItemRow,
 } from "./generateItem";
 import { defaultPC, newGame } from "./defaults";
+import { fixedFieldBlocks } from "./testFixtures";
 import type { Character, GameState, Note } from "../types";
 
 function gameWith(notes: Note[] = []): GameState {
@@ -100,8 +101,7 @@ describe("buildItemMessages — pack vs kit", () => {
       ...defaultPC(),
       name: "Sable",
       species: "human",
-      description: "A wiry courier in a salt-stained coat.",
-      equipment: [],
+      blocks: fixedFieldBlocks({ description: "A wiry courier in a salt-stained coat." }),
     };
     const text = joined({ character: pc, existing: pack });
 
@@ -120,7 +120,7 @@ describe("buildItemMessages — pack vs kit", () => {
       ...defaultPC(),
       name: "Sable",
       // What was SAVED — the prompt must show the draft instead.
-      equipment: [{ label: "Stale Bread", description: "" }],
+      blocks: fixedFieldBlocks({ equipment: [{ label: "Stale Bread", description: "" }] }),
     };
     const text = joined({
       character: pc,

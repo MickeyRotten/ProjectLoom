@@ -28,6 +28,7 @@ import {
   standingOf,
 } from "./roster";
 import { defaultPC } from "./defaults";
+import { blockText, fixedFieldBlocks } from "./testFixtures";
 import type { Character, RosterEntry } from "../types";
 
 function member(id: string, name: string, patch: Partial<Character> = {}): Character {
@@ -37,15 +38,20 @@ function member(id: string, name: string, patch: Partial<Character> = {}): Chara
     name,
     species: "human",
     sex: "",
-    description: "plain",
-    personality: "calm",
-    drive: "wander",
-    strengths: "Tracking — reads a trail",
-    flaws: "Trusts nobody",
-    notes: "",
-    equipment: [],
+    blocks: fixedFieldBlocks({
+      description: "plain",
+      personality: "calm",
+      drive: "wander",
+      strengths: "Tracking — reads a trail",
+      flaws: "Trusts nobody",
+    }),
     ...patch,
   };
+}
+
+/** The id of a fresh character's block of the given kind — for override tests. */
+function blockId(c: Character, kind: string): string {
+  return c.blocks.find((b) => b.kind === kind)!.id;
 }
 
 const entry = (id: string, patch: Partial<RosterEntry> = {}): RosterEntry => ({
@@ -62,10 +68,14 @@ describe("getEntry / resolve", () => {
 
   it("folds overrides over the base character", () => {
     const base = member("a", "Ada");
-    const resolved = resolve(base, entry("a", { standing: "active", overrides: { description: "scarred" } }));
-    expect(resolved.description).toBe("scarred");
-    // Untouched fields still come from the authored character.
-    expect(resolved.personality).toBe("calm");
+    const appearanceId = blockId(base, "appearance");
+    const resolved = resolve(
+      base,
+      entry("a", { standing: "active", overrides: { blocks: { [appearanceId]: "scarred" } } }),
+    );
+    expect(blockText(resolved.blocks, "appearance")).toBe("scarred");
+    // Untouched blocks still come from the authored character.
+    expect(blockText(resolved.blocks, "personality")).toBe("calm");
     expect(resolved.standing).toBe("active");
   });
 
@@ -195,8 +205,9 @@ describe("playerCharacter / presentMembers / allMembers", () => {
   const chars = [defaultPC(), member("a", "Ada"), member("b", "Bel")];
 
   it("resolves the PC against its own overrides", () => {
-    const pc = playerCharacter(chars, [entry("pc", { overrides: { drive: "go home" } })]);
-    expect(pc?.drive).toBe("go home");
+    const driveId = blockId(chars[0], "drive");
+    const pc = playerCharacter(chars, [entry("pc", { overrides: { blocks: { [driveId]: "go home" } } })]);
+    expect(blockText(pc?.blocks ?? [], "drive")).toBe("go home");
   });
 
   it("presentMembers is the PC plus the party", () => {
@@ -211,7 +222,9 @@ describe("playerCharacter / presentMembers / allMembers", () => {
 
 describe("normalizeEntry / normalizeRoster", () => {
   it("reads the pre-ladder inParty + status pair", () => {
-    expect(normalizeEntry({ id: "a", inParty: true, lastSpokeTurn: 3, status: "active" })).toEqual({
+    expect(
+      normalizeEntry({ id: "a", inParty: true, lastSpokeTurn: 3, status: "active" }, []),
+    ).toEqual({
       id: "a",
       standing: "active",
       lastSpokeTurn: 3,
@@ -219,40 +232,54 @@ describe("normalizeEntry / normalizeRoster", () => {
   });
 
   it("keeps how someone left when they were out of the party", () => {
-    expect(normalizeEntry({ id: "a", inParty: false, status: "fallen" }).standing).toBe("fallen");
-    expect(normalizeEntry({ id: "a", inParty: false, status: "departed" }).standing).toBe(
+    expect(normalizeEntry({ id: "a", inParty: false, status: "fallen" }, []).standing).toBe(
+      "fallen",
+    );
+    expect(normalizeEntry({ id: "a", inParty: false, status: "departed" }, []).standing).toBe(
       "departed",
     );
   });
 
   it("maps the old nowhere-state — out of the party, still 'active' — to none", () => {
     // What an over-cap join used to write: in no prompt block and no screen.
-    expect(normalizeEntry({ id: "a", inParty: false, status: "active" }).standing).toBe("none");
+    expect(normalizeEntry({ id: "a", inParty: false, status: "active" }, []).standing).toBe(
+      "none",
+    );
   });
 
-  it("carries overrides through untouched", () => {
+  it("migrates a legacy field-keyed override onto the matching block", () => {
+    const base = member("a", "Ada");
+    const appearanceId = blockId(base, "appearance");
     const overrides = { description: "muddy" };
-    expect(normalizeEntry({ id: "a", inParty: true, overrides }).overrides).toBe(overrides);
+    const result = normalizeEntry(
+      { id: "a", inParty: true, overrides: overrides as never },
+      [base],
+    );
+    expect(result.overrides).toEqual({ blocks: { [appearanceId]: "muddy" } });
   });
 
-  it("folds a legacy labelled strengths override into one line", () => {
+  it("folds a legacy labelled strengths override into one line, onto the matching block", () => {
+    const base = member("a", "Ada");
+    const strengthsId = blockId(base, "strengths");
     const overrides = { strengths: { name: "Tracking", description: "reads a trail" } };
-    const entry = normalizeEntry({
-      id: "a",
-      standing: "active",
-      overrides: overrides as never,
-    });
-    expect(entry.overrides).toEqual({ strengths: "Tracking — reads a trail" });
+    const result = normalizeEntry(
+      { id: "a", standing: "active", overrides: overrides as never },
+      [base],
+    );
+    expect(result.overrides).toEqual({ blocks: { [strengthsId]: "Tracking — reads a trail" } });
   });
 
   it("returns the SAME array when every entry is already current", () => {
     // Loading a modern save must not look like a change to captureReversal.
     const roster = [entry("a", { standing: "active" }), entry("b")];
-    expect(normalizeRoster(roster)).toBe(roster);
+    expect(normalizeRoster(roster, [])).toBe(roster);
   });
 
   it("rewrites a roster carrying legacy entries", () => {
-    const roster = normalizeRoster([{ id: "a", inParty: true, lastSpokeTurn: 2, status: "active" }]);
+    const roster = normalizeRoster(
+      [{ id: "a", inParty: true, lastSpokeTurn: 2, status: "active" }],
+      [],
+    );
     expect(roster).toEqual([{ id: "a", standing: "active", lastSpokeTurn: 2 }]);
   });
 });
@@ -301,10 +328,10 @@ describe("setEntry", () => {
 });
 
 describe("overrides", () => {
-  it("merges without dropping earlier keys", () => {
-    let roster = mergeOverrides([], "a", { description: "muddy" });
-    roster = mergeOverrides(roster, "a", { drive: "revenge" });
-    expect(getEntry(roster, "a").overrides).toEqual({ description: "muddy", drive: "revenge" });
+  it("merges block overrides without dropping earlier ones", () => {
+    let roster = mergeOverrides([], "a", { blocks: { b1: "muddy" } });
+    roster = mergeOverrides(roster, "a", { blocks: { b2: "revenge" } });
+    expect(getEntry(roster, "a").overrides).toEqual({ blocks: { b1: "muddy", b2: "revenge" } });
     expect(hasOverrides(roster, "a")).toBe(true);
   });
 
@@ -313,22 +340,28 @@ describe("overrides", () => {
     expect(mergeOverrides(roster, "a", {})).toBe(roster);
   });
 
-  it("clears only the named keys — a player edit adopts just what they typed", () => {
-    const roster = mergeOverrides([], "a", { description: "muddy", drive: "revenge" });
-    const next = clearOverrides(roster, "a", ["description"]);
-    expect(getEntry(next, "a").overrides).toEqual({ drive: "revenge" });
+  it("clears only the named block ids — a player edit adopts just what they typed", () => {
+    const roster = mergeOverrides([], "a", { blocks: { b1: "muddy", b2: "revenge" } });
+    const next = clearOverrides(roster, "a", { blockIds: ["b1"] });
+    expect(getEntry(next, "a").overrides).toEqual({ blocks: { b2: "revenge" } });
   });
 
-  it("clears everything when no keys are named", () => {
-    const roster = mergeOverrides([], "a", { description: "muddy" });
+  it("clears species/sex independently of blocks", () => {
+    const roster = mergeOverrides([], "a", { species: "orc", blocks: { b1: "muddy" } });
+    const next = clearOverrides(roster, "a", { species: true });
+    expect(getEntry(next, "a").overrides).toEqual({ blocks: { b1: "muddy" } });
+  });
+
+  it("clears everything when no clear spec is given", () => {
+    const roster = mergeOverrides([], "a", { blocks: { b1: "muddy" } });
     const next = clearOverrides(roster, "a");
     expect(getEntry(next, "a").overrides).toBeUndefined();
     expect(hasOverrides(next, "a")).toBe(false);
   });
 
-  it("drops the overrides key once the last override is cleared", () => {
-    const roster = mergeOverrides([], "a", { description: "muddy" });
-    const next = clearOverrides(roster, "a", ["description"]);
+  it("drops the overrides key once the last block override is cleared", () => {
+    const roster = mergeOverrides([], "a", { blocks: { b1: "muddy" } });
+    const next = clearOverrides(roster, "a", { blockIds: ["b1"] });
     expect(getEntry(next, "a").overrides).toBeUndefined();
   });
 

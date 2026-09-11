@@ -10,6 +10,7 @@ import {
   slug,
   withRename,
 } from "./names";
+import { fixedFieldBlocks } from "./testFixtures";
 
 function member(id: string, name: string, patch: Partial<Character> = {}): Character {
   return {
@@ -18,13 +19,7 @@ function member(id: string, name: string, patch: Partial<Character> = {}): Chara
     name,
     species: "",
     sex: "",
-    description: "",
-    personality: "",
-    drive: "",
-    strengths: "",
-    flaws: "",
-    notes: "",
-    equipment: [],
+    blocks: fixedFieldBlocks(),
     ...patch,
   };
 }

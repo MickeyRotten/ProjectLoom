@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { collectEntityNames, highlightEntities, highlightWithinQuote } from "./highlight";
 import type { Character, Item } from "../types";
+import { fixedFieldBlocks } from "./testFixtures";
 
 function char(overrides: Partial<Character> = {}): Character {
   return {
@@ -9,13 +10,7 @@ function char(overrides: Partial<Character> = {}): Character {
     name: "Finn",
     species: "human",
     sex: "male",
-    description: "",
-    personality: "",
-    drive: "",
-    strengths: "",
-    flaws: "",
-    notes: "",
-    equipment: [],
+    blocks: fixedFieldBlocks(),
     ...overrides,
   } as Character;
 }
@@ -125,7 +120,7 @@ describe("collectEntityNames", () => {
 
   it("includes pack inventory labels and per-character equipment labels", () => {
     const inventory: Item[] = [{ label: "Rusty Key", description: "", quantity: 1 }];
-    const withGear = char({ equipment: [{ label: "Iron Sword", description: "" }] });
+    const withGear = char({ blocks: fixedFieldBlocks({ equipment: [{ label: "Iron Sword", description: "" }] }) });
     expect(collectEntityNames([withGear], inventory)).toEqual(["Finn", "Iron Sword", "Rusty Key"]);
   });
 

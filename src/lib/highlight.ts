@@ -40,7 +40,7 @@ export function collectEntityNames(characters: Character[], inventory: Item[]): 
 
   for (const c of characters) {
     for (const form of nameForms(c)) push(form);
-    for (const e of c.equipment ?? []) push(e.label);
+    for (const b of c.blocks) if (b.type === "item" && b.enabled) push(b.title);
   }
   for (const item of inventory) push(item.label);
   return out;

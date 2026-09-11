@@ -23,26 +23,27 @@ import {
 } from "./stakes";
 import type { StakeRules } from "./stakes";
 import { defaultSettings } from "./defaults";
+import { fixedFieldBlocks } from "./testFixtures";
 import type { DiceRules, PartyMember } from "../types";
 
-function pc(patch: Partial<PartyMember> = {}): PartyMember {
+interface PcPatch extends Partial<Omit<PartyMember, "blocks">> {
+  strengths?: string;
+  flaws?: string;
+}
+
+function pc(patch: PcPatch = {}): PartyMember {
+  const { strengths, flaws, ...rest } = patch;
   return {
     id: "pc",
     role: "pc",
     name: "Hiro",
     species: "human",
     sex: "",
-    description: "",
-    personality: "",
-    drive: "",
-    strengths: "",
-    flaws: "",
-    notes: "",
-    equipment: [],
+    blocks: fixedFieldBlocks({ strengths, flaws }),
     lastSpokeTurn: 0,
     standing: "none",
     condition: "",
-    ...patch,
+    ...rest,
   };
 }
 

@@ -123,7 +123,8 @@ describe("slotImageKeys", () => {
 describe("prompt builders", () => {
   it("portrait prompt puts Subject first, then action/context/composition/style in order", () => {
     const p = buildPortraitPrompt(
-      { name: "Navi", species: "sprite", description: "A flickering mote of light." },
+      { name: "Navi", species: "sprite" },
+      "A flickering mote of light.",
       tpl({
         portraitAction: "The pose is neutral.",
         portraitContext: "The background is white.",
@@ -147,12 +148,14 @@ describe("prompt builders", () => {
 
   it("portrait prompt carries Sex after Species, and omits it when blank", () => {
     const withSex = buildPortraitPrompt(
-      { name: "Navi", species: "sprite", sex: "female", description: "A mote." },
+      { name: "Navi", species: "sprite", sex: "female" },
+      "A mote.",
       tpl({ portraitStyle: "Ink." }),
     );
     expect(withSex).toContain("Species: sprite. Sex: female.");
     const withoutSex = buildPortraitPrompt(
-      { name: "Navi", species: "sprite", sex: "  ", description: "A mote." },
+      { name: "Navi", species: "sprite", sex: "  " },
+      "A mote.",
       tpl({ portraitStyle: "Ink." }),
     );
     expect(withoutSex).not.toContain("Sex:");
@@ -160,18 +163,19 @@ describe("prompt builders", () => {
 
   it("portrait prompt tolerates blank identity fields", () => {
     const p = buildPortraitPrompt(
-      { name: "", species: "", description: "" },
+      { name: "", species: "" },
+      "",
       tpl({ portraitStyle: "style" }),
     );
     expect(p).toBe("style");
   });
 
   it("appends the reference instruction as the final line only when given", () => {
-    const member = { name: "Navi", species: "sprite", description: "A mote." };
+    const member = { name: "Navi", species: "sprite" };
     const template = tpl({ portraitStyle: "Ink.", portraitRefInstruction: "Match the refs." });
-    const withRef = buildPortraitPrompt(member, template, true);
+    const withRef = buildPortraitPrompt(member, "A mote.", template, true);
     expect(withRef.endsWith("Match the refs.")).toBe(true);
-    const withoutRef = buildPortraitPrompt(member, template);
+    const withoutRef = buildPortraitPrompt(member, "A mote.", template);
     expect(withoutRef).not.toContain("Match the refs.");
   });
 
@@ -180,10 +184,10 @@ describe("prompt builders", () => {
       {
         name: "Navi",
         species: "sprite",
-        description: "A flickering mote.",
         useCustomPortraitPrompt: true,
         customPortraitPrompt: "A neon fox in a trench coat.",
       },
+      "A flickering mote.",
       tpl({ portraitStyle: "1-bit portrait." }),
     );
     expect(p).toBe("A neon fox in a trench coat.\n\n1-bit portrait.");
@@ -196,10 +200,10 @@ describe("prompt builders", () => {
       {
         name: "Navi",
         species: "sprite",
-        description: "A mote.",
         useCustomPortraitPrompt: true,
         customPortraitPrompt: "A neon fox.",
       },
+      "A mote.",
       tpl({ portraitStyle: "Ink.", portraitRefInstruction: "Match the refs." }),
       true,
     );
@@ -208,7 +212,8 @@ describe("prompt builders", () => {
 
   it("falls back to auto lines when the custom flag is on but the prompt is blank", () => {
     const p = buildPortraitPrompt(
-      { name: "Navi", species: "sprite", description: "A mote.", useCustomPortraitPrompt: true, customPortraitPrompt: "  " },
+      { name: "Navi", species: "sprite", useCustomPortraitPrompt: true, customPortraitPrompt: "  " },
+      "A mote.",
       tpl({ portraitStyle: "style" }),
     );
     expect(p).toContain("Name: Navi.");
@@ -220,8 +225,8 @@ describe("prompt builders", () => {
         name: "Navi",
         species: "sprite",
         sex: "female",
-        description: "long white hair, red eyes.",
       },
+      "long white hair, red eyes.",
       tpl({
         format: "tags",
         portraitAction: "standing, arms at sides",
@@ -242,10 +247,10 @@ describe("prompt builders", () => {
       {
         name: "Navi",
         species: "sprite",
-        description: "A mote.",
         useCustomPortraitPrompt: true,
         customPortraitPrompt: "1girl, neon fox,",
       },
+      "A mote.",
       tpl({ format: "tags", portraitStyle: "monochrome" }),
     );
     expect(p).toBe("1girl, neon fox, monochrome");

@@ -10,6 +10,7 @@ import {
 import { defaultPC, newGame } from "./defaults";
 import { defaultFeatures } from "./features";
 import { PARTY_LIMIT, activeMembers, getEntry, partyMembers, resolve } from "./roster";
+import { blockEquipment, blockText, fixedFieldBlocks } from "./testFixtures";
 import type { Character, GameState } from "../types";
 
 function game(): GameState {
@@ -28,13 +29,7 @@ function member(id: string, name: string, patch: Partial<Character> = {}): Chara
     name,
     species: "sprite",
     sex: "",
-    description: "",
-    personality: "",
-    drive: "",
-    strengths: "",
-    flaws: "",
-    notes: "",
-    equipment: [],
+    blocks: fixedFieldBlocks(),
     ...patch,
   };
 }
@@ -241,19 +236,24 @@ describe("applyDeltas — party ops", () => {
       role: "member",
       species: "sprite",
       sex: "female",
-      personality: "Impatient, chirpy.",
-      drive: "See every locked room in the world.",
-      strengths: "Lockpicking — opens anything",
-      flaws: "Cannot sit still.",
-      equipment: [{ label: "Lockpicks", description: "a bent set, well used" }],
     });
+    expect(blockText(navi!.blocks, "appearance")).toBe("a darting spark");
+    expect(blockText(navi!.blocks, "personality")).toBe("Impatient, chirpy.");
+    expect(blockText(navi!.blocks, "drive")).toBe("See every locked room in the world.");
+    expect(blockText(navi!.blocks, "strengths")).toBe("Lockpicking — opens anything");
+    expect(blockText(navi!.blocks, "flaws")).toBe("Cannot sit still.");
+    expect(blockEquipment(navi!.blocks)).toEqual([
+      { label: "Lockpicks", description: "a bent set, well used" },
+    ]);
     expect(getEntry(scene.roster, "m-navi").standing).toBe("active");
     expect(getEntry(scene.roster, "m-navi").overrides).toBeUndefined();
   });
 
   it("re-uses a character from an earlier adventure instead of duplicating", () => {
     // Navi exists in the library but is in no party — a fresh adventure.
-    const characters = lib(member("m-navi", "Navi", { description: "a darting spark" }));
+    const characters = lib(
+      member("m-navi", "Navi", { blocks: fixedFieldBlocks({ description: "a darting spark" }) }),
+    );
     const scene = applyDeltas(game(), characters, {
       party: [{ op: "add", name: "navi" }],
     });
@@ -266,9 +266,8 @@ describe("applyDeltas — party ops", () => {
   it("ignores sheet fields on update — a created character is frozen", () => {
     const characters = lib(
       member("m-navi", "Navi", {
-        personality: "Chirpy.",
-        description: "a darting spark",
         sex: "female",
+        blocks: fixedFieldBlocks({ personality: "Chirpy.", description: "a darting spark" }),
       }),
     );
     const g = { ...game(), roster: [{ id: "m-navi", standing: "active" as const, lastSpokeTurn: 0 }] };
@@ -288,23 +287,23 @@ describe("applyDeltas — party ops", () => {
     });
     // Neither the authored character nor this adventure's view of them moves.
     const navi = resolve(scene.characters[1], getEntry(scene.roster, "m-navi"));
-    expect(navi).toMatchObject({
-      personality: "Chirpy.",
-      description: "a darting spark",
-      species: "sprite",
-      sex: "female",
-    });
+    expect(navi).toMatchObject({ species: "sprite", sex: "female" });
+    expect(blockText(navi.blocks, "personality")).toBe("Chirpy.");
+    expect(blockText(navi.blocks, "appearance")).toBe("a darting spark");
     expect(getEntry(scene.roster, "m-navi").overrides).toBeUndefined();
   });
 
   it("still moves standing on an update that also carries sheet fields", () => {
-    const characters = lib(member("m-navi", "Navi", { personality: "Chirpy." }));
+    const characters = lib(
+      member("m-navi", "Navi", { blocks: fixedFieldBlocks({ personality: "Chirpy." }) }),
+    );
     const g = { ...game(), roster: [{ id: "m-navi", standing: "active" as const, lastSpokeTurn: 0 }] };
     const scene = applyDeltas(g, characters, {
       party: [{ op: "update", name: "navi", personality: "Subdued.", standing: "benched" }],
     });
     expect(getEntry(scene.roster, "m-navi").standing).toBe("benched");
-    expect(scene.characters.find((c) => c.id === "m-navi")?.personality).toBe("Chirpy.");
+    const navi = scene.characters.find((c) => c.id === "m-navi")!;
+    expect(blockText(navi.blocks, "personality")).toBe("Chirpy.");
   });
 
   it("never writes player notes — not on the creating add, not on an update", () => {
@@ -314,13 +313,13 @@ describe("applyDeltas — party ops", () => {
       party: [{ op: "add", name: "Navi", notes: "secretly the villain" } as never],
     });
     const navi = scene.characters.find((c) => c.name === "Navi");
-    expect(navi?.notes).toBe("");
+    expect(blockText(navi!.blocks, "notes")).toBe("");
 
     const g = { ...game(), roster: [{ id: navi!.id, standing: "active" as const, lastSpokeTurn: 0 }] };
     const later = applyDeltas(g, scene.characters, {
       party: [{ op: "update", name: "navi", notes: "still the villain" } as never],
     });
-    expect(later.characters.find((c) => c.id === navi!.id)?.notes).toBe("");
+    expect(blockText(later.characters.find((c) => c.id === navi!.id)!.blocks, "notes")).toBe("");
     // And it is never smuggled in as a story override either.
     expect(getEntry(later.roster, navi!.id).overrides).toBeUndefined();
   });
@@ -341,11 +340,11 @@ describe("applyDeltas — party ops", () => {
         { op: "add", name: "Bram", equipment: "a sword" as never },
       ],
     });
-    expect(scene.characters.find((c) => c.name === "Navi")?.equipment).toEqual([
+    expect(blockEquipment(scene.characters.find((c) => c.name === "Navi")!.blocks)).toEqual([
       { label: "Cloak", description: "moth-eaten" },
       { label: "Belt", description: "" },
     ]);
-    expect(scene.characters.find((c) => c.name === "Bram")?.equipment).toEqual([]);
+    expect(blockEquipment(scene.characters.find((c) => c.name === "Bram")!.blocks)).toEqual([]);
   });
 
   it("folds a legacy { name, description } strengths object into one line", () => {
@@ -358,13 +357,15 @@ describe("applyDeltas — party ops", () => {
         },
       ],
     });
-    expect(scene.characters.find((c) => c.name === "Navi")?.strengths).toBe(
+    expect(blockText(scene.characters.find((c) => c.name === "Navi")!.blocks, "strengths")).toBe(
       "Lockpicking — opens anything",
     );
   });
 
   it("ignores sheet fields when re-adding a character who already exists", () => {
-    const characters = lib(member("m-navi", "Navi", { description: "a darting spark" }));
+    const characters = lib(
+      member("m-navi", "Navi", { blocks: fixedFieldBlocks({ description: "a darting spark" }) }),
+    );
     const scene = applyDeltas(game(), characters, {
       party: [
         {
@@ -388,8 +389,8 @@ describe("applyDeltas — party ops", () => {
     const scene = applyDeltas(game(), characters, {
       party: [{ op: "update", name: "Hiro", description: "changed" }],
     });
-    expect(scene.characters.find((c) => c.role === "pc")?.description).toBe(
-      characters[0].description,
+    expect(blockText(scene.characters.find((c) => c.role === "pc")!.blocks, "appearance")).toBe(
+      blockText(characters[0].blocks, "appearance"),
     );
     expect(scene.roster).toHaveLength(0);
   });
@@ -499,7 +500,9 @@ describe("applyDeltas — party ops", () => {
   });
 
   it("benches and un-benches a member on update, without touching their sheet", () => {
-    const characters = lib(member("m-navi", "Navi", { personality: "Chirpy." }));
+    const characters = lib(
+      member("m-navi", "Navi", { blocks: fixedFieldBlocks({ personality: "Chirpy." }) }),
+    );
     const g = {
       ...game(),
       roster: [{ id: "m-navi", standing: "active" as const, lastSpokeTurn: 3 }],
@@ -588,13 +591,17 @@ describe("applyDeltas — renames", () => {
   });
 
   it("keeps the sheet frozen — a rename is not a way back in", () => {
-    const goblin = member("m-1", "Unnamed Goblin", { personality: "Wary." });
+    const goblin = member("m-1", "Unnamed Goblin", {
+      blocks: fixedFieldBlocks({ personality: "Wary." }),
+    });
     const scene = applyDeltas(seated([goblin]), lib(goblin), {
       party: [
         { op: "update", name: "Unnamed Goblin", newName: "Grik", personality: "Bold.", drive: "Gold." },
       ],
     });
-    expect(scene.characters[1]).toMatchObject({ name: "Grik", personality: "Wary.", drive: "" });
+    expect(scene.characters[1]).toMatchObject({ name: "Grik" });
+    expect(blockText(scene.characters[1].blocks, "personality")).toBe("Wary.");
+    expect(blockText(scene.characters[1].blocks, "drive")).toBe("");
   });
 
   it("resolves a later op that still uses the old name", () => {

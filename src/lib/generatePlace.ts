@@ -11,6 +11,7 @@ import {
   slotsOf,
 } from "./places";
 import { formatIdentity, playerCharacter } from "./roster";
+import { firstBlockText } from "./blocks";
 import { formatWorldNotesBlock, matchWorldNotes } from "./worldNotes";
 
 /**
@@ -150,7 +151,9 @@ export function placeScanText(game: GameState, name: string): string {
 function playerBlock(game: GameState): string {
   const pc = playerCharacter(game.characters, game.roster);
   if (!pc) return "";
-  return [`PLAYER CHARACTER — ${formatIdentity(pc)}`, pc.description].filter(Boolean).join("\n");
+  return [`PLAYER CHARACTER — ${formatIdentity(pc)}`, firstBlockText(pc.blocks, "appearance")]
+    .filter(Boolean)
+    .join("\n");
 }
 
 /**

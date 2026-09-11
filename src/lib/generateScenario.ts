@@ -1,6 +1,7 @@
 import type { Character, GameState } from "../types";
 import { type ChatMessage } from "./prompt";
 import { formatIdentity, playerCharacter } from "./roster";
+import { firstBlockText } from "./blocks";
 import { formatWorldNotesBlock, matchWorldNotes } from "./worldNotes";
 
 /**
@@ -85,11 +86,13 @@ function contextBlock(game: GameState, field: ScenarioField): string {
 function playerBlock(game: GameState, characters: Character[]): string {
   const pc = playerCharacter(characters, game.roster);
   if (!pc) return "";
+  const personality = firstBlockText(pc.blocks, "personality");
+  const drive = firstBlockText(pc.blocks, "drive");
   return [
     `PLAYER CHARACTER — ${formatIdentity(pc)}`,
-    pc.description,
-    pc.personality ? `Personality: ${pc.personality}` : "",
-    pc.drive ? `Drive: ${pc.drive}` : "",
+    firstBlockText(pc.blocks, "appearance"),
+    personality ? `Personality: ${personality}` : "",
+    drive ? `Drive: ${drive}` : "",
   ]
     .filter(Boolean)
     .join("\n");

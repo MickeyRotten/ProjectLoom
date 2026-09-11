@@ -1,14 +1,9 @@
 import { describe, it, expect } from "vitest";
-import {
-  GEN_FIELDS,
-  buildFieldMessages,
-  fieldScanText,
-  parseGeneratedField,
-  type GenField,
-} from "./generateField";
+import { buildFieldMessages, fieldScanText, parseGeneratedField } from "./generateField";
 import { defaultSettings, newCharacter, newGame } from "./defaults";
 import { builtinTemplates } from "./imageTemplates";
-import type { Character, GameState, Note, Settings } from "../types";
+import { fixedFieldBlocks } from "./testFixtures";
+import type { Block, BlockKind, Character, GameState, Note, Settings } from "../types";
 
 function member(patch: Partial<Character> = {}): Character {
   return {
@@ -16,9 +11,24 @@ function member(patch: Partial<Character> = {}): Character {
     name: "Elara",
     species: "elf",
     sex: "female",
+    blocks: fixedFieldBlocks(),
     ...patch,
   };
 }
+
+/** The block of a given kind on a character — what `buildFieldMessages` wants. */
+function blockOf(character: Character, kind: BlockKind): Pick<Block, "title" | "kind" | "text"> {
+  const b = character.blocks.find((x) => x.kind === kind)!;
+  return { title: b.title, kind: b.kind, text: b.type === "text" ? b.text : "" };
+}
+
+const KIND_LABEL: Record<string, string> = {
+  appearance: "Appearance",
+  personality: "Personality",
+  drive: "Drive",
+  strengths: "Strengths",
+  flaws: "Flaws",
+};
 
 function gameWith(notes: Note[] = []): GameState {
   return { ...newGame(), worldNotes: notes };
@@ -29,7 +39,7 @@ function note(patch: Partial<Note> & { id: string; title: string }): Note {
 }
 
 function joined(
-  field: GenField,
+  kind: BlockKind,
   opts: {
     character?: Character;
     game?: GameState;
@@ -37,11 +47,12 @@ function joined(
     hint?: string;
   } = {},
 ) {
+  const character = opts.character ?? member();
   return buildFieldMessages({
     game: opts.game ?? gameWith(),
     settings: { ...defaultSettings(), ...opts.settings },
-    character: opts.character ?? member(),
-    field,
+    character,
+    block: blockOf(character, kind),
     hint: opts.hint,
   })
     .map((m) => m.content)
@@ -58,35 +69,35 @@ function appearanceRule(text: string): Partial<Settings> {
 }
 
 describe("buildFieldMessages — field isolation", () => {
-  it("names only the requested field as the JSON key", () => {
+  it("always asks for the fixed 'text' JSON key", () => {
     const text = joined("flaws");
-    expect(text).toContain('exactly one key, "flaws"');
+    expect(text).toContain('exactly one key, "text"');
     expect(text).toContain("Write ONLY Flaws.");
     expect(text).toContain("Write only: Flaws.");
   });
 
-  it("sends only the requested field's rule", () => {
+  it("sends only the requested block's rule", () => {
     const text = joined("strengths");
-    expect(text).toContain('"strengths" is what this character is genuinely good at');
-    expect(text).not.toContain('"flaws" is what this character is bad at');
-    expect(text).not.toContain('"drive" is the ONE thing');
+    expect(text).toContain('the content of the "Strengths" block');
+    expect(text).not.toContain('the content of the "Flaws" block');
+    expect(text).not.toContain('the content of the "Drive" block');
   });
 
   it("uses the SELECTED template's appearance sentence as the Appearance rule", () => {
-    const text = joined("description", {
+    const text = joined("appearance", {
       settings: appearanceRule("Appearance is a woodcut, four words."),
     });
     expect(text).toContain("Appearance is a woodcut, four words.");
   });
 
   it("falls a blanked appearance sentence back to the built-in", () => {
-    const text = joined("description", { settings: appearanceRule("   ") });
-    expect(text).toContain('"description" is physical appearance only, concrete and visual.');
+    const text = joined("appearance", { settings: appearanceRule("   ") });
+    expect(text).toContain('"text" is physical appearance only, concrete and visual.');
   });
 
-  it("asks for every field it offers", () => {
-    for (const field of GEN_FIELDS) {
-      expect(joined(field)).toContain(`exactly one key, "${field}"`);
+  it("asks for every kind of block it offers", () => {
+    for (const kind of Object.keys(KIND_LABEL) as BlockKind[]) {
+      expect(joined(kind)).toContain(`Write ONLY ${KIND_LABEL[kind]}.`);
     }
   });
 });
@@ -120,9 +131,11 @@ describe("buildFieldMessages — context", () => {
     expect(joined("drive", { game })).not.toContain("SCENARIO —");
   });
 
-  it("shows the other sheet fields as constraints", () => {
+  it("shows the other sheet blocks as constraints", () => {
     const text = joined("flaws", {
-      character: member({ personality: "Wry and watchful.", drive: "Find her brother." }),
+      character: member({
+        blocks: fixedFieldBlocks({ personality: "Wry and watchful.", drive: "Find her brother." }),
+      }),
     });
     expect(text).toContain("Personality: Wry and watchful.");
     expect(text).toContain("Drive: Find her brother.");
@@ -146,7 +159,9 @@ describe("buildFieldMessages — world notes", () => {
   it("injects a note the character's own fields trigger", () => {
     const text = joined("personality", {
       game: gameWith(notes),
-      character: member({ description: "Raised among the Sylvan Elves." }),
+      character: member({
+        blocks: fixedFieldBlocks({ description: "Raised among the Sylvan Elves." }),
+      }),
     });
     expect(text).toContain("Bound to the old groves.");
     expect(text).not.toContain("Sealed since the flood.");
@@ -167,11 +182,12 @@ describe("buildFieldMessages — world notes", () => {
 
 describe("buildFieldMessages — player guidance", () => {
   it("adds the hint as its own block, last before the ask", () => {
+    const character = member();
     const messages = buildFieldMessages({
       game: gameWith(),
       settings: defaultSettings(),
-      character: member(),
-      field: "flaws",
+      character,
+      block: blockOf(character, "flaws"),
       hint: "make it cost her the party's trust",
     });
     const guidance = messages.findIndex((m) => m.content.startsWith("PLAYER GUIDANCE"));
@@ -187,11 +203,13 @@ describe("buildFieldMessages — player guidance", () => {
 });
 
 describe("fieldScanText", () => {
-  it("gathers identity, every sheet field and the equipment", () => {
+  it("gathers identity, every block's title and text", () => {
     const text = fieldScanText(
       member({
-        drive: "Find her brother.",
-        equipment: [{ label: "Yew Bow", description: "Her mother's." }],
+        blocks: fixedFieldBlocks({
+          drive: "Find her brother.",
+          equipment: [{ label: "Yew Bow", description: "Her mother's." }],
+        }),
       }),
       "a hint",
     );
@@ -204,9 +222,9 @@ describe("fieldScanText", () => {
     expect(text).toContain("a hint");
   });
 
-  it("survives a legacy character with no equipment array", () => {
-    const legacy = { ...member(), equipment: undefined } as unknown as Character;
-    expect(() => fieldScanText(legacy)).not.toThrow();
+  it("survives a character with no blocks at all", () => {
+    const empty = { ...member(), blocks: [] };
+    expect(() => fieldScanText(empty)).not.toThrow();
   });
 });
 

@@ -13,12 +13,11 @@ import {
 import { AutoUpdateModal } from "./AutoUpdateModal";
 import { GenerateFieldModal } from "./GenerateFieldModal";
 import { GenerateItemModal } from "./GenerateItemModal";
-import { GEN_FIELD_LABEL, type GenField } from "../lib/generateField";
 import { useEditBuffer } from "./useEditBuffer";
 import { useConfirm } from "./useConfirm";
 import { imagesAllowed, portraitKey } from "../lib/images";
 import { parseAliases } from "../lib/names";
-import { equipQuantity } from "../lib/equip";
+import { makeItemBlock, makeTextBlock, moveBlock } from "../lib/blocks";
 import {
   getEntry,
   hasOverrides,
@@ -26,7 +25,178 @@ import {
   partyFull as isPartyFull,
   resolve,
 } from "../lib/roster";
-import type { Character, Equipment, Standing } from "../types";
+import type { Block, BlockKind, Character, ItemBlock, Standing } from "../types";
+
+/** Every block kind, in the order the dropdown offers it. */
+const BLOCK_KINDS: BlockKind[] = [
+  "custom",
+  "appearance",
+  "personality",
+  "drive",
+  "strengths",
+  "flaws",
+  "notes",
+];
+
+const BLOCK_KIND_LABEL: Record<BlockKind, string> = {
+  custom: "Custom",
+  appearance: "Appearance",
+  personality: "Personality",
+  drive: "Drive",
+  strengths: "Strengths",
+  flaws: "Flaws",
+  notes: "Notes",
+};
+
+/**
+ * One block on the sheet — Text or Item, editable or read-only. `onUnequip`
+ * only fires for an Item block in READ mode: unequipping writes two stores
+ * at once (the pack and the character), the same reason Condition sits
+ * outside the Edit gate, so it bypasses the draft entirely.
+ */
+function BlockRow({
+  block,
+  index,
+  count,
+  editing,
+  onChange,
+  onMove,
+  onToggle,
+  onRemove,
+  onGenerate,
+  onUnequip,
+}: {
+  block: Block;
+  index: number;
+  count: number;
+  editing: boolean;
+  onChange: (next: Block) => void;
+  onMove: (dir: -1 | 1) => void;
+  onToggle: () => void;
+  onRemove: () => void;
+  onGenerate: () => void;
+  onUnequip?: () => void;
+}) {
+  const isItem = block.type === "item";
+  return (
+    <div className={`space-y-2 border-2 border-ink p-3 ${block.enabled ? "" : "opacity-50"}`}>
+      {editing ? (
+        <div className="flex items-end gap-2">
+          <div className="flex-1">
+            <TextField
+              label={isItem ? "Label" : "Title"}
+              value={block.title}
+              editing
+              onChange={(x) => onChange({ ...block, title: x })}
+            />
+          </div>
+          {!isItem && (
+            <label className="pb-2">
+              <span className="sr-only">Kind</span>
+              <select
+                value={block.kind}
+                onChange={(e) => onChange({ ...block, kind: e.target.value as BlockKind })}
+                className="border-2 border-ink bg-paper p-2 text-xs uppercase tracking-widest focus:outline-none"
+              >
+                {BLOCK_KINDS.map((k) => (
+                  <option key={k} value={k}>
+                    {BLOCK_KIND_LABEL[k]}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+        </div>
+      ) : (
+        <p className="text-sm uppercase tracking-widest opacity-70">
+          {block.title || "(untitled)"}
+          {!block.enabled && " — disabled"}
+        </p>
+      )}
+
+      <AreaField
+        label={isItem ? "Description" : "Text"}
+        value={block.text}
+        editing={editing}
+        rows={2}
+        onChange={(x) => onChange({ ...block, text: x })}
+      />
+
+      {isItem && editing && (
+        <label className="flex items-center gap-2">
+          <span className="uppercase tracking-widest text-sm">Qty</span>
+          <span className="sr-only">Quantity of {block.title || "this item"}</span>
+          <input
+            type="number"
+            min={1}
+            value={block.quantity}
+            onChange={(e) =>
+              onChange({ ...block, quantity: Math.max(1, Number(e.target.value) || 1) })
+            }
+            className="w-16 border-2 border-ink bg-paper p-2 text-center tabular-nums focus:outline-none"
+          />
+        </label>
+      )}
+      {isItem && !editing && block.quantity > 1 && (
+        <p className="tabular-nums text-sm">× {block.quantity}</p>
+      )}
+
+      {block.kind === "notes" && (
+        <p className="text-xs opacity-60">
+          Yours to write. The narrator reads it, but never writes it — no story
+          beat, Auto-Update or ✦ generation can touch it.
+        </p>
+      )}
+
+      {editing ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" onClick={onToggle} className={btnSmall}>
+            {block.enabled ? "Disable" : "Enable"}
+          </button>
+          <button
+            type="button"
+            aria-label="Move block up"
+            disabled={index === 0}
+            onClick={() => onMove(-1)}
+            className={`${btnSmall} disabled:opacity-40`}
+          >
+            ▲
+          </button>
+          <button
+            type="button"
+            aria-label="Move block down"
+            disabled={index === count - 1}
+            onClick={() => onMove(1)}
+            className={`${btnSmall} disabled:opacity-40`}
+          >
+            ▼
+          </button>
+          <button type="button" onClick={onRemove} className={btnSmall}>
+            Remove
+          </button>
+          {/* No ✦ beside Notes — the point of it is text nothing generates. */}
+          {block.kind !== "notes" && (
+            <button
+              type="button"
+              aria-label={`Generate ${block.title.trim() || (isItem ? "item" : "block")}`}
+              onClick={onGenerate}
+              className="border-2 border-ink px-2 py-1 leading-none active:bg-ink active:text-paper"
+            >
+              ✦
+            </button>
+          )}
+        </div>
+      ) : (
+        isItem &&
+        onUnequip && (
+          <button type="button" onClick={onUnequip} className={btnSmall}>
+            Unequip
+          </button>
+        )
+      )}
+    </div>
+  );
+}
 
 /**
  * Player-settable standings, in the order they appear on the sheet. "none" is
@@ -58,13 +228,7 @@ type MemberDraft = Pick<
   | "aliases"
   | "species"
   | "sex"
-  | "description"
-  | "personality"
-  | "drive"
-  | "strengths"
-  | "flaws"
-  | "notes"
-  | "equipment"
+  | "blocks"
   | "useCustomPortraitPrompt"
   | "customPortraitPrompt"
 >;
@@ -110,10 +274,9 @@ export function MemberSheet() {
   const imagesOn = useStore((s) => imagesAllowed(s.settings));
   const [zoom, setZoom] = useState(false);
   const [autoUpdate, setAutoUpdate] = useState(false);
-  const [genField, setGenField] = useState<GenField | null>(null);
-  // The equipment row the model is writing — an index into the draft's kit,
-  // since ✦ is only offered while editing.
-  const [genEquip, setGenEquip] = useState<number | null>(null);
+  // The block the model is writing — an id into the draft's block list, since
+  // ✦ is only offered while editing.
+  const [genBlockId, setGenBlockId] = useState<string | null>(null);
   const portraitFile = useRef<HTMLInputElement>(null);
   // Saving hands off to the OS (share sheet / download) and leaves no trace in
   // the app, so the sheet says what happened for a few seconds. `at` makes each
@@ -140,13 +303,7 @@ export function MemberSheet() {
       aliases: member?.aliases ?? [],
       species: member?.species ?? "",
       sex: member?.sex ?? "",
-      description: member?.description ?? "",
-      personality: member?.personality ?? "",
-      drive: member?.drive ?? "",
-      strengths: member?.strengths ?? "",
-      flaws: member?.flaws ?? "",
-      notes: member?.notes ?? "",
-      equipment: member?.equipment ?? [],
+      blocks: member?.blocks ?? [],
       useCustomPortraitPrompt: member?.useCustomPortraitPrompt ?? false,
       customPortraitPrompt: member?.customPortraitPrompt ?? "",
     }),
@@ -198,27 +355,8 @@ export function MemberSheet() {
   function setField<K extends keyof MemberDraft>(k: K, val: MemberDraft[K]) {
     setDraft((d) => ({ ...d, [k]: val }));
   }
-  const setEquip = (next: Equipment[]) => setField("equipment", next);
-
-  // ✦ only while editing: an accepted generation lands in the DRAFT, which is
-  // what makes Discard Changes the undo. Offering it in read mode would mean
-  // writing the character behind the Edit gate's back — the same hazard the
-  // Auto-Update button above is gated for.
-  //
-  // ✦ and not ✨: the sparkle is an emoji and browsers paint it in colour, which
-  // is one more colour than this app has. Same reason ⟳ is the glyph on the
-  // portrait button.
-  const genButton = (field: GenField) =>
-    editing ? (
-      <button
-        type="button"
-        aria-label={`Generate ${GEN_FIELD_LABEL[field]}`}
-        onClick={() => setGenField(field)}
-        className="border-2 border-ink px-2 py-1 leading-none active:bg-ink active:text-paper"
-      >
-        ✦
-      </button>
-    ) : undefined;
+  const setBlocks = (next: Block[]) => setField("blocks", next);
+  const genBlock = genBlockId ? v.blocks.find((b) => b.id === genBlockId) : undefined;
 
   return (
     <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
@@ -407,165 +545,57 @@ export function MemberSheet() {
           />
         </div>
 
-        <AreaField
-          label="Appearance"
-          value={v.description}
-          editing={editing}
-          rows={2}
-          action={genButton("description")}
-          onChange={(x) => setField("description", x)}
-        />
-        <AreaField
-          label="Personality"
-          value={v.personality}
-          editing={editing}
-          rows={2}
-          action={genButton("personality")}
-          onChange={(x) => setField("personality", x)}
-        />
-        <TextField
-          label="Drive"
-          value={v.drive}
-          editing={editing}
-          action={genButton("drive")}
-          onChange={(x) => setField("drive", x)}
-        />
-
-        <AreaField
-          label="Strengths"
-          value={v.strengths}
-          editing={editing}
-          rows={2}
-          action={genButton("strengths")}
-          onChange={(x) => setField("strengths", x)}
-        />
-        <AreaField
-          label="Flaws"
-          value={v.flaws}
-          editing={editing}
-          rows={2}
-          action={genButton("flaws")}
-          onChange={(x) => setField("flaws", x)}
-        />
-
-        {/* The player's field, and only theirs — no ✦, because the point of it
-            is text nothing generates and nothing rewrites. The narrator reads
-            it with the rest of the sheet; no delta, override or side call can
-            ever write it back. */}
-        <div className="space-y-1">
-          <AreaField
-            label="Notes"
-            value={v.notes}
-            editing={editing}
-            rows={3}
-            onChange={(x) => setField("notes", x)}
-          />
-          <p className="text-xs opacity-60">
-            Yours to write. The narrator reads it, but never writes it — no story
-            beat, Auto-Update or ✦ generation can touch it.
-          </p>
-        </div>
-
-        {/* Equipment is what this character carries; the Inventory screen is the
-            party's shared pack. Gear MOVES between them — Equip there, Unequip
-            here — and is never in both at once (`equip.ts`). Unequip sits
-            outside the Edit gate for the same reason Condition does: it writes
-            two stores at once (the pack and the character), which a local draft
-            has no way to hold. */}
-        <fieldset className="space-y-3 border-2 border-ink p-3">
-          <legend className="px-1 uppercase tracking-widest text-sm">Equipment</legend>
-          {v.equipment.length === 0 && !editing && (
-            <p className="uppercase tracking-widest text-sm opacity-60">None.</p>
+        {/* The sheet body — an ordered, player-editable list of blocks (Text
+            or Item), each independently enabled/disabled, reorderable and
+            deletable. Fed to the narrator verbatim, in order — see
+            `blocks.ts`. Equipment is now the special Item-block type among
+            these; the Inventory screen is the party's shared pack. Gear
+            MOVES between them — Equip there, Unequip here — and is never in
+            both at once (`equip.ts`). Unequip sits outside the Edit gate for
+            the same reason Condition does: it writes two stores at once (the
+            pack and the character), which a local draft has no way to
+            hold. */}
+        <div className="space-y-3">
+          <p className="text-sm uppercase tracking-widest opacity-70">Sheet</p>
+          {v.blocks.length === 0 && !editing && (
+            <p className="uppercase tracking-widest text-sm opacity-60">No blocks.</p>
           )}
-          {v.equipment.map((e, i) => (
-            <div key={i} className="space-y-2 border-b-2 border-ink pb-3 last:border-b-0 last:pb-0">
-              <TextField
-                label="Label"
-                value={e.label}
-                editing={editing}
-                onChange={(x) => setEquip(v.equipment.map((y, j) => (j === i ? { ...y, label: x } : y)))}
-              />
-              <TextField
-                label="Description"
-                value={e.description}
-                editing={editing}
-                onChange={(x) =>
-                  setEquip(v.equipment.map((y, j) => (j === i ? { ...y, description: x } : y)))
-                }
-              />
-              {editing ? (
-                <div className="flex items-center gap-2">
-                  <span className="uppercase tracking-widest text-sm">Qty</span>
-                  <label className="contents">
-                    <span className="sr-only">Quantity of {e.label || "this item"}</span>
-                    <input
-                      type="number"
-                      min={1}
-                      value={equipQuantity(e)}
-                      onChange={(x) =>
-                        setEquip(
-                          v.equipment.map((y, j) =>
-                            j === i
-                              ? { ...y, quantity: Math.max(1, Number(x.target.value) || 1) }
-                              : y,
-                          ),
-                        )
-                      }
-                      className="w-16 border-2 border-ink bg-paper p-2 text-center tabular-nums focus:outline-none"
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => setEquip(v.equipment.filter((_, j) => j !== i))}
-                    className="border-2 border-ink px-2 py-1 text-xs uppercase tracking-widest active:bg-ink active:text-paper"
-                  >
-                    Remove
-                  </button>
-                  {/* Same ✦ as the prose fields above, writing a whole row
-                      rather than one field (`generateItem.ts`) — and the same
-                      Edit gate, so the accepted item lands in the draft. */}
-                  <button
-                    type="button"
-                    aria-label={e.label.trim() ? `Generate ${e.label.trim()}` : "Generate equipment"}
-                    onClick={() => setGenEquip(i)}
-                    className="border-2 border-ink px-2 py-1 leading-none active:bg-ink active:text-paper"
-                  >
-                    ✦
-                  </button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  {equipQuantity(e) > 1 && (
-                    <span className="tabular-nums">× {equipQuantity(e)}</span>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => unequip(member.id, i)}
-                    className={btnSmall}
-                  >
-                    Unequip
-                  </button>
-                </div>
-              )}
-            </div>
+          {v.blocks.map((b, i) => (
+            <BlockRow
+              key={b.id}
+              block={b}
+              index={i}
+              count={v.blocks.length}
+              editing={editing}
+              onChange={(next) => setBlocks(v.blocks.map((x, j) => (j === i ? next : x)))}
+              onMove={(dir) => setBlocks(moveBlock(v.blocks, i, dir))}
+              onToggle={() =>
+                setBlocks(v.blocks.map((x, j) => (j === i ? { ...x, enabled: !x.enabled } : x)))
+              }
+              onRemove={() => setBlocks(v.blocks.filter((_, j) => j !== i))}
+              onGenerate={() => setGenBlockId(b.id)}
+              onUnequip={b.type === "item" ? () => unequip(member.id, b.id) : undefined}
+            />
           ))}
           {editing && (
-            <button
-              type="button"
-              onClick={() => setEquip([...v.equipment, { label: "", description: "" }])}
-              className="w-full border-2 border-ink px-3 py-2 text-sm uppercase tracking-widest active:bg-ink active:text-paper"
-            >
-              + Add Equipment
-            </button>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setBlocks([...v.blocks, makeTextBlock("", "")])}
+                className={`flex-1 ${btnSmall}`}
+              >
+                + Text Block
+              </button>
+              <button
+                type="button"
+                onClick={() => setBlocks([...v.blocks, makeItemBlock("", "")])}
+                className={`flex-1 ${btnSmall}`}
+              >
+                + Item Block
+              </button>
+            </div>
           )}
-          {!editing && (
-            <p className="text-xs opacity-60">
-              Unequip moves an item — count and all — back into the shared pack.
-              Equip it to someone from the Inventory screen; it is never in both
-              places at once.
-            </p>
-          )}
-        </fieldset>
+        </div>
 
         {/* What the STORY may do to this sheet, under the sheet it does it to.
             Auto-Update is gated behind read mode — an open draft would
@@ -703,37 +733,39 @@ export function MemberSheet() {
         />
       )}
 
-      {/* Fed the DRAFT, not the saved character: a Flaws generated right after
-          the player typed a Personality has to read that Personality. */}
-      {genField && (
+      {/* Fed the DRAFT, not the saved character: a block generated right
+          after the player typed another one has to read that text. */}
+      {genBlock && genBlock.type === "text" && (
         <GenerateFieldModal
           character={{ ...member, ...v }}
-          field={genField}
-          onAccept={(text) => setField(genField, text)}
-          onClose={() => setGenField(null)}
+          block={genBlock}
+          onAccept={(text) =>
+            setBlocks(v.blocks.map((b) => (b.id === genBlock.id ? { ...b, text } : b)))
+          }
+          onClose={() => setGenBlockId(null)}
         />
       )}
 
       {/* Gear for THIS character: the draft sheet says who they are, and the
-          rest of the draft kit says what they already have. The row being
+          rest of the draft kit says what they already have. The block being
           written is left out of it — it is the draft being replaced. */}
-      {genEquip !== null && v.equipment[genEquip] && (
+      {genBlock && genBlock.type === "item" && (
         <GenerateItemModal
           character={{ ...member, ...v }}
-          existing={v.equipment.filter((_, j) => j !== genEquip)}
-          replacing={
-            !!(v.equipment[genEquip].label.trim() || v.equipment[genEquip].description.trim())
-          }
+          existing={v.blocks
+            .filter((b): b is ItemBlock => b.type === "item" && b.id !== genBlock.id)
+            .map((b) => ({ label: b.title, description: b.text, quantity: b.quantity }))}
+          replacing={!!(genBlock.title.trim() || genBlock.text.trim())}
           onAccept={(item) =>
-            setEquip(
-              v.equipment.map((y, j) =>
-                j === genEquip
-                  ? { ...y, label: item.label, description: item.description, quantity: item.quantity }
-                  : y,
+            setBlocks(
+              v.blocks.map((b) =>
+                b.id === genBlock.id
+                  ? { ...b, title: item.label, text: item.description, quantity: item.quantity }
+                  : b,
               ),
             )
           }
-          onClose={() => setGenEquip(null)}
+          onClose={() => setGenBlockId(null)}
         />
       )}
 

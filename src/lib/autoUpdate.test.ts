@@ -7,6 +7,7 @@ import {
   type AutoField,
 } from "./autoUpdate";
 import { newCharacter, newGame } from "./defaults";
+import { fixedFieldBlocks } from "./testFixtures";
 import type { Character, GameState, Message } from "../types";
 
 function msg(patch: Partial<Message> & { content: string; turn: number }): Message {
@@ -63,10 +64,12 @@ describe("normalizeFields", () => {
 
 describe("buildAutoUpdateMessages", () => {
   const c = member({
-    description: "Tall, silver-haired, a scar across one brow. Wears a patched cloak.",
-    personality: "Wry and watchful.",
-    drive: "Find her missing brother.",
-    equipment: [{ label: "Ranger's Coat", description: "Oiled leather, deep hood." }],
+    blocks: fixedFieldBlocks({
+      description: "Tall, silver-haired, a scar across one brow. Wears a patched cloak.",
+      personality: "Wry and watchful.",
+      drive: "Find her missing brother.",
+      equipment: [{ label: "Ranger's Coat", description: "Oiled leather, deep hood." }],
+    }),
   });
 
   function joined(fields: AutoField[], game = gameWith(beats)) {
@@ -121,10 +124,10 @@ describe("buildAutoUpdateMessages", () => {
 });
 
 describe("parseAutoUpdate", () => {
-  it("maps appearance onto description and keeps the other fields", () => {
+  it("reads the requested fields by their own name", () => {
     const raw = '{"appearance":"Silver hair, oiled ranger coat.","drive":"Reach the coast."}';
     expect(parseAutoUpdate(raw, ["appearance", "drive"])).toEqual({
-      description: "Silver hair, oiled ranger coat.",
+      appearance: "Silver hair, oiled ranger coat.",
       drive: "Reach the coast.",
     });
   });

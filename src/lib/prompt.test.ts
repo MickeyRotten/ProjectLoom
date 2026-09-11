@@ -13,8 +13,10 @@ import { PARTY_LIMIT } from "./roster";
 import { DEFAULT_DICE } from "./stakes";
 import { builtinTemplates } from "./imageTemplates";
 import { allFeatures, defaultFeatures } from "./features";
+import { fixedFieldBlocks } from "./testFixtures";
 import type {
   Character,
+  Equipment,
   FeatureFlags,
   GameState,
   Message,
@@ -74,12 +76,42 @@ function play(turn: number, content: string): Message {
   return { id: `p${turn}`, role: "player", content, turn };
 }
 
-function member(patch: Partial<Character> & { id: string; name: string }): Character {
+interface MemberPatch extends Partial<Omit<Character, "blocks">> {
+  id: string;
+  name: string;
+  description?: string;
+  personality?: string;
+  drive?: string;
+  strengths?: string;
+  flaws?: string;
+  notes?: string;
+  equipment?: Equipment[];
+}
+
+function member(patch: MemberPatch): Character {
+  const { description, personality, drive, strengths, flaws, notes, equipment, ...rest } = patch;
   return {
-    role: "member", species: "human", sex: "", description: "", personality: "", drive: "",
-    strengths: "", flaws: "", notes: "", equipment: [],
-    ...patch,
+    role: "member",
+    species: "human",
+    sex: "",
+    blocks: fixedFieldBlocks({ description, personality, drive, strengths, flaws, notes, equipment }),
+    ...rest,
   };
+}
+
+/** Override one or more block kinds' text on an already-built character. */
+function withBlocks(character: Character, patch: Record<string, string>): Character {
+  return {
+    ...character,
+    blocks: character.blocks.map((b) =>
+      b.type === "text" && b.kind in patch ? { ...b, text: patch[b.kind] } : b,
+    ),
+  };
+}
+
+/** Strip a character's Item blocks — a PC with no gear at all. */
+function stripItems(character: Character): Character {
+  return { ...character, blocks: character.blocks.filter((b) => b.type !== "item") };
 }
 
 describe("buildMessages — ordering", () => {
@@ -180,7 +212,7 @@ describe("buildMessages — ordering", () => {
   });
 
   it("carries the player's own Notes on the PC sheet", () => {
-    const pc = { ...defaultPC(), notes: "he lies about his age" };
+    const pc = withBlocks(defaultPC(), { notes: "he lies about his age" });
     const msgs = build({ settings, game: newGame(), characters: [pc], playerMessage: "go" });
     expect(msgs[0].content).toContain("Notes: he lies about his age");
   });
@@ -191,11 +223,10 @@ describe("buildMessages — ordering", () => {
   });
 
   it("includes PC personality + drive in the system context", () => {
-    const pc = {
-      ...defaultPC(),
+    const pc = withBlocks(defaultPC(), {
       personality: "Stoic, dry-witted.",
       drive: "Find the last archive.",
-    };
+    });
     const msgs = build({ settings, game: newGame(), characters: [pc], playerMessage: "go" });
     expect(msgs[0].content).toContain("Personality: Stoic, dry-witted.");
     expect(msgs[0].content).toContain("Drive: Find the last archive.");
@@ -230,6 +261,7 @@ describe("party roster + spotlight", () => {
   });
 
   it("shows the party what the STORY changed, not the authored sheet", () => {
+    const appearanceId = navi.blocks.find((b) => b.kind === "appearance")!.id;
     const g: GameState = {
       ...newGame(),
       roster: [
@@ -237,7 +269,7 @@ describe("party roster + spotlight", () => {
           id: "m-navi",
           standing: "active",
           lastSpokeTurn: 0,
-          overrides: { description: "singed and limping" },
+          overrides: { blocks: { [appearanceId]: "singed and limping" } },
         },
       ],
     };
@@ -720,7 +752,7 @@ describe("relevant gear injection", () => {
     const msgs = build({
       settings,
       game: newGame(),
-      characters: [{ ...defaultPC(), equipment: [] }, packRat],
+      characters: [stripItems(defaultPC()), packRat],
       playerMessage: "I raise the lantern",
     });
     expect(msgs.some((m) => m.content.includes("RELEVANT GEAR"))).toBe(false);

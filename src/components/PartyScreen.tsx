@@ -6,6 +6,7 @@ import { FeatureOffNotice } from "./FeatureOffNotice";
 import { CharacterRow } from "./CharacterRow";
 import { Section, btn } from "./fields";
 import { PARTY_LIMIT, activeMembers, benchedMembers, playerCharacter } from "../lib/roster";
+import { firstBlockText } from "../lib/blocks";
 
 /**
  * Full-screen PARTY view — the player character up top (never absent from the
@@ -30,13 +31,14 @@ export function PartyScreen() {
   const active = useMemo(() => activeMembers(characters, roster), [characters, roster]);
   const benched = useMemo(() => benchedMembers(characters, roster), [characters, roster]);
   const full = active.length >= PARTY_LIMIT;
+  const strengths = (m: PartyMember) => firstBlockText(m.blocks, "strengths");
 
   const row = (m: PartyMember, move: { label: string; to: "active" | "benched" }) => (
     <CharacterRow
       key={m.id}
       name={m.name || "(unnamed)"}
       sub={m.species}
-      detail={m.strengths ? `Strengths — ${m.strengths}` : undefined}
+      detail={strengths(m) ? `Strengths — ${strengths(m)}` : undefined}
       onOpen={() => openMember(m.id)}
       actions={[
         {
@@ -65,7 +67,7 @@ export function PartyScreen() {
             <CharacterRow
               name={pc.name || "(unnamed)"}
               sub={pc.species}
-              detail={pc.strengths ? `Strengths — ${pc.strengths}` : undefined}
+              detail={strengths(pc) ? `Strengths — ${strengths(pc)}` : undefined}
               onOpen={() => openMember(pc.id)}
             />
           </>

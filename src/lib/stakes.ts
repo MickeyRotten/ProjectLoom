@@ -1,4 +1,5 @@
 import type { DiceRules, PartyMember, Settings, TurnOutcome, TurnRoll } from "../types";
+import { firstBlockText } from "./blocks";
 import { extractKeywords, intersects } from "./spotlight";
 import { keywordHits } from "./worldNotes";
 
@@ -309,10 +310,11 @@ export function computeStakes(
   const risky = rules.alwaysRoll || isRisky(action, rules.keywords);
   const actionKeywords = extractKeywords(action);
 
+  const strengths = actor ? firstBlockText(actor.blocks, "strengths") : "";
+  const flaws = actor ? firstBlockText(actor.blocks, "flaws") : "";
   const strengthsInPlay =
-    risky && !!actor?.strengths && intersects(actionKeywords, extractKeywords(actor.strengths));
-  const flawsInPlay =
-    risky && !!actor?.flaws && intersects(actionKeywords, extractKeywords(actor.flaws));
+    risky && !!strengths && intersects(actionKeywords, extractKeywords(strengths));
+  const flawsInPlay = risky && !!flaws && intersects(actionKeywords, extractKeywords(flaws));
 
   const rolled = rollDice(turn, action, dice);
   const roll = rolled.reduce((sum, d) => sum + d, 0);

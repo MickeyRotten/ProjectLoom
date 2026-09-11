@@ -1,11 +1,10 @@
 import { create } from "zustand";
 import type {
   AdventureImports,
+  Block,
   Character,
-  CharacterOverride,
   Coords,
   DiceCast,
-  Equipment,
   GameState,
   Item,
   JournalLine,
@@ -82,13 +81,13 @@ import {
   buildAutoUpdateMessages,
   normalizeFields,
   parseAutoUpdate,
+  resolveAutoUpdatePatch,
   type AutoField,
 } from "./lib/autoUpdate";
 import {
   GENERATE_FIELD_TEMPERATURE,
   buildFieldMessages,
   parseGeneratedField,
-  type GenField,
 } from "./lib/generateField";
 import {
   GENERATE_SCENARIO_TEMPERATURE,
@@ -150,6 +149,7 @@ import {
   toStoredImage,
   type GenerateImageOptions,
 } from "./lib/images";
+import { firstBlockText } from "./lib/blocks";
 import { activeTemplate } from "./lib/imageTemplates";
 import { imageFileName, saveBlobAsFile } from "./lib/download";
 
@@ -325,7 +325,7 @@ export interface LoomStore {
    */
   generateField: (
     character: Character,
-    field: GenField,
+    block: Pick<Block, "title" | "kind">,
     hint: string,
   ) => Promise<string | null>;
   /**
@@ -410,13 +410,14 @@ export interface LoomStore {
   setInventory: (inventory: Item[]) => void;
   /**
    * Hand a pack row to the PC or a party member — the whole row, count and
-   * all, off `game.inventory` and onto `Character.equipment`. A MOVE: the item
-   * is never in both places (see `equip.ts`). No-op on Gold, on a blank row, or
-   * on a character the library doesn't have.
+   * all, off `game.inventory` and onto a new (or merged) Item block among
+   * `Character.blocks`. A MOVE: the item is never in both places (see
+   * `equip.ts`). No-op on Gold, on a blank row, or on a character the
+   * library doesn't have.
    */
   equipItem: (index: number, characterId: string) => void;
-  /** The reverse — a kit row back into the shared pack, merging by label. */
-  unequipItem: (characterId: string, index: number) => void;
+  /** The reverse — an Item block back into the shared pack, merging by label. */
+  unequipItem: (characterId: string, blockId: string) => void;
 
   /* --- Cloud saves (Menu → Cloud Saves) --- */
   /** The signed-in account, or null when signed out / sync off. */
@@ -538,17 +539,6 @@ export interface PurgeSummary {
   /** Set when the cloud could not be reached at all; local deletion still happened. */
   error: string | null;
 }
-
-/** The sheet fields the story is allowed to diverge from the base character. */
-const OVERRIDABLE: (keyof CharacterOverride)[] = [
-  "species",
-  "sex",
-  "description",
-  "personality",
-  "drive",
-  "strengths",
-  "flaws",
-];
 
 export const uid = () =>
   typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -718,12 +708,12 @@ export const useStore = create<LoomStore>((set, get) => {
    */
   function moveGear(
     characterId: string,
-    move: (inventory: Item[], equipment: Equipment[]) => Move | null,
+    move: (inventory: Item[], blocks: Block[]) => Move | null,
   ) {
     const game = get().game;
     const character = game.characters.find((c) => c.id === characterId);
     if (!character) return;
-    const moved = move(game.inventory, character.equipment);
+    const moved = move(game.inventory, character.blocks);
     if (!moved) return;
 
     // Both halves now live in the same document, so the move is one write —
@@ -733,7 +723,7 @@ export const useStore = create<LoomStore>((set, get) => {
       ...game,
       inventory: moved.inventory,
       characters: game.characters.map((c) =>
-        c.id === characterId ? { ...c, equipment: moved.equipment } : c,
+        c.id === characterId ? { ...c, blocks: moved.blocks } : c,
       ),
     };
     set({ game: next });
@@ -821,7 +811,12 @@ export const useStore = create<LoomStore>((set, get) => {
         // is appended only then — zero references is a fully supported state.
         const refs = s.portraitRefImages.map(refImageToDataUrl);
         return {
-          prompt: buildPortraitPrompt(member, activeTemplate(s), refs.length > 0),
+          prompt: buildPortraitPrompt(
+            member,
+            firstBlockText(member.blocks, "appearance"),
+            activeTemplate(s),
+            refs.length > 0,
+          ),
           images: refs.length ? refs : undefined,
           aspectRatio: "2:3",
         };
@@ -1030,6 +1025,8 @@ export const useStore = create<LoomStore>((set, get) => {
   },
 
   updateCharacter(id, patch) {
+    const before = get().game.characters.find((c) => c.id === id);
+
     // A name edit is a RENAME, not a field write: the old name goes to
     // `aliases` so every name-keyed matcher — speaker detection, NPC gating,
     // Auto-Update's story scan, the narrator's own party ops — keeps resolving
@@ -1045,17 +1042,24 @@ export const useStore = create<LoomStore>((set, get) => {
       return patch.name === undefined ? next : withRename({ ...next, name: c.name }, patch.name);
     });
     commitCharacters(characters);
+    if (!before) return;
 
     // A player edit is the authored truth, so it also retires the story's
-    // override on those same fields — otherwise the override would mask what
-    // they just typed. Fields the story changed but the player didn't touch
-    // stay overridden.
-    const touched = Object.keys(patch).filter((k) =>
-      OVERRIDABLE.includes(k as keyof CharacterOverride),
-    ) as (keyof CharacterOverride)[];
-    if (!touched.length) return;
+    // override on species/sex and on any block whose TEXT the edit actually
+    // changed — otherwise the override would mask what they just typed.
+    // Blocks the story changed but the player didn't touch stay overridden.
+    const species = patch.species !== undefined && patch.species !== before.species;
+    const sex = patch.sex !== undefined && patch.sex !== before.sex;
+    const blockIds = (patch.blocks ?? [])
+      .filter((b) => {
+        if (b.type !== "text") return false;
+        const prior = before.blocks.find((p) => p.id === b.id);
+        return !prior || prior.type !== "text" || prior.text !== b.text;
+      })
+      .map((b) => b.id);
+    if (!species && !sex && !blockIds.length) return;
     const g = get().game;
-    const roster = clearRosterOverrides(g.roster, id, touched);
+    const roster = clearRosterOverrides(g.roster, id, { species, sex, blockIds });
     if (roster === g.roster) return;
     const game = { ...g, roster };
     set({ game });
@@ -1090,15 +1094,23 @@ export const useStore = create<LoomStore>((set, get) => {
         throw new Error("The model returned no usable fields. Try again.");
       }
       // The character can be deleted while the call is in flight.
-      if (!get().game.characters.some((c) => c.id === id)) {
+      const latestBase = get().game.characters.find((c) => c.id === id);
+      if (!latestBase) {
         set({ autoUpdating: false });
         return false;
+      }
+      // Resolved onto the character's CURRENT block ids — a field whose block
+      // was deleted or retitled away from its kind while the call was in
+      // flight simply has nothing left to write.
+      const blocks = resolveAutoUpdatePatch(latestBase, patch);
+      if (!blocks) {
+        throw new Error("The model returned no usable fields. Try again.");
       }
       // Auto-Update re-reads the character off THIS adventure's beats, so its
       // rewrite is a story change: it overrides for this run and leaves the
       // authored character intact.
       const g = get().game;
-      const game = { ...g, roster: mergeOverrides(g.roster, id, patch) };
+      const game = { ...g, roster: mergeOverrides(g.roster, id, { blocks }) };
       set({ game, autoUpdating: false });
       void saveActiveGame(game);
       return true;
@@ -1177,7 +1189,7 @@ export const useStore = create<LoomStore>((set, get) => {
     void saveActiveGame(next);
   },
 
-  async generateField(character, field, hint) {
+  async generateField(character, block, hint) {
     // Single-flight only. Unlike `autoUpdateCharacter` there is no `streaming`
     // guard and no "was it deleted?" re-check after the await: this writes no
     // game state, so there is nothing a turn in flight could silently undo, and
@@ -1192,12 +1204,12 @@ export const useStore = create<LoomStore>((set, get) => {
           game: get().game,
           settings: get().settings,
           character,
-          field,
+          block,
           hint,
         }),
         temperature: GENERATE_FIELD_TEMPERATURE,
       });
-      const text = parseGeneratedField(raw, field);
+      const text = parseGeneratedField(raw, "text");
       if (!text) throw new Error("The model returned nothing usable. Try again.");
       set({ fieldGenPending: false });
       return text;
@@ -1529,11 +1541,11 @@ export const useStore = create<LoomStore>((set, get) => {
   },
 
   equipItem(index, characterId) {
-    moveGear(characterId, (inventory, equipment) => moveToKit(inventory, equipment, index));
+    moveGear(characterId, (inventory, blocks) => moveToKit(inventory, blocks, index));
   },
 
-  unequipItem(characterId, index) {
-    moveGear(characterId, (inventory, equipment) => moveToPack(inventory, equipment, index));
+  unequipItem(characterId, blockId) {
+    moveGear(characterId, (inventory, blocks) => moveToPack(inventory, blocks, blockId));
   },
 
   newAdventure(imports) {

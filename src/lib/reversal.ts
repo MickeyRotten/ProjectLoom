@@ -60,7 +60,7 @@ export function applyReversal(game: GameState, rev: Reversal): GameState {
     area: rev.area ?? game.area,
     location: rev.location,
     weather: rev.weather,
-    roster: roster ? normalizeRoster(roster) : game.roster,
+    roster: roster ? normalizeRoster(roster, game.characters) : game.roster,
     inventory: rev.inventory ?? game.inventory,
     quests: rev.quests ?? game.quests,
     worldNotes: rev.worldNotes ?? game.worldNotes,

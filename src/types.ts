@@ -35,6 +35,52 @@ export interface Equipment {
 export type CharacterRole = "pc" | "member";
 
 /**
+ * What mechanical role a block plays, independent of its title or position —
+ * the thing that lets the dice roll, the portrait prompt and Auto-Update find
+ * "the Strengths block" / "the Appearance block" / etc. even after the player
+ * retitles or reorders it. `"custom"` is every player-added block and every
+ * Item block (items have no mechanical kind of their own).
+ */
+export type BlockKind =
+  | "appearance"
+  | "personality"
+  | "drive"
+  | "strengths"
+  | "flaws"
+  | "notes"
+  | "custom";
+
+interface BlockCommon {
+  /** Stable, never reused — the override key, the ✦-generate target, the React key. */
+  id: string;
+  kind: BlockKind;
+  title: string;
+  /** Skipped from the rendered sheet (and so from the prompt) when false; stays in the list. */
+  enabled: boolean;
+}
+
+/** A title + freeform text block — what Appearance/Personality/Drive/etc. are made of now. */
+export interface TextBlock extends BlockCommon {
+  type: "text";
+  text: string;
+}
+
+/**
+ * One piece of gear. The special block type Equipment became: `title` is the
+ * item's label, `text` its description, `quantity` how many — same shape as a
+ * Text block plus a count, so `equip.ts` can move it whole between a
+ * character's blocks and the shared pack (`Item`).
+ */
+export interface ItemBlock extends BlockCommon {
+  type: "item";
+  kind: "custom";
+  text: string;
+  quantity: number;
+}
+
+export type Block = TextBlock | ItemBlock;
+
+/**
  * An authored character in THIS adventure's cast (`GameState.characters`) — the
  * sheet, and only the sheet. Party membership and everything else that changes
  * as the story runs lives in `RosterEntry`, not here.
@@ -65,27 +111,14 @@ export interface Character {
    * not ours. Read by the narrator (pronouns) and by the portrait prompt.
    */
   sex: string;
-  description: string;
-  personality: string;
-  drive: string;
-  /** What they are good at, free text. */
-  strengths: string;
-  /** What they are bad at — the counterweight to strengths, free text. */
-  flaws: string;
   /**
-   * The PLAYER's own notes on this character — the one sheet field the model
-   * never writes. No `add` carries it, no `update` can touch it, Auto-Update
-   * skips it and there is no ✦ generate button beside it: it exists precisely
-   * so the player has somewhere to say what a character is that nothing can
-   * overwrite. The narrator READS it like any other sheet field.
+   * The sheet body — an ordered, player-editable list of blocks (Text or
+   * Item), each independently enabled/disabled, fed to the narrator verbatim
+   * and in order, wrapped in an open/close tag (`blocks.ts → wrapCharacter`)
+   * so it can't bleed into another character's or the surrounding prompt.
+   * `species`/`sex`/`name` stay outside the list — see `BlockKind`.
    */
-  notes: string;
-  /**
-   * Worn / carried gear. Authored once by the narrator on the `add` that
-   * creates the character (read off their appearance) and the player's from
-   * then on — no later delta touches it.
-   */
-  equipment: Equipment[];
+  blocks: Block[];
   /** When true, `customPortraitPrompt` replaces the auto-built portrait prompt. */
   useCustomPortraitPrompt?: boolean;
   /** Player-authored portrait prompt, used only when the flag above is on. */
@@ -96,6 +129,31 @@ export interface Character {
    * skips them, so the removal survives the next turn instead of being undone by
    * it. Cleared by an explicit ⟳ regenerate or an upload.
    */
+  noPortrait?: boolean;
+}
+
+/**
+ * A character sheet as it was before the block-list refactor — six fixed text
+ * fields plus an `Equipment[]` list, instead of `Character.blocks`. Only
+ * `defaults.ts → migrateCharacter`/`migrateCharacterToBlocks` and legacy
+ * reversal (`Reversal.characters`) read this shape now.
+ */
+export interface LegacyFixedFieldCharacter {
+  id: string;
+  role: CharacterRole;
+  name: string;
+  aliases?: string[];
+  species: string;
+  sex: string;
+  description: string;
+  personality: string;
+  drive: string;
+  strengths: string;
+  flaws: string;
+  notes: string;
+  equipment: Equipment[];
+  useCustomPortraitPrompt?: boolean;
+  customPortraitPrompt?: string;
   noPortrait?: boolean;
 }
 
@@ -132,13 +190,17 @@ export type CharacterStatus = "active" | "departed" | "fallen";
  * Auto-Update writes here — the narrator no longer does, since a sheet freezes
  * once the character exists. The player's own sheet edits write the base
  * character (and clear the matching overrides).
+ *
+ * `blocks` is keyed by `Block.id`, not by kind or title — a block survives
+ * rename/reorder, so the override keeps applying to the right one regardless.
+ * Only a Text block's `text` can be overridden; Item blocks are never
+ * auto-rewritten.
  */
-export type CharacterOverride = Partial<
-  Pick<
-    Character,
-    "species" | "sex" | "description" | "personality" | "drive" | "strengths" | "flaws"
-  >
->;
+export interface CharacterOverride {
+  species?: string;
+  sex?: string;
+  blocks?: Record<string, string>;
+}
 
 /**
  * Per-adventure state for one character, keyed by `Character.id`. SPARSE — a
@@ -445,7 +507,7 @@ export interface Reversal {
  * A character record as written before the Characters/Party split, when party
  * state lived on the character itself. Only migration + legacy reversal read it.
  */
-export type LegacyCharacter = Omit<Character, "sex" | "notes"> & {
+export type LegacyCharacter = Omit<LegacyFixedFieldCharacter, "sex" | "notes"> & {
   /** Absent from every record written before the field existed. */
   sex?: string;
   /** Likewise — player notes arrived after every one of these records. */

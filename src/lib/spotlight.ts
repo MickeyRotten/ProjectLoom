@@ -1,5 +1,6 @@
-import type { Character, PartyMember } from "../types";
+import type { Character, ItemBlock, PartyMember } from "../types";
 import { nameForms } from "./names";
+import { firstBlockText } from "./blocks";
 
 /**
  * Party spotlight — deterministic, single-call (see
@@ -141,7 +142,7 @@ export function computeSpotlightSignals(
   const contextKeywords = extractKeywords(`${playerMsg}\n${recentContext}`);
 
   return party.map((m) => {
-    const strengths = m.strengths ?? "";
+    const strengths = firstBlockText(m.blocks, "strengths");
     const strengthsKeywords = extractKeywords(strengths, labelTokens(leadClause(strengths)));
     const strengthsRelevant = intersects(contextKeywords, strengthsKeywords);
 
@@ -197,6 +198,11 @@ export interface GearSignal {
   description: string;
 }
 
+/** A character's enabled Item blocks — a disabled one carries no signal, same as a blank field. */
+function itemBlocksOf(c: Character): ItemBlock[] {
+  return c.blocks.filter((b): b is ItemBlock => b.type === "item" && b.enabled);
+}
+
 /**
  * Equipped items whose keywords overlap the message + recent context.
  * Label tokens always count (they carry the signal even when short, like
@@ -210,19 +216,16 @@ export function computeRelevantGear(
   // Keep every label token in the context scan too, so a short label like
   // "Map" can still meet its own keyword in the player's message.
   const allLabelTokens = characters.flatMap((c) =>
-    (c.equipment ?? []).flatMap((e) => labelTokens(e.label)),
+    itemBlocksOf(c).flatMap((b) => labelTokens(b.title)),
   );
   const contextKeywords = extractKeywords(`${playerMsg}\n${recentContext}`, allLabelTokens);
   const out: GearSignal[] = [];
   for (const c of characters) {
-    for (const e of c.equipment ?? []) {
-      if (!e.label) continue;
-      const gearKeywords = extractKeywords(
-        `${e.label} ${e.description ?? ""}`,
-        labelTokens(e.label),
-      );
+    for (const b of itemBlocksOf(c)) {
+      if (!b.title) continue;
+      const gearKeywords = extractKeywords(`${b.title} ${b.text ?? ""}`, labelTokens(b.title));
       if (intersects(contextKeywords, gearKeywords)) {
-        out.push({ owner: c.name, label: e.label, description: e.description ?? "" });
+        out.push({ owner: c.name, label: b.title, description: b.text ?? "" });
       }
     }
   }

@@ -3,6 +3,7 @@ import { captureReversal, applyReversal } from "./reversal";
 import { applyDeltas } from "./deltas";
 import { defaultPC, newGame } from "./defaults";
 import { getEntry, mergeOverrides, partyMembers } from "./roster";
+import { fixedFieldBlocks } from "./testFixtures";
 import type { Character, GameState, LoomBlock, Place, Reversal } from "../types";
 
 /** A companion in the library, with nothing this adventure has changed. */
@@ -13,13 +14,7 @@ function navi(): Character {
     name: "Navi",
     species: "sprite",
     sex: "",
-    description: "a darting spark",
-    personality: "",
-    drive: "",
-    strengths: "",
-    flaws: "",
-    notes: "",
-    equipment: [],
+    blocks: fixedFieldBlocks({ description: "a darting spark" }),
   };
 }
 
@@ -201,9 +196,11 @@ describe("applyReversal round-trips", () => {
     };
     const post = {
       ...pre,
-      roster: mergeOverrides(pre.roster, "m-navi", { description: "singed" }),
+      roster: mergeOverrides(pre.roster, "m-navi", { blocks: { "b-appearance": "singed" } }),
     };
-    expect(getEntry(post.roster, "m-navi").overrides).toEqual({ description: "singed" });
+    expect(getEntry(post.roster, "m-navi").overrides).toEqual({
+      blocks: { "b-appearance": "singed" },
+    });
 
     const back = applyReversal(post, captureReversal(pre, post));
     expect(getEntry(back.roster, "m-navi").overrides).toBeUndefined();
@@ -228,7 +225,21 @@ describe("applyReversal round-trips", () => {
       location: "The Dusty Path",
       weather: "windy",
       characters: [
-        { ...defaultPC(), lastSpokeTurn: 0, inParty: false },
+        {
+          id: "pc",
+          role: "pc",
+          name: "Hiro",
+          species: "Human",
+          sex: "Male",
+          description: "",
+          personality: "",
+          drive: "",
+          strengths: "",
+          flaws: "",
+          equipment: [],
+          lastSpokeTurn: 0,
+          inParty: false,
+        },
         {
           id: "m-navi",
           role: "member",

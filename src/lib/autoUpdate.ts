@@ -1,9 +1,9 @@
-import type { Character, GameState, Message } from "../types";
+import type { BlockKind, Character, CharacterOverride, GameState, Message } from "../types";
 import { type ChatMessage, formatScenarioBlock } from "./prompt";
 import { extractFirstJsonObject, parseJsonTolerant } from "./loomBlock";
 import { nameForms } from "./names";
 import { formatIdentity } from "./roster";
-import { equipLine } from "./equip";
+import { firstBlockId, wrapCharacter } from "./blocks";
 
 /**
  * Character-sheet auto-update — a side call (never part of a turn) that asks the
@@ -28,9 +28,9 @@ export type AutoField = "appearance" | "personality" | "drive";
 
 export const AUTO_FIELDS: AutoField[] = ["appearance", "personality", "drive"];
 
-/** Sheet field each selectable field writes to. */
-const TARGET: Record<AutoField, "description" | "personality" | "drive"> = {
-  appearance: "description",
+/** Block kind each selectable field writes to. */
+const TARGET: Record<AutoField, BlockKind> = {
+  appearance: "appearance",
   personality: "personality",
   drive: "drive",
 };
@@ -41,8 +41,29 @@ export const MENTION_SCAN_LIMIT = 12;
 /** Tighter than narration — a sheet rewrite should not freewheel. */
 export const AUTO_UPDATE_TEMPERATURE = 0.4;
 
-/** What a successful auto-update writes back onto the character. */
-export type AutoUpdatePatch = Partial<Pick<Character, "description" | "personality" | "drive">>;
+/** What a successful auto-update reply carries, keyed by the requested field. */
+export type AutoUpdatePatch = Partial<Record<AutoField, string>>;
+
+/**
+ * Resolve a field patch onto the character's CURRENT block ids — the store's
+ * write path, since `parseAutoUpdate` only knows the three field names and has
+ * no character to resolve a target block from. A field whose kind has no
+ * enabled block (deleted, retitled away from its kind, disabled) is simply
+ * dropped: there is nothing left to override.
+ */
+export function resolveAutoUpdatePatch(
+  character: Character,
+  patch: AutoUpdatePatch,
+): CharacterOverride["blocks"] {
+  const blocks: Record<string, string> = {};
+  for (const field of AUTO_FIELDS) {
+    const text = patch[field];
+    if (text === undefined) continue;
+    const id = firstBlockId(character.blocks, TARGET[field]);
+    if (id) blocks[id] = text;
+  }
+  return Object.keys(blocks).length ? blocks : undefined;
+}
 
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -159,24 +180,17 @@ export function buildAutoUpdateMessages(opts: AutoUpdateOptions): ChatMessage[] 
   return messages;
 }
 
-/** The whole sheet as the model sees it — every field, editable or not. */
+/**
+ * The whole sheet as the model sees it — every enabled block, in order,
+ * wrapped in the character's open/close tag. A block with nothing written
+ * (or switched off) simply does not appear; the call's own instructions say
+ * which field(s) to write, so a blank block reads as "nothing here yet" the
+ * same way `(blank)` used to.
+ */
 export function formatSheet(c: Character): string {
-  const equipment = c.equipment.length
-    ? c.equipment.map((e) => `  - ${equipLine(e)}`).join("\n")
-    : "  (none)";
-  return [
-    `CURRENT SHEET — ${formatIdentity(c)}`,
-    `Appearance: ${c.description || "(blank)"}`,
-    `Personality: ${c.personality || "(blank)"}`,
-    `Drive: ${c.drive || "(blank)"}`,
-    `Strengths: ${c.strengths || "(blank)"}`,
-    `Flaws: ${c.flaws || "(blank)"}`,
-    // The player's own notes. Read like every other field — they are context a
-    // side call must not contradict — but never a field a side call writes.
-    `Notes (the player's, never yours to write): ${c.notes || "(blank)"}`,
-    `EQUIPMENT — what this character is currently wearing and carrying:`,
-    equipment,
-  ].join("\n");
+  return [`CURRENT SHEET — ${formatIdentity(c)}`, wrapCharacter(c.id, c.blocks)]
+    .filter(Boolean)
+    .join("\n");
 }
 
 /** The name-mentioning beats, oldest → newest, or an explicit "nothing recent". */
@@ -212,7 +226,7 @@ export function parseAutoUpdate(raw: string, fields: AutoField[]): AutoUpdatePat
     if (typeof value !== "string") continue;
     const trimmed = value.trim();
     if (!trimmed) continue;
-    patch[TARGET[field]] = trimmed;
+    patch[field] = trimmed;
   }
   return patch;
 }

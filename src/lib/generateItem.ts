@@ -3,6 +3,7 @@ import { type ChatMessage, formatScenarioBlock } from "./prompt";
 import { extractFirstJsonObject, parseJsonTolerant } from "./loomBlock";
 import { formatSheet } from "./autoUpdate";
 import { equipLine } from "./equip";
+import { firstBlockText, makeItemBlock } from "./blocks";
 import { formatWorldNotesBlock, matchWorldNotes } from "./worldNotes";
 
 /**
@@ -72,8 +73,8 @@ export function itemScanText(
     ...existing.flatMap((r) => [r.label, r.description]),
     character?.name ?? "",
     character?.species ?? "",
-    character?.description ?? "",
-    character?.strengths ?? "",
+    character ? firstBlockText(character.blocks, "appearance") : "",
+    character ? firstBlockText(character.blocks, "strengths") : "",
   ]
     .filter((s) => s.trim())
     .join("\n");
@@ -161,10 +162,17 @@ export function buildItemMessages(opts: GenerateItemOptions): ChatMessage[] {
   if (character) {
     // The sheet carries the kit with it, so this is also the "already carried"
     // list for the equipment flavour — hence `existing` on the sheet rather than
-    // whatever was last saved.
+    // whatever was last saved. Substitute the DRAFT Item blocks for the
+    // character's stored ones (their non-item blocks are untouched), so a row
+    // added or edited on screen but not yet saved still shows as carried.
+    const draftItems = filled(existing).map((r) => makeItemBlock(r.label, r.description, r.quantity ?? 1));
+    const draftCharacter: Character = {
+      ...character,
+      blocks: [...character.blocks.filter((b) => b.type !== "item"), ...draftItems],
+    };
     messages.push({
       role: "system",
-      content: formatSheet({ ...character, equipment: filled(existing) }),
+      content: formatSheet(draftCharacter),
     });
   } else {
     messages.push({ role: "system", content: formatPackBlock(existing) });

@@ -1,6 +1,6 @@
 import { openDB, type IDBPDatabase } from "idb";
 import type { Character, GameState, LegacyCharacter } from "../types";
-import { migrateCharacter, loadGame, type LoadedGame } from "./defaults";
+import { migrateCharacter, migrateCharacterToBlocks, loadGame, type LoadedGame } from "./defaults";
 import { newStamp, slotDoc, type DocStamp, type SyncKey } from "./sync";
 import { notifyLocalWrite } from "./dirty";
 import { LEGACY_MASTER_PREFIX } from "./images";
@@ -104,7 +104,9 @@ export async function loadActiveGame(): Promise<LoadedGame | null> {
 export async function loadLegacyCharacters(): Promise<Character[] | null> {
   const db = await getDB();
   const stored = (await db.get(SAVES_STORE, CHARACTERS_KEY)) as LegacyCharacter[] | undefined;
-  return Array.isArray(stored) ? stored.map(migrateCharacter) : null;
+  return Array.isArray(stored)
+    ? stored.map(migrateCharacter).map(migrateCharacterToBlocks)
+    : null;
 }
 
 /* ------------------------------------------------------------------ *

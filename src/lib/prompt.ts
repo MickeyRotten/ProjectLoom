@@ -1,6 +1,5 @@
 import type {
   Character,
-  Equipment,
   GameState,
   JournalEntry,
   PartyMember,
@@ -9,7 +8,7 @@ import type {
   Settings,
 } from "../types";
 import { phaseOf } from "./clock";
-import { equipLine } from "./equip";
+import { indentBlock, wrapCharacter } from "./blocks";
 import {
   computeRelevantGear,
   computeSpotlightSignals,
@@ -21,7 +20,6 @@ import {
   activeMembers,
   benchedMembers,
   formatIdentity,
-  formatTraits,
   npcMembers,
   partedMembers,
   playerCharacter,
@@ -273,12 +271,7 @@ function buildStandingContext(
     settings.customInstructions.trim(),
     formatScenarioBlock(game.scenario),
     pc
-      ? [
-          `PLAYER CHARACTER — ${formatIdentity(pc)}`,
-          ...(pc.description ? [pc.description] : []),
-          ...formatTraits(pc),
-          formatEquipment(pc.equipment),
-        ]
+      ? [`PLAYER CHARACTER — ${formatIdentity(pc)}`, wrapCharacter(pc.id, pc.blocks)]
           .filter(Boolean)
           .join("\n")
       : "",
@@ -389,8 +382,8 @@ function formatQuestBoardBlock(game: GameState): string {
 }
 
 /**
- * The party roster. One entry per in-company member: identity, the sheet lines
- * `formatTraits` prints for everyone, and their kit. Compact but complete
+ * The party roster. One entry per in-company member: identity, then their
+ * whole rendered block sheet, indented and tagged. Compact but complete
  * enough for the narrator to voice them in character.
  *
  * No `Condition:` line — a mark is printed once, in the CONDITIONS block down
@@ -399,22 +392,12 @@ function formatQuestBoardBlock(game: GameState): string {
 export function formatPartyRoster(members: PartyMember[]): string {
   if (!members.length) return "";
   const entries = members.map((m) => {
-    const lines = [
-      `- ${formatIdentity(m)}${m.description ? ` — ${m.description}` : ""}`,
-      ...formatTraits(m).map((l) => `  ${l}`),
-      m.equipment.length ? indent(formatEquipment(m.equipment)) : "",
-    ].filter(Boolean);
+    const lines = [`- ${formatIdentity(m)}`, indentBlock(wrapCharacter(m.id, m.blocks))].filter(
+      Boolean,
+    );
     return lines.join("\n");
   });
   return `PARTY — in your company (use the PARTY SPOTLIGHT rules below to decide who, if anyone, speaks)\n${entries.join("\n")}`;
-}
-
-/** Indent a multi-line block two spaces (roster nesting). */
-function indent(block: string): string {
-  return block
-    .split("\n")
-    .map((l) => (l ? `  ${l}` : l))
-    .join("\n");
 }
 
 /** How many past departures the roll call names before it stops listing. */
@@ -551,15 +534,8 @@ function buildGearBlock(
   recent: string,
 ): string {
   const carriers = presentMembers(characters, game.roster);
-  if (!carriers.some((c) => c.equipment.length)) return "";
+  if (!carriers.some((c) => c.blocks.some((b) => b.type === "item" && b.enabled))) return "";
   return formatGearBlock(computeRelevantGear(playerMessage, recent, carriers));
-}
-
-/** Port of _format_equipment, simplified to {label, description} — no catalog. */
-function formatEquipment(equipment: Equipment[]): string {
-  if (!equipment.length) return "";
-  const items = equipment.map((e) => `  - ${equipLine(e)}`).join("\n");
-  return `Equipment:\n${items}`;
 }
 
 /**

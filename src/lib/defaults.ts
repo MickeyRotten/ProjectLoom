@@ -1,17 +1,21 @@
 import type {
   AdventureImports,
   Character,
+  Equipment,
   GameState,
   Item,
   LegacyCharacter,
+  LegacyFixedFieldCharacter,
   LegacyStrengths,
   RosterEntry,
   Scenario,
   Settings,
+  TextBlock,
 } from "../types";
 import { MORNING_ANCHOR, normalizeMinutes } from "./clock";
 import { normalizePlaces } from "./places";
 import { PARTY_LIMIT, normalizeRoster, strengthsText } from "./roster";
+import { makeItemBlock, makeTextBlock } from "./blocks";
 import { SCENE_TILT } from "./diceAnim";
 import { DEFAULT_DICE, RISK_KEYWORDS } from "./stakes";
 import { DEFAULT_COMFY } from "./comfyui";
@@ -372,6 +376,41 @@ export const DEFAULT_SCENARIO: Scenario = {
   startLocation: "Crossroads",
 };
 
+/** The six sheet fields a fresh character's blocks are built from. */
+export interface DefaultBlockFields {
+  description?: string;
+  personality?: string;
+  drive?: string;
+  strengths?: string;
+  flaws?: string;
+  notes?: string;
+}
+
+/**
+ * The default Text-block set every character sheet starts with — Appearance,
+ * Personality, Drive, Strengths, Flaws, Notes, in that order, each pre-tagged
+ * with its matching `kind` so the mechanics that read by kind (`stakes.ts`,
+ * `spotlight.ts`, `images.ts`, `autoUpdate.ts`) keep working after migration
+ * without the player having to tag anything by hand. Notes is always
+ * present, always enabled, and blank unless migrating an old sheet that had
+ * one — nothing in `PartyDelta` ever seeds it, which is what keeps it
+ * model-write-proof by construction.
+ *
+ * Shared by `deltas.ts → makeCharacter` (the narrator's `add`), `newCharacter`
+ * below (the player's blank slate) and `migrateCharacterToBlocks` (an old
+ * fixed-field sheet), so "what a default sheet looks like" has one answer.
+ */
+export function buildDefaultBlocks(fields: DefaultBlockFields = {}): TextBlock[] {
+  return [
+    makeTextBlock("Appearance", fields.description ?? "", "appearance"),
+    makeTextBlock("Personality", fields.personality ?? "", "personality"),
+    makeTextBlock("Drive", fields.drive ?? "", "drive"),
+    makeTextBlock("Strengths", fields.strengths ?? "", "strengths"),
+    makeTextBlock("Flaws", fields.flaws ?? "", "flaws"),
+    makeTextBlock("Notes", fields.notes ?? "", "notes"),
+  ];
+}
+
 export function defaultPC(): Character {
   return {
     id: "pc",
@@ -379,18 +418,19 @@ export function defaultPC(): Character {
     name: "Hiro",
     species: "Human",
     sex: "Male",
-    description: "A young and curious adventurer, standing six feet tall with a lean build. His dark hair is tousled, and his eyes gleam with determination and a hint of mischief. He wears a simple white tunic and black baggy trousers, with a worn leather satchel slung across his shoulder.",
-    personality: "Optimistic, curious, adventurous, overconfident.",
-    drive: "Become the greatest adventurer in the land.",
-    strengths:
-      "Superhuman strength — can lift incredibly heavy objects with ease, punch through walls and brittle stone, and take hits that would kill a normal person.",
-    flaws:
-      "Reckless and easily distracted — charges in without a plan, and hopeless at anything needing patience, subtlety, or a straight answer.",
-    notes: "",
-    equipment: [
-      { label: "White Tunic", description: "Old, tattered, but still serviceable." },
-      { label: "Black Trousers", description: "Simple, worn, baggy trousers." },
-      { label: "Leather Satchel", description: "Worn leather satchel for carrying supplies." },
+    blocks: [
+      ...buildDefaultBlocks({
+        description: "A young and curious adventurer, standing six feet tall with a lean build. His dark hair is tousled, and his eyes gleam with determination and a hint of mischief. He wears a simple white tunic and black baggy trousers, with a worn leather satchel slung across his shoulder.",
+        personality: "Optimistic, curious, adventurous, overconfident.",
+        drive: "Become the greatest adventurer in the land.",
+        strengths:
+          "Superhuman strength — can lift incredibly heavy objects with ease, punch through walls and brittle stone, and take hits that would kill a normal person.",
+        flaws:
+          "Reckless and easily distracted — charges in without a plan, and hopeless at anything needing patience, subtlety, or a straight answer.",
+      }),
+      makeItemBlock("White Tunic", "Old, tattered, but still serviceable."),
+      makeItemBlock("Black Trousers", "Simple, worn, baggy trousers."),
+      makeItemBlock("Leather Satchel", "Worn leather satchel for carrying supplies."),
     ],
     useCustomPortraitPrompt: false,
     customPortraitPrompt: "",
@@ -408,13 +448,7 @@ export function newCharacter(id: string): Character {
     name: "",
     species: "human",
     sex: "",
-    description: "",
-    personality: "",
-    drive: "",
-    strengths: "",
-    flaws: "",
-    notes: "",
-    equipment: [],
+    blocks: buildDefaultBlocks(),
     useCustomPortraitPrompt: false,
     customPortraitPrompt: "",
   };
@@ -465,7 +499,7 @@ export function newGame(
  * the blob key is derived from the id — so it is dropped here too. `flaws`,
  * `sex` and `notes` simply didn't exist before, and load blank.
  */
-export function migrateCharacter(saved: LegacyCharacter): Character {
+export function migrateCharacter(saved: LegacyCharacter): LegacyFixedFieldCharacter {
   const legacy = saved as LegacyCharacter & {
     fieldSkill?: string | LegacyStrengths;
     likes?: string;
@@ -484,6 +518,58 @@ export function migrateCharacter(saved: LegacyCharacter): Character {
     flaws: saved.flaws ?? "",
     notes: saved.notes ?? "",
     sex: saved.sex ?? "",
+  };
+}
+
+/** How many of a legacy equipment row there are — absent reads as one. */
+function legacyQuantity(e: Equipment): number {
+  const q = Math.floor(e.quantity ?? 1);
+  return Number.isFinite(q) && q > 0 ? q : 1;
+}
+
+/**
+ * Carry a fixed-field sheet (`migrateCharacter`'s output, or a record that
+ * already looks like one) onto the block shape: `description` /
+ * `personality` / `drive` / `strengths` / `flaws` / `notes` become the six
+ * default Text blocks (`buildDefaultBlocks`, kind-tagged so the mechanics
+ * that read by kind keep working), and each `equipment` row becomes an Item
+ * block in the same order. Idempotent — a character that already has
+ * `blocks` is returned as-is, so this is safe to run on every launch.
+ */
+export function migrateCharacterToBlocks(
+  c: LegacyFixedFieldCharacter | Character,
+): Character {
+  const already = (c as Partial<Character>).blocks;
+  if (Array.isArray(already)) return c as Character;
+
+  const legacy = c as LegacyFixedFieldCharacter;
+  return {
+    id: legacy.id,
+    role: legacy.role,
+    name: legacy.name,
+    aliases: legacy.aliases,
+    species: legacy.species,
+    sex: legacy.sex,
+    blocks: [
+      ...buildDefaultBlocks({
+        description: legacy.description,
+        personality: legacy.personality,
+        drive: legacy.drive,
+        // Defensive, not redundant: a record reaching this function without
+        // going through `migrateCharacter` first (a hand-edited save, an
+        // older store path) may still carry the pre-strengths-split
+        // `{ name, description }` shape despite what the type says.
+        strengths: strengthsText(legacy.strengths),
+        flaws: legacy.flaws,
+        notes: legacy.notes,
+      }),
+      ...(legacy.equipment ?? []).map((e) =>
+        makeItemBlock(e.label, e.description, legacyQuantity(e)),
+      ),
+    ],
+    useCustomPortraitPrompt: legacy.useCustomPortraitPrompt,
+    customPortraitPrompt: legacy.customPortraitPrompt,
+    noPortrait: legacy.noPortrait,
   };
 }
 
@@ -519,13 +605,14 @@ export function loadGame(saved: unknown): LoadedGame | null {
   };
 
   const stored = Array.isArray(partial.characters) ? partial.characters : null;
-  const characters = (stored ?? []).map(migrateCharacter);
+  const characters = (stored ?? []).map(migrateCharacter).map(migrateCharacterToBlocks);
   // Pre-split saves carried party state on the character; rebuild entries from
   // it so a migrated game opens with exactly the party it was saved with.
   // Everything else goes through `normalizeRoster`, which folds the pre-ladder
-  // `inParty` + `status` pair into a single `standing`.
+  // `inParty` + `status` pair into a single `standing` — and, given the
+  // now block-migrated `characters`, a pre-block override onto `blocks`.
   const roster: RosterEntry[] = partial.roster
-    ? normalizeRoster(partial.roster)
+    ? normalizeRoster(partial.roster, characters)
     : (stored ?? []).map((c) => ({
         id: c.id,
         standing: c.role === "member" && c.inParty ? ("active" as const) : ("none" as const),

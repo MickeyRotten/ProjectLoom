@@ -1,6 +1,7 @@
 import type { PartyMember } from "../types";
 import { nameForms } from "./names";
-import { formatIdentity, formatTraits } from "./roster";
+import { formatIdentity } from "./roster";
+import { indentBlock, wrapCharacter } from "./blocks";
 import { keywordHits } from "./worldNotes";
 
 /**
@@ -68,10 +69,9 @@ export function matchNpcs(
 export function formatNpcBlock(npcs: PartyMember[]): string {
   if (!npcs.length) return "";
   const entries = npcs.map((n) => {
-    const lines = [
-      `- ${formatIdentity(n)}${n.description ? ` — ${n.description}` : ""}`,
-      ...formatTraits(n).map((l) => `  ${l}`),
-    ];
+    const lines = [`- ${formatIdentity(n)}`, indentBlock(wrapCharacter(n.id, n.blocks))].filter(
+      Boolean,
+    );
     return lines.join("\n");
   });
   return [
