@@ -46,9 +46,16 @@ export const filledTextarea = `${filledInput} resize-y leading-relaxed`;
 /** Small uppercase section/field label. */
 export const fieldLabel = "text-[11px] uppercase tracking-[0.1em] text-[var(--m-text-40)]";
 
-/** Section header inside a scrolling list (Menu groups, Party groups). */
+/**
+ * Section header inside a scrolling list (Menu groups, Party groups, Features
+ * groups). Always carries its own top padding, deliberately not a
+ * `first:pt-0` — Menu and Features each wrap a group's heading in its own
+ * `<section>`/`<div>`, so "first child of its own parent" was true for EVERY
+ * group's heading, not just the page's first one, and zeroed the breathing
+ * room above "World Lore"/"The World" that the row above it needs.
+ */
 export const sectionHeading =
-  "px-1 pb-0.5 pt-4 text-[11px] uppercase tracking-[0.14em] text-[var(--m-text-40)] first:pt-0";
+  "px-1 pb-0.5 pt-4 text-[11px] uppercase tracking-[0.14em] text-[var(--m-text-40)]";
 
 /** A selectable pill — reasoning level, member standing. One pressed at a time. */
 export function Chip({
@@ -82,7 +89,13 @@ export function Chip({
  *  - `onBack` omitted: title only, no back button (Party, Inventory, Quests,
  *    Journal) — these are peers of Play on `BottomNav`, which stays visible
  *    under them, so switching tabs already IS the way back.
- * `action` renders on the right (a header pencil toggling edit mode).
+ * `action` renders on the right (a header pencil toggling edit mode) in a
+ * fixed-size slot that's reserved WHETHER OR NOT `action` is passed — so a
+ * screen whose pencil only shows in read mode (Member, Inventory, Quests)
+ * doesn't grow or shrink its own header when edit mode toggles, and Party/
+ * Journal (never pass one) sit at the same header height as Inventory/Quests
+ * (always do, in read mode) rather than the shorter one an absent action
+ * would otherwise leave.
  */
 export function MaterialHeader({
   title,
@@ -95,13 +108,13 @@ export function MaterialHeader({
 }) {
   const goBack = useStore((s) => s.goBack);
   return (
-    <header className="flex shrink-0 items-center gap-2.5 px-3 py-3.5">
+    <header className="flex shrink-0 items-center gap-2.5 px-3 py-2.5">
       {back && (
         <button
           type="button"
           onClick={goBack}
           aria-label="Back"
-          className="flex h-9 w-9 shrink-0 items-center justify-center"
+          className="flex h-11 w-11 shrink-0 items-center justify-center"
         >
           <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             <path d="M15 5l-7 7 7 7" />
@@ -109,7 +122,7 @@ export function MaterialHeader({
         </button>
       )}
       <span className="min-w-0 flex-1 truncate text-[18px] font-medium">{title}</span>
-      {action}
+      <span className="flex h-11 w-11 shrink-0 items-center justify-center">{action}</span>
     </header>
   );
 }

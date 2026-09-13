@@ -43,6 +43,9 @@ export default {
     extend: {
       fontFamily: {
         mono: "var(--font-mono)",
+        // Material redesign's own face (theme.css) — additive, doesn't touch
+        // `mono`, which the 1-bit screens (and Appearance's font picker) own.
+        alata: "var(--font-alata)",
       },
     },
   },

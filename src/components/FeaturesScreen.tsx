@@ -11,7 +11,7 @@ import { FeaturesSection } from "./FeaturesSection";
  */
 export function FeaturesScreen() {
   return (
-    <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
+    <main className="flex h-full min-h-full flex-col bg-paper text-ink font-alata">
       <MaterialHeader title="Features" back />
       <div className="flex-1 overflow-y-auto px-4 pb-6">
         <FeaturesSection />

@@ -66,7 +66,7 @@ export function EquipModal({
         onClick={onClose}
         className="absolute inset-0 cursor-default bg-[color-mix(in_srgb,var(--ink)_55%,transparent)]"
       />
-      <div className="relative flex max-h-full w-full max-w-sm flex-col gap-3 rounded-[16px] bg-paper p-5 font-mono text-ink shadow-xl">
+      <div className="relative flex max-h-full w-full max-w-sm flex-col gap-3 rounded-[16px] bg-paper p-5 font-alata text-ink shadow-xl">
         <p className="text-[16px] font-semibold">
           Assign {item.label}
           {item.quantity > 1 ? ` ×${item.quantity}` : ""}

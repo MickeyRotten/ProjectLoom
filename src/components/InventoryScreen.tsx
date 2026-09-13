@@ -55,7 +55,7 @@ export function InventoryScreen() {
   const add = () => setDraft((d) => [...d, { label: "", description: "", quantity: 1 }]);
 
   return (
-    <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
+    <main className="flex h-full min-h-full flex-col bg-paper text-ink font-alata">
       <MaterialHeader title="Inventory" action={!editing && <EditPencilButton onClick={startEdit} />} />
 
       <div className="flex-1 space-y-3 overflow-y-auto px-4 pb-4">
