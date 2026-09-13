@@ -3,7 +3,6 @@ import { useStore } from "./store";
 import { fontTheme, isDarkPaper, scrimFrom } from "./lib/settings";
 import { Header } from "./components/Header";
 import { ChatView } from "./components/ChatView";
-import { PartyStrip } from "./components/PartyStrip";
 import { BottomNav } from "./components/BottomNav";
 import { MenuScreen } from "./components/MenuScreen";
 import { SetupScreen } from "./components/SetupScreen";
@@ -43,15 +42,16 @@ function withBottomNav(screen: ReactNode) {
 
 /**
  * Phase 2 shell — the core loop plus party, top to bottom: the header (the PC —
- * portrait · name · hearts · menu), the party portrait strip, and the
- * scrolling narration log — which carries the AI options under the latest beat
- * and the composer (freeform input · ⋯ context menu) at its very end, inline
- * rather than pinned below it. Full-screen overlays (member sheet, party,
- * inventory, settings) open over the chat.
+ * portrait · name · hearts · menu) and the scrolling narration log — which
+ * carries the AI options under the latest beat and the composer (freeform
+ * input · ⋯ context menu) at its very end, inline rather than pinned below it.
+ * Full-screen overlays (member sheet, party, inventory, settings) open over
+ * the chat.
  *
- * The cast sits TOGETHER at the top now — the strip used to hang below the log,
- * a screen's height away from the PC it was showing alongside — and the reading
- * area runs uninterrupted from there to the bottom of the screen.
+ * The party portrait strip (`PartyStrip`) is retired from this shell — with
+ * cover art now filling the header, a second row of portraits ate too much of
+ * a phone screen. Companions are still reachable from the Party tab; the
+ * component itself is kept unrendered rather than deleted.
  */
 export default function App() {
   const hydrate = useStore((s) => s.hydrate);
@@ -195,7 +195,6 @@ export default function App() {
     return (
       <main className="flex h-full min-h-full flex-col bg-paper text-ink font-alata">
         <Header />
-        <PartyStrip />
         <ChatView />
         <BottomNav />
       </main>
