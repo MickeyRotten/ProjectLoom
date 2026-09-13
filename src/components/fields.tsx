@@ -1,29 +1,14 @@
 import { useState } from "react";
 
 /**
- * Shared 1-bit form controls for the Phase 4 authoring screens (scenario,
- * characters, world notes, quests, advanced instructions). Square borders,
- * monospace, no colour — one visual system with the rest of the app.
- *
- * Edit-mode aware: the Quests / Inventory / Character sheets gate editing behind
- * an Edit toggle. Pass `editing={false}` to render a field as a read-only text
- * block (full text, no truncation) instead of an input/textarea. Screens that
- * are always editable simply omit the prop (defaults to `true`).
+ * The last of the shared 1-bit form controls (square borders, monospace, no
+ * colour) — kept for the member sheet's Image Options section, the one part
+ * of the app the Material redesign deliberately left alone (custom art in /
+ * stored art out / no art at all is out of the mock-up's scope). Every other
+ * screen this module used to serve — Scenario, Characters, World Notes,
+ * Quests, Places, Inventory, RPG System, Appearance, Saves, Cloud Saves,
+ * Images, Narrator, Features — has moved onto `material.tsx`.
  */
-
-/**
- * Reusable button styling (square, invert on press).
- *
- * `min-h-11` is 44px — the minimum comfortable touch target. `btnSmall` used to
- * come out around 26px tall and is used for Restore / Delete / Remove / Reset
- * across five screens, i.e. exactly the actions worth not mis-tapping. It stays
- * visually small (text-xs, tight padding); only the hit area grew.
- */
-export const btn =
-  "inline-flex min-h-11 items-center justify-center border-2 border-ink px-3 py-2 uppercase tracking-widest active:bg-ink active:text-paper disabled:opacity-40";
-
-export const btnSmall =
-  "inline-flex min-h-11 items-center justify-center border-2 border-ink px-3 py-1 text-xs uppercase tracking-widest active:bg-ink active:text-paper disabled:opacity-40";
 
 /**
  * A section that starts closed — a header row that toggles its body open.
@@ -58,94 +43,6 @@ export function Collapsible({
         </span>
       </button>
       {open && <div className="space-y-3 border-t-2 border-ink p-3">{children}</div>}
-    </div>
-  );
-}
-
-/** A group heading inside a list — Characters and Party split by standing. */
-export function Section({ label }: { label: string }) {
-  return <p className="pt-2 text-sm uppercase tracking-widest opacity-60">{label}</p>;
-}
-
-/**
- * A full-width on/off row — the settings-screen toggle (Advanced, RPG System).
- * Distinct from `ToggleField`'s checkbox: this is the whole row, for a setting
- * that stands on its own rather than sitting inside a form.
- */
-export function ToggleRow({
-  label,
-  state,
-  onClick,
-}: {
-  label: string;
-  state: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex w-full items-center justify-between border-2 border-ink p-3 text-left uppercase tracking-widest active:bg-ink active:text-paper"
-    >
-      <span>{label}</span>
-      <span className="border-2 border-ink px-2 py-1 text-sm">{state}</span>
-    </button>
-  );
-}
-
-/** Static so Tailwind sees the class names; only these two shapes are used. */
-const SEGMENT_COLS: Record<number, string> = {
-  2: "grid-cols-2",
-  3: "grid-cols-3",
-};
-
-/**
- * A row of mutually exclusive choices, one pressed. The honest control for a
- * setting with more than two values: `ToggleRow` can only say what the value is
- * NOW, so a three-state setting drawn as one gave no hint that tapping cycles
- * rather than flips, and no way to learn the third value existed without tapping
- * twice.
- *
- * Extracted from the two hand-rolled grids that already did this — Reasoning and
- * Image Backend — so they can't drift.
- */
-export function SegmentedRow<T extends string>({
-  label,
-  value,
-  options,
-  onChange,
-  columns = 3,
-  note,
-}: {
-  label: string;
-  value: T;
-  options: readonly { value: T; label: string }[];
-  onChange: (value: T) => void;
-  columns?: 2 | 3;
-  note?: React.ReactNode;
-}) {
-  return (
-    <div className="space-y-2">
-      <span className="block text-sm uppercase tracking-widest">{label}</span>
-      <div className={`grid gap-2 ${SEGMENT_COLS[columns]}`}>
-        {options.map((o) => {
-          const current = value === o.value;
-          return (
-            <button
-              key={o.value}
-              type="button"
-              aria-pressed={current}
-              onClick={() => onChange(o.value)}
-              className={`min-h-11 border-2 border-ink px-2 py-2 text-sm uppercase tracking-widest ${
-                current ? "bg-ink text-paper" : "active:bg-ink active:text-paper"
-              }`}
-            >
-              {o.label}
-            </button>
-          );
-        })}
-      </div>
-      {note}
     </div>
   );
 }
@@ -200,35 +97,6 @@ export function ReadBlock({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function TextField({
-  label,
-  value,
-  onChange,
-  placeholder,
-  editing = true,
-  action,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  editing?: boolean;
-  /** Control for the label row (e.g. ✦ generate). Read mode ignores it. */
-  action?: React.ReactNode;
-}) {
-  if (!editing) return <ReadBlock label={label} value={value} />;
-  return (
-    <Field label={label} action={action}>
-      <input
-        value={value}
-        placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full border-2 border-ink bg-paper p-2 focus:outline-none"
-      />
-    </Field>
-  );
-}
-
 export function AreaField({
   label,
   value,
@@ -258,74 +126,5 @@ export function AreaField({
         className="w-full resize-y border-2 border-ink bg-paper p-2 focus:outline-none"
       />
     </Field>
-  );
-}
-
-/**
- * Labelled checkbox — a boolean field in the same 1-bit system. Read-only mode
- * renders the state as text so it reads like the other blocks.
- */
-export function ToggleField({
-  label,
-  value,
-  onChange,
-  hint,
-  editing = true,
-}: {
-  label: string;
-  value: boolean;
-  onChange: (v: boolean) => void;
-  hint?: string;
-  editing?: boolean;
-}) {
-  if (!editing) return <ReadBlock label={label} value={value ? "Yes" : "No"} />;
-  return (
-    <label className="flex items-start gap-2">
-      <input
-        type="checkbox"
-        checked={value}
-        onChange={(e) => onChange(e.target.checked)}
-        className="mt-0.5 h-4 w-4 shrink-0 accent-ink"
-      />
-      <span className="block">
-        <span className="block uppercase tracking-widest text-sm">{label}</span>
-        {hint && <span className="block text-xs uppercase tracking-widest opacity-60">{hint}</span>}
-      </span>
-    </label>
-  );
-}
-
-/**
- * Edit-mode toolbar: an "Edit" toggle when read-only, and "Save Changes" /
- * "Discard Changes" while editing. Rendered by the gated screens (Quests,
- * Inventory, Character sheet).
- */
-export function EditToolbar({
-  editing,
-  onEdit,
-  onSave,
-  onDiscard,
-}: {
-  editing: boolean;
-  onEdit: () => void;
-  onSave: () => void;
-  onDiscard: () => void;
-}) {
-  if (!editing) {
-    return (
-      <button type="button" onClick={onEdit} className={`w-full ${btn}`}>
-        Edit
-      </button>
-    );
-  }
-  return (
-    <div className="flex gap-2">
-      <button type="button" onClick={onSave} className={`flex-1 ${btn}`}>
-        Save Changes
-      </button>
-      <button type="button" onClick={onDiscard} className={`flex-1 ${btn}`}>
-        Discard Changes
-      </button>
-    </div>
   );
 }

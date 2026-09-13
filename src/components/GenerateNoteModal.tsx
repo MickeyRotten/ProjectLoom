@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useStore } from "../store";
 import { GenerateModal } from "./GenerateModal";
-import { ToggleField } from "./fields";
+import { Switch } from "./material";
 import type { GeneratedNote } from "../lib/generateNote";
 import type { Note } from "../types";
 
@@ -41,12 +41,19 @@ export function GenerateNoteModal({
       replacing={replacing}
       replacingNote="Replaces this note's title, content and keywords immediately — this screen has no Edit gate. Copy the old text first if you want it back."
       options={
-        <ToggleField
-          label="Use the Scenario as context"
-          hint="Ground the note in the adventure's premise and setting"
-          value={useScenario}
-          onChange={setUseScenario}
-        />
+        <div className="flex items-center justify-between gap-3 rounded-[10px] bg-[var(--m-surface-strong)] px-3.5 py-2.5">
+          <span className="min-w-0">
+            <span className="block text-[14px]">Use the Scenario as context</span>
+            <span className="block text-[12px] text-[var(--m-text-55)]">
+              Ground the note in the adventure's premise and setting
+            </span>
+          </span>
+          <Switch
+            on={useScenario}
+            ariaLabel="Use the Scenario as context"
+            onClick={() => setUseScenario((v) => !v)}
+          />
+        </div>
       }
       run={(hint) => run(hint, existing, draft, useScenario)}
       preview={(note) => (

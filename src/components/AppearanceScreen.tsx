@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { useStore } from "../store";
-import { OverlayHeader } from "./OverlayHeader";
 import { useConfirm } from "./useConfirm";
-import { btn, btnSmall } from "./fields";
+import { MaterialHeader, card, fieldLabel, filledInput, pillOutline } from "./material";
 import {
   COLOR_PRESETS,
   FONT_LABELS,
@@ -15,7 +14,7 @@ import { FONT_CHOICES } from "../types";
 
 /**
  * Settings → Appearance: everything that changes how Loom LOOKS and nothing
- * that changes how it plays.
+ * that changes how it plays. Material redesign (`Loom Material Redesign.dc.html`).
  *
  * All three controls here started as closed lists — a four-step text scale,
  * three fonts, and an Invert Colors toggle — and all three are now open. The
@@ -52,25 +51,25 @@ export function AppearanceScreen() {
   };
 
   return (
-    <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
-      <OverlayHeader title="Appearance" />
+    <main className="flex h-full min-h-full flex-col bg-paper text-ink font-alata">
+      <MaterialHeader title="Appearance" back />
 
-      <div className="flex-1 space-y-3 overflow-y-auto p-3">
-        <div className="space-y-2 border-2 border-ink p-3">
-          <span className="block uppercase tracking-widest">Text Size</span>
+      <div className="flex-1 space-y-4 overflow-y-auto px-4 pb-6">
+        <div className={`space-y-2.5 ${card}`}>
+          <span className={fieldLabel}>Text Size</span>
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => step(-TEXT_SIZE_STEP)}
               disabled={textSize <= MIN_TEXT_SIZE}
               aria-label={`Smaller text (${textSize - TEXT_SIZE_STEP} pixels)`}
-              className={`flex-1 ${btn}`}
+              className={`flex-1 ${pillOutline}`}
             >
               −
             </button>
             <span
               aria-live="polite"
-              className="min-w-24 border-2 border-ink px-2 py-2 text-center tracking-widest"
+              className="min-w-24 rounded-[10px] bg-[var(--m-surface-strong)] px-3 py-2.5 text-center text-[15px] tabular-nums"
             >
               {textSize} px
             </span>
@@ -79,19 +78,19 @@ export function AppearanceScreen() {
               onClick={() => step(TEXT_SIZE_STEP)}
               disabled={textSize >= MAX_TEXT_SIZE}
               aria-label={`Larger text (${textSize + TEXT_SIZE_STEP} pixels)`}
-              className={`flex-1 ${btn}`}
+              className={`flex-1 ${pillOutline}`}
             >
               +
             </button>
           </div>
-          <p className="text-sm opacity-60">
+          <p className="text-[12.5px] leading-relaxed text-[var(--m-text-55)]">
             Scales the story text only — buttons and labels keep their size. Pinch to
             zoom still works too.
           </p>
         </div>
 
-        <div className="space-y-2 border-2 border-ink p-3">
-          <span className="block uppercase tracking-widest">Font</span>
+        <div className={`space-y-2.5 ${card}`}>
+          <span className={fieldLabel}>Font</span>
           <div className="space-y-2">
             {FONT_CHOICES.map((value) => {
               const { label, note } = FONT_LABELS[value];
@@ -136,19 +135,19 @@ export function AppearanceScreen() {
               onKeyDown={(e) => {
                 if (e.key === "Enter") void add();
               }}
-              className="min-w-0 flex-1 border-2 border-ink bg-paper p-2 focus:outline-none"
+              className={`min-w-0 flex-1 ${filledInput}`}
             />
             <button
               type="button"
               onClick={() => void add()}
               disabled={fontPending || !newFont.trim()}
-              className={btn}
+              className={pillOutline}
             >
               {fontPending ? "…" : "Add"}
             </button>
           </div>
-          {fontError && <p className="text-sm">{fontError}</p>}
-          <p className="text-sm opacity-60">
+          {fontError && <p className="text-[13px] text-danger">{fontError}</p>}
+          <p className="text-[12.5px] leading-relaxed text-[var(--m-text-55)]">
             Type a family from fonts.google.com — the name has to match its spelling.
             The files download once and are kept on the device, so an added font works
             offline like the bundled two. It carries no size measurement of its own,
@@ -156,8 +155,8 @@ export function AppearanceScreen() {
           </p>
         </div>
 
-        <div className="space-y-2 border-2 border-ink p-3">
-          <span className="block uppercase tracking-widest">Colors</span>
+        <div className={`space-y-2.5 ${card}`}>
+          <span className={fieldLabel}>Colors</span>
 
           <ColorRow
             label="Background"
@@ -176,9 +175,7 @@ export function AppearanceScreen() {
             onChange={(v) => updateSettings({ dialogueColor: v })}
           />
 
-          <span className="block pt-1 text-sm uppercase tracking-widest opacity-60">
-            Presets
-          </span>
+          <span className={`block pt-1.5 ${fieldLabel}`}>Presets</span>
           <div className="grid grid-cols-2 gap-2">
             {COLOR_PRESETS.map((p) => {
               const current = paper === p.paper && ink === p.ink;
@@ -192,8 +189,8 @@ export function AppearanceScreen() {
                   // in literal colors rather than the ink/paper tokens — a
                   // preset that rendered in the CURRENT theme would preview
                   // nothing.
-                  style={{ background: p.paper, color: p.ink, borderColor: p.ink }}
-                  className={`min-h-11 border-2 px-2 py-2 text-sm uppercase tracking-widest ${
+                  style={{ background: p.paper, color: p.ink }}
+                  className={`min-h-11 rounded-[10px] px-2 py-2 text-[13px] ${
                     current ? "outline outline-2 outline-offset-2 outline-ink" : ""
                   }`}
                 >
@@ -202,7 +199,7 @@ export function AppearanceScreen() {
               );
             })}
           </div>
-          <p className="text-sm opacity-60">
+          <p className="text-[12.5px] leading-relaxed text-[var(--m-text-55)]">
             All four colors apply everywhere. Names & Items highlights known
             characters and item names in the story text; Dialogue colors
             quoted speech. Portrait art is stored as the image model drew it
@@ -235,19 +232,25 @@ function FontRow({
         type="button"
         aria-pressed={current}
         onClick={onSelect}
-        className={`block min-h-11 flex-1 border-2 border-ink p-2 text-left ${
-          current ? "bg-ink text-paper" : "active:bg-ink active:text-paper"
+        className={`block min-h-11 flex-1 rounded-[10px] p-2.5 text-left ${
+          current ? "bg-ink text-paper" : "bg-[var(--m-surface-strong)]"
         }`}
       >
-        <span className="uppercase tracking-wide">{label}</span>
-        <span className="mt-1 block text-sm opacity-70">{note}</span>
+        <span className="text-[14px] font-medium">{label}</span>
+        <span
+          className={`mt-0.5 block text-[12px] ${
+            current ? "text-paper/70" : "text-[var(--m-text-55)]"
+          }`}
+        >
+          {note}
+        </span>
       </button>
       {onRemove && (
         <button
           type="button"
           onClick={onRemove}
           aria-label={`Remove ${label}`}
-          className={btnSmall}
+          className={`shrink-0 ${pillOutline} !min-h-9 !px-3.5`}
         >
           Remove
         </button>
@@ -283,13 +286,13 @@ function ColorRow({
 
   return (
     <label className="flex items-center gap-2">
-      <span className="flex-1 uppercase tracking-widest text-sm">{label}</span>
+      <span className="flex-1 text-[14px]">{label}</span>
       <input
         value={shown}
         onChange={(e) => commit(e.target.value)}
         onBlur={() => setDraft(null)}
         aria-label={`${label} hex value`}
-        className="w-28 border-2 border-ink bg-paper p-2 text-center focus:outline-none"
+        className={`w-28 text-center ${filledInput}`}
       />
       <input
         type="color"
@@ -299,7 +302,7 @@ function ColorRow({
           onChange(e.target.value);
         }}
         aria-label={`${label} color`}
-        className="h-11 w-11 shrink-0 border-2 border-ink bg-paper p-1"
+        className="h-11 w-11 shrink-0 rounded-[10px] border-none bg-transparent p-1"
       />
     </label>
   );

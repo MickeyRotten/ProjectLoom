@@ -1,7 +1,15 @@
 import { useStore } from "../store";
-import { OverlayHeader } from "./OverlayHeader";
 import { MenuLink } from "./SubMenuScreen";
-import { Field, Section, ToggleRow, btnSmall } from "./fields";
+import {
+  MaterialHeader,
+  Switch,
+  fieldLabel,
+  filledInput,
+  filledTextarea,
+  notice,
+  pillOutline,
+  sectionHeading,
+} from "./material";
 import { DEFAULT_RISK_KEYWORDS, DEFAULT_STAKES_RULE } from "../lib/defaults";
 import {
   DEFAULT_DICE,
@@ -17,7 +25,8 @@ import { MAX_TILT, SCENE_TILT } from "../lib/diceAnim";
 import type { DiceRules } from "../types";
 
 /**
- * RPG System (Menu → RPG System) — the dice, and everything about them.
+ * RPG System (Menu → RPG System) — Material redesign (`Loom Material
+ * Redesign.dc.html`). The dice, and everything about them.
  *
  * Stakes shipped as a single ON/OFF in Advanced → Narrator with one d6, ±1 for
  * Strengths/Flaws, and 5+/3–4/2− bands welded into `stakes.ts`. That is *a*
@@ -37,7 +46,7 @@ import type { DiceRules } from "../types";
  * reads through the same function, so what it shows is what will be rolled.
  */
 
-/** One clamped integer setting, in the 1-bit form system. */
+/** One clamped integer setting, in the Material filled-input form. */
 function NumberField({
   label,
   value,
@@ -54,7 +63,8 @@ function NumberField({
   hint?: string;
 }) {
   return (
-    <Field label={label}>
+    <div className="space-y-1.5">
+      <span className={fieldLabel}>{label}</span>
       <input
         type="number"
         inputMode="numeric"
@@ -69,10 +79,10 @@ function NumberField({
           if (!Number.isFinite(n)) return;
           onChange(Math.min(max, Math.max(min, Math.round(n))));
         }}
-        className="w-full border-2 border-ink bg-paper p-2 focus:outline-none"
+        className={filledInput}
       />
-      {hint && <p className="text-xs opacity-70">{hint}</p>}
-    </Field>
+      {hint && <p className="text-[12.5px] leading-relaxed text-[var(--m-text-55)]">{hint}</p>}
+    </div>
   );
 }
 
@@ -81,7 +91,7 @@ function SystemPreview({ rules }: { rules: DiceRules }) {
   const effective = normalizeDice(rules);
   const { min, max } = diceRange(effective);
   return (
-    <p className="border-2 border-ink p-3 text-sm">
+    <p className={notice}>
       Rolling <b>{diceNotation(effective)}</b> — totals {min}–{max}, before modifiers.
       <br />
       Bands: {bandScale(effective)}.
@@ -105,11 +115,11 @@ export function RpgSystemScreen() {
   const minTotal = rolled.diceCount - rolled.flawsPenalty;
 
   return (
-    <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
-      <OverlayHeader title="RPG System" />
-      <div className="flex-1 space-y-5 overflow-y-auto p-3">
+    <main className="flex h-full min-h-full flex-col bg-paper text-ink font-alata">
+      <MaterialHeader title="RPG System" back />
+      <div className="flex-1 space-y-5 overflow-y-auto px-4 pb-6">
         {!stakesEnabled ? (
-          <p className="border-2 border-ink p-3 text-sm opacity-70">
+          <p className={notice}>
             Off: nothing is rolled, and the narrator decides how every action goes.
             Turn on Outcome Rolls under{" "}
             <MenuLink screen="features">Features</MenuLink>{" "}
@@ -117,7 +127,7 @@ export function RpgSystemScreen() {
           </p>
         ) : (
           <>
-            <p className="border-2 border-ink p-3 text-sm">
+            <p className="text-[13px] leading-relaxed text-[var(--m-text-55)]">
               When you try something that can go wrong — a fight, a climb, a lie, a
               haggle — the app rolls here on the device, adjusts the total for your
               Strengths and Flaws, and tells the narrator which of the three results
@@ -129,7 +139,7 @@ export function RpgSystemScreen() {
 
             <SystemPreview rules={settings} />
 
-            <Section label="Dice" />
+            <p className={sectionHeading}>Dice</p>
             <NumberField
               label="Dice Per Roll"
               value={settings.diceCount}
@@ -147,7 +157,7 @@ export function RpgSystemScreen() {
               hint="6 for the shipped system, 20 for a d20 table, 100 for percentile."
             />
 
-            <Section label="Strengths & Flaws" />
+            <p className={sectionHeading}>Strengths & Flaws</p>
             <NumberField
               label="Strengths Bonus"
               value={settings.strengthsBonus}
@@ -165,7 +175,7 @@ export function RpgSystemScreen() {
               hint="Taken off when it plays to their Flaws. An action touching both gets both."
             />
 
-            <Section label="Outcome Bands" />
+            <p className={sectionHeading}>Outcome Bands</p>
             <NumberField
               label="Strong From"
               value={settings.strongThreshold}
@@ -183,26 +193,30 @@ export function RpgSystemScreen() {
               hint="Totals at or above this — but under Strong — succeed at a price. Everything below costs you. Set it equal to Strong for a pass/fail table with no middle."
             />
 
-            <Section label="When To Roll" />
-            <ToggleRow
-              label="Roll Every Turn"
-              state={alwaysRoll ? "ON" : "OFF"}
-              onClick={() => update({ alwaysRoll: !alwaysRoll })}
-            />
+            <p className={sectionHeading}>When To Roll</p>
+            <div className="flex items-center justify-between gap-3 rounded-[10px] bg-[var(--m-surface-strong)] px-3.5 py-2.5">
+              <span className="text-[14px]">Roll Every Turn</span>
+              <Switch
+                on={alwaysRoll}
+                ariaLabel="Roll Every Turn"
+                onClick={() => update({ alwaysRoll: !alwaysRoll })}
+              />
+            </div>
             {alwaysRoll ? (
-              <p className="border-2 border-ink p-3 text-sm opacity-70">
+              <p className={notice}>
                 Every turn is a check — even looking around the room. The words below
                 are ignored while this is on.
               </p>
             ) : (
-              <Field label="Risky Actions">
+              <div className="space-y-1.5">
+                <span className={fieldLabel}>Risky Actions</span>
                 <textarea
                   value={riskKeywords}
                   rows={6}
                   onChange={(e) => update({ riskKeywords: e.target.value })}
-                  className="w-full resize-y border-2 border-ink bg-paper p-2 text-sm focus:outline-none"
+                  className={filledTextarea}
                 />
-                <p className="text-xs opacity-70">
+                <p className="text-[12.5px] leading-relaxed text-[var(--m-text-55)]">
                   The words that make an action a gamble, separated by commas or
                   newlines. Matched whole — "break" does not fire on "breakfast" — and
                   every form you want has to be listed ("climb, climbs"). Anything not
@@ -212,28 +226,31 @@ export function RpgSystemScreen() {
                   type="button"
                   onClick={() => update({ riskKeywords: DEFAULT_RISK_KEYWORDS })}
                   disabled={riskKeywords === DEFAULT_RISK_KEYWORDS}
-                  className={`mt-1 ${btnSmall}`}
+                  className={`${pillOutline} !min-h-9 !px-3.5`}
                 >
                   Reset to default
                 </button>
-              </Field>
+              </div>
             )}
 
-            <Section label="Presentation" />
-            <ToggleRow
-              label="Dice Animation"
-              state={settings.diceAnimation ? "ON" : "OFF"}
-              onClick={() => update({ diceAnimation: !settings.diceAnimation })}
-            />
-            <p className="border-2 border-ink p-3 text-sm opacity-70">
+            <p className={sectionHeading}>Presentation</p>
+            <div className="flex items-center justify-between gap-3 rounded-[10px] bg-[var(--m-surface-strong)] px-3.5 py-2.5">
+              <span className="text-[14px]">Dice Animation</span>
+              <Switch
+                on={settings.diceAnimation}
+                ariaLabel="Dice Animation"
+                onClick={() => update({ diceAnimation: !settings.diceAnimation })}
+              />
+            </div>
+            <p className="text-[12.5px] leading-relaxed text-[var(--m-text-55)]">
               {settings.diceAnimation
                 ? "The dice are thrown across the screen while the turn is being written — tap to skip. The result is the same either way; it is already decided before they land."
                 : "Off: no toss. The roll still happens, and still shows on the beat as a chip."}
             </p>
-            <button type="button" onClick={testRoll} className={`w-full ${btnSmall}`}>
+            <button type="button" onClick={testRoll} className={`w-full ${pillOutline}`}>
               Test Roll
             </button>
-            <p className="text-xs opacity-70">
+            <p className="text-[12.5px] leading-relaxed text-[var(--m-text-55)]">
               Throws the dice above with nothing at stake — no turn, no story, nothing
               recorded. Strengths and Flaws sit it out, so what you see is the system
               itself. Plays even with the animation off, since watching it is how you
@@ -263,12 +280,15 @@ export function RpgSystemScreen() {
                   onChange={(diceYaw) => update({ diceYaw })}
                   hint="Degrees the surface turns to one side. A few degrees is enough to show a landed die has sides."
                 />
-                <ToggleRow
-                  label="Perspective"
-                  state={settings.dicePerspective ? "ON" : "OFF"}
-                  onClick={() => update({ dicePerspective: !settings.dicePerspective })}
-                />
-                <p className="text-xs opacity-70">
+                <div className="flex items-center justify-between gap-3 rounded-[10px] bg-[var(--m-surface-strong)] px-3.5 py-2.5">
+                  <span className="text-[14px]">Perspective</span>
+                  <Switch
+                    on={settings.dicePerspective}
+                    ariaLabel="Perspective"
+                    onClick={() => update({ dicePerspective: !settings.dicePerspective })}
+                  />
+                </div>
+                <p className="text-[12.5px] leading-relaxed text-[var(--m-text-55)]">
                   On, dice further from the middle of the screen turn their faces
                   slightly away, as real dice on a table would. Off draws every die
                   identically wherever it sits — flatter, and perfectly even.
@@ -287,22 +307,23 @@ export function RpgSystemScreen() {
                     settings.diceYaw === SCENE_TILT.y &&
                     settings.dicePerspective
                   }
-                  className={`w-full ${btnSmall}`}
+                  className={`w-full ${pillOutline}`}
                 >
                   Reset view
                 </button>
               </>
             )}
 
-            <Section label="Results" />
-            <Field label="Outcome Rule">
+            <p className={sectionHeading}>Results</p>
+            <div className="space-y-1.5">
+              <span className={fieldLabel}>Outcome Rule</span>
               <textarea
                 value={stakesRule}
                 rows={8}
                 onChange={(e) => update({ stakesRule: e.target.value })}
-                className="w-full resize-y border-2 border-ink bg-paper p-2 text-sm focus:outline-none"
+                className={filledTextarea}
               />
-              <p className="text-xs opacity-70">
+              <p className="text-[12.5px] leading-relaxed text-[var(--m-text-55)]">
                 What a strong, mixed, or costly result means in your world. The dice are
                 the mechanic; this is what the narrator does with the answer.
               </p>
@@ -310,16 +331,16 @@ export function RpgSystemScreen() {
                 type="button"
                 onClick={() => update({ stakesRule: DEFAULT_STAKES_RULE })}
                 disabled={stakesRule === DEFAULT_STAKES_RULE}
-                className={`mt-1 ${btnSmall}`}
+                className={`${pillOutline} !min-h-9 !px-3.5`}
               >
                 Reset to default
               </button>
-            </Field>
+            </div>
 
             <button
               type="button"
               onClick={() => update({ ...DEFAULT_DICE })}
-              className={`w-full ${btnSmall}`}
+              className={`w-full ${pillOutline}`}
             >
               Reset dice to 1d6 (5+ / 3–4 / 2−)
             </button>

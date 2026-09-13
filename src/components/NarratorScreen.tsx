@@ -1,7 +1,14 @@
 import { useStore } from "../store";
 import { MenuLink, SubMenuScreen, type SubMenuSection } from "./SubMenuScreen";
-import { Field, ToggleRow, btnSmall } from "./fields";
-import { Chip, fieldLabel, filledInput } from "./material";
+import {
+  Chip,
+  Switch,
+  fieldLabel,
+  filledInput,
+  filledTextarea,
+  notice,
+  pillOutline,
+} from "./material";
 import { KeyField } from "./KeyField";
 import { ModelPicker } from "./ModelPicker";
 import { splitModels, useModelCatalog } from "./useModelCatalog";
@@ -177,23 +184,26 @@ function InstrField({ spec }: { spec: InstrSpec }) {
   const value = useStore((s) => s.settings[spec.key]);
   const update = useStore((s) => s.updateSettings);
   return (
-    <Field label={spec.label}>
+    <div className="space-y-1.5">
+      <span className={fieldLabel}>{spec.label}</span>
       <textarea
         value={value}
         rows={spec.rows}
         onChange={(e) => update({ [spec.key]: e.target.value })}
-        className="w-full resize-y border-2 border-ink bg-paper p-2 text-sm focus:outline-none"
+        className={filledTextarea}
       />
-      {spec.hint && <p className="text-xs opacity-70">{spec.hint}</p>}
+      {spec.hint && (
+        <p className="text-[12.5px] leading-relaxed text-[var(--m-text-55)]">{spec.hint}</p>
+      )}
       <button
         type="button"
         onClick={() => update({ [spec.key]: spec.def })}
         disabled={value === spec.def}
-        className={`mt-1 ${btnSmall}`}
+        className={`${pillOutline} !min-h-9 !px-3.5`}
       >
         Reset to default
       </button>
-    </Field>
+    </div>
   );
 }
 
@@ -220,7 +230,6 @@ function ModelSection() {
         value={settings.openRouterKey}
         onChange={(v) => update({ openRouterKey: v })}
         showSignupLink
-        material
       />
 
       <ModelPicker
@@ -230,7 +239,6 @@ function ModelSection() {
         models={text}
         loading={loading}
         error={error}
-        material
       />
 
       <ModelPicker
@@ -240,7 +248,6 @@ function ModelSection() {
         models={text}
         loading={loading}
         error={error}
-        material
         hint="Runs the Verify New Characters & Items check and the Track World Coordinates refinement (Features → Play) — both short, structured questions, not narration, so a cheap or free model is plenty. Blank falls back to the Text Model above."
       />
 
@@ -308,21 +315,24 @@ function CoreInstructionsSection() {
   const repairBlock = useStore((s) => s.settings.repairBlock);
   const update = useStore((s) => s.updateSettings);
   return (
-    <>
+    <div className="space-y-5">
       <InstrField spec={NARRATOR_FIELD} />
-      <ToggleRow
-        label="Ask Again On A Bad Turn"
-        state={repairBlock ? "ON" : "OFF"}
-        onClick={() => update({ repairBlock: !repairBlock })}
-      />
-      <p className="text-xs opacity-70">
+      <div className="flex items-center justify-between gap-3 rounded-[10px] bg-[var(--m-surface-strong)] px-3.5 py-2.5">
+        <span className="text-[14px]">Ask Again On A Bad Turn</span>
+        <Switch
+          on={repairBlock}
+          ariaLabel="Ask Again On A Bad Turn"
+          onClick={() => update({ repairBlock: !repairBlock })}
+        />
+      </div>
+      <p className="text-[12.5px] leading-relaxed text-[var(--m-text-55)]">
         Weaker models forget the machine block at the end of a beat, or leave the action
         options out of it — losing the buttons, and any state the turn changed. This asks
         once more for just that block, over the beat the model already wrote. It costs one
         extra request only on a turn that came back broken; a model that follows the
         format never triggers it.
       </p>
-    </>
+    </div>
   );
 }
 
@@ -335,7 +345,7 @@ function SuggestedActionsSection() {
   const showActionOptions = useStore((s) => s.settings.features.options);
   if (!showActionOptions) {
     return (
-      <p className="border-2 border-ink p-3 text-sm opacity-70">
+      <p className={notice}>
         Off — turn on Suggested Actions under{" "}
         <MenuLink screen="features">Features</MenuLink>{" "}
         to edit this wording.
@@ -360,8 +370,9 @@ function MemorySection() {
   const journalMinTurns = useStore((s) => s.settings.journalMinTurns);
   const update = useStore((s) => s.updateSettings);
   return (
-    <>
-      <Field label="Memory — Story">
+    <div className="space-y-5">
+      <div className="space-y-1.5">
+        <span className={fieldLabel}>Memory — Story</span>
         <input
           type="number"
           inputMode="numeric"
@@ -370,26 +381,27 @@ function MemorySection() {
           step={500}
           value={historyBudget}
           onChange={(e) => update({ historyBudget: clampHistoryBudget(e.target.valueAsNumber) })}
-          className="w-full border-2 border-ink bg-paper p-2 focus:outline-none"
+          className={filledInput}
         />
-        <p className="text-xs opacity-70">
+        <p className="text-[12.5px] leading-relaxed text-[var(--m-text-55)]">
           Roughly how many tokens of recent story the narrator is shown each turn.
           Beyond this, older beats are dropped — what the narrator wrote into World
           Notes is what survives. Raise it on a large-context model; every turn pays
           for it.
         </p>
-      </Field>
+      </div>
 
       {/* The switch itself lives under Features — this is where its budgets
           are configured, so it's hidden rather than duplicated when off. */}
       {!journalEnabled ? (
-        <p className="border-2 border-ink p-3 text-sm opacity-70">
+        <p className={notice}>
           Journal is off — turn it on under <MenuLink screen="features">Features</MenuLink>{" "}
           to configure it.
         </p>
       ) : (
         <>
-          <Field label="Memory — Journal">
+          <div className="space-y-1.5">
+            <span className={fieldLabel}>Memory — Journal</span>
             <input
               type="number"
               inputMode="numeric"
@@ -398,16 +410,17 @@ function MemorySection() {
               step={100}
               value={journalBudget}
               onChange={(e) => update({ journalBudget: clampJournalBudget(e.target.valueAsNumber) })}
-              className="w-full border-2 border-ink bg-paper p-2 focus:outline-none"
+              className={filledInput}
             />
-            <p className="text-xs opacity-70">
+            <p className="text-[12.5px] leading-relaxed text-[var(--m-text-55)]">
               Roughly how many tokens of journal the narrator is shown each turn, newest
               entries first. Older entries keep only the facts the app recorded before
               dropping out of the prompt — they stay on the Journal screen either way.
             </p>
-          </Field>
+          </div>
 
-          <Field label="Journal — Longest Gap">
+          <div className="space-y-1.5">
+            <span className={fieldLabel}>Journal — Longest Gap</span>
             <input
               type="number"
               inputMode="numeric"
@@ -418,15 +431,16 @@ function MemorySection() {
               onChange={(e) =>
                 update({ journalMaxTurns: clampJournalMaxTurns(e.target.valueAsNumber) })
               }
-              className="w-full border-2 border-ink bg-paper p-2 focus:outline-none"
+              className={filledInput}
             />
-            <p className="text-xs opacity-70">
+            <p className="text-[12.5px] leading-relaxed text-[var(--m-text-55)]">
               An entry is normally written when the party sleeps into a new day. This is
               the ceiling: after this many turns without one, an entry is written anyway.
             </p>
-          </Field>
+          </div>
 
-          <Field label="Journal — Shortest Entry">
+          <div className="space-y-1.5">
+            <span className={fieldLabel}>Journal — Shortest Entry</span>
             <input
               type="number"
               inputMode="numeric"
@@ -437,32 +451,32 @@ function MemorySection() {
               onChange={(e) =>
                 update({ journalMinTurns: clampJournalMinTurns(e.target.valueAsNumber) })
               }
-              className="w-full border-2 border-ink bg-paper p-2 focus:outline-none"
+              className={filledInput}
             />
-            <p className="text-xs opacity-70">
+            <p className="text-[12.5px] leading-relaxed text-[var(--m-text-55)]">
               A stretch shorter than this folds into the next entry instead of becoming
               one of its own — a day crossed on the second turn is not a day.
             </p>
-          </Field>
+          </div>
 
           <InstrField spec={JOURNAL_FIELD} />
         </>
       )}
-    </>
+    </div>
   );
 }
 
 /** The rules the story writes your cast by — not the cast itself (Menu → Characters). */
 function CharacterInstructionsSection() {
   return (
-    <>
-      <p className="border-2 border-ink p-3 text-sm">
+    <div className="space-y-5">
+      <p className={notice}>
         A character's sheet is written once, when the story first introduces them, and
         is frozen after that: the narrator can move them between standings, but their
         appearance, personality, drive, strengths, flaws and equipment stay yours. Use the member sheet's
         Auto-Update to re-read a sheet from the story on purpose.
       </p>
-      <p className="text-xs opacity-70">
+      <p className="text-[12.5px] leading-relaxed text-[var(--m-text-55)]">
         How an appearance is written lives under Images → Prompt Templates — it becomes
         the character's portrait prompt verbatim, so it belongs with the rest of the
         image wording.
@@ -470,7 +484,7 @@ function CharacterInstructionsSection() {
       {CHARACTER_FIELDS.map((f) => (
         <InstrField key={f.key} spec={f} />
       ))}
-    </>
+    </div>
   );
 }
 

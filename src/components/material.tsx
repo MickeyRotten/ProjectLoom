@@ -1,17 +1,17 @@
 /**
- * Shared building blocks for the Material-redesign screens (Play, Menu,
- * Party / Member, Narrator → Model, Features, Inventory, Quests, Journal,
- * Scenario, World Notes, Characters, Places — `Loom Material Redesign.dc.html`,
- * the Claude Design hand-off this pass implements). Every color here is one of
- * the tokens theme.css's "Material-redesign layer" comment documents, so these
- * read correctly under any ink/paper pair the player has picked (Appearance).
+ * Shared building blocks for the Material redesign (`Loom Material
+ * Redesign.dc.html`, the Claude Design hand-off this and the two prior passes
+ * implement) — every screen in the app now reads through these tokens,
+ * including every modal (Generate-family, Equip, Auto-Update, New Adventure).
+ * Every color here is one of the tokens theme.css's "Material-redesign layer"
+ * comment documents, so these read correctly under any ink/paper pair the
+ * player has picked (Appearance).
  *
- * Screens outside that list (Setup, RPG System, Appearance, Saves, Cloud
- * Saves, Images, every Generate-family, Equip, AutoUpdate and NewAdventure
- * modal) keep using `fields.tsx`'s square 1-bit primitives untouched — this
- * file is additive, not a replacement.
+ * `fields.tsx`'s square 1-bit primitives are down to what the member sheet's
+ * Image Options section still uses — the one part of the app this redesign
+ * deliberately left alone.
  */
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { useStore } from "../store";
 
 /** Filled pill — the one primary action on a screen (Save, Regenerate, +New Adventure). */
@@ -36,6 +36,9 @@ export const flatRow =
 
 /** Filled surface card — quests/items/journal entries, member/scenario blocks. */
 export const card = "rounded-[14px] bg-[var(--m-surface)] p-4";
+
+/** A standalone informational aside — feature-off notices, backend caveats. */
+export const notice = `${card} text-[13px] leading-relaxed text-[var(--m-text-70)]`;
 
 /** Filled-fill text input, no border — the one input style across every redesigned screen. */
 export const filledInput =
@@ -77,6 +80,48 @@ export function Chip({
     >
       {children}
     </button>
+  );
+}
+
+/**
+ * Modals/confirm sheets — the design doc's shared shape: a full-bleed scrim
+ * over a centered, borderless flat panel (`rounded-[16px]`, `bg-paper`,
+ * `font-alata`). One wrapper for every Material modal (Generate-family,
+ * Auto-Update, New Adventure) rather than the scrim-button + panel pair
+ * copied into each — `EquipModal` proved the shape first and this is that
+ * shape, extracted.
+ */
+export function Modal({
+  label,
+  onClose,
+  children,
+  className = "",
+}: {
+  label: string;
+  onClose: () => void;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={label}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+    >
+      <button
+        type="button"
+        aria-hidden="true"
+        tabIndex={-1}
+        onClick={onClose}
+        className="absolute inset-0 cursor-default bg-[color-mix(in_srgb,var(--ink)_55%,transparent)]"
+      />
+      <div
+        className={`relative flex max-h-full w-full max-w-sm flex-col gap-3 overflow-y-auto rounded-[16px] bg-paper p-5 font-alata text-ink ${className}`}
+      >
+        {children}
+      </div>
+    </div>
   );
 }
 
@@ -138,20 +183,19 @@ export function EditPencilButton({ onClick, label = "Edit" }: { onClick: () => v
   );
 }
 
-/** Material on/off switch — Features toggles, Images master switch. */
-export function Switch({
-  on,
-  onClick,
-  disabled,
-  ariaLabel,
-}: {
-  on: boolean;
-  onClick: () => void;
-  disabled?: boolean;
-  ariaLabel: string;
-}) {
+/**
+ * Material on/off switch — Features toggles, Images master switch. Forwards
+ * its ref (a plain `button`) so a modal with a list of switches (New
+ * Adventure) can still focus the first one on open, the way `EquipModal`
+ * focuses its first target button.
+ */
+export const Switch = forwardRef<
+  HTMLButtonElement,
+  { on: boolean; onClick: () => void; disabled?: boolean; ariaLabel: string }
+>(function Switch({ on, onClick, disabled, ariaLabel }, ref) {
   return (
     <button
+      ref={ref}
       type="button"
       role="switch"
       aria-checked={on}
@@ -169,4 +213,4 @@ export function Switch({
       />
     </button>
   );
-}
+});

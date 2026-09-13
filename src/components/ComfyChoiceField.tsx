@@ -1,9 +1,11 @@
 import { useState } from "react";
-import { Field } from "./fields";
+import { fieldLabel, filledInput, pillOutline } from "./material";
 
 /**
  * A free-text field that can also be picked from a list — the shape every
- * ComfyUI name field wants.
+ * ComfyUI name field wants. Material redesign (`Loom Material Redesign.dc.html`)
+ * — the only caller is `ComfyFields`, itself Material, so this is restyled
+ * outright rather than behind a `material` flag.
  *
  * Free text is the floor: a checkpoint name is whatever the player's disk says,
  * and a workflow may not even use the field. But typing `dreamshaperXL_v21.safetensors`
@@ -36,7 +38,8 @@ export function ComfyChoiceField({
     : options;
 
   return (
-    <Field label={label}>
+    <div className="space-y-1.5">
+      <span className={fieldLabel}>{label}</span>
       <div className="flex items-stretch gap-2">
         <input
           type="text"
@@ -46,14 +49,14 @@ export function ComfyChoiceField({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
-          className="min-w-0 flex-1 border-2 border-ink bg-paper p-2 focus:outline-none"
+          className={`min-w-0 flex-1 ${filledInput}`}
         />
         {options.length > 0 && (
           <button
             type="button"
             aria-expanded={open}
             onClick={() => setOpen((v) => !v)}
-            className="border-2 border-ink px-3 py-2 text-sm uppercase tracking-widest active:bg-ink active:text-paper"
+            className={`shrink-0 ${pillOutline}`}
           >
             {open ? "▲" : `▼ ${options.length}`}
           </button>
@@ -61,14 +64,14 @@ export function ComfyChoiceField({
       </div>
 
       {open && options.length > 0 && (
-        <div className="mt-2 border-2 border-ink">
+        <div className="overflow-hidden rounded-[10px] bg-[var(--m-surface)]">
           {options.length > 8 && (
             <input
               type="text"
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
               placeholder="Filter…"
-              className="w-full border-b-2 border-ink bg-paper p-2 text-sm focus:outline-none"
+              className="w-full bg-[var(--m-surface-strong)] px-3 py-2 text-[13px] outline-none"
             />
           )}
           <ul className="max-h-64 overflow-y-auto">
@@ -81,8 +84,8 @@ export function ComfyChoiceField({
                     setOpen(false);
                     setFilter("");
                   }}
-                  className={`block w-full px-2 py-2 text-left text-sm ${
-                    o === value ? "bg-ink text-paper" : "active:bg-ink active:text-paper"
+                  className={`block min-h-11 w-full px-3 py-2.5 text-left text-[13px] ${
+                    o === value ? "bg-ink text-paper" : ""
                   }`}
                 >
                   {o}
@@ -90,14 +93,14 @@ export function ComfyChoiceField({
               </li>
             ))}
             {!shown.length && (
-              <li className="px-2 py-2 text-sm opacity-70">Nothing matches.</li>
+              <li className="px-3 py-2.5 text-[13px] text-[var(--m-text-55)]">Nothing matches.</li>
             )}
           </ul>
         </div>
       )}
 
-      {hint && <p className="mt-1 text-xs opacity-60">{hint}</p>}
-    </Field>
+      {hint && <p className="text-[12.5px] leading-relaxed text-[var(--m-text-55)]">{hint}</p>}
+    </div>
   );
 }
 
@@ -120,7 +123,8 @@ export function NumberField({
   hint?: string;
 }) {
   return (
-    <Field label={label}>
+    <div className="space-y-1.5">
+      <span className={fieldLabel}>{label}</span>
       <input
         type="number"
         inputMode="decimal"
@@ -136,9 +140,9 @@ export function NumberField({
           if (!Number.isFinite(n)) return;
           onChange(Math.min(max, Math.max(min, n)));
         }}
-        className="w-full border-2 border-ink bg-paper p-2 focus:outline-none"
+        className={filledInput}
       />
-      {hint && <p className="mt-1 text-xs opacity-60">{hint}</p>}
-    </Field>
+      {hint && <p className="text-[12.5px] leading-relaxed text-[var(--m-text-55)]">{hint}</p>}
+    </div>
   );
 }

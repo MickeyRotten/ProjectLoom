@@ -1,12 +1,20 @@
 import { useRef, useState } from "react";
 import { useStore, type PurgeSummary } from "../store";
 import { MenuLink, SubMenuScreen, type SubMenuSection } from "./SubMenuScreen";
-import { Field, SegmentedRow, ToggleRow, btnSmall } from "./fields";
 import { KeyField } from "./KeyField";
 import { ModelPicker } from "./ModelPicker";
 import { splitModels, useModelCatalog } from "./useModelCatalog";
 import { ComfyFields } from "./ComfyFields";
 import { useConfirm } from "./useConfirm";
+import {
+  Chip,
+  fieldLabel,
+  filledInput,
+  filledTextarea,
+  notice,
+  pillDanger,
+  pillOutline,
+} from "./material";
 import type { ImageBackend, ImagePromptTemplate, PromptFormat } from "../types";
 import {
   activeTemplate,
@@ -23,7 +31,8 @@ import {
 } from "../lib/images";
 
 /**
- * Everything that draws a picture, in one place (DESIGN.md → Menu).
+ * Everything that draws a picture, in one place (DESIGN.md → Menu). Material
+ * redesign (`Loom Material Redesign.dc.html`).
  *
  * It used to be three places — the master switch and the backend under *Model &
  * Key*, the behaviour under *Advanced → Images*, and every word of every prompt
@@ -79,10 +88,10 @@ const TEMPLATE_FIELDS: TemplateSpec[] = [
   },
 ];
 
-const FORMAT_LABEL: Record<PromptFormat, string> = {
-  prose: "DESCRIPTIVE",
-  tags: "TAGS",
-};
+const FORMAT_OPTIONS: { value: PromptFormat; label: string }[] = [
+  { value: "prose", label: "Descriptive" },
+  { value: "tags", label: "Tags" },
+];
 
 /**
  * Shown at the top of every sub-menu while the master switch is off. The fields
@@ -94,7 +103,7 @@ function GenerationOffNote() {
   const enabled = useStore((s) => imagesAllowed(s.settings));
   if (enabled) return null;
   return (
-    <p className="border-2 border-ink p-3 text-sm">
+    <p className={notice}>
       Image generation is switched off — see{" "}
       <MenuLink screen="features">Features</MenuLink>
       . These settings are kept and take effect the moment you switch it back on.
@@ -112,7 +121,7 @@ function ComfyRefNote() {
   const comfy = useStore((s) => imagesAllowed(s.settings) && s.settings.imageBackend === "comfyui");
   if (!comfy) return null;
   return (
-    <p className="border-2 border-ink p-3 text-sm">
+    <p className={notice}>
       Pictures are being drawn by ComfyUI, which doesn't take reference images — the
       prompt below still steers it, but build the art style into the workflow. These are
       kept for whenever OpenRouter is selected again.
@@ -128,21 +137,30 @@ function ModelSection() {
   const { image } = splitModels(models);
 
   return (
-    <>
+    <div className="space-y-6">
       <GenerationOffNote />
 
       {/* The two backends want completely different fields — a key and a model
           id, or an address and a workflow — so the unselected one's controls go
           away rather than sit there configuring nothing. Both sets are kept
           either way, so switching back and forth costs no retyping. */}
-      <SegmentedRow
-        label="Image Backend"
-        value={settings.imageBackend}
-        options={IMAGE_BACKENDS}
-        onChange={(v) => update({ imageBackend: v })}
-        columns={2}
-        note={<p className="text-xs opacity-70">{BACKEND_NOTES[settings.imageBackend]}</p>}
-      />
+      <div className="space-y-2">
+        <span className={fieldLabel}>Image Backend</span>
+        <div className="flex flex-wrap gap-2">
+          {IMAGE_BACKENDS.map((opt) => (
+            <Chip
+              key={opt.value}
+              selected={settings.imageBackend === opt.value}
+              onClick={() => update({ imageBackend: opt.value })}
+            >
+              {opt.label}
+            </Chip>
+          ))}
+        </div>
+        <p className="text-[12.5px] leading-relaxed text-[var(--m-text-55)]">
+          {BACKEND_NOTES[settings.imageBackend]}
+        </p>
+      </div>
 
       {settings.imageBackend === "comfyui" ? (
         <ComfyFields />
@@ -166,7 +184,7 @@ function ModelSection() {
           />
         </>
       )}
-    </>
+    </div>
   );
 }
 
@@ -192,23 +210,26 @@ function TemplateField({ spec }: { spec: TemplateSpec }) {
   const value = template[spec.key];
   const def = TEMPLATE_TEXT[template.format][spec.key];
   return (
-    <Field label={spec.label}>
+    <div className="space-y-1.5">
+      <span className={fieldLabel}>{spec.label}</span>
       <textarea
         value={value}
         rows={spec.rows}
         onChange={(e) => patch({ [spec.key]: e.target.value })}
-        className="w-full resize-y border-2 border-ink bg-paper p-2 text-sm focus:outline-none"
+        className={filledTextarea}
       />
-      {spec.hint && <p className="text-xs opacity-70">{spec.hint}</p>}
+      {spec.hint && (
+        <p className="text-[12.5px] leading-relaxed text-[var(--m-text-55)]">{spec.hint}</p>
+      )}
       <button
         type="button"
         onClick={() => patch({ [spec.key]: def })}
         disabled={value === def}
-        className={`mt-1 ${btnSmall}`}
+        className={`${pillOutline} !min-h-9 !px-3.5`}
       >
         Reset to default
       </button>
-    </Field>
+    </div>
   );
 }
 
@@ -236,9 +257,9 @@ function TemplateManager({ ask }: { ask: ReturnType<typeof useConfirm>["ask"] })
   }
 
   return (
-    <section className="space-y-3 border-2 border-ink p-3">
-      <h2 className="uppercase tracking-widest">Prompt Template</h2>
-      <p className="text-sm">
+    <section className="space-y-3.5 rounded-[14px] bg-[var(--m-surface)] p-4">
+      <h2 className="text-[15px] font-medium">Prompt Template</h2>
+      <p className="text-[13px] leading-relaxed text-[var(--m-text-55)]">
         Which wording every image prompt is built from. Descriptive templates suit chat
         image models; tag templates suit the SD-family checkpoints ComfyUI runs.
       </p>
@@ -247,7 +268,7 @@ function TemplateManager({ ask }: { ask: ReturnType<typeof useConfirm>["ask"] })
         value={template.id}
         onChange={(e) => select(e.target.value)}
         aria-label="Prompt template"
-        className="w-full appearance-none border-2 border-ink bg-paper p-2 focus:outline-none"
+        className={filledInput}
       >
         {templates.map((t) => (
           <option key={t.id} value={t.id}>
@@ -256,40 +277,50 @@ function TemplateManager({ ask }: { ask: ReturnType<typeof useConfirm>["ask"] })
         ))}
       </select>
 
-      <Field label="Template Name">
+      <div className="space-y-1.5">
+        <span className={fieldLabel}>Template Name</span>
         <input
           value={template.name}
           onChange={(e) => patch({ name: e.target.value })}
-          className="w-full border-2 border-ink bg-paper p-2 focus:outline-none"
+          className={filledInput}
         />
-      </Field>
+      </div>
 
       {/* Structure, not wording: it decides whether the parts are joined as
           paragraphs or comma-separated tags, and whether the character's name
           and the field labels are emitted at all. */}
-      <ToggleRow
-        label="Prompt Format"
-        state={FORMAT_LABEL[template.format]}
-        onClick={() => patch({ format: template.format === "prose" ? "tags" : "prose" })}
-      />
-      <p className="text-xs opacity-70">
-        {template.format === "tags"
-          ? "Tags: the parts below are stripped of trailing punctuation and joined with commas. Labels are dropped, and a portrait leaves the character's NAME out — a diffusion model can't read it and the tokens are scarce."
-          : "Descriptive: the parts below are kept as labelled paragraphs, the way a chat image model reads a scene."}
-      </p>
+      <div className="space-y-2">
+        <span className={fieldLabel}>Prompt Format</span>
+        <div className="flex flex-wrap gap-2">
+          {FORMAT_OPTIONS.map((opt) => (
+            <Chip
+              key={opt.value}
+              selected={template.format === opt.value}
+              onClick={() => patch({ format: opt.value })}
+            >
+              {opt.label}
+            </Chip>
+          ))}
+        </div>
+        <p className="text-[12.5px] leading-relaxed text-[var(--m-text-55)]">
+          {template.format === "tags"
+            ? "Tags: the parts below are stripped of trailing punctuation and joined with commas. Labels are dropped, and a portrait leaves the character's NAME out — a diffusion model can't read it and the tokens are scarce."
+            : "Descriptive: the parts below are kept as labelled paragraphs, the way a chat image model reads a scene."}
+        </p>
+      </div>
 
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
           onClick={() => add(newTemplate("New Template", template.format))}
-          className={btnSmall}
+          className={`${pillOutline} !min-h-9 !px-3.5`}
         >
           New
         </button>
         <button
           type="button"
           onClick={() => add(duplicateTemplate(template, `${template.name} copy`))}
-          className={btnSmall}
+          className={`${pillOutline} !min-h-9 !px-3.5`}
         >
           Duplicate
         </button>
@@ -306,12 +337,12 @@ function TemplateManager({ ask }: { ask: ReturnType<typeof useConfirm>["ask"] })
               remove,
             )
           }
-          className={btnSmall}
+          className={`${pillOutline} !min-h-9 !px-3.5`}
         >
           Delete
         </button>
       </div>
-      <p className="text-xs opacity-70">
+      <p className="text-[12.5px] leading-relaxed text-[var(--m-text-55)]">
         The two shipped templates can be edited freely — Reset to default under each
         field restores the wording for the format it's set to. Duplicate first if you'd
         rather keep the original around.
@@ -349,9 +380,9 @@ function ReferenceImages() {
   }
 
   return (
-    <section className="space-y-3 border-2 border-ink p-3">
-      <h2 className="uppercase tracking-widest">Portrait Style References</h2>
-      <p className="text-sm">
+    <section className="space-y-3.5 rounded-[14px] bg-[var(--m-surface)] p-4">
+      <h2 className="text-[15px] font-medium">Portrait Style References</h2>
+      <p className="text-[13px] leading-relaxed text-[var(--m-text-55)]">
         These images teach the art style used for all character portraits. They aren't
         part of a template — the same references are what "our art style" means whichever
         wording describes it.
@@ -360,25 +391,37 @@ function ReferenceImages() {
       {refs.length > 0 && (
         <ul className="space-y-2">
           {refs.map((ref, i) => (
-            <li key={i} className="flex items-center gap-2 border-2 border-ink p-2">
+            <li
+              key={i}
+              className="flex items-center gap-2.5 rounded-[10px] bg-[var(--m-surface-strong)] p-2"
+            >
               <img
                 src={refImageToDataUrl(ref)}
                 alt={`Style reference ${i + 1}`}
-                className="h-16 w-16 border-2 border-ink object-cover"
+                className="h-14 w-14 shrink-0 rounded-[8px] object-cover"
               />
-              <span className="flex-1 text-sm uppercase tracking-widest">Ref {i + 1}</span>
-              <button type="button" onClick={() => moveRef(i, -1)} disabled={i === 0} className={btnSmall}>
+              <span className="flex-1 text-[13px]">Ref {i + 1}</span>
+              <button
+                type="button"
+                onClick={() => moveRef(i, -1)}
+                disabled={i === 0}
+                className={`${pillOutline} !min-h-9 !px-3`}
+              >
                 ↑
               </button>
               <button
                 type="button"
                 onClick={() => moveRef(i, 1)}
                 disabled={i === refs.length - 1}
-                className={btnSmall}
+                className={`${pillOutline} !min-h-9 !px-3`}
               >
                 ↓
               </button>
-              <button type="button" onClick={() => removeRef(i)} className={btnSmall}>
+              <button
+                type="button"
+                onClick={() => removeRef(i)}
+                className={`${pillOutline} !min-h-9 !px-3`}
+              >
                 ✕
               </button>
             </li>
@@ -401,11 +444,11 @@ function ReferenceImages() {
         type="button"
         onClick={() => fileInput.current?.click()}
         disabled={refs.length >= MAX_REF_IMAGES}
-        className={btnSmall}
+        className={pillOutline}
       >
         Add Reference Image ({refs.length}/{MAX_REF_IMAGES})
       </button>
-      <p className="text-xs opacity-70">
+      <p className="text-[12.5px] leading-relaxed text-[var(--m-text-55)]">
         Best with 2–3 visually varied references (e.g. a humanoid male, a humanoid
         female, and a non-humanoid) rather than a single one — when they differ in
         everything except the ink style, the model learns that the style is the
@@ -427,7 +470,7 @@ function ReferenceImages() {
 function PromptsSection() {
   const { ask, dialog } = useConfirm();
   return (
-    <>
+    <div className="space-y-4">
       <GenerationOffNote />
       <ComfyRefNote />
       <TemplateManager ask={ask} />
@@ -436,7 +479,7 @@ function PromptsSection() {
       ))}
       <ReferenceImages />
       {dialog}
-    </>
+    </div>
   );
 }
 
@@ -446,7 +489,7 @@ function PromptsSection() {
  * simply to reclaim the space a long game's portraits take.
  *
  * Not gated on the master switch: purging is exactly what a player does when
- * they have just switched generation off.
+ * they have just switched it off.
  */
 function StorageSection() {
   const purge = useStore((s) => s.purgeImages);
@@ -477,9 +520,9 @@ function StorageSection() {
     : "";
 
   return (
-    <section className="space-y-3 border-2 border-ink p-3">
-      <h2 className="uppercase tracking-widest">Purge Stored Images</h2>
-      <p className="text-sm">
+    <section className="space-y-3.5 rounded-[14px] bg-[var(--m-surface)] p-4">
+      <h2 className="text-[15px] font-medium">Purge Stored Images</h2>
+      <p className="text-[13px] leading-relaxed text-[var(--m-text-55)]">
         Delete generated art from the app's storage — the picture and the full-size
         master kept behind it for edits.
         {syncing
@@ -503,12 +546,12 @@ function StorageSection() {
             run,
           )
         }
-        className={btnSmall}
+        className={pillDanger}
       >
         {busy ? "Purging…" : "Purge Stored Images"}
       </button>
 
-      {result && <p className="text-xs opacity-70">{result}</p>}
+      {result && <p className="text-[12.5px] leading-relaxed text-[var(--m-text-55)]">{result}</p>}
       {dialog}
     </section>
   );
@@ -544,7 +587,7 @@ function ImagesHeader() {
   const imagesEnabled = useStore((s) => s.settings.imagesEnabled);
   if (imagesEnabled) return null;
   return (
-    <p className="border-2 border-ink p-3 text-sm opacity-70">
+    <p className={notice}>
       Image generation is off — see{" "}
       <MenuLink screen="features">Features</MenuLink>
       . Nothing is sent to an image model — no portraits are drawn, and the regenerate
