@@ -82,7 +82,13 @@ export function Chip({
  *  - `onBack` omitted: title only, no back button (Party, Inventory, Quests,
  *    Journal) — these are peers of Play on `BottomNav`, which stays visible
  *    under them, so switching tabs already IS the way back.
- * `action` renders on the right (a header pencil toggling edit mode).
+ * `action` renders on the right (a header pencil toggling edit mode) in a
+ * fixed-size slot that's reserved WHETHER OR NOT `action` is passed — so a
+ * screen whose pencil only shows in read mode (Member, Inventory, Quests)
+ * doesn't grow or shrink its own header when edit mode toggles, and Party/
+ * Journal (never pass one) sit at the same header height as Inventory/Quests
+ * (always do, in read mode) rather than the shorter one an absent action
+ * would otherwise leave.
  */
 export function MaterialHeader({
   title,
@@ -95,13 +101,13 @@ export function MaterialHeader({
 }) {
   const goBack = useStore((s) => s.goBack);
   return (
-    <header className="flex shrink-0 items-center gap-2.5 px-3 py-3.5">
+    <header className="flex shrink-0 items-center gap-2.5 px-3 py-2.5">
       {back && (
         <button
           type="button"
           onClick={goBack}
           aria-label="Back"
-          className="flex h-9 w-9 shrink-0 items-center justify-center"
+          className="flex h-11 w-11 shrink-0 items-center justify-center"
         >
           <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             <path d="M15 5l-7 7 7 7" />
@@ -109,7 +115,7 @@ export function MaterialHeader({
         </button>
       )}
       <span className="min-w-0 flex-1 truncate text-[18px] font-medium">{title}</span>
-      {action}
+      <span className="flex h-11 w-11 shrink-0 items-center justify-center">{action}</span>
     </header>
   );
 }
