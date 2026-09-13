@@ -150,8 +150,8 @@
 }
 
 /*
- * Material-redesign layer (Play / Menu / Party / Member / Narrator → Model /
- * Features / Inventory / Quests / Journal / Scenario — see DESIGN.md). A
+ * Material-redesign layer — every screen in the app, plus every modal
+ * (Generate-family, Equip, Auto-Update, New Adventure), see DESIGN.md. A
  * second deliberate exception to "two colors only", same category as
  * `--highlight`/`--dialogue` above: Material's cards, pills and switches read
  * as tone-on-tone surfaces rather than flat ink-on-paper, so this app draws
@@ -164,11 +164,10 @@
  * need to read as destructive whichever way the ink/paper pair runs, the same
  * reasoning `--highlight`/`--dialogue` were added under.
  *
- * Screens NOT covered by the Material mockup (Setup, RPG System, Appearance,
- * Saves, Cloud Saves, Images, and every Generate-family, Equip, AutoUpdate
- * and NewAdventure modal) keep the original square, borderless-fill 1-bit
- * look untouched — these tokens are additive, nothing existing was replaced
- * or repointed.
+ * The member sheet's Image Options section is the one part of the app this
+ * redesign deliberately left alone — it still draws in the original square,
+ * borderless-fill 1-bit look. These tokens are additive there too; nothing
+ * existing was replaced or repointed.
  */
 :root {
   --m-surface: color-mix(in srgb, var(--ink) 5%, transparent);

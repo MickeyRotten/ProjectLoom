@@ -1,11 +1,12 @@
 import { useMemo, useState } from "react";
-import { Field, TextField } from "./fields";
 import { fieldLabel, filledInput } from "./material";
 import type { OpenRouterModel } from "../lib/openrouter";
 
 /**
  * A model picker over the WHOLE catalog for its modality — every text-to-text
- * model OpenRouter lists, not a shortlist.
+ * model OpenRouter lists, not a shortlist. Shared by Narrator → Model, Images
+ * → Model and the first-run Setup screen (`material.tsx` styling — every
+ * caller is now a Material screen).
  *
  * It used to cut the list off after the first 60 rows and tell the player to
  * keep typing, which made an alphabetical accident ("ai21…", "amazon…") look
@@ -26,7 +27,6 @@ export function ModelPicker({
   loading,
   error,
   hint,
-  material = false,
 }: {
   label: string;
   value: string;
@@ -35,8 +35,6 @@ export function ModelPicker({
   loading: boolean;
   error: string | null;
   hint?: string;
-  /** Material-redesign styling (Narrator → Model) — see `KeyField`. */
-  material?: boolean;
 }) {
   const [filter, setFilter] = useState("");
   const [freeOnly, setFreeOnly] = useState(false);
@@ -51,98 +49,55 @@ export function ModelPicker({
   }, [filter, freeOnly, models]);
 
   if (loading) {
-    if (material) {
-      return (
-        <div className="space-y-1.5">
-          <span className={fieldLabel}>{label}</span>
-          <div className={`${filledInput} text-[var(--m-text-55)]`}>Loading models…</div>
-        </div>
-      );
-    }
     return (
-      <Field label={label}>
-        <div className="w-full border-2 border-ink bg-paper p-2 opacity-60">Loading models…</div>
-      </Field>
+      <div className="space-y-1.5">
+        <span className={fieldLabel}>{label}</span>
+        <div className={`${filledInput} text-[var(--m-text-55)]`}>Loading models…</div>
+      </div>
     );
   }
 
   if (error || !models.length) {
     return (
-      <>
-        <TextField label={label} value={value} onChange={onChange} placeholder="provider/model" />
-        {error && <p className="-mt-3 text-xs opacity-60">{error} Enter a model id manually.</p>}
-      </>
+      <div className="space-y-1.5">
+        <span className={fieldLabel}>{label}</span>
+        <input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="provider/model"
+          className={filledInput}
+        />
+        {error && (
+          <p className="text-[12.5px] leading-relaxed text-[var(--m-text-55)]">
+            {error} Enter a model id manually.
+          </p>
+        )}
+      </div>
     );
   }
 
   const inList = matches.some((m) => m.id === value);
   const freeCount = models.filter((m) => m.free).length;
 
-  if (material) {
-    return (
-      <div className="space-y-1.5">
-        <span className={fieldLabel}>{label}</span>
-        {models.length > 8 && (
-          <input
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            placeholder={`filter ${models.length} models…`}
-            aria-label={`Filter ${label} list`}
-            className={filledInput}
-          />
-        )}
-        <select
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          size={1}
-          aria-label={label}
-          className={filledInput}
-        >
-          {!inList && value && <option value={value}>{value} (current)</option>}
-          {matches.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.free ? `${m.name} — free` : m.name}
-            </option>
-          ))}
-        </select>
-        <label className="flex min-h-9 items-center gap-2 pt-0.5 text-[13px]">
-          <input
-            type="checkbox"
-            checked={freeOnly}
-            onChange={(e) => setFreeOnly(e.target.checked)}
-            className="h-4 w-4 shrink-0 accent-ink"
-          />
-          <span>Free models only ({freeCount})</span>
-        </label>
-        {hint && <p className="text-[12.5px] leading-relaxed text-[var(--m-text-55)]">{hint}</p>}
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-1">
-      {/* Not a <Field>: the free checkbox is a second control, and nesting two
-          labels inside one is invalid HTML. */}
-      <span className="block text-sm uppercase tracking-widest">{label}</span>
-
-      <input
-        value={filter}
-        onChange={(e) => setFilter(e.target.value)}
-        placeholder={`filter ${models.length} models…`}
-        aria-label={`Filter ${label} list`}
-        className="mb-2 w-full border-2 border-ink bg-paper p-2 focus:outline-none"
-      />
-
+    <div className="space-y-1.5">
+      <span className={fieldLabel}>{label}</span>
+      {models.length > 8 && (
+        <input
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          placeholder={`filter ${models.length} models…`}
+          aria-label={`Filter ${label} list`}
+          className={filledInput}
+        />
+      )}
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
         size={1}
         aria-label={label}
-        className="w-full appearance-none border-2 border-ink bg-paper p-2 focus:outline-none"
+        className={filledInput}
       >
-        {/* The current pick is always selectable, even when the filter or the
-            catalog excludes it — otherwise typing a filter silently reassigns
-            the model out from under the player. */}
         {!inList && value && <option value={value}>{value} (current)</option>}
         {matches.map((m) => (
           <option key={m.id} value={m.id}>
@@ -150,30 +105,16 @@ export function ModelPicker({
           </option>
         ))}
       </select>
-
-      <label className="flex min-h-11 items-center gap-2">
+      <label className="flex min-h-9 items-center gap-2 pt-0.5 text-[13px]">
         <input
           type="checkbox"
           checked={freeOnly}
           onChange={(e) => setFreeOnly(e.target.checked)}
           className="h-4 w-4 shrink-0 accent-ink"
         />
-        <span className="text-xs uppercase tracking-widest">
-          Free models only ({freeCount})
-        </span>
+        <span>Free models only ({freeCount})</span>
       </label>
-
-      <p className="text-xs opacity-60">
-        {matches.length === models.length
-          ? `${models.length} models`
-          : `${matches.length} of ${models.length} models`}
-      </p>
-      {freeOnly && !matches.length && (
-        <p className="text-xs opacity-60">
-          No free model matches that filter — clear the filter or untick Free.
-        </p>
-      )}
-      {hint && <p className="text-xs opacity-60">{hint}</p>}
+      {hint && <p className="text-[12.5px] leading-relaxed text-[var(--m-text-55)]">{hint}</p>}
     </div>
   );
 }

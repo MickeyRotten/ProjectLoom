@@ -1,12 +1,20 @@
 import { useEffect, useState } from "react";
 import { useStore } from "../store";
 import type { SaveSlot } from "../lib/db";
-import { OverlayHeader } from "./OverlayHeader";
-import { btn, btnSmall } from "./fields";
+import {
+  MaterialHeader,
+  card,
+  fieldLabel,
+  filledInput,
+  pillDanger,
+  pillOutline,
+  pillSolid,
+} from "./material";
 import { useConfirm } from "./useConfirm";
 
 /**
- * Saves (DESIGN.md → Menu): named snapshot slots of the whole active game.
+ * Saves (DESIGN.md → Menu) — Material redesign (`Loom Material
+ * Redesign.dc.html`): named snapshot slots of the whole active game.
  * Snapshot the current game under a name, restore a slot (replacing the active
  * game), or delete one. The active game keeps autosaving independently.
  *
@@ -56,15 +64,15 @@ export function SavesScreen() {
   };
 
   return (
-    <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
-      <OverlayHeader title="Saves" />
+    <main className="flex h-full min-h-full flex-col bg-paper text-ink font-alata">
+      <MaterialHeader title="Saves" back />
 
-      <div className="flex-1 space-y-4 overflow-y-auto p-3">
+      <div className="flex-1 space-y-3 overflow-y-auto px-4 pb-6">
         {/* Only when signed in: on a device that never syncs there is no cloud
             to have an opinion about, and a permanent "off" line would be noise
             on the screen the player uses most. */}
         {account && (
-          <p className="text-sm opacity-70" role="status">
+          <p className="text-[12.5px] leading-relaxed text-[var(--m-text-55)]" role="status">
             {status.state === "syncing"
               ? "Checking the cloud…"
               : status.state === "error"
@@ -73,37 +81,39 @@ export function SavesScreen() {
           </p>
         )}
 
-        <div className="space-y-2 border-2 border-ink p-3">
-          <span className="block uppercase tracking-widest text-sm">Snapshot current game</span>
+        <div className={`space-y-2.5 ${card}`}>
+          <span className={fieldLabel}>Snapshot current game</span>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="save name (optional)"
-            className="w-full border-2 border-ink bg-paper p-2 focus:outline-none"
+            className={filledInput}
           />
-          <button type="button" onClick={doSave} className={`w-full ${btn}`}>
+          <button type="button" onClick={doSave} className={`w-full ${pillSolid}`}>
             Save Snapshot
           </button>
         </div>
 
         {loaded && slots.length === 0 && (
-          <p className="uppercase tracking-widest opacity-60">No saved slots.</p>
+          <p className="text-[13px] text-[var(--m-text-55)]">No saved slots.</p>
         )}
 
         {slots.map((s) => (
-          <div key={s.id} className="space-y-2 border-2 border-ink p-3">
+          <div key={s.id} className={`space-y-2 ${card}`}>
             <div className="flex items-baseline justify-between gap-2">
-              <span className="font-bold uppercase tracking-wide">{s.name}</span>
-              <span className="text-xs opacity-70">{new Date(s.savedAt).toLocaleString()}</span>
+              <span className="text-[15px] font-medium">{s.name}</span>
+              <span className="shrink-0 text-[12px] text-[var(--m-text-55)]">
+                {new Date(s.savedAt).toLocaleString()}
+              </span>
             </div>
-            <div className="text-sm opacity-70">
+            <div className="text-[13px] text-[var(--m-text-55)]">
               {s.game.scenario.title} · Day {s.game.day} · Turn {s.game.turnNumber}
               {/* Whose story it is — the one thing a restore now brings back
                   that it didn't before. Absent on slots taken while the cast
                   lived outside the game, which restore the cast in hand. */}
               {pcName(s) && ` · ${pcName(s)}`}
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <button
                 type="button"
                 onClick={() =>
@@ -116,7 +126,7 @@ export function SavesScreen() {
                     () => void restoreSlot(s.id),
                   )
                 }
-                className={btnSmall}
+                className={pillOutline}
               >
                 Restore
               </button>
@@ -135,7 +145,7 @@ export function SavesScreen() {
                     () => void overwriteSlot(s.id),
                   )
                 }
-                className={btnSmall}
+                className={pillOutline}
               >
                 Overwrite
               </button>
@@ -147,7 +157,7 @@ export function SavesScreen() {
                     () => void dropSlot(s.id),
                   )
                 }
-                className={`ml-auto ${btnSmall}`}
+                className={`ml-auto ${pillDanger}`}
               >
                 Delete
               </button>

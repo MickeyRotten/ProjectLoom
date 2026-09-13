@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useStore, type Screen } from "../store";
-import { OverlayHeader } from "./OverlayHeader";
+import { MaterialHeader } from "./material";
 
 /**
  * A settings screen that is an INDEX of sub-menus rather than one long scroll —
@@ -71,9 +71,9 @@ export function SubMenuScreen({
   if (open) {
     const { Body } = open;
     return (
-      <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
-        <OverlayHeader title={open.label} />
-        <div className="flex-1 space-y-5 overflow-y-auto p-3">
+      <main className="flex h-full min-h-full flex-col bg-paper text-ink font-alata">
+        <MaterialHeader title={open.label} back />
+        <div className="flex-1 space-y-5 overflow-y-auto px-4 pb-6">
           <Body />
         </div>
       </main>
@@ -81,19 +81,19 @@ export function SubMenuScreen({
   }
 
   return (
-    <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
-      <OverlayHeader title={title} />
-      <div className="flex-1 space-y-3 overflow-y-auto p-3">
+    <main className="flex h-full min-h-full flex-col bg-paper text-ink font-alata">
+      <MaterialHeader title={title} back />
+      <div className="flex-1 space-y-2.5 overflow-y-auto px-4 pb-6">
         {header}
         {sections.map((s) => (
           <button
             key={s.id}
             type="button"
             onClick={() => setOpenId(s.id)}
-            className="block w-full border-2 border-ink p-3 text-left active:bg-ink active:text-paper"
+            className="block min-h-11 w-full rounded-[14px] bg-[var(--m-surface)] px-4 py-3 text-left"
           >
-            <div className="font-bold uppercase tracking-wide">{s.label}</div>
-            <div className="mt-1 text-sm opacity-70">{s.note}</div>
+            <div className="text-[15px] font-medium">{s.label}</div>
+            <div className="mt-0.5 text-[12.5px] text-[var(--m-text-55)]">{s.note}</div>
           </button>
         ))}
       </div>
@@ -122,7 +122,7 @@ export function MenuLink({
     <button
       type="button"
       onClick={() => setScreen(screen, section)}
-      className="underline underline-offset-2 active:bg-ink active:text-paper"
+      className="underline underline-offset-2"
     >
       {children}
     </button>

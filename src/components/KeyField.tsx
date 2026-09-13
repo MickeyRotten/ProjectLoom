@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { Field } from "./fields";
 import { fieldLabel, filledInput, pillOutline } from "./material";
 import { KEY_SIGNUP_URL, verifyKey } from "../lib/openrouter";
 
@@ -10,7 +9,9 @@ type Check =
   | { state: "bad"; note: string };
 
 /**
- * The OpenRouter key field, with a Test button.
+ * The OpenRouter key field, with a Test button. Shared by Narrator → Model and
+ * the first-run Setup screen (`material.tsx` styling — every caller is now a
+ * Material screen).
  *
  * Testing matters because nothing else in the app can tell a wrong key from a
  * right one until a turn fails: the model catalog is a public endpoint, so it
@@ -24,7 +25,6 @@ export function KeyField({
   hint,
   placeholder = "sk-or-…",
   showSignupLink = false,
-  material = false,
 }: {
   label: string;
   value: string;
@@ -32,9 +32,6 @@ export function KeyField({
   hint?: string;
   placeholder?: string;
   showSignupLink?: boolean;
-  /** Material-redesign styling (Narrator → Model) instead of the default
-   *  square 1-bit look SetupScreen's first-run key field still uses. */
-  material?: boolean;
 }) {
   const [check, setCheck] = useState<Check>({ state: "idle" });
 
@@ -52,8 +49,9 @@ export function KeyField({
     }
   }
 
-  const body = (
-    <>
+  return (
+    <div className="space-y-1.5">
+      <span className={fieldLabel}>{label}</span>
       <div className="flex items-stretch gap-2">
         <input
           type="password"
@@ -65,46 +63,33 @@ export function KeyField({
             setCheck({ state: "idle" });
           }}
           placeholder={placeholder}
-          className={
-            material
-              ? `min-w-0 flex-1 ${filledInput}`
-              : "min-w-0 flex-1 border-2 border-ink bg-paper p-2 focus:outline-none"
-          }
+          className={`min-w-0 flex-1 ${filledInput}`}
         />
         <button
           type="button"
           disabled={!value.trim() || check.state === "checking"}
           onClick={() => void test()}
-          className={
-            material
-              ? `shrink-0 ${pillOutline}`
-              : "border-2 border-ink px-3 py-2 text-sm uppercase tracking-widest disabled:opacity-40 active:bg-ink active:text-paper"
-          }
+          className={`shrink-0 ${pillOutline}`}
         >
           {check.state === "checking" ? "…" : "Test"}
         </button>
       </div>
 
       {check.state === "ok" && (
-        <p className={material ? "mt-1.5 text-[13px]" : "mt-1 text-sm"} role="status">
+        <p className="text-[13px]" role="status">
           ✓ Key works{check.note ? ` — ${check.note}` : ""}
         </p>
       )}
       {check.state === "bad" && (
-        <p
-          className={material ? "mt-1.5 text-[13px] text-danger" : "mt-1 text-sm"}
-          role="alert"
-        >
+        <p className="text-[13px] text-danger" role="alert">
           ✗ {check.note}
         </p>
       )}
       {hint && (
-        <p className={material ? "mt-1.5 text-[12.5px] leading-relaxed text-[var(--m-text-55)]" : "mt-1 text-xs opacity-60"}>
-          {hint}
-        </p>
+        <p className="text-[12.5px] leading-relaxed text-[var(--m-text-55)]">{hint}</p>
       )}
       {showSignupLink && (
-        <p className={material ? "mt-1.5 text-[12.5px] leading-relaxed text-[var(--m-text-55)]" : "mt-1 text-xs opacity-60"}>
+        <p className="text-[12.5px] leading-relaxed text-[var(--m-text-55)]">
           No key yet? Make one at{" "}
           <a href={KEY_SIGNUP_URL} target="_blank" rel="noreferrer" className="underline">
             openrouter.ai/keys
@@ -113,16 +98,6 @@ export function KeyField({
           and sent nowhere else.
         </p>
       )}
-    </>
+    </div>
   );
-
-  if (material) {
-    return (
-      <div className="space-y-1.5">
-        <span className={fieldLabel}>{label}</span>
-        {body}
-      </div>
-    );
-  }
-  return <Field label={label}>{body}</Field>;
 }
