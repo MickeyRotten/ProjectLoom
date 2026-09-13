@@ -341,7 +341,7 @@ export function MemberSheet() {
 
   if (!member) {
     return (
-      <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
+      <main className="flex h-full min-h-full flex-col bg-paper text-ink font-alata">
         <MaterialHeader title="Character" back />
         <p className="p-3 text-[var(--m-text-55)]">No such character.</p>
       </main>
@@ -358,7 +358,7 @@ export function MemberSheet() {
   const genBlock = genBlockId ? v.blocks.find((b) => b.id === genBlockId) : undefined;
 
   return (
-    <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
+    <main className="flex h-full min-h-full flex-col bg-paper text-ink font-alata">
       <MaterialHeader
         title={member.name || "Character"}
         back

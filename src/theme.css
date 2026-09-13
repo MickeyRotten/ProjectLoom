@@ -106,6 +106,36 @@
 }
 
 /*
+ * Alata (Material redesign — `Loom Material Redesign.dc.html`) — vendored the
+ * same way as VT323/Jersey15 above and for the same reason: the packaged APK
+ * plays offline, so a webfont fetched over the network would simply never
+ * arrive. This is the Material screens' own face, not one of the switchable
+ * `data-font` choices under Appearance — those (and their `--font-mono`
+ * token) are the 1-bit screens' typography and are untouched by this.
+ */
+@font-face {
+  font-family: "Alata";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonts/alata-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "Alata";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonts/alata-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/*
  * Font choice, same shape as the theme swap above: one attribute on <html>
  * (`App.tsx`) repoints the single `--font-mono` token every component reads
  * through Tailwind's `font-mono`. The platform stack stays as the tail of each
@@ -163,6 +193,11 @@
      fixed dark, not `--paper`: the fill's own contrast is fixed, so the text
      on it must be too, whichever way the player's ink/paper pair runs. */
   --m-danger-ink: #241209;
+  /* The Material screens' own type family (mock-up: 'Alata', 'Google Sans',
+     Roboto, system-ui, sans-serif) — a sans face, deliberately not the app's
+     switchable `--font-mono`, since the 1-bit screens' monospace identity is
+     untouched by this redesign. */
+  --font-alata: "Alata", "Google Sans", Roboto, system-ui, sans-serif;
 }
 
 html,

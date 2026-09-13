@@ -142,14 +142,21 @@ const SAVE_ICON = (
   <path d="M64 48c-8.726 0-16 7.274-16 16v384c0 8.726 7.274 16 16 16h215v-16H64V64h63.375v97.53c0 3.924 3.443 7.095 7.72 7.095h169.81c4.277 0 7.72-3.17 7.72-7.094V64h69.22c.428.318.8.548 1.467 1.094 2.05 1.675 4.962 4.264 8.375 7.406 6.827 6.283 15.65 14.837 24.313 23.5 8.663 8.663 17.217 17.486 23.5 24.313 3.142 3.413 5.73 6.324 7.406 8.374.546.668.776 1.04 1.094 1.47V330.25l16 16V128c0-2.68-.657-3.402-1.03-4.156a15.312 15.312 0 0 0-1.095-1.844c-.74-1.1-1.575-2.19-2.594-3.438-2.036-2.492-4.768-5.55-8.03-9.093-6.524-7.09-15.155-16-23.938-24.782-8.782-8.783-17.692-17.414-24.78-23.938-3.545-3.262-6.6-5.994-9.094-8.03-1.247-1.02-2.337-1.855-3.438-2.595-.55-.37-1.09-.72-1.844-1.094-.754-.373-1.477-1.03-4.156-1.03H64zm87.72 16h48.56c4.277 0 7.72 4.425 7.72 9.938v70.124c0 5.513-3.443 9.938-7.72 9.938h-48.56c-4.277 0-7.72-4.425-7.72-9.938V73.938c0-5.512 3.443-9.937 7.72-9.937zM114 212c-4.432 0-8 3.568-8 8v184c0 4.432 3.568 8 8 8h165v-28h-76.72l15.345-15.375 128-128L352 234.28l6.375 6.345L406 288.25V220c0-4.432-3.568-8-8-8H114zm238 47.75L245.75 366H297v128h110V366h51.25L352 259.75zM448 384v64h-23v16h23c8.726 0 16-7.274 16-16v-64h-16z" />
 );
 
-/** A flat Material row: icon + label, no sub-label, no box. */
+/**
+ * A flat Material row: icon + label, no sub-label, no box. `viewBox` defaults
+ * to the 24×24 grid every icon here is drawn on except Save, whose path was
+ * lifted from the mock-up's own 512×512 glyph — hardcoding 24×24 for every
+ * row rendered that one at 1/20th scale, planted in a corner of its box.
+ */
 function MenuRow({
   label,
   icon,
+  viewBox = "0 0 24 24",
   onClick,
 }: {
   label: string;
   icon: ReactNode;
+  viewBox?: string;
   onClick: () => void;
 }) {
   return (
@@ -159,7 +166,7 @@ function MenuRow({
       className="flex min-h-11 w-full items-center gap-3.5 rounded-[10px] px-1 py-3 text-left text-ink active:bg-[var(--m-surface)]"
     >
       <svg
-        viewBox="0 0 24 24"
+        viewBox={viewBox}
         width="21"
         height="21"
         fill="none"
@@ -183,11 +190,16 @@ export function MenuScreen() {
   const [starting, setStarting] = useState(false);
 
   return (
-    <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
+    <main className="flex h-full min-h-full flex-col bg-paper text-ink font-alata">
       <MaterialHeader title="Menu" back />
 
       <div className="flex-1 overflow-y-auto px-3 pb-4">
-        <MenuRow label="Save" icon={<g fill="currentColor" stroke="none">{SAVE_ICON}</g>} onClick={() => setScreen("saves")} />
+        <MenuRow
+          label="Save"
+          icon={<g fill="currentColor" stroke="none">{SAVE_ICON}</g>}
+          viewBox="0 0 512 512"
+          onClick={() => setScreen("saves")}
+        />
 
         {GROUPS.map((group) => (
           <section key={group}>

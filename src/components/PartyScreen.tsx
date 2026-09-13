@@ -64,7 +64,7 @@ export function PartyScreen() {
   );
 
   return (
-    <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
+    <main className="flex h-full min-h-full flex-col bg-paper text-ink font-alata">
       <MaterialHeader title={`Party ${active.length}/${PARTY_LIMIT}`} />
 
       <div className="flex-1 overflow-y-auto px-3 pb-3">

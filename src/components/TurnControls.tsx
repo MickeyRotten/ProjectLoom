@@ -79,7 +79,7 @@ function ModalShell({
         role="dialog"
         aria-modal="true"
         aria-label={label}
-        className="w-full max-w-sm space-y-3 rounded-[16px] bg-paper p-5 font-mono text-ink shadow-xl"
+        className="w-full max-w-sm space-y-3 rounded-[16px] bg-paper p-5 font-alata text-ink shadow-xl"
       >
         {children}
       </div>

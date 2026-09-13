@@ -46,9 +46,16 @@ export const filledTextarea = `${filledInput} resize-y leading-relaxed`;
 /** Small uppercase section/field label. */
 export const fieldLabel = "text-[11px] uppercase tracking-[0.1em] text-[var(--m-text-40)]";
 
-/** Section header inside a scrolling list (Menu groups, Party groups). */
+/**
+ * Section header inside a scrolling list (Menu groups, Party groups, Features
+ * groups). Always carries its own top padding, deliberately not a
+ * `first:pt-0` — Menu and Features each wrap a group's heading in its own
+ * `<section>`/`<div>`, so "first child of its own parent" was true for EVERY
+ * group's heading, not just the page's first one, and zeroed the breathing
+ * room above "World Lore"/"The World" that the row above it needs.
+ */
 export const sectionHeading =
-  "px-1 pb-0.5 pt-4 text-[11px] uppercase tracking-[0.14em] text-[var(--m-text-40)] first:pt-0";
+  "px-1 pb-0.5 pt-4 text-[11px] uppercase tracking-[0.14em] text-[var(--m-text-40)]";
 
 /** A selectable pill — reasoning level, member standing. One pressed at a time. */
 export function Chip({

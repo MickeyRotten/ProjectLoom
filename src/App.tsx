@@ -193,7 +193,7 @@ export default function App() {
     if (screen === "journal") return withBottomNav(<JournalScreen />);
 
     return (
-      <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
+      <main className="flex h-full min-h-full flex-col bg-paper text-ink font-alata">
         <Header />
         <PartyStrip />
         <ChatView />

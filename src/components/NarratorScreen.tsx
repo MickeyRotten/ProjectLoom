@@ -214,7 +214,7 @@ function ModelSection() {
   const { text } = splitModels(models);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 font-alata">
       <KeyField
         label="OpenRouter API Key"
         value={settings.openRouterKey}
