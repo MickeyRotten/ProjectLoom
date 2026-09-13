@@ -37,21 +37,25 @@ export function Header() {
   const chrome = coverUrl ? "text-paper" : "text-ink";
 
   return (
-    <div className="relative h-[190px] shrink-0 overflow-hidden bg-[var(--m-surface)]">
+    <div className="relative isolate h-[190px] shrink-0 overflow-hidden bg-[var(--m-surface)]">
       {coverUrl && (
         <>
           <img
             src={coverUrl}
             alt=""
-            className="h-full w-full object-cover"
+            className="absolute inset-0 z-0 h-full w-full object-cover"
             style={{ objectPosition: "center 18%" }}
           />
           {/* Fades the art into the reading area's own background rather
               than a fixed dark tone, so it works over a light OR dark paper
-              (Appearance lets the player pick either). */}
+              (Appearance lets the player pick either). Explicit z-index (and
+              on every layer below) rather than relying on default paint
+              order — a static <img> is supposed to paint under positioned
+              siblings regardless of DOM order, but that's exactly the layer
+              that went missing on-device, so nothing here is left implicit. */}
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute inset-0"
+            className="pointer-events-none absolute inset-0 z-10"
             style={{
               background:
                 "linear-gradient(180deg, transparent 35%, color-mix(in srgb, var(--paper) 75%, transparent) 82%, var(--paper) 100%)",
@@ -76,14 +80,14 @@ export function Header() {
         aria-label={coverUrl ? "Change cover image" : "Add cover image"}
         disabled={coverPending}
         onClick={() => coverFile.current?.click()}
-        className={`absolute right-1.5 top-1.5 flex h-9 w-9 items-center justify-center rounded-full disabled:opacity-40 ${chrome}`}
+        className={`absolute right-1.5 top-1.5 z-20 flex h-9 w-9 items-center justify-center rounded-full disabled:opacity-40 ${chrome}`}
       >
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
           <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19 3 20l1-4z" />
         </svg>
       </button>
 
-      <div className="absolute inset-x-4 bottom-2.5 flex items-center justify-between gap-2">
+      <div className="absolute inset-x-4 bottom-2.5 z-20 flex items-center justify-between gap-2">
         <span
           className={`min-w-0 truncate text-[11px] uppercase tracking-[0.14em] ${
             coverUrl ? "text-[color-mix(in_srgb,var(--paper)_90%,transparent)]" : "text-[var(--m-text-70)]"

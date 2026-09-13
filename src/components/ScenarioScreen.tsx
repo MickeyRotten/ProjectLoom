@@ -85,8 +85,10 @@ export function ScenarioScreen() {
       <MaterialHeader title="Scenario" back />
 
       <div className="flex-1 space-y-5 overflow-y-auto px-4 pb-6">
-        <div className="relative h-[180px] overflow-hidden rounded-[16px] bg-[var(--m-surface)]">
-          {coverUrl && <img src={coverUrl} alt="" className="h-full w-full object-cover" />}
+        <div className="relative isolate h-[180px] overflow-hidden rounded-[16px] bg-[var(--m-surface)]">
+          {coverUrl && (
+            <img src={coverUrl} alt="" className="absolute inset-0 z-0 h-full w-full object-cover" />
+          )}
           <input
             ref={coverFile}
             type="file"
@@ -103,7 +105,7 @@ export function ScenarioScreen() {
             aria-label={coverUrl ? "Change cover image" : "Add cover image"}
             disabled={coverPending}
             onClick={() => coverFile.current?.click()}
-            className={`absolute right-2 top-2 flex h-9 w-9 items-center justify-center rounded-full disabled:opacity-40 ${
+            className={`absolute right-2 top-2 z-10 flex h-9 w-9 items-center justify-center rounded-full disabled:opacity-40 ${
               coverUrl ? "text-paper" : "text-ink"
             }`}
           >
