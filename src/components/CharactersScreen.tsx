@@ -1,21 +1,23 @@
 import { useMemo, useState } from "react";
 import { useStore } from "../store";
 import type { PartyMember, Standing } from "../types";
-import { OverlayHeader } from "./OverlayHeader";
 import { CharacterRow, type RowAction } from "./CharacterRow";
-import { Section, btn } from "./fields";
+import { MaterialHeader, filledInput, pillSolid, sectionHeading } from "./material";
 import { PARTY_LIMIT, allMembers, partyCount } from "../lib/roster";
+import { firstBlockText } from "../lib/blocks";
 
 /** Above this many characters the list gets a filter box. */
 const FILTER_THRESHOLD = 8;
 
 /**
- * Characters (DESIGN.md → Menu) — THIS adventure's cast. Every character
- * authored or written into the story lives here; what they are to you right now
- * — in the scene, benched, an ally, gone — is a standing managed from these rows
- * (or the member sheet). "+ New Character" creates someone in the cast without
- * putting them in the party. The PC is always present and can't be removed
- * (handled in the sheet + store).
+ * Characters (DESIGN.md → Menu) — Material redesign (`Loom Material
+ * Redesign.dc.html`): THIS adventure's cast, one filled surface card per
+ * person, grouped by standing. Every character authored or written into the
+ * story lives here; what they are to you right now — in the scene, benched,
+ * an ally, gone — is a standing managed from these rows (or the member
+ * sheet). "+ New Character" creates someone in the cast without putting them
+ * in the party. The PC is always present and can't be removed (handled in
+ * the sheet + store).
  *
  * The cast belongs to the adventure: a save slot restores the people it was
  * taken with, and New Adventure asks which of them to bring.
@@ -47,6 +49,8 @@ export function CharactersScreen() {
   const gone = at("departed", "fallen");
   const rest = at("none");
 
+  const detail = (c: PartyMember) => firstBlockText(c.blocks, "strengths");
+
   /** Put someone in the scene — the one move the party cap can refuse. */
   const activate = (c: PartyMember): RowAction => ({
     label: full ? "Party Full" : "Add to Party",
@@ -59,62 +63,71 @@ export function CharactersScreen() {
   const group = (label: string, members: PartyMember[], actions: (c: PartyMember) => RowAction[]) =>
     members.length > 0 && (
       <>
-        <Section label={label} />
-        {members.map((c) => (
-          <CharacterRow
-            key={c.id}
-            name={c.name || "(unnamed)"}
-            sub={c.species}
-            standing={c.standing}
-            onOpen={() => openMember(c.id)}
-            actions={actions(c)}
-          />
-        ))}
+        <p className={sectionHeading}>{label}</p>
+        <div className="space-y-2.5">
+          {members.map((c) => (
+            <CharacterRow
+              key={c.id}
+              id={c.id}
+              name={c.name || "(unnamed)"}
+              sub={c.species}
+              detail={detail(c)}
+              standing={c.standing}
+              onOpen={() => openMember(c.id)}
+              actions={actions(c)}
+            />
+          ))}
+        </div>
       </>
     );
 
   return (
-    <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
-      <OverlayHeader title={`Characters ${resolved.length}`} />
+    <main className="flex h-full min-h-full flex-col bg-paper text-ink font-alata">
+      <MaterialHeader title={`Characters ${resolved.length}`} back />
 
-      <div className="flex-1 space-y-3 overflow-y-auto p-3">
+      <div className="flex-1 space-y-2.5 overflow-y-auto px-4 pb-6">
         {showFilter && (
           <input
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             placeholder="Filter by name or species"
-            className="w-full border-2 border-ink bg-paper p-2 text-ink placeholder:opacity-40"
+            className={filledInput}
           />
         )}
 
         {pc.map((c) => (
           <CharacterRow
             key={c.id}
+            id={c.id}
             name={c.name || "(unnamed)"}
             sub="Player Character"
             onOpen={() => openMember(c.id)}
           />
         ))}
 
-        <Section label={`In Party ${inParty}/${PARTY_LIMIT}`} />
+        <p className={sectionHeading}>
+          In Party {inParty}/{PARTY_LIMIT}
+        </p>
         {active.length === 0 && (
-          <p className="text-sm uppercase tracking-widest opacity-60">
-            Party is empty — add someone below.
-          </p>
+          <p className="text-[13px] text-[var(--m-text-55)]">Party is empty — add someone below.</p>
         )}
-        {active.map((c) => (
-          <CharacterRow
-            key={c.id}
-            name={c.name || "(unnamed)"}
-            sub={c.species}
-            standing={c.standing}
-            onOpen={() => openMember(c.id)}
-            actions={[
-              { label: "Bench", onClick: () => setStanding(c.id, "benched") },
-              { label: "Kick", onClick: () => setStanding(c.id, "none") },
-            ]}
-          />
-        ))}
+        <div className="space-y-2.5">
+          {active.map((c) => (
+            <CharacterRow
+              key={c.id}
+              id={c.id}
+              name={c.name || "(unnamed)"}
+              sub={c.species}
+              detail={detail(c)}
+              standing={c.standing}
+              onOpen={() => openMember(c.id)}
+              actions={[
+                { label: "Bench", onClick: () => setStanding(c.id, "benched") },
+                { label: "Kick", onClick: () => setStanding(c.id, "none") },
+              ]}
+            />
+          ))}
+        </div>
 
         {group("Benched", benched, (c) => [
           activate(c),
@@ -133,7 +146,7 @@ export function CharactersScreen() {
         <button
           type="button"
           onClick={() => openMember(addCharacter())}
-          className={`w-full ${btn}`}
+          className={`w-full ${pillSolid}`}
         >
           + New Character
         </button>

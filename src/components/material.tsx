@@ -1,15 +1,15 @@
 /**
  * Shared building blocks for the Material-redesign screens (Play, Menu,
  * Party / Member, Narrator → Model, Features, Inventory, Quests, Journal,
- * Scenario — `Loom Material Redesign.dc.html`, the Claude Design hand-off
- * this pass implements). Every color here is one of the tokens
- * theme.css's "Material-redesign layer" comment documents, so these read
- * correctly under any ink/paper pair the player has picked (Appearance).
+ * Scenario, World Notes, Characters, Places — `Loom Material Redesign.dc.html`,
+ * the Claude Design hand-off this pass implements). Every color here is one of
+ * the tokens theme.css's "Material-redesign layer" comment documents, so these
+ * read correctly under any ink/paper pair the player has picked (Appearance).
  *
- * Screens outside that list (Setup, Characters, World Notes, Places, RPG
- * System, Appearance, Saves, Cloud Saves, Images, every Generate-family,
- * Equip, AutoUpdate and NewAdventure modal) keep using `fields.tsx`'s square
- * 1-bit primitives untouched — this file is additive, not a replacement.
+ * Screens outside that list (Setup, RPG System, Appearance, Saves, Cloud
+ * Saves, Images, every Generate-family, Equip, AutoUpdate and NewAdventure
+ * modal) keep using `fields.tsx`'s square 1-bit primitives untouched — this
+ * file is additive, not a replacement.
  */
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { useStore } from "../store";
