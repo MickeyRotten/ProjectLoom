@@ -32,6 +32,13 @@ export default {
     },
     borderRadius: {
       none: "0",
+      // Material-redesign pills/chips/switches/avatars (`rounded-full`) —
+      // every other radius in that redesign is a literal `rounded-[Npx]`
+      // arbitrary value, which needs no scale entry, but `full` is a NAMED
+      // key and silently generates nothing without it. `none` stays the
+      // only OTHER key so every untouched 1-bit screen keeps its square
+      // corners — this is additive, not a return of Tailwind's full scale.
+      full: "9999px",
     },
     extend: {
       fontFamily: {
