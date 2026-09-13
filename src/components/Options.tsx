@@ -4,7 +4,9 @@ import { pillSolid } from "./material";
 
 /**
  * AI-generated action buttons from the latest <<<LOOM>>> block, rendered under
- * the latest beat. Tap or number key (1–4) submits the option as a normal turn.
+ * the latest beat as unlabeled pills (Material redesign — no visible number).
+ * The 1–4 number keys still submit an option as a normal turn; they're just
+ * not printed on the button any more.
  */
 export function Options() {
   const options = useStore((s) => s.options);
@@ -37,10 +39,9 @@ export function Options() {
           <button
             type="button"
             onClick={() => void sendTurn(opt)}
-            className={`items-baseline gap-1.5 text-left ${pillSolid}`}
+            className={`text-left ${pillSolid}`}
           >
-            <span className="tabular-nums opacity-60">{i + 1}.</span>
-            <span>{opt}</span>
+            {opt}
           </button>
         </li>
       ))}
