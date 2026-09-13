@@ -52,7 +52,7 @@ export function PartyStrip() {
           type="button"
           disabled={streaming}
           onClick={() => setScreen("characters")}
-          className="flex-1 border-2 border-dashed border-ink px-2 py-1 text-xs uppercase tracking-widest opacity-60 disabled:opacity-30 active:bg-ink active:text-paper active:opacity-100"
+          className="flex-1 rounded-[10px] border border-dashed border-[var(--m-outline)] px-2 py-2 text-xs uppercase tracking-widest text-[var(--m-text-55)] disabled:opacity-30"
         >
           + Add companions
         </button>
@@ -80,7 +80,7 @@ export function PartyStrip() {
             className="flex flex-col items-center disabled:opacity-40 active:opacity-60"
             aria-label={c.name}
           >
-            <span className="flex aspect-[4/5] w-full items-center justify-center overflow-hidden border-2 border-ink text-sm font-bold">
+            <span className="flex aspect-[4/5] w-full items-center justify-center overflow-hidden rounded-[14px] bg-[var(--m-avatar)] text-sm font-bold text-ink">
               {images[portraitKey(c.id)] ? (
                 <img
                   src={images[portraitKey(c.id)]}
@@ -101,7 +101,7 @@ export function PartyStrip() {
             className="flex flex-col items-center disabled:opacity-40 active:opacity-60"
             aria-label="Add party member"
           >
-            <span className="flex aspect-[4/5] w-full items-center justify-center border-2 border-dashed border-ink text-sm font-bold opacity-30" />
+            <span className="flex aspect-[4/5] w-full items-center justify-center rounded-[14px] border border-dashed border-[var(--m-outline)] text-sm font-bold opacity-40" />
           </button>
         ),
       )}

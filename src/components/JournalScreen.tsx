@@ -1,44 +1,36 @@
 import { useState } from "react";
 import type { JournalEntry } from "../types";
 import { useStore } from "../store";
-import { OverlayHeader } from "./OverlayHeader";
-import { AreaField, btnSmall } from "./fields";
 import { FeatureOffNotice } from "./FeatureOffNotice";
+import { MaterialHeader, card, fieldLabel, filledTextarea, pillOutline, pillSolid } from "./material";
 import { useConfirm } from "./useConfirm";
 
 /**
- * The Journal (DESIGN.md → Long-game memory): what has already happened, as
- * terse dated lists.
+ * The Journal (DESIGN.md → Long-game memory) — Material redesign (`Loom
+ * Material Redesign.dc.html`): entries as cards, newest first, with fact (▪)
+ * vs. narrator-written (·) line markers and per-entry Edit/Write/Rewrite/
+ * Delete pill actions. Reached from the bottom nav, which stays visible under
+ * this screen (no Back).
  *
- * The rolling history window drops old beats, and this is what catches them.
- * Entries are written at a boundary the client picks — a night's rest that
- * lands in a new day, or a turn ceiling — and each carries two kinds of line:
- * the facts the client read straight off the turn's deltas, and the lines the
- * model wrote for everything that left no state change behind.
- *
- * Every entry is editable and deletable here, which is the whole argument for a
- * journal over a hidden rolling summary: a summary that quietly gets a fact
+ * Every entry is editable and deletable here, which is the whole argument for
+ * a journal over a hidden rolling summary: a summary that quietly gets a fact
  * wrong is unfixable, and this is one screen away.
- *
- * Note the asymmetry with the prompt: the model is shown a bounded, decaying
- * tail (`prompt.ts → formatJournalBlock`), while the player keeps every entry
- * forever. Same data, two products.
  */
 export function JournalScreen() {
   const journal = useStore((s) => s.game.journal);
 
   return (
     <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
-      <OverlayHeader title="Journal" />
+      <MaterialHeader title="Journal" />
 
-      <div className="flex-1 space-y-4 overflow-y-auto p-3">
+      <div className="flex-1 space-y-3 overflow-y-auto px-4 pb-4">
         <FeatureOffNotice feature="journal">
           Journal is off. Entries below are kept and return when it is switched back on
           —
         </FeatureOffNotice>
 
         {journal.length === 0 && (
-          <p className="uppercase tracking-widest opacity-60">Nothing written yet.</p>
+          <p className="text-[13px] text-[var(--m-text-55)]">Nothing written yet.</p>
         )}
 
         {/* Newest first — the same order the narrator reads them in. */}
@@ -87,50 +79,55 @@ function EntryCard({ entry }: { entry: JournalEntry }) {
   const written = entry.lines.some((l) => l.source === "model");
 
   return (
-    <div className="space-y-3 border-2 border-ink p-3">
+    <div className={card}>
       <div className="flex items-baseline justify-between gap-2">
-        <span className="uppercase tracking-widest">Day {entry.day}</span>
-        <span className="text-xs uppercase tracking-widest opacity-60">
+        <span className="text-[15px] font-semibold uppercase tracking-wide">Day {entry.day}</span>
+        <span className="text-[12px] text-[var(--m-text-40)]">
           Turns {entry.fromTurn}–{entry.throughTurn}
         </span>
       </div>
 
       {editing ? (
-        <>
-          <AreaField
-            label="Lines (one per line)"
-            value={draft}
-            rows={Math.max(4, draft.split("\n").length + 1)}
-            placeholder="Crossed the marsh at dusk."
-            onChange={setDraft}
-          />
-          <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={commit} className={btnSmall}>
+        <div className="mt-2.5 space-y-2.5">
+          <div className="space-y-1">
+            <span className={fieldLabel}>Lines (one per line)</span>
+            <textarea
+              value={draft}
+              rows={Math.max(4, draft.split("\n").length + 1)}
+              placeholder="Crossed the marsh at dusk."
+              onChange={(e) => setDraft(e.target.value)}
+              className={`text-[13.5px] ${filledTextarea}`}
+            />
+          </div>
+          <div className="flex gap-2">
+            <button type="button" onClick={commit} className={`flex-1 ${pillSolid}`}>
               Save
             </button>
-            <button type="button" onClick={() => setEditing(false)} className={btnSmall}>
-              Discard Changes
+            <button type="button" onClick={() => setEditing(false)} className={`flex-1 ${pillOutline}`}>
+              Discard
             </button>
           </div>
-        </>
+        </div>
       ) : (
         <>
-          <ul className="space-y-1">
+          <ul className="mt-2.5 space-y-1.5">
             {entry.lines.length === 0 && (
-              <li className="opacity-40">— nothing recorded —</li>
+              <li className="text-[13.5px] text-[var(--m-text-40)]">— nothing recorded —</li>
             )}
             {entry.lines.map((line, i) => (
-              <li key={i} className="break-words">
+              <li key={i} className="break-words text-[13.5px] leading-relaxed text-[var(--m-text-70)]">
                 {/* The facts the client derived carry a mark, so the player can
                     see at a glance which lines a rewrite will replace. */}
-                <span className="opacity-40">{line.source === "system" ? "▪" : "·"}</span>{" "}
+                <span className="mr-1.5 text-[var(--m-text-40)]">
+                  {line.source === "system" ? "▪" : "·"}
+                </span>
                 {line.text}
               </li>
             ))}
           </ul>
 
-          <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={startEdit} className={btnSmall}>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button type="button" onClick={startEdit} className={pillOutline}>
               Edit
             </button>
             {/* The retry for a call that failed, and the rewrite for one that
@@ -139,7 +136,7 @@ function EntryCard({ entry }: { entry: JournalEntry }) {
               type="button"
               disabled={pending}
               onClick={() => void writeJournalEntry(entry.id, written)}
-              className={btnSmall}
+              className={pillOutline}
             >
               {pending ? "Writing…" : written ? "Rewrite" : "Write Entry"}
             </button>
@@ -155,7 +152,7 @@ function EntryCard({ entry }: { entry: JournalEntry }) {
                   () => deleteJournalEntry(entry.id),
                 )
               }
-              className={btnSmall}
+              className="ml-auto inline-flex min-h-11 items-center justify-center rounded-full border border-[var(--m-danger-border)] px-4 text-[13px] font-semibold text-danger"
             >
               Delete
             </button>

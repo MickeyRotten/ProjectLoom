@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useStore } from "../store";
+import { pillSolid } from "./material";
 
 /**
  * AI-generated action buttons from the latest <<<LOOM>>> block, rendered under
@@ -30,15 +31,15 @@ export function Options() {
   if (!showActionOptions || !options.length || streaming) return null;
 
   return (
-    <ul className="space-y-2">
+    <ul className="flex flex-wrap gap-2">
       {options.map((opt, i) => (
         <li key={`${i}-${opt}`}>
           <button
             type="button"
             onClick={() => void sendTurn(opt)}
-            className="flex w-full items-baseline gap-2 border-2 border-ink px-3 py-2 text-left active:bg-ink active:text-paper"
+            className={`items-baseline gap-1.5 text-left ${pillSolid}`}
           >
-            <span className="tabular-nums">{i + 1}.</span>
+            <span className="tabular-nums opacity-60">{i + 1}.</span>
             <span>{opt}</span>
           </button>
         </li>

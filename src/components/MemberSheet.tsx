@@ -1,15 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "../store";
-import { OverlayHeader } from "./OverlayHeader";
+import { AreaField, Collapsible, ReadBlock } from "./fields";
 import {
-  TextField,
-  AreaField,
-  ReadBlock,
-  Collapsible,
-  EditToolbar,
-  btn,
-  btnSmall,
-} from "./fields";
+  MaterialHeader,
+  EditPencilButton,
+  Chip,
+  card,
+  fieldLabel,
+  filledInput,
+  filledTextarea,
+  pillSolid,
+  pillOutline,
+} from "./material";
 import { AutoUpdateModal } from "./AutoUpdateModal";
 import { GenerateFieldModal } from "./GenerateFieldModal";
 import { GenerateItemModal } from "./GenerateItemModal";
@@ -49,10 +51,12 @@ const BLOCK_KIND_LABEL: Record<BlockKind, string> = {
 };
 
 /**
- * One block on the sheet — Text or Item, editable or read-only. `onUnequip`
- * only fires for an Item block in READ mode: unequipping writes two stores
- * at once (the pack and the character), the same reason Condition sits
- * outside the Edit gate, so it bypasses the draft entirely.
+ * One block on the sheet — Text or Item. Read mode is the mock-up's plain
+ * label/text pair (a "Sheet" isn't a list of cards until you're changing it);
+ * edit mode is the reorderable filled card every gated screen now shares.
+ * `onUnequip` only fires for an Item block in READ mode: unequipping writes
+ * two stores at once (the pack and the character), the same reason Condition
+ * sits outside the Edit gate, so it bypasses the draft entirely.
  */
 function BlockRow({
   block,
@@ -78,54 +82,66 @@ function BlockRow({
   onUnequip?: () => void;
 }) {
   const isItem = block.type === "item";
-  return (
-    <div className={`space-y-2 border-2 border-ink p-3 ${block.enabled ? "" : "opacity-50"}`}>
-      {editing ? (
-        <div className="flex items-end gap-2">
-          <div className="flex-1">
-            <TextField
-              label={isItem ? "Label" : "Title"}
-              value={block.title}
-              editing
-              onChange={(x) => onChange({ ...block, title: x })}
-            />
-          </div>
-          {!isItem && (
-            <label className="pb-2">
-              <span className="sr-only">Kind</span>
-              <select
-                value={block.kind}
-                onChange={(e) => onChange({ ...block, kind: e.target.value as BlockKind })}
-                className="border-2 border-ink bg-paper p-2 text-xs uppercase tracking-widest focus:outline-none"
-              >
-                {BLOCK_KINDS.map((k) => (
-                  <option key={k} value={k}>
-                    {BLOCK_KIND_LABEL[k]}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-        </div>
-      ) : (
-        <p className="text-sm uppercase tracking-widest opacity-70">
+
+  if (!editing) {
+    return (
+      <div className={block.enabled ? "" : "opacity-50"}>
+        <p className={fieldLabel}>
           {block.title || "(untitled)"}
           {!block.enabled && " — disabled"}
         </p>
-      )}
+        <p className="mt-0.5 whitespace-pre-wrap text-[15px] leading-relaxed">{block.text}</p>
+        {isItem && block.quantity > 1 && (
+          <p className="mt-0.5 text-[13px] tabular-nums text-[var(--m-text-55)]">
+            × {block.quantity}
+          </p>
+        )}
+        {isItem && onUnequip && (
+          <button type="button" onClick={onUnequip} className={`mt-2 ${pillOutline}`}>
+            Unequip
+          </button>
+        )}
+      </div>
+    );
+  }
 
-      <AreaField
-        label={isItem ? "Description" : "Text"}
+  return (
+    <div className={`space-y-2 ${card}`}>
+      <div className="flex items-end gap-2">
+        <div className="min-w-0 flex-1 space-y-1">
+          <span className={fieldLabel}>{isItem ? "Label" : "Title"}</span>
+          <input
+            value={block.title}
+            onChange={(e) => onChange({ ...block, title: e.target.value })}
+            className={filledInput}
+          />
+        </div>
+        {!isItem && (
+          <select
+            aria-label="Kind"
+            value={block.kind}
+            onChange={(e) => onChange({ ...block, kind: e.target.value as BlockKind })}
+            className="rounded-[10px] border-none bg-[var(--m-surface-strong)] px-2 py-[11px] text-[13px] text-ink outline-none"
+          >
+            {BLOCK_KINDS.map((k) => (
+              <option key={k} value={k}>
+                {BLOCK_KIND_LABEL[k]}
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
+
+      <textarea
         value={block.text}
-        editing={editing}
+        onChange={(e) => onChange({ ...block, text: e.target.value })}
         rows={2}
-        onChange={(x) => onChange({ ...block, text: x })}
+        className={filledTextarea}
       />
 
-      {isItem && editing && (
+      {isItem && (
         <label className="flex items-center gap-2">
-          <span className="uppercase tracking-widest text-sm">Qty</span>
-          <span className="sr-only">Quantity of {block.title || "this item"}</span>
+          <span className={fieldLabel}>Qty</span>
           <input
             type="number"
             min={1}
@@ -133,67 +149,55 @@ function BlockRow({
             onChange={(e) =>
               onChange({ ...block, quantity: Math.max(1, Number(e.target.value) || 1) })
             }
-            className="w-16 border-2 border-ink bg-paper p-2 text-center tabular-nums focus:outline-none"
+            className="w-16 rounded-[10px] border-none bg-[var(--m-surface-strong)] px-2 py-2 text-center tabular-nums text-ink outline-none"
           />
         </label>
       )}
-      {isItem && !editing && block.quantity > 1 && (
-        <p className="tabular-nums text-sm">× {block.quantity}</p>
-      )}
 
       {block.kind === "notes" && (
-        <p className="text-xs opacity-60">
+        <p className="text-xs text-[var(--m-text-55)]">
           Yours to write. The narrator reads it, but never writes it — no story
           beat, Auto-Update or ✦ generation can touch it.
         </p>
       )}
 
-      {editing ? (
-        <div className="flex flex-wrap items-center gap-2">
-          <button type="button" onClick={onToggle} className={btnSmall}>
-            {block.enabled ? "Disable" : "Enable"}
-          </button>
+      <div className="flex flex-wrap items-center gap-2 pt-1">
+        <button type="button" onClick={onToggle} className={pillOutline}>
+          {block.enabled ? "Disable" : "Enable"}
+        </button>
+        <button
+          type="button"
+          aria-label="Move block up"
+          disabled={index === 0}
+          onClick={() => onMove(-1)}
+          className={`${pillOutline} !min-h-9 !px-3`}
+        >
+          ▲
+        </button>
+        <button
+          type="button"
+          aria-label="Move block down"
+          disabled={index === count - 1}
+          onClick={() => onMove(1)}
+          className={`${pillOutline} !min-h-9 !px-3`}
+        >
+          ▼
+        </button>
+        <button type="button" onClick={onRemove} className={pillOutline}>
+          Remove
+        </button>
+        {/* No ✦ beside Notes — the point of it is text nothing generates. */}
+        {block.kind !== "notes" && (
           <button
             type="button"
-            aria-label="Move block up"
-            disabled={index === 0}
-            onClick={() => onMove(-1)}
-            className={`${btnSmall} disabled:opacity-40`}
+            aria-label={`Generate ${block.title.trim() || (isItem ? "item" : "block")}`}
+            onClick={onGenerate}
+            className={`${pillOutline} !min-h-9 !px-3`}
           >
-            ▲
+            ✦
           </button>
-          <button
-            type="button"
-            aria-label="Move block down"
-            disabled={index === count - 1}
-            onClick={() => onMove(1)}
-            className={`${btnSmall} disabled:opacity-40`}
-          >
-            ▼
-          </button>
-          <button type="button" onClick={onRemove} className={btnSmall}>
-            Remove
-          </button>
-          {/* No ✦ beside Notes — the point of it is text nothing generates. */}
-          {block.kind !== "notes" && (
-            <button
-              type="button"
-              aria-label={`Generate ${block.title.trim() || (isItem ? "item" : "block")}`}
-              onClick={onGenerate}
-              className="border-2 border-ink px-2 py-1 leading-none active:bg-ink active:text-paper"
-            >
-              ✦
-            </button>
-          )}
-        </div>
-      ) : (
-        isItem &&
-        onUnequip && (
-          <button type="button" onClick={onUnequip} className={btnSmall}>
-            Unequip
-          </button>
-        )
-      )}
+        )}
+      </div>
     </div>
   );
 }
@@ -234,22 +238,17 @@ type MemberDraft = Pick<
 >;
 
 /**
- * Full-screen member sheet (DESIGN.md → Secondary screens).
- *
- * Order is portrait → Image Options (closed) → Edit → the sheet → Story →
- * Condition → Standing → leave/delete: who this character IS comes first, and
- * everything you can DO to them follows it. It used to open with six buttons and
- * an image-prompt fieldset — upload, download, remove, edit, auto-update,
- * revert — so a sheet whose entire purpose is the prose underneath them made the
- * player scroll past all of it to reach a name. Nothing was dropped; the rarely
- * touched controls fold away, and the rest moved below the text they act on.
+ * Full-screen member sheet (DESIGN.md → Secondary screens) — Material
+ * redesign (`Loom Material Redesign.dc.html`). Portrait → read/edit fields →
+ * the sheet's blocks → Story → Condition → Standing → leave/delete, same
+ * order as before; the header pencil now opens Edit (was a full-width button
+ * above the fields) and Save/Discard now sit at the BOTTOM of the editable
+ * content, matching the mock-up's pattern everywhere it gates editing.
  *
  * Field editing is gated behind Edit mode — fields render as read-only text
- * blocks until the player toggles Edit, and changes live in a local draft until
- * Save Changes. Discard Changes (or leaving the screen) reverts and exits edit
- * mode. Portrait / enlist / delete actions stay available either way. Opening
- * the sheet ensures a portrait exists (unless the player removed it); ⟳
- * force-regenerates it.
+ * until the player toggles Edit, and changes live in a local draft until Save
+ * Changes. Discard Changes (or leaving the screen) reverts and exits edit
+ * mode. Portrait / enlist / delete actions stay available either way.
  */
 export function MemberSheet() {
   const id = useStore((s) => s.memberId);
@@ -278,13 +277,13 @@ export function MemberSheet() {
   // ✦ is only offered while editing.
   const [genBlockId, setGenBlockId] = useState<string | null>(null);
   const portraitFile = useRef<HTMLInputElement>(null);
-  // Saving hands off to the OS (share sheet / download) and leaves no trace in
-  // the app, so the sheet says what happened for a few seconds. `at` makes each
-  // note a fresh object, so a second save restarts the timer.
   // The alias field is a list edited as one comma-separated line, so the raw
   // text has to survive parsing: reflecting the parsed list straight back would
   // eat the comma the moment it is typed.
   const [aliasText, setAliasText] = useState("");
+  // Saving hands off to the OS (share sheet / download) and leaves no trace in
+  // the app, so the sheet says what happened for a few seconds. `at` makes each
+  // note a fresh object, so a second save restarts the timer.
   const [saveNote, setSaveNote] = useState<{ text: string; at: number } | null>(null);
   const [saving, setSaving] = useState(false);
   const { ask, dialog } = useConfirm();
@@ -343,8 +342,8 @@ export function MemberSheet() {
   if (!member) {
     return (
       <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
-        <OverlayHeader title="Character" />
-        <p className="p-3 uppercase tracking-widest">No such character.</p>
+        <MaterialHeader title="Character" back />
+        <p className="p-3 text-[var(--m-text-55)]">No such character.</p>
       </main>
     );
   }
@@ -360,27 +359,29 @@ export function MemberSheet() {
 
   return (
     <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
-      <OverlayHeader title={member.name || "Character"} />
+      <MaterialHeader
+        title={member.name || "Character"}
+        back
+        action={!editing && <EditPencilButton onClick={startEdit} />}
+      />
 
-      <div className="flex-1 space-y-5 overflow-y-auto p-3">
-        <div className="relative mx-auto aspect-[2/3] w-full max-w-xs border-2 border-ink">
+      <div className="flex-1 space-y-5 overflow-y-auto px-4 pb-6">
+        <div className="relative mx-auto aspect-[2/3] w-full max-w-xs overflow-hidden rounded-[16px] bg-[var(--m-avatar)]">
           {portraitUrl ? (
             <button
               type="button"
               aria-label="View portrait full screen"
               onClick={() => setZoom(true)}
-              className="block h-full w-full active:opacity-60"
+              className="block h-full w-full active:opacity-80"
             >
-              <img
-                src={portraitUrl}
-                alt={member.name}
-                className="h-full w-full object-cover"
-              />
+              <img src={portraitUrl} alt={member.name} className="h-full w-full object-cover" />
             </button>
           ) : (
-            <div className="flex h-full w-full items-center justify-center px-3 text-center text-3xl font-bold uppercase tracking-widest opacity-50">
+            <div className="flex h-full w-full items-center justify-center px-3 text-center text-3xl font-bold">
               {portraitPending ? (
-                <span className="text-base tracking-widest">rendering portrait…</span>
+                <span className="text-base font-normal text-[var(--m-text-55)]">
+                  rendering portrait…
+                </span>
               ) : (
                 (member.name[0] ?? "?").toUpperCase()
               )}
@@ -395,13 +396,13 @@ export function MemberSheet() {
               aria-label="Regenerate portrait"
               disabled={portraitPending}
               onClick={() => regeneratePortrait(member.id)}
-              className="absolute right-1 top-1 border-2 border-ink bg-paper px-2 leading-none disabled:opacity-40 active:bg-ink active:text-paper"
+              className="absolute right-2 top-2 flex h-9 w-9 items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--ink)_55%,transparent)] text-paper disabled:opacity-40"
             >
               ⟳
             </button>
           )}
           {imageError && !portraitPending && (
-            <span className="absolute bottom-1 right-1 border-2 border-ink bg-paper px-1 text-[0.6rem] uppercase tracking-widest">
+            <span className="absolute bottom-2 right-2 rounded-full bg-[color-mix(in_srgb,var(--ink)_55%,transparent)] px-2.5 py-1 text-[0.65rem] uppercase tracking-widest text-paper">
               image failed
             </span>
           )}
@@ -411,17 +412,13 @@ export function MemberSheet() {
             nothing to act on, and the causes are wildly different (no credit, a
             refused prompt, a file the browser can't read). */}
         {imageError && !portraitPending && (
-          <p className="text-center text-[0.65rem] uppercase tracking-widest" aria-live="polite">
+          <p className="text-center text-[0.7rem] text-[var(--m-text-55)]" aria-live="polite">
             {imageError}
           </p>
         )}
 
-        {/* Custom art in / stored art out / no art at all, folded away. Upload
-            replaces the cached portrait (⟳ still regenerates over it); download
-            hands the blob to the share sheet on mobile, a file download on
-            desktop; remove deletes it and stops the automatic redraw. Three
-            buttons the player touches once a character, sitting closed above
-            the sheet they read every time. */}
+        {/* Custom art in / stored art out / no art at all, folded away — out
+            of the mock-up's scope, so it keeps fields.tsx's own look. */}
         <Collapsible label="Image Options">
           <div className="flex gap-2">
             <input
@@ -439,7 +436,7 @@ export function MemberSheet() {
               type="button"
               disabled={portraitPending}
               onClick={() => portraitFile.current?.click()}
-              className={`flex-1 ${btnSmall}`}
+              className="inline-flex min-h-11 flex-1 items-center justify-center border-2 border-ink px-3 py-1 text-xs uppercase tracking-widest active:bg-ink active:text-paper disabled:opacity-40"
             >
               Upload Image
             </button>
@@ -447,7 +444,7 @@ export function MemberSheet() {
               type="button"
               disabled={!portraitUrl || portraitPending || saving}
               onClick={() => void savePortrait(member.id)}
-              className={`flex-1 ${btnSmall}`}
+              className="inline-flex min-h-11 flex-1 items-center justify-center border-2 border-ink px-3 py-1 text-xs uppercase tracking-widest active:bg-ink active:text-paper disabled:opacity-40"
             >
               {saving ? "Saving…" : "Download Image"}
             </button>
@@ -465,13 +462,10 @@ export function MemberSheet() {
                 () => removePortrait(member.id),
               )
             }
-            className={`w-full ${btnSmall}`}
+            className="inline-flex min-h-11 w-full items-center justify-center border-2 border-ink px-3 py-1 text-xs uppercase tracking-widest active:bg-ink active:text-paper disabled:opacity-40"
           >
             Remove Image
           </button>
-          {/* The image prompt lives with the image controls now — it is one
-              more thing about how this character is DRAWN, and it was a whole
-              open fieldset between the portrait and the character's name. */}
           {editing ? (
             <>
               <label className="flex items-center gap-2">
@@ -501,95 +495,119 @@ export function MemberSheet() {
           )}
         </Collapsible>
         {saveNote && (
-          <p className="text-center text-[0.65rem] uppercase tracking-widest" aria-live="polite">
+          <p className="text-center text-[0.7rem] text-[var(--m-text-55)]" aria-live="polite">
             {saveNote.text}
           </p>
         )}
 
-        {/* The one control that belongs above the sheet: everything under it is
-            either read or written depending on this button. */}
-        <EditToolbar editing={editing} onEdit={startEdit} onSave={save} onDiscard={discard} />
-
         <div className="space-y-4">
-          <TextField label="Name" value={v.name} editing={editing} onChange={(x) => setField("name", x)} />
+          <label className="block space-y-1">
+            <span className={fieldLabel}>Name</span>
+            {editing ? (
+              <input
+                value={v.name}
+                onChange={(e) => setField("name", e.target.value)}
+                className={filledInput}
+              />
+            ) : (
+              <p className="text-[15px]">{v.name}</p>
+            )}
+          </label>
+
           {/* Former names. Written by a rename — the narrator's or the player's
               own edit above — and kept because the transcript, the journal and
-              the next few narrator ops all still say them. Editable, and empty
-              in read mode it stays out of the way. */}
+              the next few narrator ops all still say them. */}
           {(editing || !!v.aliases?.length) && (
-            <TextField
-              label="Also known as"
-              value={editing ? aliasText : (v.aliases ?? []).join(", ")}
-              editing={editing}
-              placeholder="former names, comma separated"
-              onChange={(x) => {
-                setAliasText(x);
-                setField("aliases", parseAliases(x, v.name));
-              }}
-            />
+            <label className="block space-y-1">
+              <span className={fieldLabel}>Also known as</span>
+              {editing ? (
+                <input
+                  value={aliasText}
+                  placeholder="former names, comma separated"
+                  onChange={(e) => {
+                    setAliasText(e.target.value);
+                    setField("aliases", parseAliases(e.target.value, v.name));
+                  }}
+                  className={filledInput}
+                />
+              ) : (
+                <p className="text-[15px]">{(v.aliases ?? []).join(", ")}</p>
+              )}
+            </label>
           )}
-          <TextField
-            label="Species"
-            value={v.species}
-            editing={editing}
-            onChange={(x) => setField("species", x)}
-          />
+
+          <label className="block space-y-1">
+            <span className={fieldLabel}>Species</span>
+            {editing ? (
+              <input
+                value={v.species}
+                onChange={(e) => setField("species", e.target.value)}
+                className={filledInput}
+              />
+            ) : (
+              <p className="text-[15px]">{v.species}</p>
+            )}
+          </label>
+
           {/* Free text, like Species — the setting owns the vocabulary. Read by
               the narrator for pronouns and by the portrait prompt. */}
-          <TextField
-            label="Sex"
-            value={v.sex}
-            editing={editing}
-            placeholder="male / female / …"
-            onChange={(x) => setField("sex", x)}
-          />
+          <label className="block space-y-1">
+            <span className={fieldLabel}>Sex</span>
+            {editing ? (
+              <input
+                value={v.sex}
+                placeholder="male / female / …"
+                onChange={(e) => setField("sex", e.target.value)}
+                className={filledInput}
+              />
+            ) : (
+              <p className="text-[15px]">{v.sex}</p>
+            )}
+          </label>
         </div>
 
         {/* The sheet body — an ordered, player-editable list of blocks (Text
             or Item), each independently enabled/disabled, reorderable and
-            deletable. Fed to the narrator verbatim, in order — see
-            `blocks.ts`. Equipment is now the special Item-block type among
-            these; the Inventory screen is the party's shared pack. Gear
-            MOVES between them — Equip there, Unequip here — and is never in
-            both at once (`equip.ts`). Unequip sits outside the Edit gate for
-            the same reason Condition does: it writes two stores at once (the
-            pack and the character), which a local draft has no way to
-            hold. */}
+            deletable. Equipment is the special Item-block type among these;
+            the Inventory screen is the party's shared pack. Gear MOVES between
+            them — Equip there, Unequip here. */}
         <div className="space-y-3">
-          <p className="text-sm uppercase tracking-widest opacity-70">Sheet</p>
+          <p className={fieldLabel}>Sheet</p>
           {v.blocks.length === 0 && !editing && (
-            <p className="uppercase tracking-widest text-sm opacity-60">No blocks.</p>
+            <p className="text-[13px] text-[var(--m-text-55)]">No blocks.</p>
           )}
-          {v.blocks.map((b, i) => (
-            <BlockRow
-              key={b.id}
-              block={b}
-              index={i}
-              count={v.blocks.length}
-              editing={editing}
-              onChange={(next) => setBlocks(v.blocks.map((x, j) => (j === i ? next : x)))}
-              onMove={(dir) => setBlocks(moveBlock(v.blocks, i, dir))}
-              onToggle={() =>
-                setBlocks(v.blocks.map((x, j) => (j === i ? { ...x, enabled: !x.enabled } : x)))
-              }
-              onRemove={() => setBlocks(v.blocks.filter((_, j) => j !== i))}
-              onGenerate={() => setGenBlockId(b.id)}
-              onUnequip={b.type === "item" ? () => unequip(member.id, b.id) : undefined}
-            />
-          ))}
+          <div className={editing ? "space-y-3" : "space-y-4"}>
+            {v.blocks.map((b, i) => (
+              <BlockRow
+                key={b.id}
+                block={b}
+                index={i}
+                count={v.blocks.length}
+                editing={editing}
+                onChange={(next) => setBlocks(v.blocks.map((x, j) => (j === i ? next : x)))}
+                onMove={(dir) => setBlocks(moveBlock(v.blocks, i, dir))}
+                onToggle={() =>
+                  setBlocks(v.blocks.map((x, j) => (j === i ? { ...x, enabled: !x.enabled } : x)))
+                }
+                onRemove={() => setBlocks(v.blocks.filter((_, j) => j !== i))}
+                onGenerate={() => setGenBlockId(b.id)}
+                onUnequip={b.type === "item" ? () => unequip(member.id, b.id) : undefined}
+              />
+            ))}
+          </div>
           {editing && (
             <div className="flex gap-2">
               <button
                 type="button"
                 onClick={() => setBlocks([...v.blocks, makeTextBlock("", "")])}
-                className={`flex-1 ${btnSmall}`}
+                className={`flex-1 ${pillOutline}`}
               >
                 + Text Block
               </button>
               <button
                 type="button"
                 onClick={() => setBlocks([...v.blocks, makeItemBlock("", "")])}
-                className={`flex-1 ${btnSmall}`}
+                className={`flex-1 ${pillOutline}`}
               >
                 + Item Block
               </button>
@@ -597,55 +615,48 @@ export function MemberSheet() {
           )}
         </div>
 
-        {/* What the STORY may do to this sheet, under the sheet it does it to.
-            Auto-Update is gated behind read mode — an open draft would
-            overwrite whatever the model just wrote the moment the player hits
-            Save Changes — and Revert appears only when the story has actually
-            diverged. Both used to sit above the fields, where they were two of
-            the six buttons a player scrolled past to read a name. */}
+        {editing && (
+          <div className="flex gap-2.5">
+            <button type="button" onClick={discard} className={`flex-1 ${pillOutline}`}>
+              Discard
+            </button>
+            <button type="button" onClick={save} className={`flex-1 ${pillSolid}`}>
+              Save changes
+            </button>
+          </div>
+        )}
+
+        {/* What the STORY may do to this sheet. Auto-Update is gated behind
+            read mode — an open draft would overwrite whatever the model just
+            wrote the moment the player hits Save Changes. */}
         {!editing && (
-          <div className="space-y-2 border-2 border-ink p-3">
-            <p className="text-sm uppercase tracking-widest opacity-70">Story</p>
-            <button type="button" onClick={() => setAutoUpdate(true)} className={`w-full ${btn}`}>
+          <div className="space-y-2">
+            <button type="button" onClick={() => setAutoUpdate(true)} className={`w-full ${pillSolid}`}>
               Auto-Update
             </button>
             {/* The story (a narrator delta or Auto-Update) has rewritten fields
                 for THIS adventure only; the authored character is untouched.
                 Saving an edit adopts the change, this button throws it away. */}
             {storyChanged && (
-              <>
-                <p className="text-sm uppercase tracking-widest opacity-70">
-                  Changed this adventure
-                </p>
-                <button
-                  type="button"
-                  onClick={() => revertOverrides(member.id)}
-                  className={`w-full ${btnSmall}`}
-                >
-                  Revert Story Changes
-                </button>
-              </>
+              <button type="button" onClick={() => revertOverrides(member.id)} className={`w-full ${pillOutline}`}>
+                Revert Story Changes
+              </button>
             )}
           </div>
         )}
 
         {/* Condition — this adventure's mark, not part of the frozen sheet, so
-            it sits outside the Edit gate and outside the member-only block: a
-            costly outcome lands on the player more often than on anyone else. */}
-        <div className="space-y-2 border-t-2 border-ink pt-4">
-          <label className="block space-y-1">
-            <span className="block text-sm uppercase tracking-widest opacity-70">
-              Condition this adventure
-            </span>
-            <textarea
-              value={member.condition}
-              rows={2}
-              placeholder="unhurt"
-              onChange={(e) => setCondition(member.id, e.target.value)}
-              className="w-full resize-y border-2 border-ink bg-paper p-2 focus:outline-none"
-            />
-          </label>
-          <p className="text-xs opacity-60">
+            it sits outside the Edit gate. */}
+        <div className="space-y-1.5">
+          <p className={fieldLabel}>Condition this adventure</p>
+          <textarea
+            value={member.condition}
+            rows={2}
+            placeholder="unhurt"
+            onChange={(e) => setCondition(member.id, e.target.value)}
+            className={filledTextarea}
+          />
+          <p className="text-xs text-[var(--m-text-55)]">
             What the story has done to them — a wound, a debt, someone hunting them.
             The narrator reads it every turn and clears it when it's resolved. Blank
             means unmarked, and it never touches their sheet.
@@ -653,36 +664,27 @@ export function MemberSheet() {
         </div>
 
         {member.role === "member" && (
-          <div className="space-y-4 border-t-2 border-ink pt-4">
+          <div className="space-y-4">
             <fieldset className="space-y-2">
-              <legend className="text-sm uppercase tracking-widest opacity-70">
-                Standing this adventure
-              </legend>
-              <div className="grid grid-cols-3 gap-2">
-                {STANDINGS.map(({ value, label }) => {
-                  const current = member.standing === value;
-                  return (
-                    <button
-                      key={value}
-                      type="button"
-                      aria-pressed={current}
-                      // Only the scene is capped — every other standing is
-                      // always reachable, including stepping out of the party.
-                      disabled={!current && value === "active" && partyFull}
-                      onClick={() => setStanding(member.id, value)}
-                      className={`border-2 border-ink px-2 py-1 text-xs uppercase tracking-widest disabled:opacity-40 ${
-                        current ? "bg-ink text-paper" : "active:bg-ink active:text-paper"
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  );
-                })}
+              <legend className={`mb-1 ${fieldLabel}`}>Standing this adventure</legend>
+              <div className="flex flex-wrap gap-2">
+                {STANDINGS.map(({ value, label }) => (
+                  <Chip
+                    key={value}
+                    selected={member.standing === value}
+                    // Only the scene is capped — every other standing is
+                    // always reachable, including stepping out of the party.
+                    disabled={member.standing !== value && value === "active" && partyFull}
+                    onClick={() => setStanding(member.id, value)}
+                  >
+                    {label}
+                  </Chip>
+                ))}
               </div>
-              <p className="text-xs opacity-60">{STANDING_HINT[member.standing]}</p>
+              <p className="text-xs text-[var(--m-text-55)]">{STANDING_HINT[member.standing]}</p>
             </fieldset>
 
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-col gap-0.5">
               {/* Kicking drops them out of the party and nothing more — they
                   stay in Characters with their portrait and sheet, the story is
                   told nothing about it, and they can be added back later. */}
@@ -690,7 +692,7 @@ export function MemberSheet() {
                 <button
                   type="button"
                   onClick={() => setStanding(member.id, "none")}
-                  className="border-2 border-ink px-3 py-2 text-sm uppercase tracking-widest active:bg-ink active:text-paper"
+                  className="min-h-11 w-full rounded-[10px] px-1 py-2.5 text-left text-[15px] active:bg-[var(--m-surface)]"
                 >
                   Kick from Party
                 </button>
@@ -699,7 +701,7 @@ export function MemberSheet() {
                   type="button"
                   disabled={partyFull}
                   onClick={() => setStanding(member.id, "active")}
-                  className="border-2 border-ink px-3 py-2 text-sm uppercase tracking-widest disabled:opacity-40 active:bg-ink active:text-paper"
+                  className="min-h-11 w-full rounded-[10px] px-1 py-2.5 text-left text-[15px] disabled:opacity-40 active:bg-[var(--m-surface)]"
                 >
                   {partyFull ? "Party Full" : "Add to Party"}
                 </button>
@@ -716,12 +718,18 @@ export function MemberSheet() {
                     () => removeCharacter(member.id),
                   )
                 }
-                className="border-2 border-ink px-3 py-2 text-sm uppercase tracking-widest active:bg-ink active:text-paper"
+                className="min-h-11 w-full rounded-[10px] px-1 py-2.5 text-left text-[15px] text-danger active:bg-[var(--m-surface)]"
               >
                 Delete Character
               </button>
             </div>
           </div>
+        )}
+
+        {member.role !== "member" && (
+          <p className="text-center text-xs text-[var(--m-text-55)]">
+            Player character — always in the scene.
+          </p>
         )}
       </div>
 
@@ -746,9 +754,6 @@ export function MemberSheet() {
         />
       )}
 
-      {/* Gear for THIS character: the draft sheet says who they are, and the
-          rest of the draft kit says what they already have. The block being
-          written is left out of it — it is the draft being replaced. */}
       {genBlock && genBlock.type === "item" && (
         <GenerateItemModal
           character={{ ...member, ...v }}
@@ -776,11 +781,7 @@ export function MemberSheet() {
           onClick={() => setZoom(false)}
           className="fixed inset-0 z-50 flex items-center justify-center bg-ink p-3"
         >
-          <img
-            src={portraitUrl}
-            alt={member.name}
-            className="max-h-full max-w-full object-contain"
-          />
+          <img src={portraitUrl} alt={member.name} className="max-h-full max-w-full object-contain" />
         </button>
       )}
       {dialog}

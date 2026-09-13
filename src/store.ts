@@ -140,6 +140,7 @@ import { detectSpeakers } from "./lib/spotlight";
 import {
   imagesAllowed,
   buildPortraitPrompt,
+  coverKey,
   generateImage,
   MAX_IMAGE_SIDE,
   portraitKey,
@@ -544,6 +545,14 @@ export interface LoomStore {
    * re-generation that would otherwise put one straight back.
    */
   removePortrait: (memberId: string) => void;
+  /**
+   * Replace the adventure's cover art (Play screen banner, Scenario screen)
+   * with a device file — upload only, no generation (there is no prompt
+   * template for a scene-setting banner the way there is for a portrait).
+   */
+  uploadCover: (file: Blob) => Promise<void>;
+  /** Drop the cover art back to the placeholder. */
+  removeCover: () => void;
   /**
    * Save a member's portrait to the device (share sheet / download). Resolves
    * false when there was nothing to save or the platform refused, so the sheet
@@ -2292,6 +2301,36 @@ export const useStore = create<LoomStore>((set, get) => {
     commitCharacters(
       get().game.characters.map((c) => (c.id === memberId ? { ...c, noPortrait: true } : c)),
     );
+  },
+
+  async uploadCover(file) {
+    const key = coverKey();
+    if (get().imgPending[key]) return;
+    setImageError(key, null);
+    set({ imgPending: { ...get().imgPending, [key]: true } });
+    try {
+      // Same bound + strict decode a portrait upload gets — an unreadable file
+      // fails at the door instead of becoming a banner that never loads.
+      const blob = await toStoredImage(file, MAX_IMAGE_SIDE, true);
+      await saveImage(key, blob);
+      publishImage(key, blob);
+    } catch (err) {
+      setImageError(key, imageFailure(err));
+    } finally {
+      clearPending(key);
+    }
+  },
+
+  removeCover() {
+    const key = coverKey();
+    if (get().imgPending[key]) return;
+    void deleteImage(key);
+    const prevUrl = get().images[key];
+    if (prevUrl) URL.revokeObjectURL(prevUrl);
+    const images = { ...get().images };
+    delete images[key];
+    set({ images });
+    setImageError(key, null);
   },
 
   async purgeImages() {

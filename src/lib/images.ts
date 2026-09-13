@@ -64,6 +64,18 @@ export function portraitKey(memberId: string): string {
   return `${PORTRAIT_PREFIX}${memberId}`;
 }
 
+export const COVER_PREFIX = "cover:";
+
+/**
+ * Blob-store key for the adventure's cover art (Play screen banner, Scenario
+ * screen — Material redesign). A fixed key, like the game document itself:
+ * one active adventure, one cover, uploaded rather than generated (there is
+ * no prompt template for it, unlike a portrait).
+ */
+export function coverKey(): string {
+  return `${COVER_PREFIX}scenario`;
+}
+
 /**
  * Blob-store key for one save slot's FROZEN copy of an image.
  *

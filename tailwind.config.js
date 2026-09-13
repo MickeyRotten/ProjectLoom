@@ -23,6 +23,10 @@ export default {
       scrim: "var(--scrim)",
       highlight: "var(--highlight)",
       dialogue: "var(--dialogue)",
+      // Material-redesign destructive accent (Undo turn, Delete). See the
+      // "Material-redesign layer" comment in theme.css for why this one
+      // token is a real color rather than an ink/paper mix.
+      danger: "var(--m-danger)",
       transparent: "transparent",
       current: "currentColor",
     },

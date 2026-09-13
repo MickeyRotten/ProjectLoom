@@ -1,8 +1,15 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useStore } from "../store";
-import { OverlayHeader } from "./OverlayHeader";
-import { Field, TextField, AreaField, btnSmall } from "./fields";
 import { GenerateModal } from "./GenerateModal";
+import {
+  MaterialHeader,
+  card,
+  fieldLabel,
+  filledInput,
+  filledTextarea,
+  pillOutline,
+} from "./material";
+import { coverKey } from "../lib/images";
 import {
   SCENARIO_FIELD_LABEL,
   SCENARIO_LIST_FIELDS,
@@ -12,19 +19,17 @@ import {
 import type { Faction } from "../types";
 
 /**
- * Scenario editor (DESIGN.md → World Seed). The pre-made scenario is fully
- * editable in place — title, the world seed (premise, tone, physical logic,
- * factions, threads, danger curve, fixed points), opening narration, and the
- * start day the next New Adventure seeds from. Edits mutate the active game
- * immediately.
+ * Scenario editor (DESIGN.md → World Seed) — Material redesign (`Loom
+ * Material Redesign.dc.html`) for layout and controls; the real field set
+ * (title, the full world seed, opening narration, start day) and its
+ * always-editable behaviour are unchanged from before. The mock-up's simpler
+ * 3-block sheet doesn't cover Factions/Fixed Points/Threads/Starting
+ * Location — this keeps every one of them, restyled, rather than dropping
+ * fields the mock never showed. There is deliberately no Edit gate here,
+ * same as before: this screen writes as you type, unlike the sheet screens.
  *
- * Every field beyond premise is short and optional by design (DESIGN.md →
- * World Seed): a field that grows past a screen's worth of text belongs on a
- * `Place` or a World Note instead. Every field here carries a ✦ generate
- * button, the same one the member sheet's prose fields have (`generateScenario.ts`).
- * Unlike the sheet there is no Edit gate here — this screen writes as you
- * type — so an accepted generation is committed straight away, which the
- * modal says before it lands.
+ * A cover-art slot sits at the top, sharing the Play header's cover image
+ * (`coverKey()`) — one adventure, one cover, shown in both places.
  */
 export function ScenarioScreen() {
   const scenario = useStore((s) => s.game.scenario);
@@ -37,12 +42,17 @@ export function ScenarioScreen() {
   const [genField, setGenField] = useState<ScenarioField | null>(null);
   const [genRow, setGenRow] = useState<{ kind: SeedRowKind; index: number } | null>(null);
 
+  const coverUrl = useStore((s) => s.images[coverKey()]);
+  const coverPending = useStore((s) => s.imgPending[coverKey()]);
+  const uploadCover = useStore((s) => s.uploadCover);
+  const coverFile = useRef<HTMLInputElement>(null);
+
   const genButton = (field: ScenarioField) => (
     <button
       type="button"
       aria-label={`Generate ${SCENARIO_FIELD_LABEL[field]}`}
       onClick={() => setGenField(field)}
-      className="border-2 border-ink px-2 py-1 leading-none active:bg-ink active:text-paper"
+      className={`${pillOutline} !min-h-9 !px-3`}
     >
       ✦
     </button>
@@ -53,7 +63,7 @@ export function ScenarioScreen() {
       type="button"
       aria-label={`Generate ${kind === "faction" ? "Faction" : "Fixed Point"}`}
       onClick={() => setGenRow({ kind, index })}
-      className="border-2 border-ink px-2 py-1 leading-none active:bg-ink active:text-paper"
+      className={`${pillOutline} !min-h-9 !px-3`}
     >
       ✦
     </button>
@@ -72,47 +82,97 @@ export function ScenarioScreen() {
 
   return (
     <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">
-      <OverlayHeader title="Scenario" />
+      <MaterialHeader title="Scenario" back />
 
-      <div className="flex-1 space-y-5 overflow-y-auto p-3">
-        <TextField label="Title" value={scenario.title} onChange={(v) => update({ title: v })} />
-        <AreaField
-          label="Premise"
-          value={scenario.premise}
-          rows={4}
-          action={genButton("premise")}
-          onChange={(v) => update({ premise: v })}
-        />
+      <div className="flex-1 space-y-5 overflow-y-auto px-4 pb-6">
+        <div className="relative h-[180px] overflow-hidden rounded-[16px] bg-[var(--m-surface)]">
+          {coverUrl && <img src={coverUrl} alt="" className="h-full w-full object-cover" />}
+          <input
+            ref={coverFile}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void uploadCover(file);
+              e.target.value = "";
+            }}
+          />
+          <button
+            type="button"
+            aria-label={coverUrl ? "Change cover image" : "Add cover image"}
+            disabled={coverPending}
+            onClick={() => coverFile.current?.click()}
+            className={`absolute right-2 top-2 flex h-9 w-9 items-center justify-center rounded-full disabled:opacity-40 ${
+              coverUrl ? "text-paper" : "text-ink"
+            }`}
+          >
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19 3 20l1-4z" />
+            </svg>
+          </button>
+          {!coverUrl && (
+            <span className="absolute inset-0 flex items-center justify-center text-[13px] text-[var(--m-text-40)]">
+              Drop cover art
+            </span>
+          )}
+        </div>
 
         <div className="space-y-1">
+          <span className={fieldLabel}>Title</span>
+          <input
+            value={scenario.title}
+            onChange={(e) => update({ title: e.target.value })}
+            className={filledInput}
+          />
+        </div>
+
+        <div className="space-y-1">
+          <div className="flex items-center justify-between gap-2">
+            <span className={fieldLabel}>Premise</span>
+            {genButton("premise")}
+          </div>
+          <textarea
+            value={scenario.premise}
+            rows={4}
+            onChange={(e) => update({ premise: e.target.value })}
+            className={filledTextarea}
+          />
+        </div>
+
+        <div className="space-y-1.5">
           <button
             type="button"
             disabled={bundlePending || !scenario.premise.trim()}
             onClick={() => void generateBundle()}
-            className={`w-full border-2 border-ink px-2 py-2 leading-none active:bg-ink active:text-paper disabled:opacity-40`}
+            className={`w-full ${pillOutline}`}
           >
             {bundlePending ? "Generating…" : "✦ Auto-Generate Other Fields"}
           </button>
-          <p className="text-xs uppercase tracking-widest opacity-60">
+          <p className="text-[12px] leading-relaxed text-[var(--m-text-55)]">
             Writes Title, Starting Location, Tone, Physical Logic, Danger Curve, two Factions and
             Opening Narration from the Premise above — no preview, replaces them immediately.
           </p>
           {bundleError && (
-            <p className="border-2 border-ink p-2 text-sm" role="alert">
+            <p className={`${card} text-[13px]`} role="alert">
               {bundleError}
             </p>
           )}
         </div>
 
         {(["tone", "physicalLogic", "dangerCurve"] as const).map((field) => (
-          <AreaField
-            key={field}
-            label={`${SCENARIO_FIELD_LABEL[field]} (one per line)`}
-            value={scenario[field].join("\n")}
-            rows={3}
-            action={genButton(field)}
-            onChange={(v) => update({ [field]: splitLines(v) })}
-          />
+          <div key={field} className="space-y-1">
+            <div className="flex items-center justify-between gap-2">
+              <span className={fieldLabel}>{SCENARIO_FIELD_LABEL[field]} (one per line)</span>
+              {genButton(field)}
+            </div>
+            <textarea
+              value={scenario[field].join("\n")}
+              rows={3}
+              onChange={(e) => update({ [field]: splitLines(e.target.value) })}
+              className={filledTextarea}
+            />
+          </div>
         ))}
 
         <RowList
@@ -135,38 +195,51 @@ export function ScenarioScreen() {
           genButton={(i) => rowGenButton("fixedPoint", i)}
         />
 
-        <AreaField
-          label="Open Threads (one per line)"
-          value={scenario.threads.join("\n")}
-          rows={3}
-          placeholder="What happened to the missing captain?"
-          onChange={(v) => update({ threads: splitLines(v) })}
-        />
+        <div className="space-y-1">
+          <span className={fieldLabel}>Open Threads (one per line)</span>
+          <textarea
+            value={scenario.threads.join("\n")}
+            rows={3}
+            placeholder="What happened to the missing captain?"
+            onChange={(e) => update({ threads: splitLines(e.target.value) })}
+            className={filledTextarea}
+          />
+        </div>
 
-        <TextField
-          label="Starting Location"
-          value={scenario.startLocation ?? ""}
-          onChange={(v) => update({ startLocation: v })}
-          placeholder="Where the adventure opens"
-        />
+        <div className="space-y-1">
+          <span className={fieldLabel}>Starting Location</span>
+          <input
+            value={scenario.startLocation ?? ""}
+            onChange={(e) => update({ startLocation: e.target.value })}
+            placeholder="Where the adventure opens"
+            className={filledInput}
+          />
+        </div>
 
-        <AreaField
-          label="Opening Narration"
-          value={scenario.openingNarration}
-          rows={4}
-          action={genButton("openingNarration")}
-          onChange={(v) => update({ openingNarration: v })}
-        />
-        <Field label="Start Day">
+        <div className="space-y-1">
+          <div className="flex items-center justify-between gap-2">
+            <span className={fieldLabel}>Opening Narration</span>
+            {genButton("openingNarration")}
+          </div>
+          <textarea
+            value={scenario.openingNarration}
+            rows={4}
+            onChange={(e) => update({ openingNarration: e.target.value })}
+            className={filledTextarea}
+          />
+        </div>
+
+        <div className="space-y-1">
+          <span className={fieldLabel}>Start Day</span>
           <input
             type="number"
             min={0}
             value={scenario.startDay}
             onChange={(e) => update({ startDay: Math.max(0, Number(e.target.value) || 0) })}
-            className="w-24 border-2 border-ink bg-paper p-2 text-center tabular-nums focus:outline-none"
+            className={`w-24 text-center tabular-nums ${filledInput}`}
           />
-        </Field>
-        <p className="text-sm opacity-60">
+        </div>
+        <p className="text-[13px] leading-relaxed text-[var(--m-text-55)]">
           This is the world seed: the one small, always-read document that keeps the narrator
           consistent as it generates new areas, people and events. Editing here changes the
           active game too.
@@ -245,27 +318,32 @@ function RowList({
 }) {
   return (
     <div className="space-y-2">
-      <p className="uppercase tracking-widest text-sm">{label}</p>
-      {rows.length === 0 && <p className="text-sm opacity-60">None yet.</p>}
+      <span className={fieldLabel}>{label}</span>
+      {rows.length === 0 && <p className="text-[13px] text-[var(--m-text-55)]">None yet.</p>}
       {rows.map((row, i) => (
-        <div key={i} className="space-y-2 border-2 border-ink p-2">
-          <TextField
-            label="Name"
-            value={row.name}
-            action={genButton(i)}
-            onChange={(v) => onChange(i, { name: v })}
-          />
-          <TextField
-            label="Description"
+        <div key={i} className={`space-y-2 ${card}`}>
+          <div className="flex items-center gap-2">
+            <input
+              value={row.name}
+              placeholder="Name"
+              onChange={(e) => onChange(i, { name: e.target.value })}
+              className={`flex-1 font-medium ${filledInput}`}
+            />
+            {genButton(i)}
+          </div>
+          <textarea
             value={row.description}
-            onChange={(v) => onChange(i, { description: v })}
+            placeholder="Description"
+            rows={2}
+            onChange={(e) => onChange(i, { description: e.target.value })}
+            className={`text-[13.5px] ${filledTextarea}`}
           />
-          <button type="button" onClick={() => onRemove(i)} className={btnSmall}>
+          <button type="button" onClick={() => onRemove(i)} className={pillOutline}>
             Remove
           </button>
         </div>
       ))}
-      <button type="button" onClick={onAdd} className={`w-full ${btnSmall}`}>
+      <button type="button" onClick={onAdd} className={`w-full ${pillOutline}`}>
         + Add {label.replace(/s$/, "")}
       </button>
     </div>
