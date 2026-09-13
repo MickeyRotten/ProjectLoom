@@ -47,7 +47,7 @@ export function Header() {
     : "";
 
   return (
-    <div className="relative isolate h-[190px] shrink-0 overflow-hidden bg-[var(--m-surface)]">
+    <div className="relative isolate h-[152px] shrink-0 overflow-hidden bg-[var(--m-surface)]">
       {coverUrl && (
         <>
           <img

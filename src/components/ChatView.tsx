@@ -171,6 +171,20 @@ export function ChatView() {
               ) : (
                 <div
                   onClick={tappable ? () => toggle(m.id) : undefined}
+                  onKeyDown={
+                    tappable
+                      ? (e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            toggle(m.id);
+                          }
+                        }
+                      : undefined
+                  }
+                  role={tappable ? "button" : undefined}
+                  tabIndex={tappable ? 0 : undefined}
+                  aria-expanded={tappable ? active === m.id : undefined}
+                  aria-label={tappable ? "Toggle turn options" : undefined}
                   className={tappable ? "cursor-pointer" : undefined}
                 >
                   <Beat role={m.role} text={m.content} party={party} names={entityNames} />
@@ -200,29 +214,19 @@ export function ChatView() {
         )}
 
         {/*
-          Narrator beat controls. Tapping the beat still reveals them, but that
-          was the ONLY way in — an unhinted tap on a plain <div>, which meant
-          Regen / Edit / Undo were invisible to a new player and unreachable
-          entirely by keyboard or screen reader. This button is the discoverable,
-          focusable path to the same thing.
+          Narrator beat controls. No reserved slot: tapping the beat (made
+          keyboard/screen-reader reachable via role="button" above) is the
+          only way in, and nothing renders here until it's active — so the
+          chips and action options below sit right under the beat until the
+          player asks for Regen/Edit/Undo, which then pushes them down.
         */}
-        {!streaming && lastNarratorId && editing?.id !== lastNarratorId && (
-          active === lastNarratorId ? (
-            <TurnControls
-              onEdit={() => {
-                const m = messages.find((x) => x.id === lastNarratorId);
-                if (m) setEditing({ id: m.id, role: "narrator", draft: m.content });
-              }}
-            />
-          ) : (
-            <button
-              type="button"
-              onClick={() => setActive(lastNarratorId)}
-              className="min-h-11 w-full rounded-[10px] border border-dashed border-[var(--m-outline)] text-xs uppercase tracking-widest text-[var(--m-text-55)]"
-            >
-              ⋯ Turn options
-            </button>
-          )
+        {!streaming && lastNarratorId && editing?.id !== lastNarratorId && active === lastNarratorId && (
+          <TurnControls
+            onEdit={() => {
+              const m = messages.find((x) => x.id === lastNarratorId);
+              if (m) setEditing({ id: m.id, role: "narrator", draft: m.content });
+            }}
+          />
         )}
 
         {!streaming && <Options />}
