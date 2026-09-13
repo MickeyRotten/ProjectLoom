@@ -164,11 +164,11 @@
  * need to read as destructive whichever way the ink/paper pair runs, the same
  * reasoning `--highlight`/`--dialogue` were added under.
  *
- * Screens NOT covered by the Material mockup (Setup, Characters, World Notes,
- * Places, RPG System, Appearance, Saves, Cloud Saves, Images, and every
- * Generate-family, Equip, AutoUpdate and NewAdventure modal) keep the
- * original square, borderless-fill 1-bit look untouched — these tokens are
- * additive, nothing existing was replaced or repointed.
+ * Screens NOT covered by the Material mockup (Setup, RPG System, Appearance,
+ * Saves, Cloud Saves, Images, and every Generate-family, Equip, AutoUpdate
+ * and NewAdventure modal) keep the original square, borderless-fill 1-bit
+ * look untouched — these tokens are additive, nothing existing was replaced
+ * or repointed.
  */
 :root {
   --m-surface: color-mix(in srgb, var(--ink) 5%, transparent);
