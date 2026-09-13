@@ -119,6 +119,52 @@
   --font-mono: "Jersey 15", ui-monospace, "SFMono-Regular", Menlo, monospace;
 }
 
+/*
+ * Material-redesign layer (Play / Menu / Party / Member / Narrator → Model /
+ * Features / Inventory / Quests / Journal / Scenario — see DESIGN.md). A
+ * second deliberate exception to "two colors only", same category as
+ * `--highlight`/`--dialogue` above: Material's cards, pills and switches read
+ * as tone-on-tone surfaces rather than flat ink-on-paper, so this app draws
+ * them the same way the rest of it already draws its one existing "inverted"
+ * idiom (`active:bg-ink active:text-paper`) — every one of these is `--ink`
+ * or `--paper` mixed toward transparent, never a color of its own, so they
+ * flip correctly with any player-chosen ink/paper pair (Appearance) and
+ * composite correctly over a photo (the Play/Scenario cover art) as well as
+ * over flat paper. `--m-danger` is the one true exception — Undo / Delete
+ * need to read as destructive whichever way the ink/paper pair runs, the same
+ * reasoning `--highlight`/`--dialogue` were added under.
+ *
+ * Screens NOT covered by the Material mockup (Setup, Characters, World Notes,
+ * Places, RPG System, Appearance, Saves, Cloud Saves, Images, and every
+ * Generate-family, Equip, AutoUpdate and NewAdventure modal) keep the
+ * original square, borderless-fill 1-bit look untouched — these tokens are
+ * additive, nothing existing was replaced or repointed.
+ */
+:root {
+  --m-surface: color-mix(in srgb, var(--ink) 5%, transparent);
+  --m-surface-strong: color-mix(in srgb, var(--ink) 8%, transparent);
+  --m-divider: color-mix(in srgb, var(--ink) 6%, transparent);
+  --m-outline: color-mix(in srgb, var(--ink) 25%, transparent);
+  --m-outline-soft: color-mix(in srgb, var(--ink) 18%, transparent);
+  --m-avatar: color-mix(in srgb, var(--ink) 12%, transparent);
+  --m-track-off: color-mix(in srgb, var(--ink) 18%, transparent);
+  --m-thumb-off: color-mix(in srgb, var(--ink) 85%, transparent);
+  /* Secondary/tertiary/caption text — collapses the mockup's many close
+     opacity values (.4/.45/.5/.55/.65/.7 …) into one clean three-step scale. */
+  --m-text-70: color-mix(in srgb, var(--ink) 70%, transparent);
+  --m-text-55: color-mix(in srgb, var(--ink) 55%, transparent);
+  --m-text-40: color-mix(in srgb, var(--ink) 40%, transparent);
+  /* Destructive accent (Undo turn, Delete Character/Entry). Fixed, not
+     derived — like --highlight/--dialogue, it must read as "danger" whether
+     ink/paper runs light-on-dark or dark-on-light. */
+  --m-danger: #e2664e;
+  --m-danger-border: color-mix(in srgb, var(--m-danger) 40%, transparent);
+  /* Text on a SOLID --m-danger fill (Undo-confirm's "Undo turn" button) — a
+     fixed dark, not `--paper`: the fill's own contrast is fixed, so the text
+     on it must be too, whichever way the player's ink/paper pair runs. */
+  --m-danger-ink: #241209;
+}
+
 html,
 body,
 #root {

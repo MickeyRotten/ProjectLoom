@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { useStore } from "./store";
 import { fontTheme, isDarkPaper, scrimFrom } from "./lib/settings";
 import { Header } from "./components/Header";
@@ -24,6 +24,22 @@ import { MemberSheet } from "./components/MemberSheet";
 import { PartyScreen } from "./components/PartyScreen";
 import { InventoryScreen } from "./components/InventoryScreen";
 import { DiceOverlay } from "./components/DiceOverlay";
+
+/**
+ * Wraps a bottom-nav-tab screen (Party / Inventory / Quests / Journal) with
+ * the nav bar so it reads as a peer of Play rather than an overlay pushed on
+ * top of it (Material redesign — DESIGN.md → UI). `min-h-0` on the screen's
+ * own flex slot lets its internal `overflow-y-auto` list scroll instead of
+ * the whole column growing past the viewport.
+ */
+function withBottomNav(screen: ReactNode) {
+  return (
+    <div className="flex h-full min-h-full flex-col">
+      <div className="min-h-0 flex-1">{screen}</div>
+      <BottomNav />
+    </div>
+  );
+}
 
 /**
  * Phase 2 shell — the core loop plus party, top to bottom: the header (the PC —
@@ -162,15 +178,19 @@ export default function App() {
     if (screen === "characters") return <CharactersScreen />;
     if (screen === "worldnotes") return <WorldNotesScreen />;
     if (screen === "places") return <PlacesScreen />;
-    if (screen === "journal") return <JournalScreen />;
-    if (screen === "quests") return <QuestsScreen />;
     if (screen === "rpg") return <RpgSystemScreen />;
     if (screen === "appearance") return <AppearanceScreen />;
     if (screen === "saves") return <SavesScreen />;
     if (screen === "sync") return <SyncScreen />;
     if (screen === "member") return <MemberSheet />;
-    if (screen === "party") return <PartyScreen />;
-    if (screen === "inventory") return <InventoryScreen />;
+    // Party / Inventory / Quests / Journal are peers of Play on the bottom
+    // nav now (Material redesign — DESIGN.md), not a stacked overlay: the nav
+    // stays visible under them, so switching tabs is the way back and none of
+    // the three carries its own Back button.
+    if (screen === "party") return withBottomNav(<PartyScreen />);
+    if (screen === "inventory") return withBottomNav(<InventoryScreen />);
+    if (screen === "quests") return withBottomNav(<QuestsScreen />);
+    if (screen === "journal") return withBottomNav(<JournalScreen />);
 
     return (
       <main className="flex h-full min-h-full flex-col bg-paper text-ink font-mono">

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useStore } from "../store";
 import { equipTargets } from "../lib/equip";
+import { pillOutline } from "./material";
 import type { Item } from "../types";
 
 /** What each standing means for a piece of gear, said in three words. */
@@ -63,23 +64,21 @@ export function EquipModal({
         aria-hidden="true"
         tabIndex={-1}
         onClick={onClose}
-        className="absolute inset-0 cursor-default bg-ink opacity-80"
+        className="absolute inset-0 cursor-default bg-[color-mix(in_srgb,var(--ink)_55%,transparent)]"
       />
-      <div className="relative flex max-h-full w-full max-w-sm flex-col gap-3 border-2 border-ink bg-paper p-4">
-        <p className="uppercase tracking-widest">
-          Equip {item.label}
+      <div className="relative flex max-h-full w-full max-w-sm flex-col gap-3 rounded-[16px] bg-paper p-5 font-mono text-ink shadow-xl">
+        <p className="text-[16px] font-semibold">
+          Assign {item.label}
           {item.quantity > 1 ? ` ×${item.quantity}` : ""}
         </p>
-        <p className="text-sm opacity-70">
+        <p className="text-[13px] leading-relaxed text-[var(--m-text-55)]">
           Moves out of the pack and onto them — all {item.quantity > 1 ? item.quantity : "of it"}.
           Unequip on their sheet to put it back.
         </p>
 
         <div className="flex-1 space-y-2 overflow-y-auto">
           {targets.length === 0 && (
-            <p className="uppercase tracking-widest text-sm opacity-60">
-              No one to equip. Add a character first.
-            </p>
+            <p className="text-[13px] text-[var(--m-text-55)]">No one to equip. Add a character first.</p>
           )}
           {targets.map((m, i) => (
             <button
@@ -90,23 +89,19 @@ export function EquipModal({
                 equip(index, m.id);
                 onClose();
               }}
-              className="flex min-h-11 w-full items-center justify-between gap-2 border-2 border-ink px-3 py-2 text-left active:bg-ink active:text-paper"
+              className="flex min-h-11 w-full items-center justify-between gap-2 rounded-[10px] bg-[var(--m-surface)] px-3.5 py-2.5 text-left"
             >
-              <span className="min-w-0 break-words uppercase tracking-widest">
+              <span className="min-w-0 break-words text-[15px] font-medium">
                 {m.name || "(unnamed)"}
               </span>
-              <span className="shrink-0 text-xs uppercase tracking-widest opacity-70">
+              <span className="shrink-0 text-[12px] uppercase tracking-widest text-[var(--m-text-55)]">
                 {m.role === "pc" ? "you" : (WHERE[m.standing] ?? m.standing)}
               </span>
             </button>
           ))}
         </div>
 
-        <button
-          type="button"
-          onClick={onClose}
-          className="min-h-11 w-full border-2 border-ink px-3 uppercase tracking-widest opacity-70 active:bg-ink active:text-paper active:opacity-100"
-        >
+        <button type="button" onClick={onClose} className={`w-full ${pillOutline}`}>
           Cancel
         </button>
       </div>

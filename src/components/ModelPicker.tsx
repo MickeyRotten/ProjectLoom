@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Field, TextField } from "./fields";
+import { fieldLabel, filledInput } from "./material";
 import type { OpenRouterModel } from "../lib/openrouter";
 
 /**
@@ -25,6 +26,7 @@ export function ModelPicker({
   loading,
   error,
   hint,
+  material = false,
 }: {
   label: string;
   value: string;
@@ -33,6 +35,8 @@ export function ModelPicker({
   loading: boolean;
   error: string | null;
   hint?: string;
+  /** Material-redesign styling (Narrator → Model) — see `KeyField`. */
+  material?: boolean;
 }) {
   const [filter, setFilter] = useState("");
   const [freeOnly, setFreeOnly] = useState(false);
@@ -47,6 +51,14 @@ export function ModelPicker({
   }, [filter, freeOnly, models]);
 
   if (loading) {
+    if (material) {
+      return (
+        <div className="space-y-1.5">
+          <span className={fieldLabel}>{label}</span>
+          <div className={`${filledInput} text-[var(--m-text-55)]`}>Loading models…</div>
+        </div>
+      );
+    }
     return (
       <Field label={label}>
         <div className="w-full border-2 border-ink bg-paper p-2 opacity-60">Loading models…</div>
@@ -65,6 +77,47 @@ export function ModelPicker({
 
   const inList = matches.some((m) => m.id === value);
   const freeCount = models.filter((m) => m.free).length;
+
+  if (material) {
+    return (
+      <div className="space-y-1.5">
+        <span className={fieldLabel}>{label}</span>
+        {models.length > 8 && (
+          <input
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder={`filter ${models.length} models…`}
+            aria-label={`Filter ${label} list`}
+            className={filledInput}
+          />
+        )}
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          size={1}
+          aria-label={label}
+          className={filledInput}
+        >
+          {!inList && value && <option value={value}>{value} (current)</option>}
+          {matches.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.free ? `${m.name} — free` : m.name}
+            </option>
+          ))}
+        </select>
+        <label className="flex min-h-9 items-center gap-2 pt-0.5 text-[13px]">
+          <input
+            type="checkbox"
+            checked={freeOnly}
+            onChange={(e) => setFreeOnly(e.target.checked)}
+            className="h-4 w-4 shrink-0 accent-ink"
+          />
+          <span>Free models only ({freeCount})</span>
+        </label>
+        {hint && <p className="text-[12.5px] leading-relaxed text-[var(--m-text-55)]">{hint}</p>}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-1">

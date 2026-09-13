@@ -1,6 +1,7 @@
 import { useStore } from "../store";
 import { MenuLink, SubMenuScreen, type SubMenuSection } from "./SubMenuScreen";
-import { Field, SegmentedRow, ToggleRow, btnSmall } from "./fields";
+import { Field, ToggleRow, btnSmall } from "./fields";
+import { Chip, fieldLabel, filledInput } from "./material";
 import { KeyField } from "./KeyField";
 import { ModelPicker } from "./ModelPicker";
 import { splitModels, useModelCatalog } from "./useModelCatalog";
@@ -213,12 +214,13 @@ function ModelSection() {
   const { text } = splitModels(models);
 
   return (
-    <>
+    <div className="space-y-6">
       <KeyField
         label="OpenRouter API Key"
         value={settings.openRouterKey}
         onChange={(v) => update({ openRouterKey: v })}
         showSignupLink
+        material
       />
 
       <ModelPicker
@@ -228,6 +230,7 @@ function ModelSection() {
         models={text}
         loading={loading}
         error={error}
+        material
       />
 
       <ModelPicker
@@ -237,33 +240,36 @@ function ModelSection() {
         models={text}
         loading={loading}
         error={error}
-      />
-      <p className="text-xs opacity-70">
-        Runs the Verify New Characters &amp; Items check and the Track World
-        Coordinates refinement (Features → Play) — both short, structured
-        questions, not narration, so a cheap or free model is plenty. Blank
-        falls back to the Text Model above.
-      </p>
-
-      <SegmentedRow
-        label="Reasoning"
-        value={settings.reasoningLevel}
-        options={REASONING_OPTIONS}
-        onChange={(v) => update({ reasoningLevel: v })}
-        note={
-          <>
-            <p className="text-xs opacity-70">{REASONING_NOTES[settings.reasoningLevel]}</p>
-            <p className="text-xs opacity-70">
-              How hard the text model thinks before it writes. Only reasoning models do
-              anything with this. Thinking is billed like any other output and counts
-              against the Beat Length Limit below, so a tight cap plus a high level can
-              cut a beat off mid-write.
-            </p>
-          </>
-        }
+        material
+        hint="Runs the Verify New Characters & Items check and the Track World Coordinates refinement (Features → Play) — both short, structured questions, not narration, so a cheap or free model is plenty. Blank falls back to the Text Model above."
       />
 
-      <Field label={`Temperature — ${settings.temperature.toFixed(2)}`}>
+      <div className="space-y-2">
+        <span className={fieldLabel}>Reasoning</span>
+        <div className="flex flex-wrap gap-2">
+          {REASONING_OPTIONS.map((opt) => (
+            <Chip
+              key={opt.value}
+              selected={settings.reasoningLevel === opt.value}
+              onClick={() => update({ reasoningLevel: opt.value })}
+            >
+              {opt.label}
+            </Chip>
+          ))}
+        </div>
+        <p className="text-[12.5px] leading-relaxed text-[var(--m-text-55)]">
+          {REASONING_NOTES[settings.reasoningLevel]}
+        </p>
+        <p className="text-[12.5px] leading-relaxed text-[var(--m-text-55)]">
+          How hard the text model thinks before it writes. Only reasoning models do
+          anything with this. Thinking is billed like any other output and counts
+          against the Beat Length Limit below, so a tight cap plus a high level can
+          cut a beat off mid-write.
+        </p>
+      </div>
+
+      <div className="space-y-1.5">
+        <span className={fieldLabel}>Temperature — {settings.temperature.toFixed(2)}</span>
         <input
           type="range"
           min={0}
@@ -273,9 +279,10 @@ function ModelSection() {
           onChange={(e) => update({ temperature: Number(e.target.value) })}
           className="w-full accent-ink"
         />
-      </Field>
+      </div>
 
-      <Field label="Beat Length Limit">
+      <div className="space-y-1.5">
+        <span className={fieldLabel}>Beat Length Limit</span>
         <input
           type="number"
           inputMode="numeric"
@@ -284,15 +291,15 @@ function ModelSection() {
           step={100}
           value={settings.maxTokens}
           onChange={(e) => update({ maxTokens: clampMaxTokens(e.target.valueAsNumber) })}
-          className="w-full border-2 border-ink bg-paper p-2 focus:outline-none"
+          className={filledInput}
         />
-        <p className="text-xs opacity-70">
+        <p className="text-[12.5px] leading-relaxed text-[var(--m-text-55)]">
           Hard cap on one beat, in tokens. 0 removes the cap and lets the model run as
           long as it likes. Too low and the machine block at the end of a beat gets cut
           off mid-write.
         </p>
-      </Field>
-    </>
+      </div>
+    </div>
   );
 }
 

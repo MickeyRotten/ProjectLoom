@@ -25,7 +25,7 @@ export function FeatureOffNotice({
   const on = useStore((s) => s.settings.features[feature]);
   if (on) return null;
   return (
-    <p className="border-2 border-ink p-3 text-xs uppercase tracking-widest opacity-70">
+    <p className="rounded-[10px] bg-[var(--m-surface)] p-3 text-xs uppercase tracking-widest text-[var(--m-text-70)]">
       {children} <MenuLink screen="features">Features</MenuLink>.
     </p>
   );

@@ -3,6 +3,7 @@ import { useStore } from "../store";
 import { Options } from "./Options";
 import { Composer } from "./Composer";
 import { TurnControls } from "./TurnControls";
+import { pillOutline, pillSolid, filledTextarea, card } from "./material";
 import { segmentDialogue } from "../lib/spotlight";
 import { parseInline } from "../lib/markdown";
 import { collectEntityNames, highlightEntities, highlightWithinQuote } from "../lib/highlight";
@@ -185,7 +186,7 @@ export function ChatView() {
                 <button
                   type="button"
                   onClick={() => setEditing({ id: m.id, role: "player", draft: m.content })}
-                  className="min-h-11 w-full border-2 border-ink text-xs uppercase tracking-widest opacity-70 active:bg-ink active:text-paper active:opacity-100"
+                  className={pillOutline}
                 >
                   ✎ Edit
                 </button>
@@ -217,7 +218,7 @@ export function ChatView() {
             <button
               type="button"
               onClick={() => setActive(lastNarratorId)}
-              className="min-h-11 w-full border-2 border-dashed border-ink text-xs uppercase tracking-widest opacity-50 active:bg-ink active:text-paper active:opacity-100"
+              className="min-h-11 w-full rounded-[10px] border border-dashed border-[var(--m-outline)] text-xs uppercase tracking-widest text-[var(--m-text-55)]"
             >
               ⋯ Turn options
             </button>
@@ -227,17 +228,13 @@ export function ChatView() {
         {!streaming && <Options />}
 
         {error && (
-          <div className="space-y-2 border-2 border-ink p-2">
+          <div className={`space-y-2 ${card}`}>
             {failedInput && (
-              <p className="uppercase tracking-wide opacity-80">&gt; {failedInput}</p>
+              <p className="text-[var(--m-text-70)]">&gt; {failedInput}</p>
             )}
-            <p className="uppercase tracking-widest">! {error}</p>
+            <p className="font-semibold">! {error}</p>
             {failedInput && (
-              <button
-                type="button"
-                onClick={retryTurn}
-                className="min-h-11 w-full border-2 border-ink uppercase tracking-widest active:bg-ink active:text-paper"
-              >
+              <button type="button" onClick={retryTurn} className={`w-full ${pillSolid}`}>
                 ↻ Retry
               </button>
             )}
@@ -245,7 +242,7 @@ export function ChatView() {
               <button
                 type="button"
                 onClick={() => setScreen("narrator", "model")}
-                className="min-h-11 w-full border-2 border-ink uppercase tracking-widest active:bg-ink active:text-paper"
+                className={`w-full ${pillOutline}`}
               >
                 ☰ Add a key
               </button>
@@ -270,7 +267,7 @@ export function ChatView() {
         <button
           type="button"
           onClick={() => jumpToLatest()}
-          className="absolute bottom-2 right-3 z-10 border-2 border-ink bg-paper px-3 py-1 text-xs uppercase tracking-widest active:bg-ink active:text-paper"
+          className={`absolute bottom-2 right-3 z-10 ${pillSolid}`}
         >
           ↓ Latest
         </button>
@@ -291,10 +288,10 @@ function SceneMark({ msg, prev }: { msg: Message; prev?: Message }) {
   if (!movedTo) return null;
 
   return (
-    <div className="flex items-center gap-2 pt-2 text-xs uppercase tracking-widest opacity-60">
-      <span className="h-0 flex-1 border-t-2 border-ink" />
+    <div className="flex items-center gap-2 pt-2 text-xs uppercase tracking-widest text-[var(--m-text-55)]">
+      <span className="h-0 flex-1 border-t border-[var(--m-divider)]" />
       <span>{movedTo}</span>
-      <span className="h-0 flex-1 border-t-2 border-ink" />
+      <span className="h-0 flex-1 border-t border-[var(--m-divider)]" />
     </div>
   );
 }
@@ -320,7 +317,7 @@ function Toasts({ msg }: { msg: Message }) {
     <div className="flex flex-wrap gap-1">
       {msg.outcome && (
         <span
-          className="border-2 border-ink bg-ink px-2 py-0.5 text-xs uppercase tracking-widest text-paper"
+          className="rounded-full bg-ink px-2.5 py-0.5 text-xs uppercase tracking-widest text-paper"
           title={msg.roll ? `${modifierNote(msg.roll)} — ${scale}` : scale}
         >
           ◆ {OUTCOME_LABEL[msg.outcome]}
@@ -330,7 +327,7 @@ function Toasts({ msg }: { msg: Message }) {
       {toasts.map((t, i) => (
         <span
           key={i}
-          className="border border-ink px-2 py-0.5 text-xs uppercase tracking-widest opacity-80"
+          className="rounded-full border border-[var(--m-outline-soft)] px-2.5 py-0.5 text-xs uppercase tracking-widest text-[var(--m-text-70)]"
         >
           ◆ {t}
         </span>
@@ -357,21 +354,13 @@ function Editor({
         onChange={(e) => onChange(e.target.value)}
         rows={4}
         autoFocus
-        className="w-full resize-y border-2 border-ink bg-paper p-2 text-base focus:outline-none"
+        className={filledTextarea}
       />
-      <div className="flex gap-2 text-xs uppercase tracking-widest">
-        <button
-          type="button"
-          onClick={onSave}
-          className="min-h-11 flex-1 border-2 border-ink active:bg-ink active:text-paper"
-        >
+      <div className="flex gap-2">
+        <button type="button" onClick={onSave} className={`flex-1 ${pillSolid}`}>
           Save
         </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="min-h-11 flex-1 border-2 border-ink opacity-70 active:bg-ink active:text-paper active:opacity-100"
-        >
+        <button type="button" onClick={onCancel} className={`flex-1 ${pillOutline}`}>
           Cancel
         </button>
       </div>
@@ -397,7 +386,7 @@ function Beat({
     // monospace is the hardest thing on the page to read. The `>` and the rule
     // already mark it as the player's.
     return (
-      <p className="whitespace-pre-wrap border-l-2 border-ink pl-2 leading-[1.4] tracking-wide opacity-80">
+      <p className="whitespace-pre-wrap border-l-2 border-[var(--m-outline-soft)] pl-2.5 italic leading-[1.4] tracking-wide text-[var(--m-text-70)]">
         &gt; {text}
       </p>
     );

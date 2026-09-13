@@ -1,6 +1,6 @@
 import { useStore } from "../store";
 import { allFeatures, FEATURE_KEYS, type FeatureKey } from "../lib/features";
-import { Section, ToggleRow, btn } from "./fields";
+import { Switch, pillOutline, sectionHeading } from "./material";
 
 /**
  * Menu → Features: one switch per subsystem the narrator drives.
@@ -136,13 +136,12 @@ function FeatureToggle({ spec }: { spec: FeatureSpec }) {
   const on = useStore((s) => s.settings.features[spec.key]);
   const setFeature = useStore((s) => s.setFeature);
   return (
-    <div className="space-y-1">
-      <ToggleRow
-        label={spec.label}
-        state={on ? "ON" : "OFF"}
-        onClick={() => setFeature(spec.key, !on)}
-      />
-      <p className="text-xs opacity-70">{spec.note}</p>
+    <div className="border-b border-[var(--m-divider)] py-3 last:border-none">
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-[15px]">{spec.label}</span>
+        <Switch on={on} onClick={() => setFeature(spec.key, !on)} ariaLabel={spec.label} />
+      </div>
+      <p className="mt-1 text-[12.5px] leading-relaxed text-[var(--m-text-55)]">{spec.note}</p>
     </div>
   );
 }
@@ -158,13 +157,12 @@ function ImageGenerationToggle() {
   const on = useStore((s) => s.settings.imagesEnabled);
   const update = useStore((s) => s.updateSettings);
   return (
-    <div className="space-y-1">
-      <ToggleRow
-        label="Image Generation"
-        state={on ? "ON" : "OFF"}
-        onClick={() => update({ imagesEnabled: !on })}
-      />
-      <p className="text-xs opacity-70">
+    <div className="py-3">
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-[15px]">Image Generation</span>
+        <Switch on={on} onClick={() => update({ imagesEnabled: !on })} ariaLabel="Image Generation" />
+      </div>
+      <p className="mt-1 text-[12.5px] leading-relaxed text-[var(--m-text-55)]">
         Off: nothing is sent to an image model — no portraits are drawn, and the
         regenerate button is hidden. Pictures you already have still show, and you can
         still upload your own art on a character's sheet. Model, prompts and stored art
@@ -184,7 +182,7 @@ export function FeaturesSection() {
 
   return (
     <>
-      <p className="border-2 border-ink p-3 text-sm">
+      <p className="pb-3.5 text-[13px] leading-relaxed text-[var(--m-text-55)]">
         Each switch is one thing the narrator does. Off means the narrator is neither
         shown that part of the game nor allowed to write it — nothing is deleted, and
         every screen stays yours to edit by hand. With all of them off the narrator has
@@ -192,18 +190,18 @@ export function FeaturesSection() {
         sheet, and writes nothing but prose.
       </p>
 
-      <div className="flex gap-2">
-        <button type="button" onClick={() => setAll(true)} disabled={allOn} className={btn}>
+      <div className="flex gap-2.5">
+        <button type="button" onClick={() => setAll(true)} disabled={allOn} className={`flex-1 ${pillOutline}`}>
           All On
         </button>
-        <button type="button" onClick={() => setAll(false)} disabled={allOff} className={btn}>
+        <button type="button" onClick={() => setAll(false)} disabled={allOff} className={`flex-1 ${pillOutline}`}>
           All Off
         </button>
       </div>
 
       {GROUPS.map((group) => (
-        <div key={group} className="space-y-3">
-          <Section label={GROUP_LABELS[group]} />
+        <div key={group}>
+          <p className={sectionHeading}>{GROUP_LABELS[group]}</p>
           {FEATURE_KEYS.filter((k) => FEATURES[k].group === group).map((k) => (
             <FeatureToggle key={k} spec={FEATURES[k]} />
           ))}
@@ -213,8 +211,8 @@ export function FeaturesSection() {
       {/* Not a FeatureKey (see ImageGenerationToggle) — its own group rather
           than folded into one of the four above, which are all narrator
           subsystems and this isn't. */}
-      <div className="space-y-3">
-        <Section label="Media" />
+      <div>
+        <p className={sectionHeading}>Media</p>
         <ImageGenerationToggle />
       </div>
     </>
