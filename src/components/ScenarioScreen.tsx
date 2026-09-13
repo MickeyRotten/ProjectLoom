@@ -105,8 +105,12 @@ export function ScenarioScreen() {
             aria-label={coverUrl ? "Change cover image" : "Add cover image"}
             disabled={coverPending}
             onClick={() => coverFile.current?.click()}
-            className={`absolute right-2 top-2 z-10 flex h-9 w-9 items-center justify-center rounded-full disabled:opacity-40 ${
-              coverUrl ? "text-paper" : "text-ink"
+            className={`absolute right-2 top-2 z-10 flex h-9 w-9 items-center justify-center rounded-full text-ink disabled:opacity-40 ${
+              // Ink always contrasts against paper by construction; this slot
+              // has no scrim at all (unlike the Play banner), so a raw photo
+              // sits directly under the button — the paper-tinted disc is
+              // what actually guarantees legibility here, not the text color.
+              coverUrl ? "bg-[color-mix(in_srgb,var(--paper)_55%,transparent)]" : ""
             }`}
           >
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">

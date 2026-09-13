@@ -31,10 +31,20 @@ export function Header() {
   const uploadCover = useStore((s) => s.uploadCover);
   const coverFile = useRef<HTMLInputElement>(null);
 
-  // The mock-up's paper-on-photo chrome only reads once there's a photo —
-  // with no cover set yet the banner is just the flat panel, and the status
-  // line/gear need to fall back to ordinary ink-on-paper to stay legible.
-  const chrome = coverUrl ? "text-paper" : "text-ink";
+  // Every layer under this chrome trends toward --paper — the flat panel IS
+  // --m-surface (mostly paper), and the photo's gradient fades TO --paper —
+  // so --ink is what's guaranteed to read, in EITHER direction of a player's
+  // ink/paper pair. (A previous version picked --paper here whenever a photo
+  // was set, reasoning "light text on a dark photo" from the mock-up's own
+  // dark-only preview — which is backwards the moment paper itself is the
+  // dark one: paper-on-paper is how the chrome went unreadable on a dark
+  // theme.) A small paper-tinted disc backs the pencil/gear specifically
+  // because THEY sit near the top of the photo, past where the scrim has
+  // faded in — ink alone isn't guaranteed to read against a raw, uncontrolled
+  // photo the way it is against the scrim underneath the status row.
+  const iconBacking = coverUrl
+    ? "bg-[color-mix(in_srgb,var(--paper)_55%,transparent)]"
+    : "";
 
   return (
     <div className="relative isolate h-[190px] shrink-0 overflow-hidden bg-[var(--m-surface)]">
@@ -80,7 +90,7 @@ export function Header() {
         aria-label={coverUrl ? "Change cover image" : "Add cover image"}
         disabled={coverPending}
         onClick={() => coverFile.current?.click()}
-        className={`absolute right-1.5 top-1.5 z-20 flex h-9 w-9 items-center justify-center rounded-full disabled:opacity-40 ${chrome}`}
+        className={`absolute right-1.5 top-1.5 z-20 flex h-9 w-9 items-center justify-center rounded-full text-ink disabled:opacity-40 ${iconBacking}`}
       >
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
           <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19 3 20l1-4z" />
@@ -90,7 +100,7 @@ export function Header() {
       <div className="absolute inset-x-4 bottom-2.5 z-20 flex items-center justify-between gap-2">
         <span
           className={`min-w-0 truncate text-[11px] uppercase tracking-[0.14em] ${
-            coverUrl ? "text-[color-mix(in_srgb,var(--paper)_90%,transparent)]" : "text-[var(--m-text-70)]"
+            coverUrl ? "text-ink" : "text-[var(--m-text-70)]"
           }`}
         >
           {pc?.name ?? "—"} &middot; Day {day} &middot; Turn {turnNumber}
@@ -99,7 +109,7 @@ export function Header() {
           {weather && (
             <span
               className={`text-[11px] uppercase tracking-[0.14em] ${
-                coverUrl ? "text-[color-mix(in_srgb,var(--paper)_55%,transparent)]" : "text-[var(--m-text-40)]"
+                coverUrl ? "text-[color-mix(in_srgb,var(--ink)_65%,transparent)]" : "text-[var(--m-text-40)]"
               }`}
             >
               {weather}
@@ -110,7 +120,7 @@ export function Header() {
             aria-label="Menu"
             disabled={streaming}
             onClick={() => setScreen("menu")}
-            className={`flex h-9 w-9 items-center justify-center rounded-full disabled:opacity-40 ${chrome}`}
+            className={`flex h-9 w-9 items-center justify-center rounded-full text-ink disabled:opacity-40 ${iconBacking}`}
           >
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
               <path d="M10.3 2.5h3.4l.5 2.4a7.6 7.6 0 0 1 1.9 1.1l2.3-.8 1.7 3-1.8 1.6a7.6 7.6 0 0 1 0 2.2l1.8 1.6-1.7 3-2.3-.8a7.6 7.6 0 0 1-1.9 1.1l-.5 2.4h-3.4l-.5-2.4a7.6 7.6 0 0 1-1.9-1.1l-2.3.8-1.7-3 1.8-1.6a7.6 7.6 0 0 1 0-2.2L2.9 8.2l1.7-3 2.3.8a7.6 7.6 0 0 1 1.9-1.1z" />
