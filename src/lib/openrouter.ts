@@ -17,6 +17,14 @@ import { safeErrorText } from "./http";
 
 const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
 const MODELS_ENDPOINT = "https://openrouter.ai/api/v1/models";
+/**
+ * Dedicated catalog for image-generation models (Flux, Recraft, gpt-image, …).
+ * `/api/v1/models` only lists chat models — a model that outputs image via
+ * `/chat/completions` (gemini-*-image, gpt-*-image) shows up there, but a
+ * generation-only model reachable through OpenRouter's images API does not,
+ * so the Image Model picker was missing most of the catalog without this.
+ */
+const IMAGE_MODELS_ENDPOINT = "https://openrouter.ai/api/v1/images/models";
 const KEY_ENDPOINT = "https://openrouter.ai/api/v1/key";
 
 /** Where a player goes to make a key — linked from Setup and Narrator → Model. */
@@ -90,13 +98,25 @@ function priced(v: unknown): boolean {
   return Number.isFinite(n) ? n > 0 : true;
 }
 
-/**
- * Fetch the OpenRouter model catalog (public endpoint — no key required). Used
- * to populate the model dropdowns. Returns id/name/output-modalities,
- * sorted by id. Throws OpenRouterError on a non-OK response.
- */
-export async function fetchModels(signal?: AbortSignal): Promise<OpenRouterModel[]> {
-  const res = await fetch(MODELS_ENDPOINT, { signal });
+function parseModel(raw: unknown): OpenRouterModel | null {
+  if (!raw || typeof raw !== "object") return null;
+  const m = raw as Record<string, unknown>;
+  const id = typeof m.id === "string" ? m.id : "";
+  if (!id) return null;
+  const arch = (m.architecture as Record<string, unknown> | undefined) ?? undefined;
+  const pricing = (m.pricing as Record<string, unknown> | undefined) ?? undefined;
+  return {
+    id,
+    name: typeof m.name === "string" ? m.name : id,
+    outputModalities: asStringArray(arch?.output_modalities),
+    // The images catalog carries no `pricing` block at all — missing pricing
+    // already reads as priced (see `priced`), so that degrades correctly.
+    free: !!pricing && !priced(pricing.prompt) && !priced(pricing.completion),
+  };
+}
+
+async function fetchModelList(url: string, signal?: AbortSignal): Promise<OpenRouterModel[]> {
+  const res = await fetch(url, { signal });
   if (!res.ok) {
     throw new OpenRouterError(`OpenRouter ${res.status} ${res.statusText}`, {
       status: res.status,
@@ -107,24 +127,33 @@ export async function fetchModels(signal?: AbortSignal): Promise<OpenRouterModel
     json && typeof json === "object" && Array.isArray((json as { data?: unknown }).data)
       ? ((json as { data: unknown[] }).data)
       : [];
-
   const models: OpenRouterModel[] = [];
   for (const raw of data) {
-    if (!raw || typeof raw !== "object") continue;
-    const m = raw as Record<string, unknown>;
-    const id = typeof m.id === "string" ? m.id : "";
-    if (!id) continue;
-    const arch = (m.architecture as Record<string, unknown> | undefined) ?? undefined;
-    const pricing = (m.pricing as Record<string, unknown> | undefined) ?? undefined;
-    models.push({
-      id,
-      name: typeof m.name === "string" ? m.name : id,
-      outputModalities: asStringArray(arch?.output_modalities),
-      free: !!pricing && !priced(pricing.prompt) && !priced(pricing.completion),
-    });
+    const model = parseModel(raw);
+    if (model) models.push(model);
   }
-  models.sort((a, b) => a.id.localeCompare(b.id));
   return models;
+}
+
+/**
+ * Fetch the OpenRouter model catalog (public endpoints — no key required).
+ * Merges `/models` (chat models, some of which also output image) with the
+ * dedicated `/images/models` catalog (generation-only models), since between
+ * them they cover every model the Text and Image pickers need. The image
+ * catalog is a newer, narrower endpoint — its failure doesn't take down the
+ * chat catalog, it just costs the image-only entries. Returns id/name/
+ * output-modalities, deduped by id (chat catalog wins) and sorted by id.
+ * Throws OpenRouterError on a non-OK response from `/models`.
+ */
+export async function fetchModels(signal?: AbortSignal): Promise<OpenRouterModel[]> {
+  const [chat, images] = await Promise.all([
+    fetchModelList(MODELS_ENDPOINT, signal),
+    fetchModelList(IMAGE_MODELS_ENDPOINT, signal).catch(() => [] as OpenRouterModel[]),
+  ]);
+  const byId = new Map<string, OpenRouterModel>();
+  for (const m of chat) byId.set(m.id, m);
+  for (const m of images) if (!byId.has(m.id)) byId.set(m.id, m);
+  return [...byId.values()].sort((a, b) => a.id.localeCompare(b.id));
 }
 
 export interface StreamOptions {
