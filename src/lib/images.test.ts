@@ -268,51 +268,43 @@ describe("prompt builders", () => {
 describe("extractImageDataUrl", () => {
   const dataUrl = "data:image/png;base64,AAAA";
 
-  it("reads images[].image_url.url", () => {
-    const json = { choices: [{ message: { images: [{ image_url: { url: dataUrl } }] } }] };
+  it("reads data[0].b64_json paired with media_type", () => {
+    const json = { data: [{ b64_json: "AAAA", media_type: "image/png" }] };
     expect(extractImageDataUrl(json)).toBe(dataUrl);
   });
 
-  it("reads a bare images[].url", () => {
-    const json = { choices: [{ message: { images: [{ url: dataUrl }] } }] };
+  it("falls back to image/png when media_type is missing", () => {
+    const json = { data: [{ b64_json: "AAAA" }] };
     expect(extractImageDataUrl(json)).toBe(dataUrl);
   });
 
-  it("falls back to a data URL in message.content", () => {
-    const json = { choices: [{ message: { content: dataUrl } }] };
-    expect(extractImageDataUrl(json)).toBe(dataUrl);
-  });
-
-  it("skips non-image entries and returns the first data URL", () => {
+  it("takes the first entry when several come back", () => {
     const json = {
-      choices: [{ message: { images: [{ image_url: { url: "https://x/y.png" } }, { image_url: { url: dataUrl } }] } }],
+      data: [
+        { b64_json: "AAAA", media_type: "image/png" },
+        { b64_json: "BBBB", media_type: "image/jpeg" },
+      ],
     };
     expect(extractImageDataUrl(json)).toBe(dataUrl);
   });
 
   it("returns null when there is no image", () => {
-    expect(extractImageDataUrl({ choices: [{ message: { content: "just text" } }] })).toBeNull();
+    expect(extractImageDataUrl({ data: [{}] })).toBeNull();
+    expect(extractImageDataUrl({ data: [] })).toBeNull();
     expect(extractImageDataUrl({})).toBeNull();
     expect(extractImageDataUrl(null)).toBeNull();
   });
 });
 
 describe("extractMessageText", () => {
-  it("returns the assistant's words when it answered in text", () => {
-    const json = { choices: [{ message: { content: "  I can't draw real people.  " } }] };
+  it("returns an error.message that rides along a 200", () => {
+    const json = { error: { message: "  I can't draw real people.  " } };
     expect(extractMessageText(json)).toBe("I can't draw real people.");
   });
 
-  it("joins a parts-array reply", () => {
-    const json = {
-      choices: [{ message: { content: [{ text: "policy:" }, { text: "no." }, { foo: 1 }] } }],
-    };
-    expect(extractMessageText(json)).toBe("policy: no.");
-  });
-
-  it("is empty when the content IS the image, or there is none", () => {
-    expect(extractMessageText({ choices: [{ message: { content: "data:image/png;base64,AA" } }] })).toBe("");
-    expect(extractMessageText({ choices: [] })).toBe("");
+  it("is empty when there is no error", () => {
+    expect(extractMessageText({ data: [{ b64_json: "AAAA" }] })).toBe("");
+    expect(extractMessageText({})).toBe("");
     expect(extractMessageText(null)).toBe("");
   });
 });
@@ -422,10 +414,7 @@ describe("generateImage dispatch", () => {
   const base = { openRouterKey: "sk-test", imageModelId: "m" } as Settings;
   const orReply = {
     ok: true,
-    json: () =>
-      Promise.resolve({
-        choices: [{ message: { images: [{ image_url: { url: "data:image/png;base64,AAAA" } }] } }],
-      }),
+    json: () => Promise.resolve({ data: [{ b64_json: "AAAA", media_type: "image/png" }] }),
   };
 
   afterEach(() => vi.unstubAllGlobals());
@@ -519,10 +508,7 @@ describe("generateImage request shapes", () => {
   } as Settings;
   const reply = {
     ok: true,
-    json: () =>
-      Promise.resolve({
-        choices: [{ message: { images: [{ image_url: { url: "data:image/png;base64,AAAA" } }] } }],
-      }),
+    json: () => Promise.resolve({ data: [{ b64_json: "AAAA", media_type: "image/png" }] }),
   };
 
   afterEach(() => {
@@ -530,14 +516,16 @@ describe("generateImage request shapes", () => {
     vi.useRealTimers();
   });
 
-  it("text-only generation sends a plain string content and no image_config", async () => {
+  it("sends a bare prompt and no input_references when there are no reference images", async () => {
     const fetchMock = vi.fn().mockResolvedValue(reply);
     vi.stubGlobal("fetch", fetchMock);
     await generateImage({ settings, prompt: "a tower" });
+    expect(fetchMock.mock.calls[0][0]).toBe("https://openrouter.ai/api/v1/images");
     const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
-    expect(body.messages[0].content).toBe("a tower");
-    expect(body.image_config).toBeUndefined();
-    expect(body.modalities).toEqual(["image", "text"]);
+    expect(body.prompt).toBe("a tower");
+    expect(body.model).toBe("google/gemini-2.5-flash-image");
+    expect(body.input_references).toBeUndefined();
+    expect(body.aspect_ratio).toBeUndefined();
   });
 
   it("authorizes with the dedicated image key when set", async () => {
@@ -551,7 +539,7 @@ describe("generateImage request shapes", () => {
     expect(headers.Authorization).toBe("Bearer sk-img");
   });
 
-  it("sends image_url parts before the text part, in order", async () => {
+  it("sends reference images as input_references, in order", async () => {
     const fetchMock = vi.fn().mockResolvedValue(reply);
     vi.stubGlobal("fetch", fetchMock);
     await generateImage({
@@ -560,20 +548,20 @@ describe("generateImage request shapes", () => {
       images: ["data:image/png;base64,BBBB", "data:image/jpeg;base64,CCCC"],
     });
     const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
-    expect(body.messages[0].content).toEqual([
+    expect(body.prompt).toBe("a portrait");
+    expect(body.input_references).toEqual([
       { type: "image_url", image_url: { url: "data:image/png;base64,BBBB" } },
       { type: "image_url", image_url: { url: "data:image/jpeg;base64,CCCC" } },
-      { type: "text", text: "a portrait" },
     ]);
   });
 
-  it("forwards aspectRatio as image_config.aspect_ratio", async () => {
+  it("forwards aspectRatio as a top-level aspect_ratio", async () => {
     const fetchMock = vi.fn().mockResolvedValue(reply);
     vi.stubGlobal("fetch", fetchMock);
     await generateImage({ settings, prompt: "a portrait", aspectRatio: "2:3" });
     const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
-    expect(body.image_config).toEqual({ aspect_ratio: "2:3" });
-    expect(body.image_size).toBeUndefined();
+    expect(body.aspect_ratio).toBe("2:3");
+    expect(body.image_config).toBeUndefined();
   });
 
   it("retries a 429 with backoff and then succeeds", async () => {
@@ -610,7 +598,7 @@ describe("generateImage request shapes", () => {
   it("soft-retries exactly once when a 200 carries no image", async () => {
     const textOnly = {
       ok: true,
-      json: () => Promise.resolve({ choices: [{ message: { content: "sorry, words only" } }] }),
+      json: () => Promise.resolve({ error: { message: "sorry, words only" } }),
     };
     const fetchMock = vi.fn().mockResolvedValueOnce(textOnly).mockResolvedValueOnce(reply);
     vi.stubGlobal("fetch", fetchMock);
@@ -627,8 +615,8 @@ describe("generateImage request shapes", () => {
     expect(alwaysText).toHaveBeenCalledTimes(2);
   });
 
-  it("falls back to a plain message when the text-only reply is empty", async () => {
-    const empty = { ok: true, json: () => Promise.resolve({ choices: [{ message: {} }] }) };
+  it("falls back to a plain message when there is no explanation at all", async () => {
+    const empty = { ok: true, json: () => Promise.resolve({}) };
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(empty));
     await expect(generateImage({ settings, prompt: "a tower" })).rejects.toThrow(
       "No image returned",

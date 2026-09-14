@@ -29,15 +29,20 @@ import { safeErrorText } from "./http";
  * gone: nothing quantizes and nothing edits, so what the model drew (bounded to
  * `MAX_IMAGE_SIDE`) is simply what is stored and what is shown.
  *
- * OpenRouter access shape (verified against their docs at build time): a normal
- * chat-completions POST with `modalities: ["image","text"]`; the generated
- * image comes back as a base64 data URL under
- * `choices[0].message.images[].image_url.url`. Kept mostly pure (key + prompt
- * builders, response extraction, data-URL→Blob) so it's testable; only
+ * OpenRouter access shape (verified against their docs at build time): a POST
+ * to the dedicated `/api/v1/images` endpoint — `model` + `prompt` at the top
+ * level, reference images as `input_references`, `aspect_ratio` a sibling
+ * field. One endpoint for every image model on the catalog, generation-only
+ * (Flux, Recraft, gpt-image) and dual-modality chat models (Gemini/gpt-*-image)
+ * alike — `/chat/completions` with a `modalities` field only ever covered the
+ * latter, and 404s ("no endpoints found that support the requested output
+ * modalities") on the former. The generated image comes back as base64 under
+ * `data[0].b64_json`, paired with `data[0].media_type`. Kept mostly pure (key +
+ * prompt builders, response extraction, data-URL→Blob) so it's testable; only
  * `generateImage` touches the network.
  */
 
-const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
+const ENDPOINT = "https://openrouter.ai/api/v1/images";
 
 export { ImageError } from "./imageError";
 export type { GenerateImageOptions } from "../types";
@@ -251,59 +256,30 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 }
 
 /**
- * Pull the first base64 image data URL out of an OpenRouter chat-completions
- * response. Tolerant of the two shapes seen in the wild: an `images[]` array of
- * `{ image_url: { url } }` (also accepts a bare `{ url }`), or a data URL placed
- * directly in `message.content`. Returns null if none is present.
+ * Pull the first base64 image data URL out of an `/api/v1/images` response —
+ * `data[0].b64_json`, paired with `data[0].media_type` (falls back to PNG when
+ * that's missing). Returns null if there is no image in the reply.
  */
 export function extractImageDataUrl(json: unknown): string | null {
   if (!isRecord(json)) return null;
-  const choices = json.choices;
-  const first = Array.isArray(choices) ? choices[0] : undefined;
-  if (!isRecord(first)) return null;
-  const message = first.message;
-  if (!isRecord(message)) return null;
-
-  const images = message.images;
-  if (Array.isArray(images)) {
-    for (const img of images) {
-      if (!isRecord(img)) continue;
-      const imageUrl = img.image_url;
-      const nested = isRecord(imageUrl) ? imageUrl.url : undefined;
-      const url = typeof nested === "string" ? nested : img.url;
-      if (typeof url === "string" && url.startsWith("data:image")) return url;
-    }
-  }
-
-  const content = message.content;
-  if (typeof content === "string" && content.startsWith("data:image")) return content;
-
-  return null;
+  const data = Array.isArray(json.data) ? json.data[0] : undefined;
+  if (!isRecord(data)) return null;
+  const b64 = data.b64_json;
+  if (typeof b64 !== "string" || !b64) return null;
+  const mediaType = typeof data.media_type === "string" ? data.media_type : "image/png";
+  return `data:${mediaType};base64,${b64}`;
 }
 
 /**
- * The assistant's TEXT reply, when there is one. A model that answers a
- * generation request in words instead of pixels is usually saying why —
- * "I can't create images of real people", a content-policy line, a request for
- * clarification. Throwing that away leaves the player with a bare "image
- * failed" and nothing to change, so failures quote it back.
+ * Whatever explanation rides along with a reply that has no image — a
+ * content-policy refusal is usually surfaced as an `error.message` even on a
+ * 200. Throwing that away leaves the player with a bare "image failed" and
+ * nothing to change, so failures quote it back when there is one.
  */
 export function extractMessageText(json: unknown): string {
   if (!isRecord(json)) return "";
-  const first = Array.isArray(json.choices) ? json.choices[0] : undefined;
-  if (!isRecord(first) || !isRecord(first.message)) return "";
-  const content = first.message.content;
-  if (typeof content === "string") {
-    return content.startsWith("data:image") ? "" : content.trim();
-  }
-  // Some providers answer with the parts array instead of a bare string.
-  if (Array.isArray(content)) {
-    return content
-      .map((part) => (isRecord(part) && typeof part.text === "string" ? part.text : ""))
-      .filter(Boolean)
-      .join(" ")
-      .trim();
-  }
+  const err = json.error;
+  if (isRecord(err) && typeof err.message === "string") return err.message.trim();
   return "";
 }
 
@@ -366,20 +342,14 @@ export async function generateOpenRouterImage(opts: GenerateImageOptions): Promi
     throw new ImageError("No OpenRouter API key set. Add one in Images → Model.");
   }
 
-  const content = images?.length
-    ? [
-        ...images.map((url) => ({ type: "image_url", image_url: { url } })),
-        { type: "text", text: prompt },
-      ]
-    : prompt;
-
   const body = JSON.stringify({
     model: settings.imageModelId,
-    // Both modalities must be present — image-only requests are rejected.
-    modalities: ["image", "text"],
-    messages: [{ role: "user", content }],
-    // No image_size: Lite models output 1K only.
-    ...(aspectRatio ? { image_config: { aspect_ratio: aspectRatio } } : {}),
+    prompt,
+    // No resolution/size: Lite models output 1K only.
+    ...(images?.length
+      ? { input_references: images.map((url) => ({ type: "image_url", image_url: { url } })) }
+      : {}),
+    ...(aspectRatio ? { aspect_ratio: aspectRatio } : {}),
   });
 
   let softRetried = false;
@@ -421,9 +391,7 @@ export async function generateOpenRouterImage(opts: GenerateImageOptions): Promi
       }
       const said = extractMessageText(json);
       throw new ImageError(
-        said
-          ? `The model answered with text instead of an image — ${said.slice(0, 160)}`
-          : "No image returned by the model.",
+        said ? `No image returned — ${said.slice(0, 160)}` : "No image returned by the model.",
       );
     }
     return dataUrlToBlob(dataUrl);

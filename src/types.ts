@@ -612,11 +612,11 @@ export interface GenerateImageOptions {
   prompt: string;
   /**
    * Input images as data URLs — the portrait style references. Sent as
-   * `image_url` parts *before* the text part. OpenRouter only; the ComfyUI
-   * path has no generic place to put them in a player-authored workflow.
+   * `input_references` on OpenRouter; the ComfyUI path has no generic place
+   * to put them in a player-authored workflow.
    */
   images?: string[];
-  /** e.g. "2:3" — `image_config.aspect_ratio` on OpenRouter, the latent shape on ComfyUI. */
+  /** e.g. "2:3" — `aspect_ratio` on OpenRouter, the latent shape on ComfyUI. */
   aspectRatio?: string;
   signal?: AbortSignal;
 }
