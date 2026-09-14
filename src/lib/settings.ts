@@ -24,7 +24,7 @@ import { SETTINGS_DOC } from "./sync";
 import {
   normalizeImageTemplates,
   PROSE_TEMPLATE_ID,
-  type TemplateText,
+  type LegacyTemplateText,
 } from "./imageTemplates";
 
 /**
@@ -62,7 +62,7 @@ interface LegacySettings {
 }
 
 /** The old flat image-prompt fields, keyed the way a template holds them. */
-function legacyTemplateText(stored: LegacySettings): Partial<TemplateText> {
+function legacyTemplateText(stored: LegacySettings): LegacyTemplateText {
   return {
     portraitAction: stored.portraitAction,
     portraitContext: stored.portraitContext,

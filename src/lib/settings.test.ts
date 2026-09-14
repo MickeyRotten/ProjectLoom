@@ -32,8 +32,14 @@ import {
   scrimFrom,
 } from "./settings";
 import { DEFAULT_COMFY, MAX_COMFY_STEPS, MIN_COMFY_SIDE } from "./comfyui";
-import { activeTemplate, builtinTemplates, PROSE_TEMPLATE_ID } from "./imageTemplates";
+import {
+  activeTemplate,
+  builtinTemplates,
+  PORTRAIT_STYLE_BLOCK_ID,
+  PROSE_TEMPLATE_ID,
+} from "./imageTemplates";
 import { FONT_CHOICES } from "../types";
+import type { ImagePromptTextBlock } from "../types";
 
 function settingsWith(reasoningLevel: ReasoningLevel): Settings {
   return { ...defaultSettings(), reasoningLevel };
@@ -310,7 +316,8 @@ describe("loadSettings migrations", () => {
     const s = loadSettings();
     expect(s.imageTemplateId).toBe(PROSE_TEMPLATE_ID);
     const prose = activeTemplate(s);
-    expect(prose.portraitStyle).toBe("My ink style.");
+    const style = prose.blocks.find((b) => b.id === PORTRAIT_STYLE_BLOCK_ID) as ImagePromptTextBlock;
+    expect(style.text).toBe("My ink style.");
     expect(prose.appearanceInstructions).toBe("Three vivid clauses.");
     expect(prose.negativePrompt).toBe("blurry, lowres");
     // The tag dialect arrives alongside, so the migration ADDS a choice rather

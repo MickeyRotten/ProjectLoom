@@ -20,22 +20,45 @@ import {
 } from "./images";
 import { DEFAULT_COMFY } from "./comfyui";
 import { newGame } from "./defaults";
-import type { Character, GameState, ImagePromptTemplate, Settings } from "../types";
+import type { Character, GameState, ImagePromptTemplate, PromptFormat, Settings } from "../types";
 
-/** A template with every field blank — each test fills only what it asserts on. */
-function tpl(overrides: Partial<ImagePromptTemplate> = {}): ImagePromptTemplate {
+/**
+ * A template with every clause blank — each test fills only what it asserts
+ * on. Blocks always run Appearance → Action → Context → Composition → Style,
+ * the shipped default order; `format`/`portraitRefInstruction` pass through.
+ */
+function tpl(
+  overrides: {
+    action?: string;
+    context?: string;
+    composition?: string;
+    style?: string;
+    format?: PromptFormat;
+    portraitRefInstruction?: string;
+  } = {},
+): ImagePromptTemplate {
+  const {
+    action = "",
+    context = "",
+    composition = "",
+    style = "",
+    format = "prose",
+    portraitRefInstruction = "",
+  } = overrides;
   return {
     id: "t",
     name: "Test",
-    format: "prose",
-    portraitAction: "",
-    portraitContext: "",
-    portraitComposition: "",
-    portraitStyle: "",
-    portraitRefInstruction: "",
+    format,
+    blocks: [
+      { id: "appearance", type: "appearance" },
+      { id: "action", type: "text", title: "Portrait Action", text: action },
+      { id: "context", type: "text", title: "Portrait Location/Context", text: context },
+      { id: "composition", type: "text", title: "Portrait Composition", text: composition },
+      { id: "style", type: "text", title: "Portrait Style", text: style },
+    ],
+    portraitRefInstruction,
     negativePrompt: "",
     appearanceInstructions: "",
-    ...overrides,
   };
 }
 
@@ -126,10 +149,10 @@ describe("prompt builders", () => {
       { name: "Navi", species: "sprite" },
       "A flickering mote of light.",
       tpl({
-        portraitAction: "The pose is neutral.",
-        portraitContext: "The background is white.",
-        portraitComposition: "A waist-up portrait.",
-        portraitStyle: "Clean ink illustration.",
+        action: "The pose is neutral.",
+        context: "The background is white.",
+        composition: "A waist-up portrait.",
+        style: "Clean ink illustration.",
       }),
     );
     expect(p).toContain("Name: Navi.");
@@ -150,13 +173,13 @@ describe("prompt builders", () => {
     const withSex = buildPortraitPrompt(
       { name: "Navi", species: "sprite", sex: "female" },
       "A mote.",
-      tpl({ portraitStyle: "Ink." }),
+      tpl({ style: "Ink." }),
     );
     expect(withSex).toContain("Species: sprite. Sex: female.");
     const withoutSex = buildPortraitPrompt(
       { name: "Navi", species: "sprite", sex: "  " },
       "A mote.",
-      tpl({ portraitStyle: "Ink." }),
+      tpl({ style: "Ink." }),
     );
     expect(withoutSex).not.toContain("Sex:");
   });
@@ -165,14 +188,14 @@ describe("prompt builders", () => {
     const p = buildPortraitPrompt(
       { name: "", species: "" },
       "",
-      tpl({ portraitStyle: "style" }),
+      tpl({ style: "style" }),
     );
     expect(p).toBe("style");
   });
 
   it("appends the reference instruction as the final line only when given", () => {
     const member = { name: "Navi", species: "sprite" };
-    const template = tpl({ portraitStyle: "Ink.", portraitRefInstruction: "Match the refs." });
+    const template = tpl({ style: "Ink.", portraitRefInstruction: "Match the refs." });
     const withRef = buildPortraitPrompt(member, "A mote.", template, true);
     expect(withRef.endsWith("Match the refs.")).toBe(true);
     const withoutRef = buildPortraitPrompt(member, "A mote.", template);
@@ -188,7 +211,7 @@ describe("prompt builders", () => {
         customPortraitPrompt: "A neon fox in a trench coat.",
       },
       "A flickering mote.",
-      tpl({ portraitStyle: "1-bit portrait." }),
+      tpl({ style: "1-bit portrait." }),
     );
     expect(p).toBe("A neon fox in a trench coat.\n\n1-bit portrait.");
     expect(p).not.toContain("Name: Navi.");
@@ -204,7 +227,7 @@ describe("prompt builders", () => {
         customPortraitPrompt: "A neon fox.",
       },
       "A mote.",
-      tpl({ portraitStyle: "Ink.", portraitRefInstruction: "Match the refs." }),
+      tpl({ style: "Ink.", portraitRefInstruction: "Match the refs." }),
       true,
     );
     expect(p).toBe("A neon fox.\n\nInk.\n\nMatch the refs.");
@@ -214,7 +237,7 @@ describe("prompt builders", () => {
     const p = buildPortraitPrompt(
       { name: "Navi", species: "sprite", useCustomPortraitPrompt: true, customPortraitPrompt: "  " },
       "A mote.",
-      tpl({ portraitStyle: "style" }),
+      tpl({ style: "style" }),
     );
     expect(p).toContain("Name: Navi.");
   });
@@ -229,9 +252,9 @@ describe("prompt builders", () => {
       "long white hair, red eyes.",
       tpl({
         format: "tags",
-        portraitAction: "standing, arms at sides",
-        portraitComposition: "solo, upper body",
-        portraitStyle: "monochrome, lineart",
+        action: "standing, arms at sides",
+        composition: "solo, upper body",
+        style: "monochrome, lineart",
       }),
     );
     // The name would cost tokens a text encoder can do nothing with.
@@ -251,7 +274,7 @@ describe("prompt builders", () => {
         customPortraitPrompt: "1girl, neon fox,",
       },
       "A mote.",
-      tpl({ format: "tags", portraitStyle: "monochrome" }),
+      tpl({ format: "tags", style: "monochrome" }),
     );
     expect(p).toBe("1girl, neon fox, monochrome");
   });
