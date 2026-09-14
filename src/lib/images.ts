@@ -199,19 +199,44 @@ export function joinPromptParts(parts: string[], format: PromptFormat): string {
 }
 
 /**
- * Portrait prompt: follows the Subject → Action → Location/context →
- * Composition → Style formula. The member's name/species/sex/description
- * (Subject) leads; the template's Action/Context/Composition/Style clauses
- * trail, so framing and style stay consistent across every party member
- * regardless of what the Subject describes. Subject is never a settings field
- * — it always comes from the character. When the character opts into a custom
- * prompt, that text replaces the auto-built Subject but the clauses still
- * trail it. The template's reference line lands last, and only when reference
- * images ride along in the request (`withRefs`).
+ * The character's own Subject line(s) — name/species/sex/description — what the
+ * template's `"appearance"` block is replaced with when a portrait prompt is
+ * assembled. Never a settings field: it always comes from the character.
  *
  * In `tags` format the labels go, and so does the NAME: a diffusion model's text
  * encoder has no idea who Bran is, and the tokens it spends failing to find out
  * come out of a 77-token budget the appearance needs.
+ */
+function buildPortraitSubject(
+  member: Pick<Character, "name" | "species"> & Partial<Pick<Character, "sex">>,
+  appearance: string,
+  format: PromptFormat,
+): string {
+  if (format === "tags") {
+    return joinPromptParts([member.species, member.sex ?? "", appearance], "tags");
+  }
+  const who = [
+    member.name.trim() && `Name: ${member.name.trim()}.`,
+    member.species.trim() && `Species: ${member.species.trim()}.`,
+    member.sex?.trim() && `Sex: ${member.sex.trim()}.`,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const parts: string[] = [];
+  if (who) parts.push(who);
+  if (appearance.trim()) parts.push(`Appearance: ${appearance.trim()}`);
+  return joinPromptParts(parts, "prose");
+}
+
+/**
+ * Portrait prompt: walks the template's block list in order, following
+ * whatever Subject → Action → Location/context → Composition → Style
+ * arrangement the player has it in — the shipped default leads with Subject,
+ * but the Appearance block is reorderable like any other. When the character
+ * opts into a custom prompt, that text replaces the Appearance block's content
+ * but the other clauses still assemble around it in their configured order.
+ * The template's reference line lands last, and only when reference images
+ * ride along in the request (`withRefs`).
  */
 export function buildPortraitPrompt(
   member: Pick<Character, "name" | "species"> &
@@ -221,32 +246,14 @@ export function buildPortraitPrompt(
   template: ImagePromptTemplate,
   withRefs = false,
 ): string {
-  const trailer = [
-    template.portraitAction,
-    template.portraitContext,
-    template.portraitComposition,
-    template.portraitStyle,
-    withRefs ? template.portraitRefInstruction : "",
-  ];
-  if (member.useCustomPortraitPrompt && member.customPortraitPrompt?.trim()) {
-    return joinPromptParts([member.customPortraitPrompt, ...trailer], template.format);
-  }
-
-  const subject: string[] = [];
-  if (template.format === "tags") {
-    subject.push(member.species, member.sex ?? "", appearance);
-  } else {
-    const who = [
-      member.name.trim() && `Name: ${member.name.trim()}.`,
-      member.species.trim() && `Species: ${member.species.trim()}.`,
-      member.sex?.trim() && `Sex: ${member.sex.trim()}.`,
-    ]
-      .filter(Boolean)
-      .join(" ");
-    if (who) subject.push(who);
-    if (appearance.trim()) subject.push(`Appearance: ${appearance.trim()}`);
-  }
-  return joinPromptParts([...subject, ...trailer], template.format);
+  const custom = member.useCustomPortraitPrompt ? member.customPortraitPrompt?.trim() : "";
+  const parts = template.blocks.map((block) =>
+    block.type === "appearance"
+      ? custom || buildPortraitSubject(member, appearance, template.format)
+      : block.text,
+  );
+  if (withRefs) parts.push(template.portraitRefInstruction);
+  return joinPromptParts(parts, template.format);
 }
 
 /* --------------------------- response parsing --------------------------- */

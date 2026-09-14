@@ -689,15 +689,44 @@ export type PromptFormat = (typeof PROMPT_FORMATS)[number];
  * prompt cannot be tags while the sentence that writes its Subject asks for
  * prose.
  */
+/**
+ * One clause in a portrait prompt's ordered block list — the image-prompt
+ * sibling of a character sheet's `Block` (`blocks.ts`). No `kind` tag: a
+ * clause plays no mechanical role the way a sheet block's Strengths/Flaws
+ * does, so there is nothing to identify it by beyond its own title.
+ */
+export interface ImagePromptTextBlock {
+  id: string;
+  type: "text";
+  title: string;
+  text: string;
+}
+
+/**
+ * The one block every template carries exactly one of: the character's own
+ * Subject (name/species/sex/appearance), injected verbatim at this position
+ * in the sequence. Reorderable like any other block — where the Subject falls
+ * relative to the Action/Context/Composition/Style clauses is a style choice
+ * — but it carries no text of its own to edit, and the one block the block
+ * editor refuses to remove: a portrait with no Subject can't be built.
+ */
+export interface ImagePromptAppearanceBlock {
+  id: string;
+  type: "appearance";
+}
+
+export type ImagePromptBlock = ImagePromptTextBlock | ImagePromptAppearanceBlock;
+
 export interface ImagePromptTemplate {
   id: string;
   name: string;
   format: PromptFormat;
-  /** The portrait Action/Location-context/Composition/Style clauses. Subject is auto-built from the character, never a settings field. */
-  portraitAction: string;
-  portraitContext: string;
-  portraitComposition: string;
-  portraitStyle: string;
+  /**
+   * The portrait prompt's clauses, in the order they're assembled — editable,
+   * reorderable and removable, except the one `"appearance"` block (see
+   * `ImagePromptAppearanceBlock`), which only reorders.
+   */
+  blocks: ImagePromptBlock[];
   /** Appended to portrait prompts only when reference images are present. */
   portraitRefInstruction: string;
   /**

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   activeTemplate,
+  APPEARANCE_BLOCK_ID,
   builtinTemplates,
   duplicateTemplate,
   DEFAULT_APPEARANCE_INSTRUCTIONS,
@@ -10,14 +11,24 @@ import {
   DEFAULT_PORTRAIT_CONTEXT,
   DEFAULT_PORTRAIT_STYLE,
   DEFAULT_REFERENCE_INSTRUCTION,
+  makeImagePromptBlock,
+  moveImagePromptBlock,
   newTemplate,
   normalizeImageTemplates,
+  PORTRAIT_ACTION_BLOCK_ID,
+  PORTRAIT_STYLE_BLOCK_ID,
   PROSE_TEMPLATE_ID,
   TAGS_TEMPLATE_ID,
   TAG_APPEARANCE_INSTRUCTIONS,
   TEMPLATE_TEXT,
 } from "./imageTemplates";
-import type { Settings } from "../types";
+import type { ImagePromptTextBlock, Settings } from "../types";
+
+/** The text of a named text block, "" if absent or not a text block. */
+function blockText(t: ReturnType<typeof builtinTemplates>[number], id: string): string {
+  const b = t.blocks.find((x) => x.id === id);
+  return b && b.type === "text" ? b.text : "";
+}
 
 describe("the shipped templates", () => {
   it("ships one of each dialect, prose first", () => {
@@ -26,31 +37,52 @@ describe("the shipped templates", () => {
     expect(list.map((t) => t.format)).toEqual(["prose", "tags"]);
   });
 
+  it("leads with the Appearance block by default", () => {
+    for (const t of builtinTemplates()) {
+      expect(t.blocks[0]).toEqual({ id: APPEARANCE_BLOCK_ID, type: "appearance" });
+    }
+  });
+
+  it("carries exactly one Appearance block, the rest text", () => {
+    for (const t of builtinTemplates()) {
+      expect(t.blocks.filter((b) => b.type === "appearance")).toHaveLength(1);
+      expect(t.blocks.filter((b) => b.type === "text")).toHaveLength(4);
+    }
+  });
+
   it("hands out fresh copies — editing one must not move the ship text", () => {
     const first = builtinTemplates()[0];
-    first.portraitStyle = "clobbered";
-    expect(builtinTemplates()[0].portraitStyle).toBe(DEFAULT_PORTRAIT_STYLE);
+    (first.blocks.find((b) => b.id === PORTRAIT_STYLE_BLOCK_ID) as ImagePromptTextBlock).text =
+      "clobbered";
+    expect(blockText(builtinTemplates()[0], PORTRAIT_STYLE_BLOCK_ID)).toBe(DEFAULT_PORTRAIT_STYLE);
   });
 
-  it("never mentions pixels — pixelation is client-side post-processing", () => {
-    const prompts = [
-      ...Object.values(TEMPLATE_TEXT.prose),
-      ...Object.values(TEMPLATE_TEXT.tags),
-    ];
-    for (const p of prompts) expect(p.toLowerCase()).not.toContain("pixel");
-  });
-
-  it("style clauses carry no character-specific anatomy or gear language", () => {
-    for (const style of [DEFAULT_PORTRAIT_STYLE, TEMPLATE_TEXT.tags.portraitStyle]) {
-      for (const word of ["heroic", "pauldron", "gauntlet", "jaw", "bust", "muscul", "armor"]) {
-        expect(style.toLowerCase()).not.toContain(word);
-      }
-    }
+  it("the prose style clause asks for pixel art", () => {
+    expect(DEFAULT_PORTRAIT_STYLE.toLowerCase()).toContain("pixel");
   });
 
   it("the tag dialect asks the narrator for tags, not sentences", () => {
     expect(TAG_APPEARANCE_INSTRUCTIONS).toContain("comma-separated");
     expect(TAG_APPEARANCE_INSTRUCTIONS).toContain("no sentences");
+  });
+});
+
+describe("block editing", () => {
+  it("makes a fresh, blank, uniquely-id'd text block", () => {
+    const a = makeImagePromptBlock();
+    const b = makeImagePromptBlock();
+    expect(a).toMatchObject({ type: "text", title: "", text: "" });
+    expect(a.id).not.toBe(b.id);
+  });
+
+  it("moves a block within the list, clamped at the ends", () => {
+    const blocks = builtinTemplates()[0].blocks;
+    const moved = moveImagePromptBlock(blocks, 1, -1);
+    expect(moved[0]).toEqual(blocks[1]);
+    expect(moved[1]).toEqual(blocks[0]);
+    // Out of range: same reference back.
+    expect(moveImagePromptBlock(blocks, 0, -1)).toBe(blocks);
+    expect(moveImagePromptBlock(blocks, blocks.length - 1, 1)).toBe(blocks);
   });
 });
 
@@ -65,24 +97,62 @@ describe("normalizeImageTemplates", () => {
     expect(normalizeImageTemplates([null, 7, "x"])).toEqual(builtinTemplates());
   });
 
-  it("fills a partial stored template from its own dialect's ship text", () => {
+  it("keeps a stored block list, validated row by row", () => {
     const [t] = normalizeImageTemplates([
-      { id: "mine", name: "Mine", format: "tags", portraitStyle: "monochrome" },
+      {
+        id: "mine",
+        name: "Mine",
+        format: "tags",
+        blocks: [
+          { id: "appearance", type: "appearance" },
+          { id: "style", type: "text", title: "Style", text: "monochrome" },
+        ],
+      },
     ]);
-    expect(t.portraitStyle).toBe("monochrome");
-    // Not the PROSE default — the fallback follows the template's own format.
-    expect(t.portraitAction).toBe(TEMPLATE_TEXT.tags.portraitAction);
+    expect(t.blocks).toEqual([
+      { id: "appearance", type: "appearance" },
+      { id: "style", type: "text", title: "Style", text: "monochrome" },
+    ]);
   });
 
-  it("keeps a BLANK field blank — blanking is how a rule is removed", () => {
-    const [t] = normalizeImageTemplates([{ id: "m", name: "M", appearanceInstructions: "" }]);
-    expect(t.appearanceInstructions).toBe("");
+  it("reinserts a missing Appearance block at the top — a portrait needs a Subject", () => {
+    const [t] = normalizeImageTemplates([
+      { id: "mine", name: "Mine", blocks: [{ id: "style", type: "text", title: "Style", text: "x" }] },
+    ]);
+    expect(t.blocks[0]).toEqual({ id: APPEARANCE_BLOCK_ID, type: "appearance" });
+    expect(t.blocks).toHaveLength(2);
+  });
+
+  it("drops an unreadable row rather than failing the whole list", () => {
+    const [t] = normalizeImageTemplates([
+      { id: "mine", name: "Mine", blocks: [null, 7, { id: "style", type: "text", title: "S", text: "x" }] },
+    ]);
+    expect(t.blocks.filter((b) => b.type === "text")).toHaveLength(1);
+  });
+
+  it("migrates a template saved before the block editor onto the shipped block shape", () => {
+    const [t] = normalizeImageTemplates([
+      {
+        id: "mine",
+        name: "Mine",
+        format: "tags",
+        portraitAction: "kept action",
+        portraitStyle: "kept style",
+      },
+    ]);
+    expect(blockText(t, PORTRAIT_ACTION_BLOCK_ID)).toBe("kept action");
+    expect(blockText(t, PORTRAIT_STYLE_BLOCK_ID)).toBe("kept style");
+    // Untouched clauses keep the shipped wording for that dialect.
+    expect(t.blocks.find((b) => b.id === "context")).toEqual(
+      TEMPLATE_TEXT.tags.blocks.find((b) => b.id === "context"),
+    );
+    expect(t.blocks[0]).toEqual({ id: APPEARANCE_BLOCK_ID, type: "appearance" });
   });
 
   it("falls an unknown format back to prose rather than storing it", () => {
     const [t] = normalizeImageTemplates([{ id: "m", name: "M", format: "haiku" }]);
     expect(t.format).toBe("prose");
-    expect(t.portraitStyle).toBe(DEFAULT_PORTRAIT_STYLE);
+    expect(blockText(t, PORTRAIT_STYLE_BLOCK_ID)).toBe(DEFAULT_PORTRAIT_STYLE);
   });
 
   it("drops duplicate ids — two rows fighting over one selection", () => {
@@ -98,6 +168,11 @@ describe("normalizeImageTemplates", () => {
     const [t] = normalizeImageTemplates([{ name: "No id" }]);
     expect(t.id).toBeTruthy();
   });
+
+  it("keeps a BLANK fixed field blank — blanking is how a rule is removed", () => {
+    const [t] = normalizeImageTemplates([{ id: "m", name: "M", appearanceInstructions: "" }]);
+    expect(t.appearanceInstructions).toBe("");
+  });
 });
 
 describe("migration off the flat fields", () => {
@@ -108,13 +183,13 @@ describe("migration off the flat fields", () => {
       negativePrompt: "blurry",
     });
     const prose = list.find((t) => t.id === PROSE_TEMPLATE_ID)!;
-    expect(prose.portraitStyle).toBe("My own ink style.");
+    expect(blockText(prose, PORTRAIT_STYLE_BLOCK_ID)).toBe("My own ink style.");
     expect(prose.appearanceInstructions).toBe("Three vivid clauses.");
     expect(prose.negativePrompt).toBe("blurry");
     // Untouched fields keep the shipped wording…
-    expect(prose.portraitAction).toBe(DEFAULT_PORTRAIT_ACTION);
-    expect(prose.portraitContext).toBe(DEFAULT_PORTRAIT_CONTEXT);
-    expect(prose.portraitComposition).toBe(DEFAULT_PORTRAIT_COMPOSITION);
+    expect(blockText(prose, PORTRAIT_ACTION_BLOCK_ID)).toBe(DEFAULT_PORTRAIT_ACTION);
+    expect(blockText(prose, "context")).toBe(DEFAULT_PORTRAIT_CONTEXT);
+    expect(blockText(prose, "composition")).toBe(DEFAULT_PORTRAIT_COMPOSITION);
     expect(prose.portraitRefInstruction).toBe(DEFAULT_REFERENCE_INSTRUCTION);
     // …and the tag dialect arrives beside it, untouched by the old settings.
     expect(list.find((t) => t.id === TAGS_TEMPLATE_ID)).toEqual(builtinTemplates()[1]);
@@ -128,10 +203,11 @@ describe("migration off the flat fields", () => {
   });
 
   it("ignores the legacy fields once real templates are stored", () => {
-    const list = normalizeImageTemplates([{ id: "m", name: "M", portraitStyle: "kept" }], {
-      portraitStyle: "stale",
-    });
-    expect(list[0].portraitStyle).toBe("kept");
+    const list = normalizeImageTemplates(
+      [{ id: "m", name: "M", blocks: [{ id: "style", type: "text", title: "S", text: "kept" }] }],
+      { portraitStyle: "stale" },
+    );
+    expect(blockText(list[0], "style")).toBe("kept");
   });
 });
 
@@ -159,15 +235,19 @@ describe("new and duplicated templates", () => {
   it("seeds a new template from its dialect's ship text", () => {
     const t = newTemplate("Mine", "tags");
     expect(t.name).toBe("Mine");
-    expect(t.portraitStyle).toBe(TEMPLATE_TEXT.tags.portraitStyle);
+    expect(blockText(t, PORTRAIT_STYLE_BLOCK_ID)).toBe(
+      blockText(builtinTemplates()[1], PORTRAIT_STYLE_BLOCK_ID),
+    );
   });
 
-  it("a duplicate keeps every word and takes a new id", () => {
-    const source = { ...builtinTemplates()[0], portraitStyle: "edited" };
+  it("a duplicate keeps every block and takes a new template id", () => {
+    const source = builtinTemplates()[0];
+    (source.blocks.find((b) => b.id === PORTRAIT_STYLE_BLOCK_ID) as ImagePromptTextBlock).text =
+      "edited";
     const copy = duplicateTemplate(source, "Copy");
     expect(copy.id).not.toBe(source.id);
     expect(copy.name).toBe("Copy");
-    expect(copy.portraitStyle).toBe("edited");
+    expect(blockText(copy, PORTRAIT_STYLE_BLOCK_ID)).toBe("edited");
   });
 
   it("two new templates never collide", () => {

@@ -7,6 +7,7 @@ import { splitModels, useModelCatalog } from "./useModelCatalog";
 import { ComfyFields } from "./ComfyFields";
 import { useConfirm } from "./useConfirm";
 import {
+  card,
   Chip,
   fieldLabel,
   filledInput,
@@ -15,10 +16,12 @@ import {
   pillDanger,
   pillOutline,
 } from "./material";
-import type { ImageBackend, ImagePromptTemplate, PromptFormat } from "../types";
+import type { ImageBackend, ImagePromptBlock, ImagePromptTemplate, PromptFormat } from "../types";
 import {
   activeTemplate,
   duplicateTemplate,
+  makeImagePromptBlock,
+  moveImagePromptBlock,
   newTemplate,
   TEMPLATE_TEXT,
   type TemplateText,
@@ -58,12 +61,12 @@ const BACKEND_NOTES: Record<ImageBackend, string> = {
 };
 
 /**
- * The template's own fields, in the order a prompt is assembled: the appearance
- * rule that writes the Subject, then the four portrait clauses, then the
- * negative prompt.
+ * The template's own fixed fields — the appearance rule that writes the
+ * Subject, and the negative prompt. The four portrait clauses aren't fixed
+ * fields any more; they're the reorderable list `PromptBlocksSection` renders.
  */
 interface TemplateSpec {
-  key: keyof TemplateText;
+  key: Exclude<keyof TemplateText, "blocks">;
   label: string;
   rows: number;
   hint?: string;
@@ -76,10 +79,6 @@ const TEMPLATE_FIELDS: TemplateSpec[] = [
     rows: 4,
     hint: "How the narrator writes a new character's appearance — it becomes their portrait prompt verbatim, which is why it belongs to the template. Existing characters keep the appearance they were written with.",
   },
-  { key: "portraitAction", label: "Portrait Action", rows: 3 },
-  { key: "portraitContext", label: "Portrait Location/Context", rows: 2 },
-  { key: "portraitComposition", label: "Portrait Composition", rows: 2 },
-  { key: "portraitStyle", label: "Portrait Style", rows: 5 },
   {
     key: "negativePrompt",
     label: "Negative Prompt",
@@ -351,6 +350,143 @@ function TemplateManager({ ask }: { ask: ReturnType<typeof useConfirm>["ask"] })
   );
 }
 
+/**
+ * One block in the portrait prompt's ordered list — the image-prompt sibling
+ * of the character-sheet block editor (`MemberSheet.tsx → BlockRow`), minus
+ * the Kind tag: a clause plays no mechanical role, so there's nothing to
+ * identify it by beyond its own title. The Appearance block is the one
+ * exception — the character's own Subject, injected verbatim — so it renders
+ * as a locked card with Move but no Title/text fields and no Remove.
+ */
+function PromptBlockRow({
+  block,
+  index,
+  count,
+  onChange,
+  onMove,
+  onRemove,
+}: {
+  block: ImagePromptBlock;
+  index: number;
+  count: number;
+  onChange: (next: ImagePromptBlock) => void;
+  onMove: (dir: -1 | 1) => void;
+  onRemove: () => void;
+}) {
+  const isAppearance = block.type === "appearance";
+  return (
+    <div className={`space-y-2 ${card}`}>
+      {isAppearance ? (
+        <div>
+          <p className={fieldLabel}>Appearance</p>
+          <p className="mt-0.5 text-[13px] leading-relaxed text-[var(--m-text-55)]">
+            The character's own Subject — name, species, sex and appearance — injected
+            here verbatim. Reorder it like any other block; it isn't edited or removed here.
+          </p>
+        </div>
+      ) : (
+        <>
+          <div className="space-y-1">
+            <span className={fieldLabel}>Title</span>
+            <input
+              value={block.title}
+              onChange={(e) => onChange({ ...block, title: e.target.value })}
+              className={filledInput}
+            />
+          </div>
+          <textarea
+            value={block.text}
+            onChange={(e) => onChange({ ...block, text: e.target.value })}
+            rows={3}
+            className={filledTextarea}
+          />
+        </>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2 pt-1">
+        <button
+          type="button"
+          aria-label="Move block up"
+          disabled={index === 0}
+          onClick={() => onMove(-1)}
+          className={`${pillOutline} !min-h-9 !px-3`}
+        >
+          ▲
+        </button>
+        <button
+          type="button"
+          aria-label="Move block down"
+          disabled={index === count - 1}
+          onClick={() => onMove(1)}
+          className={`${pillOutline} !min-h-9 !px-3`}
+        >
+          ▼
+        </button>
+        {!isAppearance && (
+          <button type="button" onClick={onRemove} className={pillOutline}>
+            Remove
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The portrait prompt's ordered clause list. Add, rename, reword, remove and
+ * reorder freely — the Appearance block is the one block the editor won't let
+ * go, since a portrait with no Subject can't be built.
+ */
+function PromptBlocksSection() {
+  const { template, patch } = useActiveTemplate();
+  const shipped = TEMPLATE_TEXT[template.format].blocks;
+  const isDefault = JSON.stringify(template.blocks) === JSON.stringify(shipped);
+
+  function setBlocks(next: ImagePromptBlock[]) {
+    patch({ blocks: next });
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className={fieldLabel}>Portrait Prompt Blocks</p>
+      <p className="text-[12.5px] leading-relaxed text-[var(--m-text-55)]">
+        The clauses a portrait prompt is built from, in this order — Subject leads by
+        default, but any order is fine.
+      </p>
+      <div className="space-y-3">
+        {template.blocks.map((b, i) => (
+          <PromptBlockRow
+            key={b.id}
+            block={b}
+            index={i}
+            count={template.blocks.length}
+            onChange={(next) => setBlocks(template.blocks.map((x, j) => (j === i ? next : x)))}
+            onMove={(dir) => setBlocks(moveImagePromptBlock(template.blocks, i, dir))}
+            onRemove={() => setBlocks(template.blocks.filter((_, j) => j !== i))}
+          />
+        ))}
+      </div>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={() => setBlocks([...template.blocks, makeImagePromptBlock()])}
+          className={`flex-1 ${pillOutline}`}
+        >
+          + Block
+        </button>
+        <button
+          type="button"
+          disabled={isDefault}
+          onClick={() => setBlocks(shipped.map((b) => ({ ...b })))}
+          className={`flex-1 ${pillOutline}`}
+        >
+          Reset to default
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /** Portrait style references — files, so they belong to the app rather than to a template. */
 function ReferenceImages() {
   const refs = useStore((s) => s.settings.portraitRefImages);
@@ -474,9 +610,9 @@ function PromptsSection() {
       <GenerationOffNote />
       <ComfyRefNote />
       <TemplateManager ask={ask} />
-      {TEMPLATE_FIELDS.map((f) => (
-        <TemplateField key={f.key} spec={f} />
-      ))}
+      <TemplateField spec={TEMPLATE_FIELDS[0]} />
+      <PromptBlocksSection />
+      <TemplateField spec={TEMPLATE_FIELDS[1]} />
       <ReferenceImages />
       {dialog}
     </div>
