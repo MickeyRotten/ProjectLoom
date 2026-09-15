@@ -3,9 +3,9 @@ import type {
   AdventureImports,
   Block,
   Character,
-  DiceCast,
   Faction,
   GameState,
+  IntentVerdict,
   Item,
   JournalLine,
   Message,
@@ -71,8 +71,14 @@ import {
   setStanding as setEntryStanding,
   standingOf,
 } from "./lib/roster";
-import { equipItem as moveToKit, unequipItem as moveToPack, type Move } from "./lib/equip";
-import { computeStakes, previewRoll, rollRecord, stakeRules } from "./lib/stakes";
+import {
+  equipItem as moveToKit,
+  heldSpecialisations,
+  unequipItem as moveToPack,
+  type Move,
+} from "./lib/equip";
+import { computeStakes, rollRecord } from "./lib/stakes";
+import { NEUTRAL_VERDICT, classifyIntent } from "./lib/intent";
 import { BLOCK_REPAIR_TEMPERATURE, buildMessages, buildRepairMessages } from "./lib/prompt";
 import { completeChat, streamChat, OpenRouterError } from "./lib/openrouter";
 import {
@@ -163,6 +169,14 @@ export interface SendTurnOptions {
    * is drawn from.
    */
   note?: string;
+  /**
+   * A cached classifier verdict (`intent.ts`) to reuse instead of
+   * reclassifying — `regenerateLastTurn` reads it off the turn being replayed
+   * before undoing it. Classification is an LLM call, not a pure function of
+   * the seed the way the roll's arithmetic is, so a regenerate would otherwise
+   * risk a different verdict (and dodge a check it already triggered).
+   */
+  intent?: IntentVerdict;
 }
 
 /** Per-call knobs for the shared cache-then-generate image helper. */
@@ -207,13 +221,6 @@ export interface LoomStore {
   error: string | null;
   /** The input of the last failed/stopped turn, so it can be retried verbatim. */
   failedInput: string | null;
-  /**
-   * The roll currently being thrown across the screen (`DiceOverlay`), staged
-   * the moment the dice are known — while the turn is still streaming. Purely
-   * presentational and never persisted: the turn's authoritative record is
-   * `Message.roll`.
-   */
-  dice: DiceCast | null;
 
   // UI
   screen: Screen;
@@ -492,17 +499,6 @@ export interface LoomStore {
   retryTurn: () => void;
   /** Abort the in-flight turn; the input rolls back and becomes retryable. */
   stopTurn: () => void;
-  /**
-   * End the dice toss — on its own timer, or on a tap that skips it. Takes the
-   * cast's id so a timer belonging to a finished throw cannot clear the throw
-   * that replaced it.
-   */
-  clearDice: (id: string) => void;
-  /**
-   * Throw the configured dice with nothing at stake (RPG System → Test Roll):
-   * a look at the system the player has just tuned, recorded nowhere.
-   */
-  testRoll: () => void;
 
   // Reversal (Phase 5) — unwind the latest turn's applied deltas.
   /** Drop the latest turn (player + narrator), restoring pre-turn scene state. */
@@ -879,7 +875,6 @@ export const useStore = create<LoomStore>((set, get) => {
   options: [],
   error: null,
   failedInput: null,
-  dice: null,
 
   screen: null,
   history: [],
@@ -1866,30 +1861,47 @@ export const useStore = create<LoomStore>((set, get) => {
 
     turnAbort = new AbortController();
 
+    const settingsAtSend = get().settings;
+    const pc = playerCharacter(get().game.characters, base.roster);
+
+    // Classify this action's intent (`intent.ts`) — replaces the old keyword
+    // risk gate with a cold, separate side call that can't appease the
+    // player the way asking the narrator itself would. `opts.intent` is a
+    // cached verdict from `regenerateLastTurn`, which must NOT reclassify: an
+    // LLM call is not a pure function of the seed, and re-asking could dodge
+    // a check this exact turn already triggered. Skipped entirely when
+    // stakes are off, so a pure-sandbox game never pays the round-trip.
+    const verdict =
+      opts?.intent ??
+      (settingsAtSend.features.stakes
+        ? await classifyIntent({
+            settings: settingsAtSend,
+            action: trimmed,
+            sceneContext: [base.area, base.location].filter(Boolean).join(" — "),
+            heldSpecialisationIds: pc ? heldSpecialisations(pc) : [],
+            signal: turnAbort.signal,
+          })
+        : NEUTRAL_VERDICT);
+
     // Roll this turn's stakes HERE rather than inside `buildMessages`: the band
     // is both a prompt block and a fact recorded on the narrator message, and
-    // rolling it twice could disagree. Seeded on (turn, text), so a regenerate
-    // re-tells the same result instead of re-rolling for a better one. The dice
-    // themselves come from the player's system (Menu → RPG System).
+    // rolling it twice could disagree. The roll itself is still seeded on
+    // (turn, text), so a regenerate re-tells the same result instead of
+    // re-rolling for a better one — only the classifier call above needed
+    // caching, not this arithmetic.
     const stakes = computeStakes(
-      trimmed,
-      playerCharacter(get().game.characters, base.roster),
       turn,
-      stakeRules(get().settings),
+      trimmed,
+      pc,
+      verdict,
+      settingsAtSend.specialisations,
+      settingsAtSend.attributeRules,
     );
 
-    // The roll as it will be recorded on the beat — computed once, so the dice
-    // thrown across the screen, the chip on the message, and the block the
-    // narrator was handed are all the same numbers by construction.
-    const record = get().settings.features.stakes ? rollRecord(stakes) : null;
-
-    // Throw them NOW rather than when the turn lands: the result is already
-    // decided, so the toss plays over the wait for the model's first token
-    // instead of adding time to the turn. Presentational only — a game with the
-    // animation off resolves identically.
-    if (record && stakes.outcome && get().settings.diceAnimation) {
-      set({ dice: { id: uid(), roll: record, outcome: stakes.outcome } });
-    }
+    // The roll as it will be recorded on the beat — computed once, so the
+    // chip on the message and the block the narrator was handed are the same
+    // numbers by construction.
+    const record = settingsAtSend.features.stakes ? rollRecord(stakes) : null;
 
     // Build from `base` (pre-turn history) so the new line isn't duplicated —
     // it rides as the final user message, not also inside the history window.
@@ -2022,6 +2034,10 @@ export const useStore = create<LoomStore>((set, get) => {
         // The arithmetic beside the verdict — see `TurnRoll`. Same gate, so a
         // game with stakes off records neither.
         roll: record ?? undefined,
+        // Cached so `regenerateLastTurn` can replay this exact verdict rather
+        // than reclassifying. Recorded even on a non-risky turn, so "nothing
+        // was risky here" is itself part of what a regenerate replays.
+        intent: get().settings.features.stakes ? verdict : undefined,
         appliedDeltas: verified ?? undefined,
         day: scene.day,
         minutes: scene.minutes,
@@ -2147,23 +2163,6 @@ export const useStore = create<LoomStore>((set, get) => {
     turnAbort?.abort();
   },
 
-  clearDice(id) {
-    if (get().dice?.id === id) set({ dice: null });
-  },
-
-  testRoll() {
-    // A fresh seed per press — the one roll in the app that SHOULD come out
-    // differently each time, since the point is to watch the system, not to
-    // resolve anything. Nothing is recorded: no turn, no message, no history.
-    const stakes = previewRoll(get().settings, `test|${Math.random()}`);
-    const roll = rollRecord(stakes);
-    if (!roll || !stakes.outcome) return;
-    // Deliberately ignores `diceAnimation`: pressing Test Roll IS the request to
-    // see it, and a button that did nothing while the toggle was off would read
-    // as broken. It is also how the player decides whether to turn it on.
-    set({ dice: { id: uid(), roll, outcome: stakes.outcome } });
-  },
-
   undoLastTurn() {
     if (get().streaming) return;
     const g = get().game;
@@ -2216,12 +2215,18 @@ export const useStore = create<LoomStore>((set, get) => {
 
     const turn = g.messages[idx].turn;
     const player = g.messages.find((m) => m.turn === turn && m.role === "player");
+    // The classifier's verdict for the turn being thrown away, read BEFORE the
+    // undo drops the message — a regenerate replays the same verdict rather
+    // than reclassifying (see `SendTurnOptions.intent`): the call is not a
+    // pure function of the seed the way the roll's arithmetic is, and
+    // re-asking could dodge a check this exact turn already triggered.
+    const intent = g.messages[idx].intent;
     // Unwind the turn, then replay the same player input for a fresh narration.
     // The note rides beside the input rather than inside it: the input is the
     // stakes seed, so folding the note in would re-roll the outcome and turn
     // "make it shorter" into a way to fish for a better result.
     get().undoLastTurn();
-    if (player) void get().sendTurn(player.content, { note });
+    if (player) void get().sendTurn(player.content, { note, intent });
   },
 
   editMessage(id, content) {

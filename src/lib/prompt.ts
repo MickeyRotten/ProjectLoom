@@ -6,6 +6,7 @@ import type {
   Place,
   Scenario,
   Settings,
+  Specialisation,
 } from "../types";
 import { phaseOf } from "./clock";
 import { indentBlock, wrapCharacter } from "./blocks";
@@ -35,6 +36,8 @@ import {
 import { activeTemplate } from "./imageTemplates";
 import { matchWorldNotes, formatWorldNotesBlock } from "./worldNotes";
 import { formatConditionsBlock, formatStakesBlock, type StakeSignals } from "./stakes";
+import { formatBuild } from "./attributes";
+import { formatGMMovesBlock } from "./gmMoves";
 
 /**
  * Prompt assembly (DESIGN.md → Prompt assembly, trimmed port of
@@ -225,7 +228,7 @@ export function buildMessages(opts: BuildOptions): ChatMessage[] {
     features.places
       ? formatKnownPlacesBlock(matchPlaces(game.places, scan, here?.id))
       : "",
-    features.characters ? buildNpcBlock(game, characters, scan) : "",
+    features.characters ? buildNpcBlock(game, characters, scan, settings.specialisations) : "",
     features.spotlight
       ? buildSpotlightBlock(settings, game, characters, playerMessage, recent, currentTurn)
       : "",
@@ -299,9 +302,16 @@ function buildStandingContext(
     // The narrator's own instructions, in their own voice — the one block here
     // with no header, because it is not a block of data.
     settings.customInstructions.trim(),
+    // Gated on stakes: a GM Moves list is meaningless without stakes existing
+    // at all — see `Settings.gmMoves`.
+    settings.features.stakes ? formatGMMovesBlock(settings.gmMoves) : "",
     formatScenarioBlock(game.scenario),
     pc
-      ? [`PLAYER CHARACTER — ${formatIdentity(pc)}`, wrapCharacter(pc.id, pc.blocks)]
+      ? [
+          `PLAYER CHARACTER — ${formatIdentity(pc)}`,
+          formatBuild(pc, settings.specialisations),
+          wrapCharacter(pc.id, pc.blocks),
+        ]
           .filter(Boolean)
           .join("\n")
       : "",
@@ -309,7 +319,7 @@ function buildStandingContext(
     // they are the player's, but they are not here, and a sheet is an
     // invitation to write them in.
     settings.features.characters
-      ? formatPartyRoster(activeMembers(characters, game.roster))
+      ? formatPartyRoster(activeMembers(characters, game.roster), settings.specialisations)
       : "",
   ]);
 }
@@ -419,12 +429,14 @@ function formatQuestBoardBlock(game: GameState): string {
  * No `Condition:` line — a mark is printed once, in the CONDITIONS block down
  * in the state tier, which is also the only place that says how to clear one.
  */
-export function formatPartyRoster(members: PartyMember[]): string {
+export function formatPartyRoster(members: PartyMember[], catalog: Specialisation[] = []): string {
   if (!members.length) return "";
   const entries = members.map((m) => {
-    const lines = [`- ${formatIdentity(m)}`, indentBlock(wrapCharacter(m.id, m.blocks))].filter(
-      Boolean,
-    );
+    const lines = [
+      `- ${formatIdentity(m)}`,
+      indentBlock(formatBuild(m, catalog)),
+      indentBlock(wrapCharacter(m.id, m.blocks)),
+    ].filter(Boolean);
     return lines.join("\n");
   });
   return `PARTY — in your company (use the PARTY SPOTLIGHT rules below to decide who, if anyone, speaks)\n${entries.join("\n")}`;
@@ -525,10 +537,15 @@ function recentBeats(game: GameState, turns: number): string {
  * The KNOWN CHARACTERS block — the sheets of NPCs the new message or the recent
  * beats name.
  */
-function buildNpcBlock(game: GameState, characters: Character[], scan: string): string {
+function buildNpcBlock(
+  game: GameState,
+  characters: Character[],
+  scan: string,
+  catalog: Specialisation[],
+): string {
   const npcs = npcMembers(characters, game.roster);
   if (!npcs.length) return "";
-  return formatNpcBlock(matchNpcs(npcs, scan));
+  return formatNpcBlock(matchNpcs(npcs, scan), catalog);
 }
 
 /**

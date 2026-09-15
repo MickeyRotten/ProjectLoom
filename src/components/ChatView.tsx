@@ -8,7 +8,8 @@ import { segmentDialogue } from "../lib/spotlight";
 import { parseInline } from "../lib/markdown";
 import { collectEntityNames, highlightEntities, highlightWithinQuote } from "../lib/highlight";
 import { deriveToasts } from "../lib/toasts";
-import { OUTCOME_LABEL, bandScale, formatRoll, modifierNote } from "../lib/stakes";
+import { OUTCOME_LABEL, formatRoll } from "../lib/stakes";
+import { bandScale } from "../lib/attributes";
 import type { Character, Message } from "../types";
 
 /** Which message (id) is being edited, and the working draft. */
@@ -312,17 +313,18 @@ function SceneMark({ msg, prev }: { msg: Message; prev?: Message }) {
  */
 function Toasts({ msg }: { msg: Message }) {
   const toasts = deriveToasts(msg);
-  // The scale is read off the CURRENT system (RPG System) — the thresholds a
-  // turn was banded under aren't recorded, and the live ones are what the next
-  // roll will be read against anyway.
-  const scale = useStore((s) => bandScale(s.settings));
+  // The scale is read off THIS roll's own Target Number, so a settings change
+  // since the beat landed can't make an old chip's tooltip disagree with the
+  // numbers still printed on it.
+  const rules = useStore((s) => s.settings.attributeRules);
+  const scale = msg.roll ? bandScale(msg.roll.tn, rules) : "";
   if (!toasts.length && !msg.outcome) return null;
   return (
     <div className="flex flex-wrap gap-1">
       {msg.outcome && (
         <span
           className="rounded-full bg-ink px-2.5 py-0.5 text-xs uppercase tracking-widest text-paper"
-          title={msg.roll ? `${modifierNote(msg.roll)} — ${scale}` : scale}
+          title={scale || undefined}
         >
           ◆ {OUTCOME_LABEL[msg.outcome]}
           {msg.roll && ` · ${formatRoll(msg.roll)}`}

@@ -19,6 +19,8 @@ import {
 } from "./defaults";
 import { normalizeComfy } from "./comfyui";
 import { normalizeFeatures } from "./features";
+import { normalizeAttributeRules, normalizeSpecialisations } from "./attributes";
+import { normalizeGMMoves } from "./gmMoves";
 import { touchDoc } from "./db";
 import { SETTINGS_DOC } from "./sync";
 import {
@@ -132,6 +134,12 @@ export function loadSettings(): Settings {
           (stored.textScale ? LEGACY_SCALE_PX[stored.textScale] : DEFAULT_TEXT_SIZE),
       ),
       webFonts: normalizeWebFonts(stored.webFonts),
+      // The percentile system's knobs and catalogs — sanitized at READ like the
+      // old `DiceRules` were, so a corrupt or pre-RPG-System save degrades to
+      // the shipped rules and catalogs rather than breaking a roll.
+      attributeRules: normalizeAttributeRules(stored.attributeRules),
+      specialisations: normalizeSpecialisations(stored.specialisations),
+      gmMoves: normalizeGMMoves(stored.gmMoves),
       // Same discipline for the image-prompt dialects, which also carry the
       // migration off the old flat fields: a save written before templates
       // existed has its wording folded onto the prose built-in, so nobody's

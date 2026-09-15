@@ -17,6 +17,75 @@ export interface LegacyStrengths {
   description: string;
 }
 
+/**
+ * The four build axes an RPG System character rolls against (`attributes.ts`),
+ * each an integer −1..3. Frozen on a character the same way Equipment and
+ * Appearance are — the narrator never writes them; the player picks them at
+ * creation and can revise them any time on the sheet.
+ */
+export type Attribute = "might" | "agility" | "mind" | "presence";
+
+export const ATTRIBUTES: Attribute[] = ["might", "agility", "mind", "presence"];
+
+export type Attributes = Record<Attribute, number>;
+
+/**
+ * A named skill in the player-editable Specialisation catalog
+ * (`Settings.specialisations`), tied to one Attribute. A character's own held
+ * set is `Character.specialisations: string[]`, referencing catalog ids.
+ */
+export interface Specialisation {
+  id: string;
+  label: string;
+  attribute: Attribute;
+}
+
+/**
+ * A GM move the narrator reaches for on a Fail or a hesitant turn, instead of
+ * freelancing a consequence (`Settings.gmMoves`) — see `gmMoves.ts`.
+ */
+export interface GMMove {
+  id: string;
+  label: string;
+  description: string;
+}
+
+/**
+ * The knobs behind the percentile roll (Menu → RPG System → Results),
+ * sanitized at read time by `attributes.ts → normalizeAttributeRules` the same
+ * way `DiceRules` used to be by `normalizeDice`.
+ */
+export interface AttributeRules {
+  /** Flat starting chance before any Attribute, gear, or Specialisation applies. */
+  baseChance: number;
+  /** Percent added per point of the acting Attribute (may be negative on a −1). */
+  attributePoint: number;
+  /** Flat percent added when the classifier matched a held Specialisation. */
+  specialisationBonus: number;
+  /** The Target Number is never allowed below this. */
+  minChance: number;
+  /** Nor above this. */
+  maxChance: number;
+  /** The MIXED band's width, as a percent of the Target Number. */
+  mixedMarginPct: number;
+  /** The MIXED band's width is never allowed below this many points. */
+  minMargin: number;
+}
+
+/**
+ * The classifier's verdict on one action (`intent.ts`) — whether it is risky,
+ * and if so which Attribute and (optionally) which held Specialisation it
+ * plays to. Cached on the turn's `Message` so a regenerate replays the same
+ * verdict instead of reclassifying (an LLM call, unlike the roll itself, is
+ * not a pure function of the seed).
+ */
+export interface IntentVerdict {
+  risky: boolean;
+  attribute: Attribute | null;
+  /** A Specialisation catalog id from the acting character's own held list. */
+  specialisation: string | null;
+}
+
 export interface Equipment {
   label: string;
   description: string;
@@ -30,6 +99,15 @@ export interface Equipment {
    * arrows into one the moment they were handed to the archer.
    */
   quantity?: number;
+  /**
+   * Purely mechanical, purely player-set fields — never model-authored, the
+   * same precedent `equip.ts → canEquip` already sets by refusing Gold ("the
+   * purse is the party's"). `grantedSpecialisation` is a picker into the
+   * Specialisation catalog, not free text, for the same precision-matching
+   * discipline the output protocol already enforces on inventory labels.
+   */
+  attributeBonus?: { attribute: Attribute; amount: number };
+  grantedSpecialisation?: string;
 }
 
 export type CharacterRole = "pc" | "member";
@@ -76,6 +154,9 @@ export interface ItemBlock extends BlockCommon {
   kind: "custom";
   text: string;
   quantity: number;
+  /** Purely mechanical, player-set only — see `Equipment.attributeBonus`. */
+  attributeBonus?: { attribute: Attribute; amount: number };
+  grantedSpecialisation?: string;
 }
 
 export type Block = TextBlock | ItemBlock;
@@ -119,6 +200,21 @@ export interface Character {
    * `species`/`sex`/`name` stay outside the list — see `BlockKind`.
    */
   blocks: Block[];
+  /**
+   * The RPG System build — four −1..3 scores. Frozen against the narrator the
+   * same way Equipment and Appearance are: the player picks them at creation
+   * (`attributes.ts → defaultAttributes` on a fresh character) and can revise
+   * them any time on the sheet. Absent on a character read from a save written
+   * before this existed, which reads as all-zero (`attributes.ts →
+   * characterAttributes`).
+   */
+  attributes?: Attributes;
+  /**
+   * Specialisation catalog ids this character holds — the player's pick at
+   * creation, editable any time. Absent reads as none
+   * (`attributes.ts → characterSpecialisations`).
+   */
+  specialisations?: string[];
   /** When true, `customPortraitPrompt` replaces the auto-built portrait prompt. */
   useCustomPortraitPrompt?: boolean;
   /** Player-authored portrait prompt, used only when the flag above is on. */
@@ -244,6 +340,9 @@ export interface Item {
   label: string;
   description: string;
   quantity: number;
+  /** Purely mechanical, player-set only — see `Equipment.attributeBonus`. */
+  attributeBonus?: { attribute: Attribute; amount: number };
+  grantedSpecialisation?: string;
 }
 
 export type QuestStatus = "active" | "done";
@@ -307,51 +406,23 @@ export type MessageRole = "player" | "narrator";
 export type TurnOutcome = "strong" | "mixed" | "cost";
 
 /**
- * The arithmetic behind a `TurnOutcome`, recorded so the transcript can show the
- * roll and not just the verdict. The band alone read as the app's opinion of the
- * beat; the numbers show it was a die, and that Strengths/Flaws moved it.
+ * The percentile roll behind a `TurnOutcome`, recorded so the transcript can
+ * show the check and not just the verdict — a bare "It cost you" read as the
+ * app editorialising about the beat; the numbers show it was a roll against a
+ * real chance.
  *
- * Kept as flags rather than a prose note so the wording stays in one place
- * (`stakes.ts → modifierNote`) and old saves can't pin an old phrasing.
+ * `breakdown` is frozen prose (`stakes.ts → formatBreakdown`), the same
+ * discipline `modifierNote` used to give the old dice system: built once, at
+ * roll time, so a Specialisation later renamed or removed from the catalog
+ * can't change what an old beat's chip says it was rolled with.
  */
 export interface TurnRoll {
-  /** The dice total, before the modifier. */
+  /** Percentile roll, 1–100. */
   roll: number;
-  /**
-   * Each die as it landed — `[4, 3]` for 2d6. Absent on records written while
-   * the roll was always a single die, and on single-die rolls, where the total
-   * already says everything.
-   */
-  dice?: number[];
-  /** How many dice were rolled. Absent on pre-`DiceRules` records, which read as 1. */
-  count?: number;
-  /** Sides per die. Absent on pre-`DiceRules` records, which read as 6. */
-  sides?: number;
-  /** What Strengths/Flaws added or took off — see `DiceRules`. */
-  modifier: number;
-  /** `roll + modifier` — what the band was read off. */
-  total: number;
-  /** The action leant on the actor's Strengths. */
-  strengths?: boolean;
-  /** The action leant on the actor's Flaws. */
-  flaws?: boolean;
-}
-
-/**
- * One throw of the dice, staged for the full-screen toss (`DiceOverlay`).
- *
- * A cast is transient UI, never persisted: the authoritative record of what was
- * rolled is `Message.roll`, written when the turn lands. This is the same
- * numbers handed to the animation the moment they are known — before the model
- * has written a word — so the tumble plays over the wait for the first token
- * instead of adding a delay of its own.
- *
- * `id` exists so a timer belonging to a finished cast cannot clear the next one.
- */
-export interface DiceCast {
-  id: string;
-  roll: TurnRoll;
-  outcome: TurnOutcome;
+  /** Target Number this roll was checked against, clamped to `AttributeRules`. */
+  tn: number;
+  /** What built the Target Number — "Might +2, Hammers specialisation, gear +1", or "" for a bare base chance. */
+  breakdown: string;
 }
 
 export interface Message {
@@ -366,6 +437,13 @@ export interface Message {
    * kept (and on turns that rolled nothing) — those still show their band.
    */
   roll?: TurnRoll;
+  /**
+   * The classifier's verdict for this turn (`intent.ts`) — cached so
+   * `regenerateLastTurn` can replay it instead of reclassifying. Absent on a
+   * turn resolved before this existed, and on one that never classified
+   * (stakes off).
+   */
+  intent?: IntentVerdict;
   /** The parsed delta block applied by this turn — recorded for reversal (Phase 5). */
   appliedDeltas?: LoomBlock;
   /** Pre-turn slices this turn overwrote — undo/regenerate restores them (Phase 5). */
@@ -819,31 +897,6 @@ export const REASONING_LEVELS = [
 export type ReasoningEffort = Exclude<ReasoningLevel, "auto" | "off">;
 
 /**
- * The dice a risky action is resolved with (Menu → RPG System). These six
- * numbers were hardcoded in `stakes.ts` — one d6, ±1 for Strengths/Flaws, bands
- * at 5+ / 3–4 / 2− — which made "the system" a thing only the app knew. They are
- * the player's now: 2d6 for a swingy table, 1d20 for a fine-grained one, a fat
- * Strengths bonus for a power fantasy.
- *
- * Sanitized by `stakes.ts → normalizeDice` on every read, so a corrupt or
- * hand-edited value degrades to something rollable instead of breaking turns.
- */
-export interface DiceRules {
-  /** How many dice are rolled each time. */
-  diceCount: number;
-  /** Sides per die. */
-  diceSides: number;
-  /** Added to the total when the attempt leans on the actor's Strengths. */
-  strengthsBonus: number;
-  /** Taken off the total when it leans on their Flaws. */
-  flawsPenalty: number;
-  /** Totals at or above this are STRONG. */
-  strongThreshold: number;
-  /** Totals at or above this — but under `strongThreshold` — are MIXED; below, COST. */
-  mixedThreshold: number;
-}
-
-/**
  * Which of the narrator's machinery is switched on (Menu → Features).
  *
  * Every one of these is a subsystem the narrator drives: a prompt block telling
@@ -922,7 +975,7 @@ export interface FeatureFlags {
   opVerification: boolean;
 }
 
-export interface Settings extends DiceRules, ComfySettings {
+export interface Settings extends ComfySettings {
   openRouterKey: string;
   /**
    * Which parts of the narrator's machinery are switched on — see
@@ -1079,39 +1132,27 @@ export interface Settings extends DiceRules, ComfySettings {
   /** What the narrator does with the band it is handed — the editable half. */
   stakesRule: string;
   /**
-   * The words that make an action a gamble, comma- or newline-separated
-   * (`stakes.ts → parseKeywords`). Blank means nothing ever reads as risky, so
-   * only `alwaysRoll` can produce a roll.
+   * The percentile-roll knobs (base chance, per-point Attribute weight,
+   * Specialisation bonus, TN floor/ceiling, MIXED margin) — see
+   * `AttributeRules` and `attributes.ts → normalizeAttributeRules`.
    */
-  riskKeywords: string;
+  attributeRules: AttributeRules;
   /**
-   * Roll on EVERY turn instead of only on keyword-matched attempts — the
-   * "everything is a check" table. `riskKeywords` is unused while this is on.
+   * The Specialisation catalog (RPG System → Attributes & Specialisations) —
+   * device-wide, like the old `DiceRules`: it describes what specialisations
+   * exist in this build's rules, not anything about one adventure. A
+   * character's own held set is `Character.specialisations`, referencing
+   * these ids. Never empty — `attributes.ts → normalizeSpecialisations`
+   * guarantees the shipped catalog when storage holds none.
    */
-  alwaysRoll: boolean;
+  specialisations: Specialisation[];
   /**
-   * Toss the dice across the screen when a turn rolls (`DiceOverlay`) instead of
-   * only printing the result on the beat's chip. Purely presentational — the
-   * numbers are decided before the animation exists, and turning it off changes
-   * nothing about how a turn resolves.
+   * The GM Move catalog (RPG System → GM Moves) the narrator reaches for on a
+   * Fail or a hesitant turn — see `GMMove` and `gmMoves.ts`. Gated on
+   * `features.stakes`: a list of moves is meaningless without stakes existing
+   * at all.
    */
-  diceAnimation: boolean;
-  /**
-   * The tilt of the surface the dice land on, in degrees — pitch is the tip
-   * toward or away from the viewer, yaw the turn to one side. Shipped a few
-   * degrees off square (`diceAnim.ts → SCENE_TILT`), which is enough to show a
-   * landed cube has sides; the player owns it because "how much 3D" is taste,
-   * and 0/0 is a perfectly reasonable answer.
-   */
-  dicePitch: number;
-  diceYaw: number;
-  /**
-   * Draw the dice with a vanishing point. On, a die's distance from the middle
-   * of the screen shows in it — the ones off to the side turn their faces
-   * slightly away. Off is an orthographic view: every die is drawn identically
-   * wherever it sits, which is flatter but perfectly even.
-   */
-  dicePerspective: boolean;
+  gmMoves: GMMove[];
   /**
    * Approximate token budget for the rolling history window. The only thing
    * standing between a long game and amnesia, so it is the player's to raise on

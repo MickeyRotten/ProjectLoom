@@ -22,7 +22,6 @@ import { SyncScreen } from "./components/SyncScreen";
 import { MemberSheet } from "./components/MemberSheet";
 import { PartyScreen } from "./components/PartyScreen";
 import { InventoryScreen } from "./components/InventoryScreen";
-import { DiceOverlay } from "./components/DiceOverlay";
 
 /**
  * Wraps a bottom-nav-tab screen (Party / Inventory / Quests / Journal) with
@@ -201,15 +200,5 @@ export default function App() {
     );
   };
 
-  // The dice toss sits OUTSIDE the screen switch: it is thrown the moment a turn
-  // rolls, and lasts a couple of seconds, so hanging it off the play screen
-  // would leave a cast stranded if anything changed screens underneath it. The
-  // sync conflict prompt is outside for the same reason — a sync lands whenever
-  // it lands, whatever the player has open.
-  return (
-    <>
-      {current()}
-      <DiceOverlay />
-    </>
-  );
+  return current();
 }

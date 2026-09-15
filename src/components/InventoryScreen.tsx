@@ -2,7 +2,9 @@ import { useState } from "react";
 import { useStore } from "../store";
 import { isGold } from "../lib/defaults";
 import { canEquip } from "../lib/equip";
-import type { Item } from "../types";
+import { ATTRIBUTE_LABELS, MAX_ATTRIBUTE } from "../lib/attributes";
+import { ATTRIBUTES } from "../types";
+import type { Attribute, Item } from "../types";
 import { FeatureOffNotice } from "./FeatureOffNotice";
 import { EquipModal } from "./EquipModal";
 import { GenerateItemModal } from "./GenerateItemModal";
@@ -36,6 +38,7 @@ import { useEditBuffer } from "./useEditBuffer";
 export function InventoryScreen() {
   const inventory = useStore((s) => s.game.inventory);
   const setInventory = useStore((s) => s.setInventory);
+  const specCatalog = useStore((s) => s.settings.specialisations);
   const removeItem = useStore((s) => s.removeItem);
   const { editing, draft, setDraft, startEdit, save, discard } = useEditBuffer(
     inventory,
@@ -98,6 +101,63 @@ export function InventoryScreen() {
                   rows={2}
                   className={`text-[13px] ${filledTextarea}`}
                 />
+                {/* RPG System mechanics — purely player-set, carried through
+                    an Assign/Unequip move but never model-authored. Gold gets
+                    neither, same as Remove/✦ above. */}
+                {!isGold(it.label) && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <select
+                      aria-label="Attribute bonus target"
+                      value={it.attributeBonus?.attribute ?? ""}
+                      onChange={(e) => {
+                        const attribute = e.target.value as Attribute | "";
+                        patch(i, {
+                          attributeBonus: attribute
+                            ? { attribute, amount: it.attributeBonus?.amount || 1 }
+                            : undefined,
+                        });
+                      }}
+                      className="rounded-[10px] border-none bg-[var(--m-surface-strong)] px-2 py-2 text-[13px] text-ink outline-none"
+                    >
+                      <option value="">No attribute bonus</option>
+                      {ATTRIBUTES.map((a) => (
+                        <option key={a} value={a}>
+                          {ATTRIBUTE_LABELS[a]}
+                        </option>
+                      ))}
+                    </select>
+                    {it.attributeBonus && (
+                      <input
+                        type="number"
+                        min={0}
+                        max={MAX_ATTRIBUTE}
+                        value={it.attributeBonus.amount}
+                        onChange={(e) =>
+                          patch(i, {
+                            attributeBonus: {
+                              attribute: it.attributeBonus!.attribute,
+                              amount: Math.min(MAX_ATTRIBUTE, Math.max(0, Number(e.target.value) || 0)),
+                            },
+                          })
+                        }
+                        className="w-14 rounded-[10px] border-none bg-[var(--m-surface-strong)] px-2 py-2 text-center tabular-nums text-ink outline-none"
+                      />
+                    )}
+                    <select
+                      aria-label="Grants specialisation"
+                      value={it.grantedSpecialisation ?? ""}
+                      onChange={(e) => patch(i, { grantedSpecialisation: e.target.value || undefined })}
+                      className="min-w-0 flex-1 rounded-[10px] border-none bg-[var(--m-surface-strong)] px-2 py-2 text-[13px] text-ink outline-none"
+                    >
+                      <option value="">No specialisation granted</option>
+                      {specCatalog.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 {/* Gold has neither button: the purse is permanent, and its
                     label is locked, so there is nothing here to write. */}
                 {!isGold(it.label) && (

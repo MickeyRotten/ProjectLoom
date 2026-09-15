@@ -855,6 +855,69 @@ the shape: the task at that point is narrow and structured ("given the
 prose already written, emit the block"), which is what the cheap model is
 already trusted with elsewhere. `CompleteOptions.model`'s doc comment
 names all three structured-question callers now.
+Post-MVP also: **RPG System — Attributes, Specialisations & the intent
+classifier** (`RPG_DESIGN.md`, now built in full) — replaces the shipped
+1d6/`DiceRules` system and the mechanical role of free-text Strengths/Flaws
+with a percentile check built from a real character build. The risk gate that
+used to be `RISK_KEYWORDS`/`isRisky` (a surface match — "I sneak a glance"
+tripped on the word "sneak" alone) is now **`intent.ts`**, a cold side call on
+`settings.cheapModelId`, the `verifyOps.ts`/`generateItem.ts` shape: given the
+action, one line of scene context, and the *acting* character's own held
+Specialisations (never the whole catalog, never the beats), it returns
+`{ risky, attribute, specialisation }`. Asking the *narrator's own* model
+whether its own turn was risky was rejected outright — a model under
+narration incentive asked whether to invite a check will simply say no to its
+own player. Fails open to `NEUTRAL_VERDICT` on any error, and — since an LLM
+call, unlike the roll, is not a pure function of the seed — the verdict is
+cached on `Message.intent` so `regenerateLastTurn` replays it instead of
+reclassifying (classify once per turn, replay forever after, the seed's own
+discipline). New `Character.attributes` (`might`/`agility`/`mind`/`presence`,
+−1..3, `attributes.ts → defaultAttributes`) and `Character.specialisations`
+(catalog ids) are frozen against the narrator the same way Equipment and
+Appearance are — `deltas.ts → makeCharacter` always writes a blank build,
+never a model-authored one — and are the player's from creation on the member
+sheet (`AttributesEditor`/`SpecialisationsEditor`, capped at 3 held
+Specialisations per Attribute). The Specialisation **catalog**
+(`Settings.specialisations`, sixteen shipped rows, four per Attribute) and a
+new **GM Move catalog** (`Settings.gmMoves`, `gmMoves.ts`, Dungeon World moves
+reworded to this app's own voice — see Attribution) are both player-editable,
+New/Remove/Reset lists on the rebuilt **RPG System** screen, the same pattern
+`imageTemplates.ts` established. GM Moves inject as a standing-context (tier
+1) block — a stable toolbox, not turn-gated — telling the narrator to reach
+for one on a Fail or a hesitant turn instead of freelancing a consequence;
+gated on the existing `features.stakes`, no sixteenth feature flag.
+`Equipment`/`Item`/`ItemBlock` gain `attributeBonus`/`grantedSpecialisation` —
+purely player-set, never model-authored, the same precedent `equip.ts →
+canEquip` already set refusing Gold — editable on the member sheet's item
+rows and now the Inventory screen's too, carried through an equip/unequip
+move by `equip.ts`'s merge (`equippedAttributeBonus`, summed and capped at
++3 like an Attribute's own range; `heldSpecialisations`, the character's own
+picks unioned with whatever their currently-equipped gear grants).
+`stakes.ts` is rewritten around `attributes.ts → computeTN` (base chance +
+Attribute score × a per-point weight + gear bonus + a flat Specialisation
+bonus, clamped `minChance..maxChance`, all in `Settings.attributeRules`) and
+`bandForRoll` (the margin scales with the TN itself — `marginSize =
+clamp(round(mixedMarginPct% × TN), minMargin, TN − 1)` — so a TN 90 check
+bands Great 1–72 / Mixed 73–90 / Fail 91–100 and a TN 10 one keeps the same
+shape at 1–8 / 9–10 / 11–100; Fail is always exactly `100 − TN`). The roll
+itself keeps `stakes.ts`'s existing seeded percentile arithmetic
+(`seedHash`/`avalanche`, same fair-dice fix this module already carried) —
+only the *gate* and the *math feeding the check* changed, not the
+regenerate-replays-the-same-result contract. The chip is the only surface:
+**no toss** — `diceAnim.ts`, `DiceOverlay.tsx` and every `Settings.dice*`/
+`dicePitch`/`diceYaw`/`dicePerspective` field are deleted outright, since the
+whole point of a hidden check is that it stays hidden until it lands, and a
+cube animation would be presenting a mechanic that no longer exists
+underneath it. `roster.ts`/`cast.ts`/`prompt.ts` gain `attributes.ts →
+formatBuild` — one `Build: Might +2, Agility +0, …` line under every
+character's identity line (PC block, party roster, NPC block), printing the
+raw scores for the narrator rather than a prose-only paraphrase. No
+migration: a character read from a save written before this existed has no
+`attributes`/`specialisations` and reads as an all-zero, unpicked build
+(`characterAttributes`/`characterSpecialisations`), and `Settings` fields
+sanitize at read the same way `normalizeDice` used to
+(`normalizeAttributeRules`/`normalizeSpecialisations`/`normalizeGMMoves`).
+
 Deferred (post-MVP): rolling LLM summarization of the beats themselves,
 NPC/item art, TTS, weather animation, multi-world. Track scope in
 `DESIGN.md → Build Phases`.
@@ -870,3 +933,8 @@ The steading tag vocabulary in `src/lib/places.ts` is from **Dungeon World** by
 Sage LaTorra and Adam Koebel, used under **CC BY 3.0**. The dungeon and
 wilderness vocabularies are project wording informed by *The Perilous Wilds*
 (Jason Lutes, Lampblack & Brimstone) — the mechanic, not its text.
+
+The shipped GM Move catalog in `src/lib/gmMoves.ts` (`defaultGMMoves`) is
+likewise derived from **Dungeon World**'s GM moves (Sage LaTorra and Adam
+Koebel, **CC BY 3.0**) — reworded to this app's own voice rather than quoted
+verbatim.
