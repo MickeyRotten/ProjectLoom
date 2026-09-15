@@ -71,6 +71,15 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # Google retired the legacy "tools" package from the SDK repo
+          # manifest; the action still tries to install it by default
+          # ("tools platform-tools") and sdkmanager now exits 1 with
+          # "Failed to find package 'tools'". Empty packages skips that
+          # broken default install — ANDROID_HOME + license acceptance
+          # still happen, and cmdline-tools (what actually runs sdkmanager
+          # later) is unaffected.
+          packages: ""
 
       # Restores ~/.gradle (dependencies + wrapper) and the Gradle build cache
       # across runs — the single biggest APK build speed-up.
