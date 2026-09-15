@@ -5,6 +5,8 @@ import {
   equipLine,
   equipQuantity,
   equipTargets,
+  equippedAttributeBonus,
+  heldSpecialisations,
   unequipItem,
 } from "./equip";
 import type { Block, Character, ItemBlock, Item, RosterEntry } from "../types";
@@ -222,6 +224,50 @@ describe("equipTargets", () => {
 
   it("still works with no PC in the library", () => {
     expect(equipTargets(characters.slice(1), roster).map((m) => m.id)).toEqual(["a", "b"]);
+  });
+});
+
+describe("RPG System mechanics on equipped gear", () => {
+  it("sums an Attribute bonus across equipped items, capped at MAX_ATTRIBUTE", () => {
+    const blocks: Block[] = [
+      { ...itemBlock("b1", "Ring", 1), attributeBonus: { attribute: "might", amount: 2 } },
+      { ...itemBlock("b2", "Belt", 1), attributeBonus: { attribute: "might", amount: 2 } },
+      { ...itemBlock("b3", "Cloak", 1), attributeBonus: { attribute: "agility", amount: 1 } },
+    ];
+    expect(equippedAttributeBonus(blocks, "might")).toBe(3); // capped, not 4
+    expect(equippedAttributeBonus(blocks, "agility")).toBe(1);
+    expect(equippedAttributeBonus(blocks, "mind")).toBe(0);
+  });
+
+  it("ignores a disabled item's bonus", () => {
+    const blocks: Block[] = [
+      { ...itemBlock("b1", "Ring", 1), attributeBonus: { attribute: "might", amount: 2 }, enabled: false },
+    ];
+    expect(equippedAttributeBonus(blocks, "might")).toBe(0);
+  });
+
+  it("unions the character's own picks with what their gear grants, de-duplicated", () => {
+    const blocks: Block[] = [
+      { ...itemBlock("b1", "Ring", 1), grantedSpecialisation: "athletics" },
+      { ...itemBlock("b2", "Belt", 1), grantedSpecialisation: "lore" },
+    ];
+    expect(heldSpecialisations({ specialisations: ["athletics", "stealth"], blocks })).toEqual([
+      "athletics",
+      "stealth",
+      "lore",
+    ]);
+  });
+
+  it("carries the mechanics through an equip/unequip round-trip", () => {
+    const gearedItem = { ...item("Ring"), attributeBonus: { attribute: "might" as const, amount: 2 }, grantedSpecialisation: "athletics" };
+    const equipped = equipItem([gearedItem], [], 0)!;
+    const block = equipped.blocks[0] as ItemBlock;
+    expect(block.attributeBonus).toEqual({ attribute: "might", amount: 2 });
+    expect(block.grantedSpecialisation).toBe("athletics");
+
+    const back = unequipItem(equipped.inventory, equipped.blocks, block.id)!;
+    expect(back.inventory[0].attributeBonus).toEqual({ attribute: "might", amount: 2 });
+    expect(back.inventory[0].grantedSpecialisation).toBe("athletics");
   });
 });
 

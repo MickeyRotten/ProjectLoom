@@ -17,8 +17,8 @@ import { MORNING_ANCHOR, normalizeMinutes } from "./clock";
 import { normalizePlaces } from "./places";
 import { PARTY_LIMIT, normalizeRoster, strengthsText } from "./roster";
 import { makeItemBlock, makeTextBlock } from "./blocks";
-import { SCENE_TILT } from "./diceAnim";
-import { DEFAULT_DICE, RISK_KEYWORDS } from "./stakes";
+import { DEFAULT_ATTRIBUTE_RULES, defaultAttributes, defaultSpecialisations } from "./attributes";
+import { defaultGMMoves } from "./gmMoves";
 import { DEFAULT_COMFY } from "./comfyui";
 import { builtinTemplates, PROSE_TEMPLATE_ID } from "./imageTemplates";
 import { defaultFeatures } from "./features";
@@ -217,14 +217,6 @@ COST — it goes wrong. The player pays something real — hurt, disarmed, separ
 When a result marks someone lastingly, record it in "conditions". Never kill the player character: leave them alive with something to fix.`;
 
 /**
- * The risk-word list as an editable field (RPG System → Risky Actions). Written
- * out of `RISK_KEYWORDS` so the shipped list and the default text can never
- * drift apart; the player edits a comma-separated line, `parseKeywords` reads it
- * back.
- */
-export const DEFAULT_RISK_KEYWORDS = RISK_KEYWORDS.join(", ");
-
-/**
  * Rolling-history budget, in approximate tokens. 3000 was hardcoded and never
  * passed by the store, which capped a campaign at roughly 15–25 turns before
  * the early game fell out of memory for good. It ships unchanged so existing
@@ -348,17 +340,11 @@ export function defaultSettings(): Settings {
     optionInstructions: DEFAULT_OPTION_INSTRUCTIONS,
     spotlightRule: DEFAULT_SPOTLIGHT_RULE,
     stakesRule: DEFAULT_STAKES_RULE,
-    // The 1d6 system stakes.ts used to hardcode — spread so "the default rules"
-    // has exactly one definition.
-    ...DEFAULT_DICE,
-    riskKeywords: DEFAULT_RISK_KEYWORDS,
-    alwaysRoll: false,
-    diceAnimation: true,
-    // The shipped tilt lives with the animation it belongs to, so "the default
-    // scene" has one definition (`diceAnim.ts → SCENE_TILT`).
-    dicePitch: SCENE_TILT.x,
-    diceYaw: SCENE_TILT.y,
-    dicePerspective: true,
+    // The percentile system's knobs — RPG_DESIGN.md's own defaults, so "the
+    // default rules" has exactly one definition (`attributes.ts`).
+    attributeRules: DEFAULT_ATTRIBUTE_RULES,
+    specialisations: defaultSpecialisations(),
+    gmMoves: defaultGMMoves(),
     historyBudget: DEFAULT_HISTORY_BUDGET_SETTING,
     maxTokens: DEFAULT_MAX_TOKENS,
     journalBudget: DEFAULT_JOURNAL_BUDGET,
@@ -499,6 +485,10 @@ export function defaultPC(): Character {
       makeItemBlock("Black Trousers", "Simple, worn, baggy trousers."),
       makeItemBlock("Leather Satchel", "Worn leather satchel for carrying supplies."),
     ],
+    // Superhuman strength, matching the flavour text above — a starting build
+    // the player is free to redo entirely on the sheet.
+    attributes: { ...defaultAttributes(), might: 2 },
+    specialisations: ["athletics"],
     useCustomPortraitPrompt: false,
     customPortraitPrompt: "",
   };
@@ -516,6 +506,8 @@ export function newCharacter(id: string): Character {
     species: "human",
     sex: "",
     blocks: buildDefaultBlocks(),
+    attributes: defaultAttributes(),
+    specialisations: [],
     useCustomPortraitPrompt: false,
     customPortraitPrompt: "",
   };

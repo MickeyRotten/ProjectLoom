@@ -1,4 +1,4 @@
-import type { Block, BlockKind, ItemBlock, TextBlock } from "../types";
+import type { Attribute, Block, BlockKind, ItemBlock, TextBlock } from "../types";
 
 /**
  * The character-sheet block system (loom-turn-protocol's sibling for the
@@ -92,8 +92,24 @@ export function makeTextBlock(title: string, text: string, kind: BlockKind = "cu
 }
 
 /** A fresh Item block — always `kind: "custom"`, items have no mechanical role of their own. */
-export function makeItemBlock(title: string, text: string, quantity = 1): ItemBlock {
-  return { id: crypto.randomUUID(), type: "item", kind: "custom", title, text, quantity, enabled: true };
+export function makeItemBlock(
+  title: string,
+  text: string,
+  quantity = 1,
+  attributeBonus?: { attribute: Attribute; amount: number },
+  grantedSpecialisation?: string,
+): ItemBlock {
+  return {
+    id: crypto.randomUUID(),
+    type: "item",
+    kind: "custom",
+    title,
+    text,
+    quantity,
+    enabled: true,
+    ...(attributeBonus ? { attributeBonus } : {}),
+    ...(grantedSpecialisation ? { grantedSpecialisation } : {}),
+  };
 }
 
 /**

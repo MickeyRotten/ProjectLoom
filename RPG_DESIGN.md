@@ -1,6 +1,17 @@
 # RPG System — Attributes, Specialisations, Silent Stakes & GM Moves
 
-**Status: proposal, not yet built.** This document is a companion to
+**Status: built.** See `CLAUDE.md`'s Post-MVP changelog ("RPG System —
+Attributes, Specialisations & the intent classifier") for what actually
+shipped and where it lives in the code; this document is kept as the design
+rationale, not a second source of truth for the current shape. The decisions
+left open below were resolved as: **3 Specialisations per Attribute** at
+creation (12 total, from a 4-per-Attribute catalog); Strengths/Flaws
+**retired mechanically** — pure flavour text now, no roll effect; and the
+sheet's Attribute summary shows the **raw numbers**, not prose-only, for the
+narrator (a deliberate deviation from this document's own suggestion below,
+made by the player commissioning the build).
+
+This document is a companion to
 [`DESIGN.md`](./DESIGN.md), which remains the source of truth for everything it
 already covers. It replaces the shipped **`src/lib/stakes.ts`** dice system
 (1d6/2d6, `DiceRules`, the visible `DiceOverlay` toss) and the mechanical role

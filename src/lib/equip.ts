@@ -1,4 +1,5 @@
-import type { Block, Character, Item, ItemBlock, PartyMember, RosterEntry } from "../types";
+import type { Attribute, Block, Character, Item, ItemBlock, PartyMember, RosterEntry } from "../types";
+import { MAX_ATTRIBUTE } from "./attributes";
 import { isGold } from "./defaults";
 import { slug } from "./deltas";
 import { makeItemBlock } from "./blocks";
@@ -91,7 +92,10 @@ export function equipItem(
   let next: Block[];
 
   if (at === -1) {
-    next = [...blocks, makeItemBlock(item.label, item.description, quantity)];
+    next = [
+      ...blocks,
+      makeItemBlock(item.label, item.description, quantity, item.attributeBonus, item.grantedSpecialisation),
+    ];
   } else {
     const existing = blocks[at] as ItemBlock;
     next = blocks.slice();
@@ -101,6 +105,8 @@ export function equipItem(
       // sheet should not have it replaced by the pack's copy on a top-up.
       text: existing.text || item.description,
       quantity: existing.quantity + quantity,
+      attributeBonus: existing.attributeBonus ?? item.attributeBonus,
+      grantedSpecialisation: existing.grantedSpecialisation ?? item.grantedSpecialisation,
     };
   }
 
@@ -131,12 +137,20 @@ export function unequipItem(
   const next = inventory.slice();
 
   if (atInv === -1) {
-    next.push({ label: b.title, description: b.text, quantity });
+    next.push({
+      label: b.title,
+      description: b.text,
+      quantity,
+      attributeBonus: b.attributeBonus,
+      grantedSpecialisation: b.grantedSpecialisation,
+    });
   } else {
     next[atInv] = {
       ...next[atInv],
       description: next[atInv].description || b.text,
       quantity: next[atInv].quantity + quantity,
+      attributeBonus: next[atInv].attributeBonus ?? b.attributeBonus,
+      grantedSpecialisation: next[atInv].grantedSpecialisation ?? b.grantedSpecialisation,
     };
   }
 
@@ -155,4 +169,40 @@ export function equipLine(e: { label: string; description: string; quantity?: nu
   const quantity = equipQuantity(e);
   const count = quantity > 1 ? ` ×${quantity}` : "";
   return `${e.label}${count}${e.description ? `: ${e.description}` : ""}`;
+}
+
+/**
+ * RPG System mechanics riding on equipped gear (RPG_DESIGN.md → Equipment).
+ * Both fields are purely mechanical and purely player-set — never
+ * model-authored, the same precedent `canEquip` already sets by refusing
+ * Gold.
+ */
+
+/**
+ * Total Attribute bonus from every equipped Item block for one Attribute,
+ * capped at the same ±`MAX_ATTRIBUTE` range Attributes themselves use — five
+ * rings of Might is not free +5. Read at roll time, not stored, so editing an
+ * equipped item's bonus takes effect on the next check without a migration.
+ */
+export function equippedAttributeBonus(blocks: Block[], attribute: Attribute): number {
+  const total = blocks.reduce((sum, b) => {
+    if (b.type !== "item" || !b.enabled) return sum;
+    const bonus = b.attributeBonus;
+    if (!bonus || bonus.attribute !== attribute) return sum;
+    return sum + Math.max(0, bonus.amount);
+  }, 0);
+  return Math.min(MAX_ATTRIBUTE, total);
+}
+
+/**
+ * A character's held Specialisation ids — their own picked set, plus any
+ * granted by currently-equipped gear. Union, de-duplicated: wearing two items
+ * that grant the same specialisation is no better than wearing one.
+ */
+export function heldSpecialisations(character: Pick<Character, "specialisations" | "blocks">): string[] {
+  const own = Array.isArray(character.specialisations) ? character.specialisations : [];
+  const granted = character.blocks
+    .filter((b): b is ItemBlock => b.type === "item" && b.enabled && !!b.grantedSpecialisation)
+    .map((b) => b.grantedSpecialisation as string);
+  return [...new Set([...own, ...granted])];
 }

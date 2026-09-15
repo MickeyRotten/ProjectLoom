@@ -27,7 +27,125 @@ import {
   partyFull as isPartyFull,
   resolve,
 } from "../lib/roster";
-import type { Block, BlockKind, Character, ItemBlock, Standing } from "../types";
+import {
+  ATTRIBUTE_LABELS,
+  MAX_ATTRIBUTE,
+  MIN_ATTRIBUTE,
+  characterAttributes,
+  characterSpecialisations,
+} from "../lib/attributes";
+import { ATTRIBUTES } from "../types";
+import type {
+  Attribute,
+  Attributes,
+  Block,
+  BlockKind,
+  Character,
+  ItemBlock,
+  Specialisation,
+  Standing,
+} from "../types";
+
+/** Starting-pick cap: up to this many held Specialisations per Attribute. */
+const MAX_SPECS_PER_ATTRIBUTE = 3;
+
+function AttributesEditor({
+  value,
+  editing,
+  onChange,
+}: {
+  value: Attributes;
+  editing: boolean;
+  onChange: (next: Attributes) => void;
+}) {
+  if (!editing) {
+    const scores = ATTRIBUTES.map((a) => `${ATTRIBUTE_LABELS[a]} ${value[a] >= 0 ? "+" : ""}${value[a]}`);
+    return <ReadBlock label="Attributes" value={scores.join(" · ")} />;
+  }
+  return (
+    <div className="space-y-1.5">
+      <span className={fieldLabel}>Attributes</span>
+      <div className="grid grid-cols-2 gap-2">
+        {ATTRIBUTES.map((a) => (
+          <label key={a} className="flex items-center justify-between gap-2 rounded-[10px] bg-[var(--m-surface-strong)] px-3 py-2">
+            <span className="text-[13px]">{ATTRIBUTE_LABELS[a]}</span>
+            <input
+              type="number"
+              min={MIN_ATTRIBUTE}
+              max={MAX_ATTRIBUTE}
+              value={value[a]}
+              onChange={(e) => {
+                const n = e.target.valueAsNumber;
+                if (!Number.isFinite(n)) return;
+                onChange({ ...value, [a]: Math.min(MAX_ATTRIBUTE, Math.max(MIN_ATTRIBUTE, Math.round(n))) });
+              }}
+              className="w-12 rounded-[8px] border-none bg-paper px-1 py-1 text-center tabular-nums text-ink outline-none"
+            />
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SpecialisationsEditor({
+  catalog,
+  held,
+  editing,
+  onChange,
+}: {
+  catalog: Specialisation[];
+  held: string[];
+  editing: boolean;
+  onChange: (next: string[]) => void;
+}) {
+  if (!editing) {
+    const labels = held.map((id) => catalog.find((s) => s.id === id)?.label).filter(Boolean);
+    return <ReadBlock label="Specialisations" value={labels.join(", ")} />;
+  }
+  const countFor = (a: Attribute) =>
+    catalog.filter((s) => s.attribute === a && held.includes(s.id)).length;
+  return (
+    <div className="space-y-1.5">
+      <span className={fieldLabel}>Specialisations (up to {MAX_SPECS_PER_ATTRIBUTE} per Attribute)</span>
+      <div className="space-y-2">
+        {ATTRIBUTES.map((a) => (
+          <div key={a} className="space-y-1">
+            <span className="text-xs uppercase tracking-widest text-[var(--m-text-55)]">
+              {ATTRIBUTE_LABELS[a]}
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              {catalog
+                .filter((s) => s.attribute === a)
+                .map((s) => {
+                  const checked = held.includes(s.id);
+                  const atCap = !checked && countFor(a) >= MAX_SPECS_PER_ATTRIBUTE;
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      disabled={atCap}
+                      aria-pressed={checked}
+                      onClick={() =>
+                        onChange(checked ? held.filter((id) => id !== s.id) : [...held, s.id])
+                      }
+                      className={`min-h-9 rounded-full border px-3 py-1 text-[13px] disabled:opacity-40 ${
+                        checked
+                          ? "border-transparent bg-ink text-paper"
+                          : "border-[var(--m-outline-soft)] bg-transparent text-ink"
+                      }`}
+                    >
+                      {s.label || "(unnamed)"}
+                    </button>
+                  );
+                })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 /** Every block kind, in the order the dropdown offers it. */
 const BLOCK_KINDS: BlockKind[] = [
@@ -63,6 +181,7 @@ function BlockRow({
   index,
   count,
   editing,
+  specCatalog,
   onChange,
   onMove,
   onToggle,
@@ -74,6 +193,7 @@ function BlockRow({
   index: number;
   count: number;
   editing: boolean;
+  specCatalog: Specialisation[];
   onChange: (next: Block) => void;
   onMove: (dir: -1 | 1) => void;
   onToggle: () => void;
@@ -151,6 +271,72 @@ function BlockRow({
             }
             className="w-16 rounded-[10px] border-none bg-[var(--m-surface-strong)] px-2 py-2 text-center tabular-nums text-ink outline-none"
           />
+        </label>
+      )}
+
+      {/* RPG System mechanics — purely player-set, never model-authored, the
+          same reason `equip.ts → canEquip` already refuses Gold. */}
+      {isItem && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className={fieldLabel}>Attribute Bonus</span>
+          <select
+            aria-label="Attribute bonus target"
+            value={block.attributeBonus?.attribute ?? ""}
+            onChange={(e) => {
+              const attribute = e.target.value as Attribute | "";
+              onChange({
+                ...block,
+                attributeBonus: attribute
+                  ? { attribute, amount: block.attributeBonus?.amount || 1 }
+                  : undefined,
+              });
+            }}
+            className="rounded-[10px] border-none bg-[var(--m-surface-strong)] px-2 py-2 text-[13px] text-ink outline-none"
+          >
+            <option value="">None</option>
+            {ATTRIBUTES.map((a) => (
+              <option key={a} value={a}>
+                {ATTRIBUTE_LABELS[a]}
+              </option>
+            ))}
+          </select>
+          {block.attributeBonus && (
+            <input
+              type="number"
+              min={0}
+              max={MAX_ATTRIBUTE}
+              value={block.attributeBonus.amount}
+              onChange={(e) =>
+                onChange({
+                  ...block,
+                  attributeBonus: {
+                    attribute: block.attributeBonus!.attribute,
+                    amount: Math.min(MAX_ATTRIBUTE, Math.max(0, Number(e.target.value) || 0)),
+                  },
+                })
+              }
+              className="w-14 rounded-[10px] border-none bg-[var(--m-surface-strong)] px-2 py-2 text-center tabular-nums text-ink outline-none"
+            />
+          )}
+        </div>
+      )}
+      {isItem && (
+        <label className="flex items-center gap-2">
+          <span className={fieldLabel}>Grants Specialisation</span>
+          <select
+            value={block.grantedSpecialisation ?? ""}
+            onChange={(e) =>
+              onChange({ ...block, grantedSpecialisation: e.target.value || undefined })
+            }
+            className="flex-1 rounded-[10px] border-none bg-[var(--m-surface-strong)] px-2 py-2 text-[13px] text-ink outline-none"
+          >
+            <option value="">None</option>
+            {specCatalog.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.label}
+              </option>
+            ))}
+          </select>
         </label>
       )}
 
@@ -233,6 +419,8 @@ type MemberDraft = Pick<
   | "species"
   | "sex"
   | "blocks"
+  | "attributes"
+  | "specialisations"
   | "useCustomPortraitPrompt"
   | "customPortraitPrompt"
 >;
@@ -252,6 +440,7 @@ type MemberDraft = Pick<
  */
 export function MemberSheet() {
   const id = useStore((s) => s.memberId);
+  const specCatalog = useStore((s) => s.settings.specialisations);
   const characters = useStore((s) => s.game.characters);
   const base = characters.find((c) => c.id === id);
   const roster = useStore((s) => s.game.roster);
@@ -303,6 +492,8 @@ export function MemberSheet() {
       species: member?.species ?? "",
       sex: member?.sex ?? "",
       blocks: member?.blocks ?? [],
+      attributes: member ? characterAttributes(member) : characterAttributes({ attributes: undefined }),
+      specialisations: member ? characterSpecialisations(member) : [],
       useCustomPortraitPrompt: member?.useCustomPortraitPrompt ?? false,
       customPortraitPrompt: member?.customPortraitPrompt ?? "",
     }),
@@ -566,6 +757,23 @@ export function MemberSheet() {
           </label>
         </div>
 
+        {/* The RPG System build (RPG_DESIGN.md) — frozen against the
+            narrator the same way Equipment and Appearance are; the player
+            picks it here, at creation or any time after. */}
+        <div className="space-y-4">
+          <AttributesEditor
+            value={v.attributes ?? characterAttributes({ attributes: undefined })}
+            editing={editing}
+            onChange={(attributes) => setField("attributes", attributes)}
+          />
+          <SpecialisationsEditor
+            catalog={specCatalog}
+            held={v.specialisations ?? []}
+            editing={editing}
+            onChange={(specialisations) => setField("specialisations", specialisations)}
+          />
+        </div>
+
         {/* The sheet body — an ordered, player-editable list of blocks (Text
             or Item), each independently enabled/disabled, reorderable and
             deletable. Equipment is the special Item-block type among these;
@@ -584,6 +792,7 @@ export function MemberSheet() {
                 index={i}
                 count={v.blocks.length}
                 editing={editing}
+                specCatalog={specCatalog}
                 onChange={(next) => setBlocks(v.blocks.map((x, j) => (j === i ? next : x)))}
                 onMove={(dir) => setBlocks(moveBlock(v.blocks, i, dir))}
                 onToggle={() =>

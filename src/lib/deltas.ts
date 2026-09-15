@@ -18,6 +18,7 @@ import type {
 } from "../types";
 import { advanceClock, normalizeDuration } from "./clock";
 import { defaultFeatures } from "./features";
+import { defaultAttributes } from "./attributes";
 import { buildDefaultBlocks, isGold } from "./defaults";
 import { makeItemBlock } from "./blocks";
 import { findByName, slug, withRename } from "./names";
@@ -804,6 +805,10 @@ function makeCharacter(d: PartyDelta, id: string): Character {
     name: d.name,
     species: d.species ?? "",
     sex: d.sex ?? "",
+    // Never model-authored — see `Character.attributes`. A blank build the
+    // player is free to fill in on the sheet.
+    attributes: defaultAttributes(),
+    specialisations: [],
     blocks: [
       // Player notes are not the narrator's to seed either — `PartyDelta` has
       // no `notes` at all, so the Notes block is born blank and stays that

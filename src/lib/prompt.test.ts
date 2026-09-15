@@ -11,7 +11,7 @@ import {
 } from "./prompt";
 import { defaultPC, newGame, defaultSettings } from "./defaults";
 import { PARTY_LIMIT } from "./roster";
-import { DEFAULT_DICE } from "./stakes";
+import { DEFAULT_ATTRIBUTE_RULES } from "./attributes";
 import { builtinTemplates } from "./imageTemplates";
 import { allFeatures, defaultFeatures } from "./features";
 import { fixedFieldBlocks } from "./testFixtures";
@@ -965,14 +965,11 @@ describe("journal injection", () => {
 describe("stakes + conditions blocks", () => {
   const risky = {
     risky: true,
-    strengthsInPlay: false,
-    flawsInPlay: false,
-    dice: [2],
-    roll: 2,
-    modifier: 0,
-    total: 2,
+    roll: 62,
+    tn: 40,
     outcome: "cost" as const,
-    rules: DEFAULT_DICE,
+    breakdown: "Might +20",
+    rules: DEFAULT_ATTRIBUTE_RULES,
   };
 
   it("injects the outcome block when stakes are on", () => {
@@ -985,7 +982,7 @@ describe("stakes + conditions blocks", () => {
     });
     const block = msgs.find((m) => m.content.startsWith("OUTCOME — THIS TURN"));
     expect(block).toBeDefined();
-    expect(block!.content).toContain("= 2 → COST.");
+    expect(block!.content).toContain("Rolled 62 against a 40% chance (Might +20) → COST.");
   });
 
   it("injects nothing when stakes are off", () => {

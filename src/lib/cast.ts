@@ -1,7 +1,8 @@
-import type { PartyMember } from "../types";
+import type { PartyMember, Specialisation } from "../types";
 import { nameForms } from "./names";
 import { formatIdentity } from "./roster";
 import { indentBlock, wrapCharacter } from "./blocks";
+import { formatBuild } from "./attributes";
 import { keywordHits } from "./worldNotes";
 
 /**
@@ -66,12 +67,14 @@ export function matchNpcs(
  * Ends on an explicit negative: without it the model reads a full sheet
  * mid-prompt and starts walking that person alongside the player.
  */
-export function formatNpcBlock(npcs: PartyMember[]): string {
+export function formatNpcBlock(npcs: PartyMember[], catalog: Specialisation[] = []): string {
   if (!npcs.length) return "";
   const entries = npcs.map((n) => {
-    const lines = [`- ${formatIdentity(n)}`, indentBlock(wrapCharacter(n.id, n.blocks))].filter(
-      Boolean,
-    );
+    const lines = [
+      `- ${formatIdentity(n)}`,
+      indentBlock(formatBuild(n, catalog)),
+      indentBlock(wrapCharacter(n.id, n.blocks)),
+    ].filter(Boolean);
     return lines.join("\n");
   });
   return [
