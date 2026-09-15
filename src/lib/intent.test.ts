@@ -34,6 +34,18 @@ describe("buildIntentMessages", () => {
     const msgs = buildIntentMessages("I wait", "", []);
     expect(msgs.some((m) => m.content.includes("(none)"))).toBe(true);
   });
+
+  it("covers investigation/search attempts as a second risky shape, not just physical gambles", () => {
+    const msgs = buildIntentMessages("I search the desk for a hidden compartment", "", held);
+    const text = msgs.map((m) => m.content).join("\n");
+    // The rule text itself — locks in that a deliberate search/investigate is
+    // documented as risky, distinct from a passive look, so a cheap model
+    // doesn't fall back to the old "examining is never risky" reading.
+    expect(text).toMatch(/find, notice, or understand something/i);
+    expect(text).toContain("I search the desk for a hidden compartment");
+    // The plain-look exclusion survives alongside it.
+    expect(text).toMatch(/plain look around with no specific target/i);
+  });
 });
 
 describe("parseIntentVerdict", () => {

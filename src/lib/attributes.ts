@@ -24,7 +24,7 @@ export const ATTRIBUTE_LABELS: Record<Attribute, string> = {
 export const ATTRIBUTE_HINTS: Record<Attribute, string> = {
   might: "Physical force, endurance.",
   agility: "Speed, precision, reflex.",
-  mind: "Knowledge, perception, tactics.",
+  mind: "Knowledge, perception, tactics — spotting what's hidden, gleaning insight from a search or a clue.",
   presence: "Force of personality, social read.",
 };
 

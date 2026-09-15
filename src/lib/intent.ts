@@ -17,6 +17,14 @@ import { completeChat } from "./openrouter";
  * incentive, asked whether to invite a check that might make it say no to its
  * own player, will simply say no.
  *
+ * "Risky" covers two shapes of gamble: an attempt that could go wrong (a
+ * fight, a climb, a lie) and an attempt to find, notice, or understand
+ * something that might not be there — a deliberate search, investigation, or
+ * close read of someone/something, where the character might come up empty,
+ * miss the hidden thing, or draw the wrong conclusion. A passive "I look
+ * around" stays free either way; the second shape only fires on a stated,
+ * specific attempt.
+ *
  * Scope is deliberately tight, matching how every other side call in this app
  * reads only what it needs: the action text, one line of scene context, and
  * the ACTING character's own Specialisation list (a handful of entries) —
@@ -83,9 +91,20 @@ export function buildIntentMessages(
       role: "system",
       content: [
         "INTENT CHECK — a text adventure needs to know, on device, whether the player's next action is a GAMBLE that could fail.",
-        "Risky means a genuine attempt at something that could go wrong: a fight, a climb, a lie, a haggle, a lockpick, a leap. NOT risky: looking, waiting, talking without pressing for anything, moving somewhere safe, examining something. A verb that SOUNDS dramatic but names no real attempt (\"I sneak a glance at the note\" — no one is trying to avoid detection) is NOT risky either; judge the actual attempt, not the vocabulary.",
-        "If risky, name the ONE Attribute the attempt leans on hardest: might (physical force, endurance), agility (speed, precision, reflex), mind (knowledge, perception, tactics), or presence (force of personality, social read).",
+        "Risky covers TWO shapes of gamble, both genuine attempts at something that might not go the player's way:",
+        "1. An attempt that could go wrong: a fight, a climb, a lie, a haggle, a lockpick, a leap.",
+        "2. An attempt to FIND, NOTICE, or UNDERSTAND something that might not be there to find: searching a room or a body for anything hidden, digging through a desk or a ledger, reading a stranger's face for a tell, appraising whether something is genuine, piecing together what a clue means, listening for what isn't being said. These fail quietly — nothing is missed on-page, only in the world — but they are still an attempt with a real chance of coming up empty, wrong, or incomplete.",
+        "NOT risky: a plain look around with no specific target ('I look around', 'I look at the room'), waiting, talking without pressing for anything, moving somewhere safe, or glancing at / looking at something already in plain view with nothing to miss. A verb that SOUNDS dramatic but names no real attempt (\"I sneak a glance at the note\" — no one is trying to avoid detection, and nothing about the note is hidden) is NOT risky either; judge the actual attempt, not the vocabulary.",
+        "The line between the two: 'I examine the chest' (open-ended, no stated goal — describe what's there, not risky) vs. 'I check the chest for a false bottom' (a specific attempt to find something that may not be there — risky). 'I look at the merchant' (not risky) vs. 'I watch the merchant for any sign he's lying' (risky).",
+        "If risky, name the ONE Attribute the attempt leans on hardest: might (physical force, endurance), agility (speed, precision, reflex), mind (knowledge, perception, tactics — noticing what's hidden, gleaning insight from a search or a clue), or presence (force of personality, social read).",
         "If risky, also check whether the attempt matches ONE of the character's held Specialisations below closely enough that it should apply — at most one, and only a close match, never a stretch.",
+        "Examples:",
+        '- "I attack the bandit" → risky, might',
+        '- "I look around the room" → not risky (no specific target, nothing to miss)',
+        '- "I sneak a glance at the note" → not risky (no attempt at anything, and nothing on the note is hidden)',
+        '- "I search the desk for a hidden compartment" → risky, mind',
+        '- "I read the merchant\'s face for a tell" → risky, mind or presence, whichever fits the scene',
+        '- "I ask her about the village" → not risky (talk without pressing for anything hidden)',
         'Reply with a single JSON object and nothing else — no prose, no code fences: {"risky": true|false, "attribute": "might"|"agility"|"mind"|"presence"|null, "specialisation": "<id>"|null}.',
       ].join("\n"),
     },

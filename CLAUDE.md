@@ -918,6 +918,23 @@ migration: a character read from a save written before this existed has no
 sanitize at read the same way `normalizeDice` used to
 (`normalizeAttributeRules`/`normalizeSpecialisations`/`normalizeGMMoves`).
 
+Post-MVP also: **investigation is a gamble too** — `intent.ts`'s "risky"
+definition widened from one shape (an attempt that could go wrong) to two:
+the original, plus a deliberate attempt to find, notice, or understand
+something that might not be there — searching a desk, reading a face for a
+tell, piecing together a clue. These fail quietly (nothing is missed on-page,
+only in the world) but are still a genuine attempt with a real chance of
+coming up empty, wrong, or incomplete, and Mind's own description now says so
+(`ATTRIBUTE_HINTS.mind`, surfaced as a title tooltip on the sheet's
+Attributes stepper). A plain, targetless "I look around" still rolls
+nothing — the line is a STATED, SPECIFIC attempt to find something versus an
+open-ended description request, spelled out with paired examples in the
+classifier's own prompt (`buildIntentMessages`) so a cheap model doesn't fall
+back to "examining is never risky." `DEFAULT_STAKES_RULE` gained a matching
+line under each band for what a search/investigation result looks like
+(found it clearly / found something partial / came up empty or misjudged it),
+alongside the existing combat/social wording rather than replacing it.
+
 Deferred (post-MVP): rolling LLM summarization of the beats themselves,
 NPC/item art, TTS, weather animation, multi-world. Track scope in
 `DESIGN.md → Build Phases`.

@@ -28,6 +28,7 @@ import {
   resolve,
 } from "../lib/roster";
 import {
+  ATTRIBUTE_HINTS,
   ATTRIBUTE_LABELS,
   MAX_ATTRIBUTE,
   MIN_ATTRIBUTE,
@@ -67,7 +68,11 @@ function AttributesEditor({
       <span className={fieldLabel}>Attributes</span>
       <div className="grid grid-cols-2 gap-2">
         {ATTRIBUTES.map((a) => (
-          <label key={a} className="flex items-center justify-between gap-2 rounded-[10px] bg-[var(--m-surface-strong)] px-3 py-2">
+          <label
+            key={a}
+            title={ATTRIBUTE_HINTS[a]}
+            className="flex items-center justify-between gap-2 rounded-[10px] bg-[var(--m-surface-strong)] px-3 py-2"
+          >
             <span className="text-[13px]">{ATTRIBUTE_LABELS[a]}</span>
             <input
               type="number"

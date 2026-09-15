@@ -211,9 +211,9 @@ export const DEFAULT_SPOTLIGHT_RULE = `Give the spotlight to at most one party m
  * and shouting, not dead, and a narrator handed a bare "COST" will otherwise
  * eventually kill the player and strand the save.
  */
-export const DEFAULT_STAKES_RULE = `STRONG — it works. Give the player a clean, satisfying win and let them feel it.
-MIXED — it works, but it costs: a complication lands, something breaks, a resource is spent, or the win draws attention. Never a flat success.
-COST — it goes wrong. The player pays something real — hurt, disarmed, separated, caught out, or robbed of the moment. Follow through; do not rescue them from it on the same beat.
+export const DEFAULT_STAKES_RULE = `STRONG — it works. Give the player a clean, satisfying win and let them feel it. On a search or investigation, they find exactly what they were looking for, clearly.
+MIXED — it works, but it costs: a complication lands, something breaks, a resource is spent, or the win draws attention. On a search or investigation, they find something real, but partial, slow to piece together, or noticed while looking. Never a flat success.
+COST — it goes wrong. The player pays something real — hurt, disarmed, separated, caught out, or robbed of the moment. On a search or investigation, they come up empty, miss the thing that was there, or draw the wrong conclusion — the world does not correct them. Follow through; do not rescue them from it on the same beat.
 When a result marks someone lastingly, record it in "conditions". Never kill the player character: leave them alive with something to fix.`;
 
 /**
