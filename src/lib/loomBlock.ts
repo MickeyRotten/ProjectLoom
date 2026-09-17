@@ -79,6 +79,11 @@ export function parseLoomResponse(raw: string): ParsedResponse {
     }
   }
 
+  // "Never use an em dash" is a rule no model — cheap or expensive — holds
+  // reliably at the token level. Mechanical, not a style call: strip it here
+  // rather than keep asking the prompt to do a regex's job.
+  prose = stripEmDashes(prose);
+
   if (!parsed) {
     // No machine block at all. Options lifted out of the prose still have to
     // reach the UI, and a block is the only channel there is.
@@ -183,6 +188,25 @@ function stripTrailingFence(text: string): string {
     .trimEnd()
     .replace(/```[ \t]*(?:json)?$/i, "")
     .trimEnd();
+}
+
+/** An em/en dash, with whatever spacing the model put around it. */
+const DASH_RE = /\s*[—–]\s*/g;
+
+/**
+ * Replace every em/en dash with the punctuation it almost always stands in
+ * for. One at the very end of a sentence (trailed-off speech, an interrupted
+ * line) becomes a period; everywhere else it becomes a comma. Not a style
+ * choice — the prompt already asks for this, this just backs it with code.
+ */
+export function stripEmDashes(text: string): string {
+  return text
+    .replace(DASH_RE, (match, offset: number, full: string) => {
+      const after = full.slice(offset + match.length);
+      return /^["'”’)]?\s*$/.test(after) ? "." : ", ";
+    })
+    .replace(/,([.!?])/g, "$1")
+    .replace(/\s+([.,!?])/g, "$1");
 }
 
 /**
