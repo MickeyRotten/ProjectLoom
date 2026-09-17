@@ -7,6 +7,7 @@ import {
   needsBlockRepair,
   normalizeOptions,
   parseLoomResponse,
+  stripEmDashes,
   truncateForDisplay,
 } from "./loomBlock";
 import { defaultSettings } from "./defaults";
@@ -82,6 +83,36 @@ describe("parseLoomResponse", () => {
     const raw = 'Hi.\n<<<LOOM>>>\n{ "weather": "a {curly} day" }\n<<<END>>>';
     const { block } = parseLoomResponse(raw);
     expect(block?.weather).toBe("a {curly} day");
+  });
+
+  it("strips an em dash out of the final prose", () => {
+    const raw = "The door bangs open—crimson plate gleams.\n<<<LOOM>>>\n{ \"day\": 1 }";
+    const { prose } = parseLoomResponse(raw);
+    expect(prose).toBe("The door bangs open, crimson plate gleams.");
+  });
+});
+
+describe("stripEmDashes", () => {
+  it("replaces a mid-sentence dash with a comma, spaced or not", () => {
+    expect(stripEmDashes("one—two")).toBe("one, two");
+    expect(stripEmDashes("one — two")).toBe("one, two");
+  });
+
+  it("replaces a sentence-trailing dash with a period", () => {
+    expect(stripEmDashes("She trails off—")).toBe("She trails off.");
+    expect(stripEmDashes("She trails off — ")).toBe("She trails off.");
+  });
+
+  it("handles an en dash the same way", () => {
+    expect(stripEmDashes("one–two")).toBe("one, two");
+  });
+
+  it("leaves text with no dash untouched", () => {
+    expect(stripEmDashes("Nothing to see here.")).toBe("Nothing to see here.");
+  });
+
+  it("handles more than one dash in a beat", () => {
+    expect(stripEmDashes("one—two—three")).toBe("one, two, three");
   });
 });
 
