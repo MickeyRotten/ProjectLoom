@@ -437,7 +437,7 @@ function AvatarRow({
 }) {
   return (
     <div className="flex items-start gap-2.5">
-      <span className="mt-0.5 flex h-20 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--m-avatar)] text-[15px] font-bold text-ink">
+      <span className="mt-0.5 flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--m-avatar)] text-[15px] font-bold text-ink">
         {avatar.url ? (
           <img
             src={avatar.url}
