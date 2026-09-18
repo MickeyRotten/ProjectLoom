@@ -427,14 +427,17 @@ function speakerAvatar(
  */
 function AvatarRow({
   avatar,
+  nameColor,
   children,
 }: {
   avatar: Avatar;
+  /** CSS color value for the name-plate; defaults to the neutral muted text. */
+  nameColor?: string;
   children: ReactNode;
 }) {
   return (
     <div className="flex items-start gap-2.5">
-      <span className="mt-0.5 flex h-10 w-8 shrink-0 items-center justify-center overflow-hidden rounded-[8px] bg-[var(--m-avatar)] text-[11px] font-bold text-ink">
+      <span className="mt-0.5 flex h-20 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--m-avatar)] text-[15px] font-bold text-ink">
         {avatar.url ? (
           <img
             src={avatar.url}
@@ -446,7 +449,10 @@ function AvatarRow({
         )}
       </span>
       <div className="min-w-0 flex-1 space-y-1">
-        <span className="text-[11px] font-bold uppercase tracking-wide text-[var(--m-text-55)]">
+        <span
+          className="text-[11px] font-bold uppercase tracking-wide"
+          style={{ color: nameColor ?? "var(--m-text-55)" }}
+        >
           {avatar.label}
         </span>
         {children}
@@ -472,13 +478,16 @@ function Beat({
 
   if (role === "player") {
     // Not uppercased: a player line can be a full sentence, and uppercase
-    // monospace is the hardest thing on the page to read. The `>` still
-    // marks it as input, now alongside the PC's own avatar.
+    // monospace is the hardest thing on the page to read. The PC's own
+    // avatar and name-plate already mark it as input, so no `>` prefix.
     const pc = party.find((c) => c.role === "pc");
     return (
-      <AvatarRow avatar={pc ? characterAvatar(pc, images) : narratorAvatar(images)}>
+      <AvatarRow
+        avatar={pc ? characterAvatar(pc, images) : narratorAvatar(images)}
+        nameColor="var(--user-name)"
+      >
         <p className="whitespace-pre-wrap italic leading-[1.4] tracking-wide text-[var(--m-text-70)]">
-          &gt; {text}
+          {text}
         </p>
       </AvatarRow>
     );
@@ -494,7 +503,11 @@ function Beat({
   return (
     <div className={`space-y-3 leading-[1.6] ${pending ? "opacity-70" : ""}`}>
       {groups.map((g, i) => (
-        <AvatarRow key={i} avatar={speakerAvatar(g.speaker, party, images)}>
+        <AvatarRow
+          key={i}
+          avatar={speakerAvatar(g.speaker, party, images)}
+          nameColor={g.speaker === null ? "var(--narrator-name)" : undefined}
+        >
           {g.texts.map((t, j) =>
             g.speaker ? (
               <p key={j} className="text-dialogue">

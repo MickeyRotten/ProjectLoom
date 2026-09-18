@@ -13,8 +13,10 @@ import {
   DEFAULT_JOURNAL_BUDGET,
   DEFAULT_JOURNAL_MAX_TURNS,
   DEFAULT_JOURNAL_MIN_TURNS,
+  DEFAULT_NARRATOR_NAME_COLOR,
   DEFAULT_PAPER,
   DEFAULT_TEXT_SIZE,
+  DEFAULT_USER_NAME_COLOR,
   defaultSettings,
 } from "./defaults";
 import { normalizeComfy } from "./comfyui";
@@ -126,6 +128,8 @@ export function loadSettings(): Settings {
       ink: normalizeHex(stored.ink, stored.invert ? "#ffffff" : DEFAULT_INK),
       highlightColor: normalizeHex(stored.highlightColor, DEFAULT_HIGHLIGHT),
       dialogueColor: normalizeHex(stored.dialogueColor, DEFAULT_DIALOGUE),
+      userNameColor: normalizeHex(stored.userNameColor, DEFAULT_USER_NAME_COLOR),
+      narratorNameColor: normalizeHex(stored.narratorNameColor, DEFAULT_NARRATOR_NAME_COLOR),
       // Same discipline for the reading size. The legacy four-step scale maps to
       // the pixel values its Tailwind classes already resolved to, so nobody's
       // setting moves on upgrade.
