@@ -294,6 +294,14 @@ export const DEFAULT_HIGHLIGHT = "#c99a2e";
 export const DEFAULT_DIALOGUE = "#3a6ea5";
 
 /**
+ * Shipped name-plate colors for the chat log (Appearance → Colors) — the same
+ * muted gray `--m-text-55` already drew both, so picking these as the default
+ * changes nobody's screen until they choose otherwise.
+ */
+export const DEFAULT_USER_NAME_COLOR = "#737373";
+export const DEFAULT_NARRATOR_NAME_COLOR = "#737373";
+
+/**
  * Shipped reading size, in pixels. 16 is what the old `textScale: "m"` resolved
  * to through Tailwind's `text-base`, so the setting means the same thing across
  * the change.
@@ -334,6 +342,8 @@ export function defaultSettings(): Settings {
     ink: DEFAULT_INK,
     highlightColor: DEFAULT_HIGHLIGHT,
     dialogueColor: DEFAULT_DIALOGUE,
+    userNameColor: DEFAULT_USER_NAME_COLOR,
+    narratorNameColor: DEFAULT_NARRATOR_NAME_COLOR,
     textSize: DEFAULT_TEXT_SIZE,
     font: "system",
     webFonts: [],

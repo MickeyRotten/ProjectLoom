@@ -1078,6 +1078,15 @@ export interface Settings extends ComfySettings {
   highlightColor: string;
   dialogueColor: string;
   /**
+   * The chat log's speaker name-plates (Appearance → Colors): the player's own
+   * turns take `userNameColor`, and the Narrator's own beats (no party member
+   * speaking) take `narratorNameColor`. A party member's own dialogue keeps the
+   * neutral default — these two are about telling player/narrator apart, not a
+   * per-character palette. Always `#rrggbb` after `settings.ts → normalizeHex`.
+   */
+  userNameColor: string;
+  narratorNameColor: string;
+  /**
    * Reading size for narration, in pixels. Chrome (buttons, labels) never
    * scales. Sanitized at READ time by `settings.ts → clampTextSize`.
    */

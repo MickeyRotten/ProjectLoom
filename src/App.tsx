@@ -60,6 +60,8 @@ export default function App() {
   const ink = useStore((s) => s.settings.ink);
   const highlightColor = useStore((s) => s.settings.highlightColor);
   const dialogueColor = useStore((s) => s.settings.dialogueColor);
+  const userNameColor = useStore((s) => s.settings.userNameColor);
+  const narratorNameColor = useStore((s) => s.settings.narratorNameColor);
   const font = useStore((s) => s.settings.font);
   const webFonts = useStore((s) => s.settings.webFonts);
   const setupDone = useStore((s) => s.settings.setupDone);
@@ -137,9 +139,11 @@ export default function App() {
     root.style.setProperty("--scrim", scrimFrom(ink));
     root.style.setProperty("--highlight", highlightColor);
     root.style.setProperty("--dialogue", dialogueColor);
+    root.style.setProperty("--user-name", userNameColor);
+    root.style.setProperty("--narrator-name", narratorNameColor);
     root.style.colorScheme = isDarkPaper(paper) ? "dark" : "light";
     document.querySelector('meta[name="theme-color"]')?.setAttribute("content", paper);
-  }, [paper, ink, highlightColor, dialogueColor]);
+  }, [paper, ink, highlightColor, dialogueColor, userNameColor, narratorNameColor]);
 
   // Font choice rides a one-attribute mechanism of its own: `data-font`
   // repoints `--font-mono` for the whole app — from theme.css for the bundled

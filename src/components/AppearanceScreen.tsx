@@ -30,6 +30,8 @@ export function AppearanceScreen() {
   const ink = useStore((s) => s.settings.ink);
   const highlightColor = useStore((s) => s.settings.highlightColor);
   const dialogueColor = useStore((s) => s.settings.dialogueColor);
+  const userNameColor = useStore((s) => s.settings.userNameColor);
+  const narratorNameColor = useStore((s) => s.settings.narratorNameColor);
   const fontPending = useStore((s) => s.fontPending);
   const fontError = useStore((s) => s.fontError);
   const updateSettings = useStore((s) => s.updateSettings);
@@ -174,6 +176,16 @@ export function AppearanceScreen() {
             value={dialogueColor}
             onChange={(v) => updateSettings({ dialogueColor: v })}
           />
+          <ColorRow
+            label="Your Name"
+            value={userNameColor}
+            onChange={(v) => updateSettings({ userNameColor: v })}
+          />
+          <ColorRow
+            label="Narrator Name"
+            value={narratorNameColor}
+            onChange={(v) => updateSettings({ narratorNameColor: v })}
+          />
 
           <span className={`block pt-1.5 ${fieldLabel}`}>Presets</span>
           <div className="grid grid-cols-2 gap-2">
@@ -200,10 +212,13 @@ export function AppearanceScreen() {
             })}
           </div>
           <p className="text-[12.5px] leading-relaxed text-[var(--m-text-55)]">
-            All four colors apply everywhere. Names & Items highlights known
+            All six colors apply everywhere. Names & Items highlights known
             characters and item names in the story text; Dialogue colors
-            quoted speech. Portrait art is stored as the image model drew it
-            and does not change with the colors you pick.
+            quoted speech; Your Name and Narrator Name color the speaker
+            name-plate in the chat log for your own turns and the Narrator's
+            beats (a party member's own dialogue keeps the neutral default).
+            Portrait art is stored as the image model drew it and does not
+            change with the colors you pick.
           </p>
         </div>
       </div>
