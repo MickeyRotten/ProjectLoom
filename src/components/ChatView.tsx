@@ -5,6 +5,9 @@ import { Composer } from "./Composer";
 import { TurnControls } from "./TurnControls";
 import { pillOutline, pillSolid, filledTextarea, card } from "./material";
 import { segmentDialogue } from "../lib/spotlight";
+import { groupSegments } from "../lib/dialogueGroups";
+import { findByName } from "../lib/names";
+import { portraitKey, coverKey } from "../lib/images";
 import { parseInline } from "../lib/markdown";
 import { collectEntityNames, highlightEntities, highlightWithinQuote } from "../lib/highlight";
 import { deriveToasts } from "../lib/toasts";
@@ -374,6 +377,84 @@ function Editor({
   );
 }
 
+/** A row's avatar tile: an image when one is cached, else initials/a glyph. */
+interface Avatar {
+  label: string;
+  url?: string;
+  initials: string;
+}
+
+/** First-letters-of-up-to-2-words fallback, same rule the party strip uses. */
+function initials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
+function characterAvatar(c: Character, images: Record<string, string>): Avatar {
+  return { label: c.name, url: images[portraitKey(c.id)], initials: initials(c.name) };
+}
+
+/** The Narrator's avatar is the adventure's own cover art — one image, upload-only. */
+function narratorAvatar(images: Record<string, string>): Avatar {
+  return { label: "Narrator", url: images[coverKey()], initials: "N" };
+}
+
+/**
+ * Resolve a `segmentDialogue` speaker (a canonical name, already alias/rename
+ * -safe) back to its avatar. `party` is the whole cast `segmentDialogue` was
+ * given, so every non-null speaker it produced is guaranteed to resolve here
+ * — the `?? narratorAvatar` fallback exists only for defense.
+ */
+function speakerAvatar(
+  speaker: string | null,
+  party: Character[],
+  images: Record<string, string>,
+): Avatar {
+  if (speaker === null) return narratorAvatar(images);
+  const c = findByName(party, speaker);
+  return c ? characterAvatar(c, images) : narratorAvatar(images);
+}
+
+/**
+ * Avatar + name-plate + message column, Discord-style. One row per speaker
+ * group (`dialogueGroups.ts`) — every paragraph gets an avatar, and a run of
+ * consecutive paragraphs from the same speaker (most narration, most single-
+ * line dialogue) shares just the one.
+ */
+function AvatarRow({
+  avatar,
+  children,
+}: {
+  avatar: Avatar;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex items-start gap-2.5">
+      <span className="mt-0.5 flex h-10 w-8 shrink-0 items-center justify-center overflow-hidden rounded-[8px] bg-[var(--m-avatar)] text-[11px] font-bold text-ink">
+        {avatar.url ? (
+          <img
+            src={avatar.url}
+            alt={avatar.label}
+            className="h-full w-full origin-top scale-150 object-cover object-top"
+          />
+        ) : (
+          avatar.initials
+        )}
+      </span>
+      <div className="min-w-0 flex-1 space-y-1">
+        <span className="text-[11px] font-bold uppercase tracking-wide text-[var(--m-text-55)]">
+          {avatar.label}
+        </span>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function Beat({
   role,
   text,
@@ -387,37 +468,46 @@ function Beat({
   names: string[];
   pending?: boolean;
 }) {
+  const images = useStore((s) => s.images);
+
   if (role === "player") {
     // Not uppercased: a player line can be a full sentence, and uppercase
-    // monospace is the hardest thing on the page to read. The `>` and the rule
-    // already mark it as the player's.
+    // monospace is the hardest thing on the page to read. The `>` still
+    // marks it as input, now alongside the PC's own avatar.
+    const pc = party.find((c) => c.role === "pc");
     return (
-      <p className="whitespace-pre-wrap border-l-2 border-[var(--m-outline-soft)] pl-2.5 italic leading-[1.4] tracking-wide text-[var(--m-text-70)]">
-        &gt; {text}
-      </p>
+      <AvatarRow avatar={pc ? characterAvatar(pc, images) : narratorAvatar(images)}>
+        <p className="whitespace-pre-wrap italic leading-[1.4] tracking-wide text-[var(--m-text-70)]">
+          &gt; {text}
+        </p>
+      </AvatarRow>
     );
   }
 
-  // Segment narrator prose so party dialogue (`Name: "…"`) renders distinctly.
-  // Leading is deliberately loose for monospace: at 1.3 a beat is a solid block
-  // of glyphs, and this is a reading app before it is anything else.
-  const segments = segmentDialogue(text, party);
+  // Segment narrator prose so party AND NPC dialogue (`Name: "…"`) render
+  // distinctly, then group consecutive same-speaker segments so a long
+  // uninterrupted run (almost always narration) shows one avatar, not one
+  // per paragraph. Leading is deliberately loose for monospace: at 1.3 a beat
+  // is a solid block of glyphs, and this is a reading app before it is
+  // anything else.
+  const groups = groupSegments(segmentDialogue(text, party));
   return (
     <div className={`space-y-3 leading-[1.6] ${pending ? "opacity-70" : ""}`}>
-      {segments.map((seg, i) =>
-        seg.speaker ? (
-          <p key={i} className="border-l-2 border-ink pl-2">
-            <span className="mr-1 font-bold uppercase tracking-wide">{seg.speaker}:</span>
-            <span className="text-dialogue">
-              “<HighlightedQuote text={seg.text} names={names} />”
-            </span>
-          </p>
-        ) : (
-          <p key={i} className="whitespace-pre-wrap">
-            <Highlighted text={seg.text} names={names} />
-          </p>
-        ),
-      )}
+      {groups.map((g, i) => (
+        <AvatarRow key={i} avatar={speakerAvatar(g.speaker, party, images)}>
+          {g.texts.map((t, j) =>
+            g.speaker ? (
+              <p key={j} className="text-dialogue">
+                “<HighlightedQuote text={t} names={names} />”
+              </p>
+            ) : (
+              <p key={j} className="whitespace-pre-wrap">
+                <Highlighted text={t} names={names} />
+              </p>
+            ),
+          )}
+        </AvatarRow>
+      ))}
       {pending && <span className="loom-blink"> ▊</span>}
     </div>
   );
